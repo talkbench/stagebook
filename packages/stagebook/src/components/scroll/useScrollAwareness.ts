@@ -42,7 +42,15 @@ export function useScrollAwareness(
     if (!container) return undefined;
 
     const handleScroll = () => {
-      hasUserScrolledRef.current = true;
+      // Tie engagement to the actual scroll position, not "any scroll
+      // event has fired." In host-mode the scroll container outlives
+      // every stage, so a sticky engagement flag would stay true for
+      // the whole session — and after the first stage where the user
+      // scrolled, every subsequent stage's overflow would auto-peek
+      // even from scrollTop=0. Anchoring to `scrollTop > 0` lets the
+      // standard stage-transition reset (scrollTop -> 0) also reset
+      // engagement. (#294)
+      hasUserScrolledRef.current = container.scrollTop > 0;
       wasAtBottomRef.current = checkAtBottom();
       if (showIndicator && wasAtBottomRef.current) {
         setShowIndicator(false);
