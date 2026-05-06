@@ -160,17 +160,22 @@ export function useScrollAwareness(
 
     // ResizeObserver covers the case where the viewport grows (or the
     // container shrinks) enough to bring overflowing content into fit
-    // without any DOM mutation.
-    const resizeObserver = new ResizeObserver(() => {
-      dismissIfFits();
-    });
-    resizeObserver.observe(container);
+    // without any DOM mutation. Guard the constructor — older browsers,
+    // some embedded webviews, and test environments without the API
+    // would otherwise throw at hook setup.
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            dismissIfFits();
+          })
+        : null;
+    resizeObserver?.observe(container);
 
     prevScrollHeightRef.current = container.scrollHeight;
 
     return () => {
       mutationObserver.disconnect();
-      resizeObserver.disconnect();
+      resizeObserver?.disconnect();
     };
   }, [containerRef, threshold]);
 
