@@ -19,6 +19,7 @@ We need to decide whether to use Markdown or HTML for storing deliberation topic
 
 _Which format is better for this task?_`,
   responseItems: ["Markdown", "HTML"],
+  responsePoints: [],
   sliderPoints: [],
 };
 
@@ -30,6 +31,7 @@ export const multipleChoiceMultiple = {
   } as MetadataType,
   body: "# Which colors indicate a strong magical field?",
   responseItems: ["Octarine", "Hooloovoo", "Ultrablack", "Ulfire", "Plaid"],
+  responsePoints: [],
   sliderPoints: [],
 };
 
@@ -43,6 +45,7 @@ export const openResponse = {
 
 _Are there any other reasons you can think of for choosing one or the other?_`,
   responseItems: ["Please enter your response here."],
+  responsePoints: [],
   sliderPoints: [],
 };
 
@@ -56,6 +59,7 @@ export const openResponseWithLimits = {
   } as MetadataType,
   body: "# Please write a response between 50 and 200 characters.",
   responseItems: ["Enter your response here."],
+  responsePoints: [],
   sliderPoints: [],
 };
 
@@ -68,6 +72,7 @@ export const noResponse = {
 
 We need to decide whether to use Markdown or HTML. _Discuss why markdown is the best._`,
   responseItems: [],
+  responsePoints: [],
   sliderPoints: [],
 };
 
@@ -84,6 +89,7 @@ export const slider = {
   // After #243 slider points live in the body alongside their labels.
   // The fixture shape mirrors `promptFileSchema.parse()` output, so
   // points and labels arrive as parallel arrays.
+  responsePoints: [0, 20, 50, 80, 100],
   sliderPoints: [0, 20, 50, 80, 100],
 };
 
@@ -100,5 +106,6 @@ export const listSorter = {
     "Albus Dumbledore",
     "Severus Snape",
   ],
+  responsePoints: [],
   sliderPoints: [],
 };

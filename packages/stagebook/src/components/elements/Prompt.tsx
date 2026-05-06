@@ -17,11 +17,17 @@ export interface PromptProps {
   body: string;
   responseItems: string[];
   /**
-   * Slider points (numbers) parsed from the body section. Empty for
-   * non-slider types. After #243 slider points and labels share the same
-   * body lines (`- 50: Somewhat familiar`); upstream
-   * `promptFileSchema.transform` splits them into `sliderPoints` (numbers)
-   * and `responseItems` (labels) with the i-th index aligned across both.
+   * Numeric per-option values parsed from the body section, aligned i-th
+   * with `responseItems` (labels). Populated for sliders (always) and for
+   * multipleChoice prompts in numeric mode (#282). Empty for text-only
+   * multipleChoice, listSorter, and openResponse.
+   */
+  responsePoints?: number[];
+  /**
+   * Deprecated alias for `responsePoints`, kept for backward compatibility
+   * with consumers that referenced this field name pre-#282. Identical to
+   * `responsePoints` for slider prompts.
+   * @deprecated
    */
   sliderPoints?: number[];
   name: string;
@@ -41,6 +47,7 @@ export function Prompt({
   metadata,
   body,
   responseItems,
+  responsePoints,
   sliderPoints,
   name,
   file,
@@ -50,7 +57,17 @@ export function Prompt({
   resolveURL,
   renderSharedNotepad,
 }: PromptProps) {
-  const [responses, setResponses] = useState<string[]>([]);
+  // Prefer `responsePoints` (#282 canonical name); fall back to the
+  // deprecated `sliderPoints` alias if a caller still uses it.
+  const numericPoints = responsePoints ?? sliderPoints;
+  const hasNumericPoints =
+    numericPoints !== undefined && numericPoints.length > 0;
+  // `shuffleOrder[i]` is the original index of the option at display
+  // position `i`. We track *one* shuffle order and derive both labels and
+  // numeric points from it, so a shuffled label always stays paired with
+  // its corresponding numeric value (#282 — without this, a shuffled
+  // numeric multipleChoice records the wrong number for the chosen label).
+  const [shuffleOrder, setShuffleOrder] = useState<number[]>([]);
   const [debugMessages, setDebugMessages] = useState<DebugMessage[]>([]);
   const debounceTextRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debounceInteractiveRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -72,19 +89,35 @@ export function Prompt({
     (promptType === "multipleChoice" || promptType === "listSorter") &&
     metadata.shuffle === true;
 
-  // Initialize responses from responseItems (with optional shuffle)
+  // Initialize shuffleOrder when responseItems first arrives or changes
+  // length. Reshuffles only when the option set itself changes — the
+  // setEquality guard prevents a re-shuffle on every render.
   if (
     promptType !== "noResponse" &&
     responseItems.length > 0 &&
-    (!responses.length ||
-      !setEquality(new Set(responseItems), new Set(responses)))
+    (shuffleOrder.length !== responseItems.length ||
+      !setEquality(
+        new Set(responseItems),
+        new Set(shuffleOrder.map((i) => responseItems[i] ?? "")),
+      ))
   ) {
+    const indices = Array.from({ length: responseItems.length }, (_, i) => i);
     if (shouldShuffle) {
-      setResponses([...responseItems].sort(() => 0.5 - Math.random()));
-    } else {
-      setResponses(responseItems);
+      indices.sort(() => 0.5 - Math.random());
     }
+    setShuffleOrder(indices);
   }
+
+  // Apply the shuffle to both labels and (when present) numeric points so
+  // they stay aligned at every display position.
+  const responses =
+    shuffleOrder.length === responseItems.length
+      ? shuffleOrder.map((i) => responseItems[i] ?? "")
+      : responseItems;
+  const shuffledNumericPoints =
+    numericPoints && shuffleOrder.length === numericPoints.length
+      ? shuffleOrder.map((i) => numericPoints[i] ?? 0)
+      : numericPoints;
 
   const record = {
     ...metadata,
@@ -97,10 +130,15 @@ export function Prompt({
   };
 
   const saveData = useCallback(
-    (newValue: unknown, recordData: typeof record) => {
+    (newValue: unknown, recordData: typeof record, label?: string) => {
       const updatedRecord = {
         ...recordData,
         value: newValue,
+        // For multipleChoice prompts (#282), record both the chosen value
+        // and its display label. In numeric mode `value` is the number and
+        // `label` is the text; in text mode `value === label`. Slider
+        // responses don't carry a label since the input is continuous.
+        ...(label !== undefined ? { label } : {}),
       };
       const scope = shared ? "shared" : "player";
       save(`prompt_${recordData.name}`, updatedRecord, scope);
@@ -120,11 +158,11 @@ export function Prompt({
   );
 
   const debouncedSaveInteractive = useCallback(
-    (newValue: unknown, recordData: typeof record) => {
+    (newValue: unknown, recordData: typeof record, label?: string) => {
       if (debounceInteractiveRef.current)
         clearTimeout(debounceInteractiveRef.current);
       debounceInteractiveRef.current = setTimeout(
-        () => saveData(newValue, recordData),
+        () => saveData(newValue, recordData, label),
         50,
       );
     },
@@ -136,7 +174,28 @@ export function Prompt({
       <Markdown text={body} resolveURL={resolveURL} />
 
       {promptType === "multipleChoice" &&
-        (metadata.select === "single" || metadata.select === undefined) && (
+        (metadata.select === "single" || metadata.select === undefined) &&
+        // In numeric mode (#282) the option key is the stringified number;
+        // the saved value is the number (parsed back from the key) and the
+        // label is the displayed text. In text mode value === label.
+        (hasNumericPoints && shuffledNumericPoints ? (
+          <RadioGroup
+            options={responses.map((label, idx) => ({
+              key: String(shuffledNumericPoints[idx]),
+              value: label,
+            }))}
+            value={typeof value === "number" ? String(value) : undefined}
+            layout={metadata.layout}
+            onChange={(e) => {
+              const idx = shuffledNumericPoints.findIndex(
+                (p) => String(p) === e.target.value,
+              );
+              const numericValue = shuffledNumericPoints[idx];
+              const label = responses[idx] ?? "";
+              debouncedSaveInteractive(numericValue, record, label);
+            }}
+          />
+        ) : (
           <RadioGroup
             options={responses.map((choice) => ({
               key: choice,
@@ -144,9 +203,12 @@ export function Prompt({
             }))}
             value={value as string | undefined}
             layout={metadata.layout}
-            onChange={(e) => debouncedSaveInteractive(e.target.value, record)}
+            onChange={(e) =>
+              // Text mode: label === value.
+              debouncedSaveInteractive(e.target.value, record, e.target.value)
+            }
           />
-        )}
+        ))}
 
       {promptType === "multipleChoice" && metadata.select === "multiple" && (
         <CheckboxGroup
@@ -197,7 +259,7 @@ export function Prompt({
           min={metadata.min}
           max={metadata.max}
           interval={metadata.interval}
-          labelPts={sliderPoints}
+          labelPts={numericPoints}
           labels={responses}
           value={value as number | undefined}
           onChange={(val) => debouncedSaveInteractive(val, record)}

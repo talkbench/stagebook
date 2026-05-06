@@ -513,3 +513,78 @@ test.describe("Multiple Choice option order", () => {
     expect(order).toEqual([...customOrderOptions]);
   });
 });
+
+// ---------------------------------------------------------------------
+// #282 — shuffle + numeric mode must keep label/point pairing intact
+// ---------------------------------------------------------------------
+//
+// Bug surfaced during review: a previous implementation shuffled the
+// labels but kept `numericPoints` in source order, so a shuffled radio
+// would record the wrong number for the chosen label. This test pins
+// the invariant that whichever label the participant picks, the saved
+// numeric value is the one originally aligned with it in the source.
+
+const NUMERIC_LIKERT_LABELS = [
+  "Strongly disagree",
+  "Disagree",
+  "Neutral",
+  "Agree",
+  "Strongly agree",
+] as const;
+const NUMERIC_LIKERT_POINTS = [1, 2, 3, 4, 5] as const;
+
+const numericShuffledMultipleChoice = {
+  metadata: {
+    name: "projects/example/numericShuffled.md",
+    type: "multipleChoice" as const,
+    shuffle: true,
+  },
+  body: "# How much do you agree?",
+  responseItems: [...NUMERIC_LIKERT_LABELS],
+  responsePoints: [...NUMERIC_LIKERT_POINTS],
+};
+
+test.describe("Multiple Choice numeric mode + shuffle (#282)", () => {
+  test("shuffled labels stay paired with their original numeric points", async ({
+    mount,
+  }) => {
+    const saved: { key: string; value: unknown }[] = [];
+    const component = await mount(
+      <Prompt
+        {...numericShuffledMultipleChoice}
+        name="testNumericShuffle"
+        value={undefined}
+        progressLabel="game_0_numeric_shuffle"
+        save={(key, value) => {
+          saved.push({ key, value });
+        }}
+        getElapsedTime={() => 0}
+      />,
+    );
+
+    // Find the radio whose displayed label is "Strongly agree" (originally
+    // paired with point 5) and click it. Whatever its display position
+    // after shuffle, the saved numeric value must be 5.
+    const radios = component.locator('input[type="radio"]');
+    const labels = await component
+      .locator("label")
+      .evaluateAll((nodes) => nodes.map((n) => (n.textContent ?? "").trim()));
+    const stronglyAgreeIdx = labels.findIndex((t) =>
+      t.includes("Strongly agree"),
+    );
+    expect(stronglyAgreeIdx).toBeGreaterThanOrEqual(0);
+    // `.click()` not `.check()` — RadioGroup is controlled, so the input's
+    // `checked` attribute won't update without a parent re-render. We only
+    // care that onChange fires with the right value.
+    await radios.nth(stronglyAgreeIdx).click();
+
+    // Wait for the 50ms debounce to fire.
+    await component.page().waitForTimeout(80);
+
+    expect(saved.length).toBeGreaterThan(0);
+    const last = saved[saved.length - 1];
+    const record = last.value as { value: unknown; label: unknown };
+    expect(record.value).toBe(5);
+    expect(record.label).toBe("Strongly agree");
+  });
+});

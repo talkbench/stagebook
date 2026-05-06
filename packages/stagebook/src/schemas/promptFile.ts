@@ -139,14 +139,15 @@ export const metadataLogicalSchema = promptMetadataSchema;
 export type MetadataRefineType = MetadataType;
 
 /**
- * Slider labels live in the body section as inline lines (#243). One of:
+ * Parse a numeric response line. Used by sliders (always numeric) and by
+ * multipleChoice prompts in numeric mode (#282). One of:
  *   - `- 50` — bare number (label defaults to the number's string form)
  *   - `- 50: Somewhat familiar` — number + label
  *   - `- 50:` — number + empty label (label defaults to the number)
  * The first colon separates point from label, so labels can themselves
  * contain colons.
  */
-function parseSliderLine(
+function parseNumericResponseLine(
   raw: string,
 ): { ok: true; point: number; label: string } | { ok: false; message: string } {
   // Caller has already stripped the `- ` prefix and `\n`.
@@ -155,7 +156,7 @@ function parseSliderLine(
     return {
       ok: false,
       message:
-        "Slider label line is empty (expected `- <number>(: <label>)?`).",
+        "Numeric response line is empty (expected `- <number>(: <label>)?`).",
     };
   }
   const colonIdx = trimmed.indexOf(":");
@@ -172,17 +173,32 @@ function parseSliderLine(
   if (pointStr.length === 0) {
     return {
       ok: false,
-      message: `Slider label "${trimmed}" must start with a number, e.g. "- 0: Not familiar".`,
+      message: `Numeric response line "${trimmed}" must start with a number, e.g. "- 0: Not familiar".`,
     };
   }
   const point = Number(pointStr);
   if (!Number.isFinite(point)) {
     return {
       ok: false,
-      message: `Slider label "${trimmed}" must start with a number, e.g. "- 0: Not familiar". Got "${pointStr}".`,
+      message: `Numeric response line "${trimmed}" must start with a number, e.g. "- 0: Not familiar". Got "${pointStr}".`,
     };
   }
   return { ok: true, point, label: label ?? pointStr };
+}
+
+/**
+ * Inspect a response-line content (already stripped of `- ` prefix) to see
+ * if it begins with a finite number followed by EOL, colon, or whitespace.
+ * Used by multipleChoice mode detection — if every option starts with a
+ * number, the prompt is in numeric mode (#282).
+ */
+function isNumericResponseLine(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return false;
+  const colonIdx = trimmed.indexOf(":");
+  const pointStr = colonIdx < 0 ? trimmed : trimmed.slice(0, colonIdx).trim();
+  if (pointStr.length === 0) return false;
+  return Number.isFinite(Number(pointStr));
 }
 
 /**
@@ -207,13 +223,25 @@ export interface ParsedPromptFile {
    * Shape depends on `metadata.type`:
    *   - multipleChoice / listSorter — choice/item strings
    *   - openResponse — placeholder lines
-   *   - slider — labels (one per parsed line; aligned with `sliderPoints`)
+   *   - slider — labels (one per parsed line; aligned with `responsePoints`)
+   *   - multipleChoice (numeric mode, #282) — labels (aligned with `responsePoints`)
    *   - noResponse — empty array
    */
   responseItems: string[];
   /**
-   * Slider points (numbers) parsed from the body section. Empty for
-   * non-slider types. `sliderPoints[i]` corresponds to `responseItems[i]`.
+   * Numeric per-option values, parsed from the body section. Populated for:
+   *   - slider — every line is numeric
+   *   - multipleChoice in numeric mode (#282) — every option has a numeric
+   *     prefix (`- 1: Strongly disagree`, or bare `- 1`)
+   * Empty for text-only multipleChoice, listSorter, openResponse, noResponse.
+   * `responsePoints[i]` corresponds to `responseItems[i]`.
+   */
+  responsePoints: number[];
+  /**
+   * Deprecated: use `responsePoints`. Retained as an alias for sliders so
+   * existing consumers continue to work; identical to `responsePoints` for
+   * slider prompts. Will be removed in a future release.
+   * @deprecated
    */
   sliderPoints: number[];
 }
@@ -302,6 +330,7 @@ export const promptFileSchema: z.ZodType<
         metadata: parsedMetadata,
         body: body?.trim() ?? "",
         responseItems: [],
+        responsePoints: [],
         sliderPoints: [],
       };
     }
@@ -360,14 +389,14 @@ export const promptFileSchema: z.ZodType<
     }
 
     let responseItems: string[] = [];
-    let sliderPoints: number[] = [];
+    let responsePoints: number[] = [];
     if (parsedMetadata.type === "slider") {
       const points: number[] = [];
       const labels: string[] = [];
       for (const line of responseLines) {
         if (!(line.startsWith("- ") || line === "-")) continue;
         const stripped = line === "-" ? "" : line.substring(2);
-        const parsed = parseSliderLine(stripped);
+        const parsed = parseNumericResponseLine(stripped);
         if (!parsed.ok) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -379,8 +408,71 @@ export const promptFileSchema: z.ZodType<
         points.push(parsed.point);
         labels.push(parsed.label);
       }
-      sliderPoints = points;
+      responsePoints = points;
       responseItems = labels;
+    } else if (parsedMetadata.type === "multipleChoice") {
+      // #282: multipleChoice options can be all-numeric (`- 1: Strongly disagree`)
+      // or all-text (`- Strongly disagree`). Mixed = validation error.
+      // Numeric mode is restricted to single-select (radio); multi-select
+      // numeric mode has no clean averaging semantics and is out of scope for v1.
+      const stripped: string[] = [];
+      for (const line of responseLines) {
+        if (!(line.startsWith("- ") || line === "-")) continue;
+        stripped.push(line === "-" ? "" : line.substring(2));
+      }
+      const numericFlags = stripped.map((s) => isNumericResponseLine(s));
+      const allNumeric = stripped.length > 0 && numericFlags.every((f) => f);
+      const anyNumeric = numericFlags.some((f) => f);
+      if (anyNumeric && !allNumeric) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["responses"],
+          message:
+            "multipleChoice prompt mixes numeric and text response options. Either give every option a `<number>: <label>` prefix or remove all numeric prefixes.",
+        });
+      }
+      if (allNumeric) {
+        if (parsedMetadata.select === "multiple") {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["responses"],
+            message:
+              "multipleChoice prompts in numeric mode (#282) must be single-select. Multi-select numeric mode is not supported in v1.",
+          });
+        }
+        const points: number[] = [];
+        const labels: string[] = [];
+        for (const s of stripped) {
+          const parsed = parseNumericResponseLine(s);
+          if (!parsed.ok) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["responses"],
+              message: parsed.message,
+            });
+            continue;
+          }
+          points.push(parsed.point);
+          labels.push(parsed.label);
+        }
+        // Numeric values must be unique within the prompt.
+        const seen = new Set<number>();
+        for (const p of points) {
+          if (seen.has(p)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["responses"],
+              message: `multipleChoice prompt has duplicate numeric value ${p}. Each option must have a unique numeric value.`,
+            });
+            break;
+          }
+          seen.add(p);
+        }
+        responsePoints = points;
+        responseItems = labels;
+      } else {
+        responseItems = stripped.map((s) => s.trim());
+      }
     } else {
       responseItems = responseLines
         .filter(
@@ -399,7 +491,10 @@ export const promptFileSchema: z.ZodType<
       metadata: parsedMetadata,
       body: body?.trim() ?? "",
       responseItems,
-      sliderPoints,
+      responsePoints,
+      // Back-compat alias: identical to `responsePoints` for sliders;
+      // empty for everything else (matches pre-#282 behavior).
+      sliderPoints: parsedMetadata.type === "slider" ? responsePoints : [],
     };
   });
 
