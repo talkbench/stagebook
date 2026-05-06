@@ -56,15 +56,31 @@ export function useScrollAwareness(
     return () => container.removeEventListener("scroll", handleScroll);
   }, [containerRef, checkAtBottom, showIndicator]);
 
-  // MutationObserver detects when React renders new content
+  // MutationObserver detects when React renders new content; a
+  // ResizeObserver catches viewport-size changes that bring content
+  // into fit. Both feed into the same "is there content to scroll to?"
+  // calculation so the indicator can be dismissed whenever that becomes
+  // false (#291).
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return undefined;
+
+    const dismissIfFits = () => {
+      if (container.scrollHeight <= container.clientHeight) {
+        setShowIndicator(false);
+      }
+    };
 
     const checkForNewContent = () => {
       const currentScrollHeight = container.scrollHeight;
       const scrollTop = container.scrollTop;
       const prevScrollHeight = prevScrollHeightRef.current;
+
+      // Dismiss whenever everything fits — covers stage transitions
+      // where a previously-overflowing stage left the indicator on,
+      // then the new stage's content is short enough that there's
+      // nothing to scroll to. (#291)
+      dismissIfFits();
 
       if (currentScrollHeight > prevScrollHeight && prevScrollHeight > 0) {
         if (!isInitializedRef.current) {
@@ -142,9 +158,20 @@ export function useScrollAwareness(
       characterData: true,
     });
 
+    // ResizeObserver covers the case where the viewport grows (or the
+    // container shrinks) enough to bring overflowing content into fit
+    // without any DOM mutation.
+    const resizeObserver = new ResizeObserver(() => {
+      dismissIfFits();
+    });
+    resizeObserver.observe(container);
+
     prevScrollHeightRef.current = container.scrollHeight;
 
-    return () => mutationObserver.disconnect();
+    return () => {
+      mutationObserver.disconnect();
+      resizeObserver.disconnect();
+    };
   }, [containerRef, threshold]);
 
   const dismissIndicator = useCallback(() => {
