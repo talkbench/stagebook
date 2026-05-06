@@ -19,6 +19,7 @@ import {
   browserUrlSchema,
   fileSchema,
 } from "./treatment.js";
+import { fillTemplates } from "../templates/fillTemplates.js";
 
 // ----------- Reference Schema ------------
 test("reference with valid prompt", () => {
@@ -2231,6 +2232,225 @@ test("structured `{source: entryUrl, name: ...}` is rejected (external sources f
     source: "entryUrl",
     name: "condition",
     path: ["params", "x"],
+  });
+  expect(result.success).toBe(false);
+});
+
+// =====================================================================
+// #284 — `${field}` placeholders in complex slots
+// =====================================================================
+//
+// Pre-fill schema must accept placeholder strings where complex array
+// values are expected, so a template field can carry the structured
+// value at substitution time. Resolved-shape validation in resolved.ts
+// catches placeholders that survive substitution.
+
+test("discussion.rooms accepts a ${field} placeholder pre-fill (#284)", () => {
+  const result = discussionSchema.safeParse({
+    chatType: "video",
+    showNickname: true,
+    showTitle: true,
+    rooms: "${roomAssignments}",
+  });
+  expect(result.success).toBe(true);
+});
+
+test("discussion.rooms still accepts a literal array (no regression)", () => {
+  const result = discussionSchema.safeParse({
+    chatType: "video",
+    showNickname: true,
+    showTitle: true,
+    rooms: [{ includePositions: [0, 1] }, { includePositions: [2, 3] }],
+  });
+  expect(result.success).toBe(true);
+});
+
+test("discussion.rooms rejects a non-placeholder string (#284)", () => {
+  // A plain string that doesn't match the ${...} pattern must be rejected
+  // — accepting it would let typos like `rooms: "roomAssignments"` slip
+  // through pre-fill validation.
+  const result = discussionSchema.safeParse({
+    chatType: "video",
+    showNickname: true,
+    showTitle: true,
+    rooms: "roomAssignments",
+  });
+  expect(result.success).toBe(false);
+});
+
+test("discussion.layout.feeds accepts a ${field} placeholder (#284)", () => {
+  const result = discussionSchema.safeParse({
+    chatType: "video",
+    showNickname: true,
+    showTitle: true,
+    layout: {
+      "0": {
+        grid: { rows: 2, cols: 2 },
+        feeds: "${feedAssignments}",
+      },
+    },
+  });
+  expect(result.success).toBe(true);
+});
+
+test("conditions.all accepts a ${field} placeholder (#284)", () => {
+  const result = conditionsSchema.safeParse({
+    all: "${ruleSet}",
+  });
+  expect(result.success).toBe(true);
+});
+
+test("conditions.any accepts a ${field} placeholder (#284)", () => {
+  const result = conditionsSchema.safeParse({
+    any: "${alternatives}",
+  });
+  expect(result.success).toBe(true);
+});
+
+test("conditions.none accepts a ${field} placeholder (#284)", () => {
+  const result = conditionsSchema.safeParse({
+    none: "${exclusions}",
+  });
+  expect(result.success).toBe(true);
+});
+
+test("top-level conditions accepts a ${field} placeholder (#284)", () => {
+  // The top-level `conditions:` slot accepts an array, an operator object,
+  // a single leaf, or a placeholder.
+  const result = conditionsSchema.safeParse("${gateExpression}");
+  expect(result.success).toBe(true);
+});
+
+test("top-level conditions still accepts an array literal (no regression)", () => {
+  const result = conditionsSchema.safeParse([
+    { reference: "prompt.q1", comparator: "exists" },
+  ]);
+  expect(result.success).toBe(true);
+});
+
+test("groupComposition field on a treatment accepts a ${field} placeholder (#284)", () => {
+  // A single `treatment` template can vary group structure per condition
+  // (dyads vs. triads under the same protocol) by binding groupComposition
+  // to a broadcast-row field.
+  const result = treatmentFileSchema.safeParse({
+    treatments: [
+      {
+        name: "varies",
+        playerCount: 4,
+        groupComposition: "${composition}",
+        gameStages: [
+          {
+            name: "stage1",
+            duration: 60,
+            elements: [{ type: "submitButton" }],
+          },
+        ],
+      },
+    ],
+  });
+  // playerCount/groupComposition cross-checks are skipped when
+  // groupComposition is a placeholder; the literal-array case still
+  // enforces them.
+  expect(result.success).toBe(true);
+});
+
+test("end-to-end: rooms placeholder resolves through fillTemplates and re-validates (#284)", () => {
+  const templates = [
+    {
+      name: "storytelling_round",
+      contentType: "stages",
+      content: [
+        {
+          name: "storytelling_${story_round}",
+          duration: 180,
+          discussion: {
+            chatType: "video",
+            showNickname: true,
+            showTitle: true,
+            rooms: "${roomAssignments}",
+          },
+          elements: [{ type: "submitButton" }],
+        },
+      ],
+    },
+  ];
+
+  const obj = {
+    treatments: [
+      {
+        name: "example",
+        playerCount: 4,
+        gameStages: [
+          {
+            template: "storytelling_round",
+            broadcast: {
+              d0: [
+                {
+                  story_round: "1",
+                  roomAssignments: [
+                    { includePositions: [0, 1] },
+                    { includePositions: [2, 3] },
+                  ],
+                },
+                {
+                  story_round: "2",
+                  roomAssignments: [
+                    { includePositions: [0, 3] },
+                    { includePositions: [2, 1] },
+                  ],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ],
+  };
+
+  // Pre-fill validation passes (placeholder accepted in `rooms` slot).
+  const preFill = treatmentFileSchema.safeParse(obj);
+  expect(preFill.success).toBe(true);
+
+  // fillTemplates substitutes the broadcast row's roomAssignments into
+  // the rooms slot — the placeholder string becomes a literal array.
+  const filled = fillTemplates({ obj, templates });
+  const result: unknown = filled.result;
+  const stages = (
+    result as {
+      treatments: { gameStages: { discussion: { rooms: unknown } }[] }[];
+    }
+  ).treatments[0].gameStages;
+  expect(stages).toHaveLength(2);
+  expect(stages[0].discussion.rooms).toEqual([
+    { includePositions: [0, 1] },
+    { includePositions: [2, 3] },
+  ]);
+  expect(stages[1].discussion.rooms).toEqual([
+    { includePositions: [0, 3] },
+    { includePositions: [2, 1] },
+  ]);
+
+  // Post-fill: the resolved value is a literal array; schema still accepts.
+  const postFill = treatmentFileSchema.safeParse(result);
+  expect(postFill.success).toBe(true);
+});
+
+test("groupComposition rejects a non-placeholder string", () => {
+  const result = treatmentFileSchema.safeParse({
+    treatments: [
+      {
+        name: "bad",
+        playerCount: 2,
+        groupComposition: "not a placeholder",
+        gameStages: [
+          {
+            name: "stage1",
+            duration: 60,
+            elements: [{ type: "submitButton" }],
+          },
+        ],
+      },
+    ],
   });
   expect(result.success).toBe(false);
 });

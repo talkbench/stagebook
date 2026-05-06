@@ -336,7 +336,10 @@ const layoutGridSchema = z
 const layoutDefinitionSchema = z
   .object({
     grid: layoutGridSchema,
-    feeds: z.array(layoutFeedSchema).nonempty(),
+    // `${field}` placeholder accepted (#284) — substituted with a literal
+    // array at fillTemplates time. The grid-bounds superRefine below
+    // skips iteration when feeds is a placeholder string.
+    feeds: z.array(layoutFeedSchema).nonempty().or(fieldPlaceholderSchema),
     defaults: layoutFeedDefaultsSchema.optional(),
   })
   .strict()
@@ -344,6 +347,7 @@ const layoutDefinitionSchema = z
     const gridRows = value.grid.rows;
     const gridCols = value.grid.cols;
 
+    if (!Array.isArray(value.feeds)) return;
     value.feeds.forEach((feed, feedIndex) => {
       const rows =
         typeof feed.displayRegion.rows === "number"
@@ -413,7 +417,14 @@ export const discussionSchema = z
     reactToSelf: z.boolean().optional(),
     numReactionsPerMessage: z.number().int().nonnegative().optional(),
     layout: layoutBySeatSchema.optional(),
-    rooms: z.array(discussionRoomSchema).nonempty().optional(),
+    // `${field}` placeholder accepted (#284) — substituted with a literal
+    // array at fillTemplates time. Resolved-shape validation in resolved.ts
+    // catches placeholders that survive substitution.
+    rooms: z
+      .array(discussionRoomSchema)
+      .nonempty()
+      .or(fieldPlaceholderSchema)
+      .optional(),
     // New: allow discussion-level position-based visibility controls
     showToPositions: showToPositionsSchema.optional(),
     hideFromPositions: hideFromPositionsSchema.optional(),
@@ -736,19 +747,32 @@ import { OPERATOR_KEYS } from "./conditionOperators.js";
 export const conditionNodeSchema: z.ZodType = z.lazy(() =>
   altTemplateContext(
     z.union([
+      // `all`/`any`/`none` arrays accept a `${field}` placeholder (#284) —
+      // substituted with a literal array at fillTemplates time. The
+      // validateReferences walker already type-guards via `Array.isArray`
+      // before iterating, so unsubstituted placeholders are skipped.
       z
         .object({
-          all: z.array(conditionNodeSchema).nonempty(),
+          all: z
+            .array(conditionNodeSchema)
+            .nonempty()
+            .or(fieldPlaceholderSchema),
         })
         .strict(),
       z
         .object({
-          any: z.array(conditionNodeSchema).nonempty(),
+          any: z
+            .array(conditionNodeSchema)
+            .nonempty()
+            .or(fieldPlaceholderSchema),
         })
         .strict(),
       z
         .object({
-          none: z.array(conditionNodeSchema).nonempty(),
+          none: z
+            .array(conditionNodeSchema)
+            .nonempty()
+            .or(fieldPlaceholderSchema),
         })
         .strict(),
       leafConditionSchema,
@@ -923,12 +947,21 @@ function validateConditionRules(
 // error. Without this, writing `al: [...]` or `ANY: [...]` produces a
 // pile of schema-mismatch errors instead of "did you mean `all`?".
 const conditionsRawSchema = z
-  .union([z.array(conditionNodeSchema).nonempty(), conditionNodeSchema], {
-    required_error:
-      "Expected an array of conditions, or an `all`/`any`/`none` operator object, or a single condition.",
-    invalid_type_error:
-      "Expected an array of conditions, or an `all`/`any`/`none` operator object, or a single condition.",
-  })
+  .union(
+    [
+      z.array(conditionNodeSchema).nonempty(),
+      conditionNodeSchema,
+      // `${field}` placeholder accepted (#284) — substituted with a literal
+      // array (or operator object) at fillTemplates time.
+      fieldPlaceholderSchema,
+    ],
+    {
+      required_error:
+        "Expected an array of conditions, or an `all`/`any`/`none` operator object, or a single condition.",
+      invalid_type_error:
+        "Expected an array of conditions, or an `all`/`any`/`none` operator object, or a single condition.",
+    },
+  )
   .superRefine((data, ctx) => {
     // Pre-scan for operator-key typos on object inputs only. If the
     // user wrote a single object (not an array) and its keys look like
@@ -1799,11 +1832,16 @@ export const baseTreatmentSchema = z
     name: nameSchema,
     notes: z.string().optional(),
     playerCount: z.number(),
+    // `${field}` placeholder accepted (#284) — substituted with a literal
+    // array at fillTemplates time. Lets a single `treatment` template power
+    // studies that vary group structure per condition (e.g. dyads vs.
+    // triads under the same protocol).
     groupComposition: z
       .array(playerSchema, {
         invalid_type_error:
           "Expected an array for `groupComposition`. Make sure each item starts with a dash (`-`) in YAML.",
       })
+      .or(fieldPlaceholderSchema)
       .optional(),
     gameStages: stagesSchema,
     exitSequence: exitStepsSchema.optional(),
@@ -1821,19 +1859,22 @@ export const treatmentSchema = altTemplateContext(
         return;
       }
       const { playerCount, groupComposition, gameStages } = treatment;
-      groupComposition?.forEach((player, index) => {
-        if (
-          typeof player.position === "number" &&
-          player.position >= playerCount
-        ) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["groupComposition", index, "position"],
-            message: `Player position index ${player.position} in groupComposition exceeds playerCount of ${playerCount}.`,
-          });
-        }
-      });
-      if (groupComposition) {
+      // groupComposition may be an array (literal) or a string (`${field}`
+      // placeholder, #284). Skip the array-iteration checks when it's a
+      // placeholder; resolved.ts catches unsubstituted strings post-fill.
+      if (Array.isArray(groupComposition)) {
+        groupComposition.forEach((player, index) => {
+          if (
+            typeof player.position === "number" &&
+            player.position >= playerCount
+          ) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ["groupComposition", index, "position"],
+              message: `Player position index ${player.position} in groupComposition exceeds playerCount of ${playerCount}.`,
+            });
+          }
+        });
         const positions = groupComposition
           .map((player) => player.position)
           .filter((pos) => typeof pos === "number");
@@ -2008,7 +2049,12 @@ export const treatmentsSchema = altTemplateContext(
 
 // Whole-treatment groupComposition (an array of player blocks). Exposed as
 // a contentType so a complete group config can be templated as one unit.
-export const groupCompositionSchema = z.array(playerSchema).nonempty();
+// `${field}` placeholder accepted (#284) — substituted with a literal
+// array at fillTemplates time.
+export const groupCompositionSchema = z
+  .array(playerSchema)
+  .nonempty()
+  .or(fieldPlaceholderSchema);
 
 export const contentTypeEnum = z.enum([
   "introSequence",
