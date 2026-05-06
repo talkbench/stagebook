@@ -17,11 +17,17 @@ export interface PromptProps {
   body: string;
   responseItems: string[];
   /**
-   * Slider points (numbers) parsed from the body section. Empty for
-   * non-slider types. After #243 slider points and labels share the same
-   * body lines (`- 50: Somewhat familiar`); upstream
-   * `promptFileSchema.transform` splits them into `sliderPoints` (numbers)
-   * and `responseItems` (labels) with the i-th index aligned across both.
+   * Numeric per-option values parsed from the body section, aligned i-th
+   * with `responseItems` (labels). Populated for sliders (always) and for
+   * multipleChoice prompts in numeric mode (#282). Empty for text-only
+   * multipleChoice, listSorter, and openResponse.
+   */
+  responsePoints?: number[];
+  /**
+   * Deprecated alias for `responsePoints`, kept for backward compatibility
+   * with consumers that referenced this field name pre-#282. Identical to
+   * `responsePoints` for slider prompts.
+   * @deprecated
    */
   sliderPoints?: number[];
   name: string;
@@ -41,6 +47,7 @@ export function Prompt({
   metadata,
   body,
   responseItems,
+  responsePoints,
   sliderPoints,
   name,
   file,
@@ -50,6 +57,11 @@ export function Prompt({
   resolveURL,
   renderSharedNotepad,
 }: PromptProps) {
+  // Prefer `responsePoints` (#282 canonical name); fall back to the
+  // deprecated `sliderPoints` alias if a caller still uses it.
+  const numericPoints = responsePoints ?? sliderPoints;
+  const hasNumericPoints =
+    numericPoints !== undefined && numericPoints.length > 0;
   const [responses, setResponses] = useState<string[]>([]);
   const [debugMessages, setDebugMessages] = useState<DebugMessage[]>([]);
   const debounceTextRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -97,10 +109,15 @@ export function Prompt({
   };
 
   const saveData = useCallback(
-    (newValue: unknown, recordData: typeof record) => {
+    (newValue: unknown, recordData: typeof record, label?: string) => {
       const updatedRecord = {
         ...recordData,
         value: newValue,
+        // For multipleChoice prompts (#282), record both the chosen value
+        // and its display label. In numeric mode `value` is the number and
+        // `label` is the text; in text mode `value === label`. Slider
+        // responses don't carry a label since the input is continuous.
+        ...(label !== undefined ? { label } : {}),
       };
       const scope = shared ? "shared" : "player";
       save(`prompt_${recordData.name}`, updatedRecord, scope);
@@ -120,11 +137,11 @@ export function Prompt({
   );
 
   const debouncedSaveInteractive = useCallback(
-    (newValue: unknown, recordData: typeof record) => {
+    (newValue: unknown, recordData: typeof record, label?: string) => {
       if (debounceInteractiveRef.current)
         clearTimeout(debounceInteractiveRef.current);
       debounceInteractiveRef.current = setTimeout(
-        () => saveData(newValue, recordData),
+        () => saveData(newValue, recordData, label),
         50,
       );
     },
@@ -136,7 +153,28 @@ export function Prompt({
       <Markdown text={body} resolveURL={resolveURL} />
 
       {promptType === "multipleChoice" &&
-        (metadata.select === "single" || metadata.select === undefined) && (
+        (metadata.select === "single" || metadata.select === undefined) &&
+        // In numeric mode (#282) the option key is the stringified number;
+        // the saved value is the number (parsed back from the key) and the
+        // label is the displayed text. In text mode value === label.
+        (hasNumericPoints ? (
+          <RadioGroup
+            options={responses.map((label, idx) => ({
+              key: String(numericPoints[idx]),
+              value: label,
+            }))}
+            value={typeof value === "number" ? String(value) : undefined}
+            layout={metadata.layout}
+            onChange={(e) => {
+              const idx = (numericPoints ?? []).findIndex(
+                (p) => String(p) === e.target.value,
+              );
+              const numericValue = numericPoints[idx];
+              const label = responses[idx] ?? "";
+              debouncedSaveInteractive(numericValue, record, label);
+            }}
+          />
+        ) : (
           <RadioGroup
             options={responses.map((choice) => ({
               key: choice,
@@ -144,9 +182,12 @@ export function Prompt({
             }))}
             value={value as string | undefined}
             layout={metadata.layout}
-            onChange={(e) => debouncedSaveInteractive(e.target.value, record)}
+            onChange={(e) =>
+              // Text mode: label === value.
+              debouncedSaveInteractive(e.target.value, record, e.target.value)
+            }
           />
-        )}
+        ))}
 
       {promptType === "multipleChoice" && metadata.select === "multiple" && (
         <CheckboxGroup
@@ -197,7 +238,7 @@ export function Prompt({
           min={metadata.min}
           max={metadata.max}
           interval={metadata.interval}
-          labelPts={sliderPoints}
+          labelPts={numericPoints}
           labels={responses}
           value={value as number | undefined}
           onChange={(val) => debouncedSaveInteractive(val, record)}

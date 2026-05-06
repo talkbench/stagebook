@@ -591,4 +591,205 @@ Do you agree?
       expect(result.data.metadata.layout).toBe("horizontal");
     }
   });
+
+  // ---------------------------------------------------------------------
+  // #282 — numeric values for multipleChoice prompts
+  // ---------------------------------------------------------------------
+
+  describe("multipleChoice numeric mode (#282)", () => {
+    test("parses `<number>: <label>` options into responsePoints + responseItems", () => {
+      const markdown = `---
+name: agreement
+type: multipleChoice
+---
+How much do you agree?
+---
+- 1: Strongly disagree
+- 2: Disagree
+- 3: Neutral
+- 4: Agree
+- 5: Strongly agree`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.responsePoints).toEqual([1, 2, 3, 4, 5]);
+        expect(result.data.responseItems).toEqual([
+          "Strongly disagree",
+          "Disagree",
+          "Neutral",
+          "Agree",
+          "Strongly agree",
+        ]);
+        expect(result.data.sliderPoints).toEqual([]);
+      }
+    });
+
+    test("bare numbers are accepted; label defaults to stringified number", () => {
+      const markdown = `---
+name: scale
+type: multipleChoice
+---
+Rate it
+---
+- 1
+- 2
+- 3
+- 4
+- 5`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.responsePoints).toEqual([1, 2, 3, 4, 5]);
+        expect(result.data.responseItems).toEqual(["1", "2", "3", "4", "5"]);
+      }
+    });
+
+    test("non-integer values are accepted (any finite number)", () => {
+      const markdown = `---
+name: scale
+type: multipleChoice
+---
+Rate it
+---
+- -1.5: Very low
+- 0: Mid
+- 2.5: High`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.responsePoints).toEqual([-1.5, 0, 2.5]);
+      }
+    });
+
+    test("text-only mode leaves responsePoints empty (back-compat)", () => {
+      const markdown = `---
+name: prefs
+type: multipleChoice
+---
+Pick one
+---
+- Option A
+- Option B
+- Option C`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.responsePoints).toEqual([]);
+        expect(result.data.responseItems).toEqual([
+          "Option A",
+          "Option B",
+          "Option C",
+        ]);
+      }
+    });
+
+    test("mixed numeric + text options is a validation error", () => {
+      const markdown = `---
+name: mixed
+type: multipleChoice
+---
+Pick one
+---
+- 1: foo
+- bar
+- 3: baz`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(
+          result.error.issues.some((i) =>
+            i.message.includes("mixes numeric and text"),
+          ),
+        ).toBe(true);
+      }
+    });
+
+    test("duplicate numeric values are a validation error", () => {
+      const markdown = `---
+name: dup
+type: multipleChoice
+---
+Pick one
+---
+- 1: first
+- 1: second
+- 2: third`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(
+          result.error.issues.some((i) =>
+            i.message.includes("duplicate numeric value"),
+          ),
+        ).toBe(true);
+      }
+    });
+
+    test("multi-select with numeric mode is rejected (single-select only in v1)", () => {
+      const markdown = `---
+name: multi
+type: multipleChoice
+select: multiple
+---
+Pick all that apply
+---
+- 1: One
+- 2: Two
+- 3: Three`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(
+          result.error.issues.some((i) =>
+            i.message.includes("must be single-select"),
+          ),
+        ).toBe(true);
+      }
+    });
+
+    test("multi-select with text-only mode still works (no regression)", () => {
+      const markdown = `---
+name: multi
+type: multipleChoice
+select: multiple
+---
+Pick all that apply
+---
+- One
+- Two
+- Three`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.responseItems).toEqual(["One", "Two", "Three"]);
+        expect(result.data.responsePoints).toEqual([]);
+      }
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // #282 — back-compat: sliderPoints still populated for sliders
+  // ---------------------------------------------------------------------
+
+  test("slider populates both responsePoints and (deprecated) sliderPoints", () => {
+    const markdown = `---
+name: heat
+type: slider
+min: 0
+max: 100
+interval: 1
+---
+How warm?
+---
+- 0: Cold
+- 50: Mid
+- 100: Hot`;
+    const result = promptFileSchema.safeParse(markdown);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.responsePoints).toEqual([0, 50, 100]);
+      expect(result.data.sliderPoints).toEqual([0, 50, 100]);
+      expect(result.data.responseItems).toEqual(["Cold", "Mid", "Hot"]);
+    }
+  });
 });
