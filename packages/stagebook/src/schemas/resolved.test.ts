@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { treatmentFileSchema } from "./treatment.js";
-import { resolvedTreatmentSchema } from "./resolved.js";
+import { resolvedStageSchema, resolvedTreatmentSchema } from "./resolved.js";
 
 /**
  * `notes` is researcher-facing metadata. It's valid in authoring schemas so
@@ -183,5 +183,81 @@ describe("resolved schemas strip researcher `notes`", () => {
       );
       expect(descIssue).toBeDefined();
     }
+  });
+});
+
+// =====================================================================
+// #284 — resolved schemas reject `${field}` placeholders that survived
+// fillTemplates. The authoring schemas accept placeholders so a template
+// field can carry the structured value at substitution time; the
+// resolved schemas are the safety net for unbound fields.
+// =====================================================================
+
+describe("resolved schemas reject unresolved ${field} placeholders (#284)", () => {
+  test("resolvedStageSchema rejects discussion.rooms as a placeholder string", () => {
+    const stage = {
+      name: "stage1",
+      duration: 60,
+      discussion: {
+        chatType: "video",
+        showNickname: true,
+        showTitle: true,
+        rooms: "${unboundRoomAssignments}",
+      },
+      elements: [{ type: "submitButton" }],
+    };
+    const result = resolvedStageSchema.safeParse(stage);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) =>
+        i.message.includes("unresolved"),
+      );
+      expect(issue).toBeDefined();
+      expect(issue?.path).toEqual(["discussion", "rooms"]);
+    }
+  });
+
+  test("resolvedStageSchema rejects discussion.layout.feeds as a placeholder string", () => {
+    const stage = {
+      name: "stage1",
+      duration: 60,
+      discussion: {
+        chatType: "video",
+        showNickname: true,
+        showTitle: true,
+        layout: {
+          "0": {
+            grid: { rows: 2, cols: 2 },
+            feeds: "${unboundFeeds}",
+          },
+        },
+      },
+      elements: [{ type: "submitButton" }],
+    };
+    const result = resolvedStageSchema.safeParse(stage);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) =>
+        i.message.includes("unresolved"),
+      );
+      expect(issue).toBeDefined();
+      expect(issue?.path).toEqual(["discussion", "layout", "0", "feeds"]);
+    }
+  });
+
+  test("resolvedStageSchema accepts discussion.rooms as a literal array (no regression)", () => {
+    const stage = {
+      name: "stage1",
+      duration: 60,
+      discussion: {
+        chatType: "video",
+        showNickname: true,
+        showTitle: true,
+        rooms: [{ includePositions: [0, 1] }, { includePositions: [2, 3] }],
+      },
+      elements: [{ type: "submitButton" }],
+    };
+    const result = resolvedStageSchema.safeParse(stage);
+    expect(result.success).toBe(true);
   });
 });

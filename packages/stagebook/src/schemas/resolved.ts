@@ -183,9 +183,41 @@ export type ResolvedElementType = z.infer<typeof resolvedElementSchema>;
 // Resolved stage — concrete duration, resolved elements
 // ----------------------------------------------------------------
 
+// `discussionSchema` accepts `${field}` placeholders for `rooms` and
+// `layout.feeds` (#284) so authors can template-fill those slots. The
+// resolved-shape contract is "no placeholders survive substitution," so
+// we add a superRefine here that flags any placeholder string still
+// present after fillTemplates ran. Catches typos and missing fields
+// that would otherwise reach runtime components.
+const resolvedDiscussionSchema = discussionSchema.superRefine((data, ctx) => {
+  if (typeof data.rooms === "string") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["rooms"],
+      message: `discussion.rooms is an unresolved \`${data.rooms}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row or additionalFields.`,
+    });
+  }
+  if (data.layout && typeof data.layout === "object") {
+    for (const [seat, layoutDef] of Object.entries(data.layout)) {
+      if (
+        layoutDef &&
+        typeof layoutDef === "object" &&
+        "feeds" in layoutDef &&
+        typeof layoutDef.feeds === "string"
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["layout", seat, "feeds"],
+          message: `discussion.layout[${seat}].feeds is an unresolved \`${layoutDef.feeds}\` placeholder. The template field was not bound during fillTemplates.`,
+        });
+      }
+    }
+  }
+});
+
 export const resolvedStageSchema = z.object({
   name: nameSchema,
-  discussion: discussionSchema.optional(),
+  discussion: resolvedDiscussionSchema.optional(),
   duration: durationSchema,
   elements: z.array(resolvedElementSchema).nonempty(),
 });

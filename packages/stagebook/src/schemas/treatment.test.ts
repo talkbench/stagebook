@@ -20,6 +20,7 @@ import {
   fileSchema,
 } from "./treatment.js";
 import { fillTemplates } from "../templates/fillTemplates.js";
+import { resolvedTreatmentSchema } from "./resolved.js";
 
 // ----------- Reference Schema ------------
 test("reference with valid prompt", () => {
@@ -2433,6 +2434,69 @@ test("end-to-end: rooms placeholder resolves through fillTemplates and re-valida
   // Post-fill: the resolved value is a literal array; schema still accepts.
   const postFill = treatmentFileSchema.safeParse(result);
   expect(postFill.success).toBe(true);
+
+  // The resolved-shape schema is the actual safety net: it rejects any
+  // `${...}` that survived substitution. Validate each filled treatment
+  // against `resolvedTreatmentSchema` to confirm the broadcast resolution
+  // produced strict, placeholder-free values.
+  const filledTreatments = (result as { treatments: unknown[] }).treatments;
+  for (const t of filledTreatments) {
+    const resolved = resolvedTreatmentSchema.safeParse(t);
+    expect(resolved.success).toBe(true);
+  }
+});
+
+test("end-to-end: an unbound complex placeholder survives fillTemplates and is rejected by resolvedTreatmentSchema (#284)", () => {
+  // Authoring uses `${unboundRoomAssignments}` but the broadcast never
+  // binds it. fillTemplates leaves the placeholder string in place;
+  // pre-fill validation passes (placeholders are allowed); the resolved
+  // schema then catches the unsubstituted string at the safety boundary.
+  const obj = {
+    treatments: [
+      {
+        name: "broken",
+        playerCount: 2,
+        gameStages: [
+          {
+            name: "stage1",
+            duration: 60,
+            discussion: {
+              chatType: "video",
+              showNickname: true,
+              showTitle: true,
+              rooms: "${unboundRoomAssignments}",
+            },
+            elements: [{ type: "submitButton" }],
+          },
+        ],
+      },
+    ],
+  };
+
+  // Pre-fill passes (placeholders allowed in `rooms` per #284).
+  const preFill = treatmentFileSchema.safeParse(obj);
+  expect(preFill.success).toBe(true);
+
+  // fillTemplates with no templates and no fields leaves the placeholder
+  // untouched. `allowUnresolved` is what hosts pass when they intend to
+  // surface unresolved fields back to the user (e.g. via FieldForm) — the
+  // resolved-shape check below is the safety net for that path.
+  const filled = fillTemplates({
+    obj,
+    templates: [],
+    allowUnresolved: true,
+  });
+  const result: unknown = filled.result;
+
+  // Resolved-shape validation rejects the unbound placeholder.
+  const treatments = (result as { treatments: unknown[] }).treatments;
+  const resolved = resolvedTreatmentSchema.safeParse(treatments[0]);
+  expect(resolved.success).toBe(false);
+  if (!resolved.success) {
+    expect(
+      resolved.error.issues.some((i) => i.message.includes("unresolved")),
+    ).toBe(true);
+  }
 });
 
 test("groupComposition rejects a non-placeholder string", () => {
