@@ -70,6 +70,28 @@ export function Harness({ containerHeight }: { containerHeight: number }) {
       >
         Shrink (fits)
       </button>
+      <button
+        type="button"
+        data-testid="scroll-down"
+        onClick={() => {
+          if (containerRef.current) {
+            containerRef.current.scrollTop = 100;
+          }
+        }}
+      >
+        Scroll down (simulate user engagement)
+      </button>
+      <button
+        type="button"
+        data-testid="scroll-to-top"
+        onClick={() => {
+          if (containerRef.current) {
+            containerRef.current.scrollTop = 0;
+          }
+        }}
+      >
+        Scroll to top (simulate stage transition)
+      </button>
       <div
         ref={containerRef}
         data-testid="scroll-container"
