@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 import { z } from "zod";
+import { collectStorageKeyCollisions } from "./storageKeyCollisions.js";
 import { validateTreatmentFileReferences } from "./validateReferences.js";
 import { nameSchema, type NameType } from "./primitives.js";
 import {
@@ -2123,6 +2124,19 @@ export const treatmentFileSchema = z
         path: issue.path,
         message: issue.message,
       });
+    }
+    // Storage-key collision detection (#281): every `{type}_{name}` key
+    // must be unique across every phase of the treatment. Authors who
+    // need the same prompt file in multiple places use the per-element
+    // `name:` override to disambiguate.
+    for (const collision of collectStorageKeyCollisions(data)) {
+      for (const path of collision.paths) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path,
+          message: collision.message,
+        });
+      }
     }
   });
 export type TreatmentFileType = z.infer<typeof treatmentFileSchema>;

@@ -100,6 +100,11 @@ export {
 } from "./safeParseTreatmentFile.js";
 
 export {
+  collectStorageKeyCollisions,
+  type StorageKeyCollision,
+} from "./storageKeyCollisions.js";
+
+export {
   resolvedElementSchema,
   resolvedStageSchema,
   resolvedIntroExitStepSchema,

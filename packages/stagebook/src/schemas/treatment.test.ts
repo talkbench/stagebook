@@ -279,11 +279,11 @@ test("validate entire file", () => {
             elements: [
               {
                 type: "prompt",
-                name: "namedPrompt",
+                name: "introNamedPrompt",
                 file: "projects/example/testDisplay00.prompt.md",
                 conditions: [
                   {
-                    reference: "prompt.namedPrompt",
+                    reference: "prompt.introNamedPrompt",
                     comparator: "equals",
                     value: "value",
                   },
