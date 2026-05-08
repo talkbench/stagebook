@@ -15,17 +15,41 @@ import type { DiscussionType } from "../schemas/treatment.js";
 import type { Condition } from "./conditions/ConditionsConditionalRender.js";
 
 // Max-width per element type — wider for surveys/qualtrics/video
-function maxWidthForElement(element: ElementConfig): string {
-  switch (element.type) {
-    case "survey":
-    case "qualtrics":
-      return "64rem"; // ~1024px
-    case "mediaPlayer":
-    case "timeline":
-      return "56rem"; // ~896px
-    default:
-      return "42rem"; // ~672px
+const DEFAULT_LANE = "42rem"; // ~672px
+const ELEMENT_LANES: Record<string, string> = {
+  survey: "64rem", // ~1024px
+  qualtrics: "64rem",
+  mediaPlayer: "56rem", // ~896px
+  timeline: "56rem",
+};
+
+function laneFor(type: string): string {
+  return ELEMENT_LANES[type] ?? DEFAULT_LANE;
+}
+
+/**
+ * Compute the max-width lane for an element. Separators span at least as
+ * wide as the widest non-separator sibling on the stage so they read as
+ * true page-spanning dividers rather than stubs (issue #301).
+ */
+export function maxWidthForElement(
+  element: ElementConfig,
+  siblings: readonly ElementConfig[] = [],
+): string {
+  if (element.type !== "separator") return laneFor(element.type);
+
+  let widestRem = parseFloat(DEFAULT_LANE);
+  let widest = DEFAULT_LANE;
+  for (const s of siblings) {
+    if (s.type === "separator") continue;
+    const lane = laneFor(s.type);
+    const rem = parseFloat(lane);
+    if (rem > widestRem) {
+      widestRem = rem;
+      widest = lane;
+    }
   }
+  return widest;
 }
 
 export interface StageConfig {
@@ -66,10 +90,12 @@ export interface StageProps {
 
 function WrappedElement({
   element,
+  siblings,
   onSubmit,
   stageDuration,
 }: {
   element: ElementConfig;
+  siblings: readonly ElementConfig[];
   onSubmit: () => void;
   stageDuration?: number;
 }) {
@@ -95,7 +121,7 @@ function WrappedElement({
             style={{
               margin: "0 auto",
               width: "100%",
-              maxWidth: maxWidthForElement(element),
+              maxWidth: maxWidthForElement(element, siblings),
               padding: "0.5rem 1rem",
             }}
           >
@@ -131,6 +157,7 @@ function ElementsColumn({
         <WrappedElement
           key={element.name ?? `element-${i}`}
           element={element}
+          siblings={elements}
           onSubmit={onSubmit}
           stageDuration={stageDuration}
         />
