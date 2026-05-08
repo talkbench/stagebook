@@ -29,6 +29,10 @@ export interface PreviewHostProps {
   onRefresh?: () => void;
   /** Bump to force useTextContent to re-fetch all prompt files. */
   contentVersion?: number;
+  /** Forwarded to Viewer to drive its treatment-selection dropdown. */
+  onTreatmentIndexChange?: (index: number) => void;
+  /** Forwarded to Viewer to drive its intro-sequence dropdown. */
+  onIntroIndexChange?: (index: number) => void;
 }
 
 /**
@@ -51,6 +55,8 @@ export function PreviewHost({
   onFieldsResolved,
   onRefresh,
   contentVersion,
+  onTreatmentIndexChange,
+  onIntroIndexChange,
 }: PreviewHostProps) {
   const [userValues, setUserValues] = useState<Record<string, string> | null>(
     null,
@@ -90,6 +96,8 @@ export function PreviewHost({
       onBack={onBack}
       onRefresh={onRefresh}
       contentVersion={contentVersion}
+      onTreatmentIndexChange={onTreatmentIndexChange}
+      onIntroIndexChange={onIntroIndexChange}
     />
   );
 }

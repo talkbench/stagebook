@@ -6,7 +6,11 @@ import {
   useCallback,
   useSyncExternalStore,
 } from "react";
-import type { TreatmentFileType } from "stagebook";
+import type {
+  IntroSequenceType,
+  TreatmentFileType,
+  TreatmentType,
+} from "stagebook";
 import {
   StagebookProvider,
   Stage,
@@ -49,6 +53,22 @@ export interface ViewerProps {
    * production hosts that never change content can omit it.
    */
   contentVersion?: number;
+  /**
+   * Optional setter for `selectedTreatmentIndex`. When provided, the
+   * header renders a dropdown letting the researcher switch which
+   * treatment is being previewed. Omit to keep the static label.
+   */
+  onTreatmentIndexChange?: (index: number) => void;
+  /**
+   * Optional setter for `selectedIntroIndex`. When provided AND the
+   * treatment file has 2+ intro sequences, the header renders a
+   * dropdown for picking which intro to preview. The schema requires
+   * a non-empty `introSequences` array, so the only suppressed case
+   * is the single-intro-sequence file (the typical shape) — there
+   * the dropdown is omitted entirely (no static label, since the
+   * intro is implicit context for the visible stages).
+   */
+  onIntroIndexChange?: (index: number) => void;
 }
 
 export function Viewer({
@@ -60,9 +80,24 @@ export function Viewer({
   onBack,
   onRefresh,
   contentVersion,
+  onTreatmentIndexChange,
+  onIntroIndexChange,
 }: ViewerProps) {
   const treatment = treatmentFile.treatments[selectedTreatmentIndex];
   const introSequence = treatmentFile.introSequences[selectedIntroIndex];
+
+  // Whether to render the treatment/intro selectors as dropdowns.
+  // When the host doesn't pass setters the viewer is uncontrolled
+  // and falls back to the static-label layout. With only one
+  // treatment the dropdown collapses to a static name label
+  // (researchers still want to see *which* treatment they're
+  // looking at). With only one intro sequence the picker is
+  // omitted entirely — the intro is implicit context, not
+  // foreground UI worth labeling.
+  const showTreatmentPicker =
+    !!onTreatmentIndexChange && treatmentFile.treatments.length > 1;
+  const showIntroPicker =
+    !!onIntroIndexChange && treatmentFile.introSequences.length > 1;
 
   const steps = useMemo(
     () => flattenSteps(introSequence, treatment),
@@ -182,7 +217,40 @@ export function Viewer({
               &#x21bb;
             </button>
           )}
-          <span style={treatmentNameStyle}>{treatment.name}</span>
+          {showTreatmentPicker ? (
+            <select
+              aria-label="Treatment"
+              title="Treatment"
+              value={selectedTreatmentIndex}
+              onChange={(e) => onTreatmentIndexChange?.(Number(e.target.value))}
+              style={treatmentSelectStyle}
+            >
+              {(treatmentFile.treatments as TreatmentType[]).map((t, i) => (
+                <option key={i} value={i}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span style={treatmentNameStyle}>{treatment.name}</span>
+          )}
+          {showIntroPicker && (
+            <select
+              aria-label="Intro sequence"
+              title="Intro sequence"
+              value={selectedIntroIndex}
+              onChange={(e) => onIntroIndexChange?.(Number(e.target.value))}
+              style={treatmentSelectStyle}
+            >
+              {(treatmentFile.introSequences as IntroSequenceType[]).map(
+                (seq, i) => (
+                  <option key={i} value={i}>
+                    {seq.name ?? `Intro ${i}`}
+                  </option>
+                ),
+              )}
+            </select>
+          )}
           <span style={headerDividerStyle} aria-hidden="true" />
           <StageNav
             steps={steps}
@@ -331,6 +399,16 @@ const treatmentNameStyle: React.CSSProperties = {
   fontWeight: 600,
   fontSize: "0.875rem",
   color: "#1f2937",
+};
+
+const treatmentSelectStyle: React.CSSProperties = {
+  padding: "0.25rem 0.5rem",
+  borderRadius: "0.25rem",
+  border: "1px solid #d1d5db",
+  fontSize: "0.875rem",
+  fontWeight: 600,
+  color: "#1f2937",
+  maxWidth: "16rem",
 };
 
 const positionSwitcherStyle: React.CSSProperties = {
