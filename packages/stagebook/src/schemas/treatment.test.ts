@@ -2371,6 +2371,103 @@ test("end-to-end: an unbound complex placeholder survives fillTemplates and is r
   }
 });
 
+// ----------------------------------------------------------------
+// Template-as-fields-value rejection (#304 deprecation)
+// ----------------------------------------------------------------
+// `fields:` is a flat map of values, never a place to invoke
+// templates. Both literal (14a) and parameterized (14b) forms are
+// rejected at parse time so authors get pointed at the cleaner
+// alternative (Pattern C — invocation in the slot where it's used).
+
+test("rejects template invocation in `fields:` value (literal name, #304/14a)", () => {
+  const result = treatmentFileSchema.safeParse({
+    templates: [
+      {
+        templateName: "imageList",
+        contentType: "elements",
+        templateContent: [{ type: "image", file: "a.jpg" }],
+      },
+      {
+        templateName: "treatmentBase",
+        contentType: "treatment",
+        templateContent: {
+          name: "${treatmentName}",
+          playerCount: 1,
+          gameStages: [
+            {
+              name: "stage1",
+              duration: 60,
+              elements: [{ type: "submitButton" }],
+            },
+          ],
+        },
+      },
+    ],
+    treatments: [
+      {
+        template: "treatmentBase",
+        fields: {
+          treatmentName: "t",
+          // 14a: literal template invocation as a fields value
+          recallImages: { template: "imageList" },
+        },
+      },
+    ],
+  });
+  expect(result.success).toBe(false);
+  if (result.success) return;
+  const issue = result.error.issues.find((i) =>
+    i.message?.includes("Template invocations are not allowed"),
+  );
+  expect(issue).toBeDefined();
+  expect(issue!.message).toContain("broadcast");
+  expect(issue!.message).toContain("template name as a string field");
+});
+
+test("rejects template invocation in `fields:` value (parameterized name, #304/14b)", () => {
+  const result = treatmentFileSchema.safeParse({
+    templates: [
+      {
+        templateName: "easySet",
+        contentType: "elements",
+        templateContent: [{ type: "image", file: "easy.jpg" }],
+      },
+      {
+        templateName: "treatmentBase",
+        contentType: "treatment",
+        templateContent: {
+          name: "${treatmentName}",
+          playerCount: 1,
+          gameStages: [
+            {
+              name: "stage1",
+              duration: 60,
+              elements: [{ type: "submitButton" }],
+            },
+          ],
+        },
+      },
+    ],
+    treatments: [
+      {
+        template: "treatmentBase",
+        fields: {
+          treatmentName: "t",
+          imageSet: "easySet",
+          // 14b: parameterized template invocation as a fields value
+          recallImages: { template: "${imageSet}" },
+        },
+      },
+    ],
+  });
+  expect(result.success).toBe(false);
+  if (result.success) return;
+  const issue = result.error.issues.find((i) =>
+    i.message?.includes("Template invocations are not allowed"),
+  );
+  expect(issue).toBeDefined();
+});
+
 test("groupComposition rejects a non-placeholder string", () => {
   const result = treatmentFileSchema.safeParse({
     treatments: [

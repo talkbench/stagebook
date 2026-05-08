@@ -1173,33 +1173,30 @@ test("pattern 6: broadcast row carries multiple correlated fields", () => {
   ]);
 });
 
-test.fails(
-  "pattern 7: whole treatment-file shape { templates, treatments }",
-  () => {
-    // The realistic entrypoint. Every existing test passes a synthetic
-    // `obj` shape; none uses the actual treatment-file shape.
-    const treatmentFile = {
-      templates: [
-        {
-          name: "stage",
-          content: { name: "s_${idx}", duration: 60 },
-        },
-      ],
-      treatments: [
-        { template: "stage", fields: { idx: "1" } },
-        { template: "stage", fields: { idx: "2" } },
-      ],
-    };
-    const { result } = fillTemplates({
-      obj: treatmentFile,
-      templates: treatmentFile.templates,
-    });
-    expect(result.treatments).toEqual([
-      { name: "s_1", duration: 60 },
-      { name: "s_2", duration: 60 },
-    ]);
-  },
-);
+test("pattern 7: whole treatment-file shape { templates, treatments }", () => {
+  // The realistic entrypoint. Every existing test passes a synthetic
+  // `obj` shape; none uses the actual treatment-file shape.
+  const treatmentFile = {
+    templates: [
+      {
+        name: "stage",
+        content: { name: "s_${idx}", duration: 60 },
+      },
+    ],
+    treatments: [
+      { template: "stage", fields: { idx: "1" } },
+      { template: "stage", fields: { idx: "2" } },
+    ],
+  };
+  const { result } = fillTemplates({
+    obj: treatmentFile,
+    templates: treatmentFile.templates,
+  });
+  expect(result.treatments).toEqual([
+    { name: "s_1", duration: 60 },
+    { name: "s_2", duration: 60 },
+  ]);
+});
 
 test("pattern 8: fields and broadcast on the same invocation", () => {
   // Outer-fields constant + per-row varying — every existing test uses
@@ -1257,13 +1254,19 @@ test("pattern 9: field substituted as condition `value:` (typed scalars)", () =>
   expect(result[1].conditions[0].value).toBe(3);
 });
 
-test.fails("pattern 10: field threaded through 3+ nesting levels", () => {
-  // outer fields → mid template fields → leaf template content.
+test("pattern 10: field threaded through 3+ nesting levels (explicit forwarding)", () => {
+  // Fields don't auto-thread through nested invocations — each level
+  // must explicitly forward what its children need. This test pins
+  // that contract: `outer` forwards to `mid`, which forwards to
+  // `leaf`. (An earlier draft of this test omitted mid's forward and
+  // expected auto-threading; the engine has never worked that way.)
   const templates = [
     { name: "leaf", content: { file: "topics/${topicName}.md" } },
     {
       name: "mid",
-      content: { stages: [{ template: "leaf" }] },
+      content: {
+        stages: [{ template: "leaf", fields: { topicName: "${topicName}" } }],
+      },
     },
     {
       name: "outer",
@@ -1475,150 +1478,109 @@ test("pattern 20: outer broadcast row values flow into inner-template broadcast"
   ]);
 });
 
-// ----- Bug repros: patterns that currently fail (#304 family) -----
+// ----- #304 family — fixed by stripping templates from the walker -----
 
-test.fails(
-  "pattern 12: parameterized inner-template name resolved by outer broadcast",
-  () => {
-    // The #304 motivating case. Inner invocation `{ template: "${arm}_pre" }`
-    // resolves to one of N per-arm sub-templates via outer broadcast.
-    const treatmentFile = {
-      templates: [
-        {
-          name: "control_pre",
-          content: [{ type: "submitButton", buttonText: "Go" }],
-        },
-        {
-          name: "treatment_pre",
-          content: [
-            { type: "prompt", file: "treatment.md" },
-            { type: "submitButton", buttonText: "Go" },
+test("pattern 12: parameterized inner-template name resolved by outer broadcast", () => {
+  // The #304 motivating case. Inner invocation `{ template: "${arm}_pre" }`
+  // resolves to one of N per-arm sub-templates via outer broadcast.
+  const treatmentFile = {
+    templates: [
+      {
+        name: "control_pre",
+        content: [{ type: "submitButton", buttonText: "Go" }],
+      },
+      {
+        name: "treatment_pre",
+        content: [
+          { type: "prompt", file: "treatment.md" },
+          { type: "submitButton", buttonText: "Go" },
+        ],
+      },
+      {
+        name: "condition",
+        content: {
+          name: "${arm}-condition",
+          gameStages: [
+            {
+              name: "pre",
+              elements: [{ template: "${arm}_pre" }],
+            },
           ],
         },
-        {
-          name: "condition",
-          content: {
-            name: "${arm}-condition",
-            gameStages: [
-              {
-                name: "pre",
-                elements: [{ template: "${arm}_pre" }],
-              },
-            ],
-          },
+      },
+    ],
+    treatments: [
+      {
+        template: "condition",
+        broadcast: {
+          d0: [{ arm: "control" }, { arm: "treatment" }],
         },
-      ],
-      treatments: [
-        {
-          template: "condition",
-          broadcast: {
-            d0: [{ arm: "control" }, { arm: "treatment" }],
-          },
-        },
-      ],
-    };
-    const { result } = fillTemplates({
-      obj: treatmentFile,
-      templates: treatmentFile.templates,
-    });
-    expect(result.treatments).toHaveLength(2);
-    expect(result.treatments[0].name).toBe("control-condition");
-    expect(result.treatments[0].gameStages[0].elements).toEqual([
-      { type: "submitButton", buttonText: "Go" },
-    ]);
-    expect(result.treatments[1].name).toBe("treatment-condition");
-    expect(result.treatments[1].gameStages[0].elements).toEqual([
-      { type: "prompt", file: "treatment.md" },
-      { type: "submitButton", buttonText: "Go" },
-    ]);
-  },
-);
+      },
+    ],
+  };
+  const { result } = fillTemplates({
+    obj: treatmentFile,
+    templates: treatmentFile.templates,
+  });
+  expect(result.treatments).toHaveLength(2);
+  expect(result.treatments[0].name).toBe("control-condition");
+  expect(result.treatments[0].gameStages[0].elements).toEqual([
+    { type: "submitButton", buttonText: "Go" },
+  ]);
+  expect(result.treatments[1].name).toBe("treatment-condition");
+  expect(result.treatments[1].gameStages[0].elements).toEqual([
+    { type: "prompt", file: "treatment.md" },
+    { type: "submitButton", buttonText: "Go" },
+  ]);
+});
 
-test.fails(
-  "pattern 13: parameterized inner-template name resolved by outer fields",
-  () => {
-    // Same family as #304 but the placeholder comes from the parent's
-    // `fields:`, not a broadcast. volvovsky uses this for picking
-    // observerOwnTeamSuccess vs observerOtherTeamFailure.
-    const treatmentFile = {
-      templates: [
-        { name: "ownSuccess", content: { kind: "ownSuccess" } },
-        { name: "otherFailure", content: { kind: "otherFailure" } },
-        {
-          name: "treatmentBase",
-          content: {
-            name: "${treatmentName}",
-            exitSequence: [{ template: "${observerName}" }],
-          },
+test("pattern 13: parameterized inner-template name resolved by outer fields", () => {
+  // Same family as #304 but the placeholder comes from the parent's
+  // `fields:`, not a broadcast. volvovsky uses this for picking
+  // observerOwnTeamSuccess vs observerOtherTeamFailure.
+  const treatmentFile = {
+    templates: [
+      { name: "ownSuccess", content: { kind: "ownSuccess" } },
+      { name: "otherFailure", content: { kind: "otherFailure" } },
+      {
+        name: "treatmentBase",
+        content: {
+          name: "${treatmentName}",
+          exitSequence: [{ template: "${observerName}" }],
         },
-      ],
-      treatments: [
-        {
-          template: "treatmentBase",
-          fields: { treatmentName: "t1", observerName: "ownSuccess" },
-        },
-      ],
-    };
-    const { result } = fillTemplates({
-      obj: treatmentFile,
-      templates: treatmentFile.templates,
-    });
-    expect(result.treatments).toEqual([
-      { name: "t1", exitSequence: [{ kind: "ownSuccess" }] },
-    ]);
-  },
-);
+      },
+    ],
+    treatments: [
+      {
+        template: "treatmentBase",
+        fields: { treatmentName: "t1", observerName: "ownSuccess" },
+      },
+    ],
+  };
+  const { result } = fillTemplates({
+    obj: treatmentFile,
+    templates: treatmentFile.templates,
+  });
+  expect(result.treatments).toEqual([
+    { name: "t1", exitSequence: [{ kind: "ownSuccess" }] },
+  ]);
+});
 
-test.fails(
-  "pattern 14a: literal template-as-field-value used as broadcast dimension",
-  () => {
-    // Field value is a template invocation (`recallImages: { template: "..." }`).
-    // The template should be expanded inside the field, then the resolved
-    // list used as a broadcast dimension.
-    const treatmentFile = {
-      templates: [
-        {
-          name: "simpleImages",
-          content: [{ imageFile: "a.jpg" }, { imageFile: "b.jpg" }],
-        },
-        {
-          name: "recallTask",
-          content: [{ name: "recall_${d0}", file: "${imageFile}" }],
-        },
-        {
-          name: "treatmentBase",
-          content: {
-            name: "${treatmentName}",
-            stages: [
-              { template: "recallTask", broadcast: { d0: "${recallImages}" } },
-            ],
-          },
-        },
-      ],
-      treatments: [
-        {
-          template: "treatmentBase",
-          fields: {
-            treatmentName: "simple",
-            recallImages: { template: "simpleImages" },
-          },
-        },
-      ],
-    };
-    const { result } = fillTemplates({
-      obj: treatmentFile,
-      templates: treatmentFile.templates,
-    });
-    expect(result.treatments[0].stages).toEqual([
-      { name: "recall_0", file: "a.jpg" },
-      { name: "recall_1", file: "b.jpg" },
-    ]);
-  },
-);
+// Pattern 14a/14b — both forms of template-invocation-as-fields-value
+// are now rejected at parse time by `templateFieldsSchema`. The
+// rejection lives in the schema test file (safeParseTreatmentFile),
+// not here, since `fillTemplates` operates on already-parsed input.
+// Pattern 21 (Pattern C) below is the recommended alternative for
+// the use case both 14a and 14b were trying to express.
 
-test.fails("pattern 14b: parameterized template-as-field-value", () => {
-  // Same as 14a, but the template name inside the field value is itself
-  // a placeholder. The most indirect form — at least 2 levels of bug.
+// ----- Recommended alternative to 14b -----
+
+test("pattern 21 (Pattern C): parameterized template invocation in broadcast slot", () => {
+  // The cleaner alternative to 14b. Researcher chooses which list
+  // to use by passing a string `imageSet` field; the template
+  // invocation lives in the broadcast slot (not in `fields:`), so
+  // ordinary content-substitution resolves the name before the
+  // invocation is encountered.
   const treatmentFile = {
     templates: [
       {
@@ -1637,8 +1599,11 @@ test.fails("pattern 14b: parameterized template-as-field-value", () => {
         name: "treatmentBase",
         content: {
           name: "${treatmentName}",
-          stages: [
-            { template: "recallTask", broadcast: { d0: "${recallImages}" } },
+          gameStages: [
+            {
+              template: "recallTask",
+              broadcast: { d0: { template: "${imageSet}" } },
+            },
           ],
         },
       },
@@ -1646,11 +1611,11 @@ test.fails("pattern 14b: parameterized template-as-field-value", () => {
     treatments: [
       {
         template: "treatmentBase",
-        fields: {
-          treatmentName: "easy",
-          recallImages: { template: "${imageSet}" },
-          imageSet: "easySet",
-        },
+        fields: { treatmentName: "easy", imageSet: "easySet" },
+      },
+      {
+        template: "treatmentBase",
+        fields: { treatmentName: "hard", imageSet: "hardSet" },
       },
     ],
   };
@@ -1658,7 +1623,13 @@ test.fails("pattern 14b: parameterized template-as-field-value", () => {
     obj: treatmentFile,
     templates: treatmentFile.templates,
   });
-  expect(result.treatments[0].stages[0].file).toBe("easy_a.jpg");
+  expect(result.treatments).toHaveLength(2);
+  expect(result.treatments[0].name).toBe("easy");
+  expect(result.treatments[0].gameStages).toEqual([
+    { name: "recall_0", file: "easy_a.jpg" },
+    { name: "recall_1", file: "easy_b.jpg" },
+  ]);
+  expect(result.treatments[1].gameStages[0].file).toBe("hard_a.jpg");
 });
 
 // ----- Contract questions: regression guards we want even after a fix -----
@@ -1673,24 +1644,18 @@ test("pattern: genuinely-missing template name still throws after fix", () => {
   ).toThrow('Template "typoName" not found');
 });
 
-test.fails(
-  "pattern: result.templates shape after expansion (treatment-file input)",
-  () => {
-    // Open contract question: when input includes a `templates:` array
-    // (i.e., the realistic treatment-file shape), should the result
-    // preserve `result.templates`? Today the walker mutates them; after
-    // a #304 fix that strips them from the walk, behavior is undefined.
-    // Pin the contract with this test.
-    const treatmentFile = {
-      templates: [{ name: "stage", content: { name: "${idx}" } }],
-      treatments: [{ template: "stage", fields: { idx: "1" } }],
-    };
-    const { result } = fillTemplates({
-      obj: treatmentFile,
-      templates: treatmentFile.templates,
-    });
-    // Expectation TBD — for now, assert the expanded treatments exist;
-    // we'll refine result.templates contract after we see what passes.
-    expect(result.treatments).toEqual([{ name: "1" }]);
-  },
-);
+test("post-fill result has no `templates:` key (definitions are build-time-only)", () => {
+  // Contract: the fill result is a runtime shape. Definitions are a
+  // lookup table, not output content — they're stripped before the
+  // walk and never re-attached. This guards the invariant.
+  const treatmentFile = {
+    templates: [{ name: "stage", content: { name: "${idx}" } }],
+    treatments: [{ template: "stage", fields: { idx: "1" } }],
+  };
+  const { result } = fillTemplates({
+    obj: treatmentFile,
+    templates: treatmentFile.templates,
+  });
+  expect(result.treatments).toEqual([{ name: "1" }]);
+  expect("templates" in result).toBe(false);
+});

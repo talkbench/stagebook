@@ -267,16 +267,48 @@ export function fillTemplates({
   additionalFields?: Record<string, any>;
   allowUnresolved?: boolean;
 }): { result: any; unresolvedFields: string[] } {
-  let newObj = recursivelyFillTemplates({ obj, templates });
+  // Strip `templates:` from the walked object so the recursive walker
+  // doesn't try to expand inner template invocations *inside the
+  // template definitions* (#304). Definitions are a lookup table, not
+  // walkable content — they're accessed on demand by `expandTemplate`,
+  // which applies field/broadcast substitution first. Walking them
+  // eagerly tries to resolve placeholders (e.g. `template: ${arm}_pre`)
+  // before any call site has had a chance to fill them, and trips on
+  // both unresolved field names AND parameterized template names.
+  // The result intentionally drops `templates:` — the post-fill output
+  // is a runtime shape and definitions don't belong in it.
+  let walkObj = obj;
+  if (
+    obj &&
+    typeof obj === "object" &&
+    !Array.isArray(obj) &&
+    "templates" in obj
+  ) {
+    walkObj = { ...(obj as Record<string, unknown>) };
+    delete (walkObj as Record<string, unknown>).templates;
+  }
 
-  // Check that there are no remaining templates
+  let newObj = recursivelyFillTemplates({ obj: walkObj, templates });
+
+  // Re-run the walker until no `"template":` strings remain. Track the
+  // count between iterations so a pass that fails to make progress
+  // (e.g. a parameterized template name that never resolves) breaks
+  // out instead of looping forever — the post-fill assertion below
+  // turns the deadlock into an actionable error.
   const templatesRemainingRegex = /"template":/g;
-  let templatesRemaining = JSON.stringify(newObj).match(
-    templatesRemainingRegex,
-  );
-  while (templatesRemaining) {
+  let prevCount = Infinity;
+  let currCount =
+    JSON.stringify(newObj).match(templatesRemainingRegex)?.length ?? 0;
+  while (currCount > 0 && currCount < prevCount) {
     newObj = recursivelyFillTemplates({ obj: newObj, templates });
-    templatesRemaining = JSON.stringify(newObj).match(templatesRemainingRegex);
+    prevCount = currCount;
+    currCount =
+      JSON.stringify(newObj).match(templatesRemainingRegex)?.length ?? 0;
+  }
+  if (currCount > 0) {
+    throw new Error(
+      'fillTemplates: unresolved template invocation remains after expansion. This usually means a parameterized template name (`template: "${...}"`) that no field/broadcast resolves. Move the parameterized invocation into the slot where it\'s used (e.g. into a `broadcast:` dimension) instead of nesting it inside `fields:`.',
+    );
   }
 
   // Apply platform-provided fields after template expansion
