@@ -9,7 +9,11 @@ import { isYouTubeURL } from "./mediaPlayer/isYouTubeURL.js";
 import { parseVTT, type CaptionCue } from "./mediaPlayer/parseVTT.js";
 import { YouTubePlayer } from "./mediaPlayer/YouTubePlayer.js";
 import { HTML5Controls, YouTubeControls } from "./mediaPlayer/controls.js";
-import { useRegisterPlayback } from "../playback/PlaybackProvider.js";
+import {
+  useRegisterPlayback,
+  useMarkActive,
+  useIsActiveSpaceTarget,
+} from "../playback/PlaybackProvider.js";
 import type { PlaybackHandle } from "../playback/PlaybackHandle.js";
 import { computeWatchedRanges } from "../../utils/watchedRanges.js";
 import {
@@ -425,6 +429,24 @@ export function MediaPlayer({
   );
   // Use the YouTube handle when available, fall back to the HTML5 handle
   useRegisterPlayback(name, ytHandle ?? handle);
+
+  // Tell the global Space handler "this is the player the user is
+  // interacting with" on mousedown anywhere in the player area (#300).
+  // Without this, multi-player pages route an off-player Space press to
+  // the most-recently-mounted player instead of the one the user just
+  // clicked.
+  const markActivePlayback = useMarkActive();
+  const markSelfActive = useCallback(
+    () => markActivePlayback(name),
+    [markActivePlayback, name],
+  );
+  // Subtle "this is what Space will toggle" cue, shown only on multi-
+  // player pages (#300). On a single-player page Space already targets
+  // the lone player, so the indicator would be redundant noise.
+  const isActiveSpaceTarget = useIsActiveSpaceTarget(name);
+  const activeBoxShadow = isActiveSpaceTarget
+    ? "0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25))"
+    : undefined;
 
   // Hold-to-scrub state
   const arrowRepeatCountRef = useRef(0);
@@ -1004,9 +1026,14 @@ export function MediaPlayer({
         tabIndex={0}
         onKeyDown={handleKeyDown}
         onKeyUp={handleKeyUp}
+        onMouseDown={markSelfActive}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        style={{ position: "relative" }}
+        style={{
+          position: "relative",
+          borderRadius: "0.25rem",
+          boxShadow: activeBoxShadow,
+        }}
       >
         <div data-testid="mediaPlayer-viewport" style={VIEWPORT_STYLE}>
           <YouTubePlayer
@@ -1090,9 +1117,14 @@ export function MediaPlayer({
       tabIndex={0}
       onKeyDown={handleKeyDown}
       onKeyUp={handleKeyUp}
+      onMouseDown={markSelfActive}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      style={{ position: "relative" }}
+      style={{
+        position: "relative",
+        borderRadius: "0.25rem",
+        boxShadow: activeBoxShadow,
+      }}
     >
       {/* Audio-only: hidden video element (no viewport div) */}
       {!playVideo && (

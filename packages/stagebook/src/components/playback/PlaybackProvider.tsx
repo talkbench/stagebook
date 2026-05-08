@@ -16,6 +16,15 @@ interface PlaybackRegistry {
   handles: Map<string, PlaybackHandle>;
   register: (name: string, handle: PlaybackHandle) => void;
   unregister: (name: string) => void;
+  /** Mark `name` as the active player — the target of the global Space
+   *  handler when no focused element handles the press first. Components
+   *  call this on `mousedown` to attribute "what the user is interacting
+   *  with" so subsequent off-player Space presses still toggle the right
+   *  one. Unknown names are accepted (and silently fall back to the last
+   *  registered handle) so the caller doesn't have to guard. */
+  markActive: (name: string) => void;
+  /** Name passed to the most recent `markActive`, or null if never called. */
+  activeName: string | null;
 }
 
 const PlaybackContext = createContext<PlaybackRegistry | null>(null);
@@ -45,29 +54,47 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const [activeName, setActiveName] = useState<string | null>(null);
+  const markActive = useCallback((name: string) => {
+    setActiveName(name);
+  }, []);
+
   const value = useMemo(
-    () => ({ handles, register, unregister }),
-    [handles, register, unregister],
+    () => ({ handles, register, unregister, markActive, activeName }),
+    [handles, register, unregister, markActive, activeName],
   );
 
-  // Global Space → toggle most-recent registered handle (issue #300).
-  // The Timeline and MediaPlayer wrappers already handle Space when focused,
-  // but focus often lands on the page body (or another non-capturing element)
-  // after the user clicks "play" and then moves on — there, the browser's
-  // default Space=scroll fires and the page jumps. This window-level fallback
-  // catches Space anywhere on the page and routes it to the most recently
-  // mounted player, so the user's intent ("pause what's playing") works
+  // Global play/pause hotkeys → toggle the active player (issue #300).
+  // The Timeline and MediaPlayer wrappers already handle Space (and K)
+  // when focused, but focus often lands on the page body (or another
+  // non-capturing element) after the user clicks "play" and then moves
+  // on — there, the browser's default Space=scroll fires and the page
+  // jumps. This window-level fallback catches Space and K anywhere on
+  // the page so the user's intent ("pause what's playing") works
   // regardless of where focus happens to be.
+  //
+  // Scope is intentionally narrow — only the play/pause toggle keys.
+  // Seek/scrub keys (J, L, arrows, comma, period) stay focus-required
+  // because they overlap with page navigation and aren't subject to the
+  // same Space=scroll surprise.
+  //
+  // Target selection:
+  // - The "active" player (last one whose wrapper or sibling Timeline was
+  //   clicked, via `markActive`). This matches user intent on multi-player
+  //   pages: clicking on a player marks it as the hotkey target.
+  // - Falls back to the most recently registered handle when nothing has
+  //   been clicked yet, so a single-player page works without ceremony.
   //
   // Skip rules:
   // - Modifier keys: reserved for OS / app shortcuts.
-  // - Text inputs / contenteditable: Space is for typing.
+  // - Text inputs / contenteditable: Space and K are for typing.
   // - `defaultPrevented`: an inner handler (Timeline, MediaPlayer, button)
   //   already consumed the press; running again would double-toggle.
   useEffect(() => {
     if (handles.size === 0) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== " ") return;
+      const isToggleKey = e.key === " " || e.key === "k" || e.key === "K";
+      if (!isToggleKey) return;
       if (e.defaultPrevented) return;
       if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
       const target = e.target;
@@ -79,18 +106,21 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       ) {
         return;
       }
-      // Pick the most recently registered handle. Map iteration is
-      // insertion-ordered, so the last value is the freshest registration.
-      let last: PlaybackHandle | undefined;
-      for (const h of handles.values()) last = h;
-      if (!last) return;
+      let pick: PlaybackHandle | undefined =
+        activeName !== null ? handles.get(activeName) : undefined;
+      if (!pick) {
+        // Fallback: most recently registered handle. Map iteration is
+        // insertion-ordered, so the last value is the freshest.
+        for (const h of handles.values()) pick = h;
+      }
+      if (!pick) return;
       e.preventDefault();
-      if (last.isPaused()) last.play();
-      else last.pause();
+      if (pick.isPaused()) pick.play();
+      else pick.pause();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handles]);
+  }, [handles, activeName]);
 
   return (
     <PlaybackContext.Provider value={value}>
@@ -135,3 +165,31 @@ export function usePlayback(source: string): PlaybackHandle | undefined {
   const ctx = useContext(PlaybackContext);
   return ctx?.handles.get(source);
 }
+
+/**
+ * Returns a callback that marks a player as the active target for the
+ * global Space handler (#300). Call on user interaction (e.g. mousedown
+ * on the MediaPlayer wrapper or its sibling Timeline) so subsequent
+ * off-player Space presses pause/resume the right one.
+ *
+ * Safe to call without a PlaybackProvider — returns a no-op.
+ */
+export function useMarkActive(): (name: string) => void {
+  const ctx = useContext(PlaybackContext);
+  return ctx?.markActive ?? noop;
+}
+
+/**
+ * True when `name` is the active Space target *and* there's more than
+ * one player on the page, so callers know whether to render a subtle
+ * "this is what Space will toggle" indicator. Single-player pages always
+ * return false — the cue would be redundant noise there.
+ */
+export function useIsActiveSpaceTarget(name: string): boolean {
+  const ctx = useContext(PlaybackContext);
+  if (!ctx) return false;
+  if (ctx.handles.size <= 1) return false;
+  return ctx.activeName === name;
+}
+
+function noop() {}

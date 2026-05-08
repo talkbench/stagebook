@@ -5,7 +5,11 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { usePlayback } from "../playback/PlaybackProvider.js";
+import {
+  usePlayback,
+  useMarkActive,
+  useIsActiveSpaceTarget,
+} from "../playback/PlaybackProvider.js";
 import { TimeRuler, RULER_HEIGHT } from "./timeline/TimeRuler.js";
 import { TimelineTrack, GUTTER_WIDTH } from "./timeline/TimelineTrack.js";
 import { Playhead } from "./timeline/Playhead.js";
@@ -125,6 +129,17 @@ export function Timeline({
   save,
 }: TimelineProps) {
   const handle = usePlayback(source);
+  // Mark the linked player as active on any pointer-down inside the
+  // Timeline, so an off-player Space press still toggles the right one
+  // on multi-player pages (#300).
+  const markActivePlayback = useMarkActive();
+  const markLinkedPlayerActive = useCallback(
+    () => markActivePlayback(source),
+    [markActivePlayback, source],
+  );
+  // Subtle indicator when this Timeline's player is the active Space
+  // target, shown only on multi-player pages (#300).
+  const isActiveSpaceTarget = useIsActiveSpaceTarget(source);
   const tracksAreaRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -840,6 +855,7 @@ export function Timeline({
       tabIndex={0}
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}
+      onMouseDown={markLinkedPlayerActive}
       onBlur={() => {
         // Drop any in-progress press-and-hold range — focus left the
         // timeline before the matching keyup arrived. (#263)
@@ -852,6 +868,9 @@ export function Timeline({
         overflow: "hidden",
         outline: "none",
         position: "relative",
+        boxShadow: isActiveSpaceTarget
+          ? "0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25))"
+          : undefined,
       }}
     >
       {/* Header: zoom controls (always) + minimap (when zoomed in) — puts

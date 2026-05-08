@@ -7,6 +7,8 @@ import {
   PlaybackProvider,
   useRegisterPlayback,
   usePlayback,
+  useMarkActive,
+  useIsActiveSpaceTarget,
 } from "./PlaybackProvider.js";
 import type { PlaybackHandle } from "./PlaybackHandle.js";
 
@@ -183,6 +185,31 @@ describe("global Space handler (issue #300)", () => {
     return e;
   }
 
+  test("K on document body toggles the registered handle (YouTube-standard play/pause key)", () => {
+    const { play, cleanup } = setupWithHandle(true);
+    try {
+      const e = dispatchSpaceOn(document.body, { key: "k" });
+      expect(play).toHaveBeenCalledTimes(1);
+      expect(e.defaultPrevented).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("seek/scrub keys (J, L, ArrowLeft, ArrowRight, period, comma) are NOT routed globally", () => {
+    const { play, pause, cleanup } = setupWithHandle(true);
+    try {
+      for (const key of ["j", "l", "ArrowLeft", "ArrowRight", ".", ","]) {
+        const e = dispatchSpaceOn(document.body, { key });
+        expect(e.defaultPrevented).toBe(false);
+      }
+      expect(play).not.toHaveBeenCalled();
+      expect(pause).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+    }
+  });
+
   test("Space on document body toggles the registered handle and prevents default", () => {
     const { play, pause, cleanup } = setupWithHandle(true);
     try {
@@ -305,7 +332,7 @@ describe("global Space handler (issue #300)", () => {
     }
   });
 
-  test("only the most recently registered handle is toggled", () => {
+  test("falls back to the most recently registered handle when nothing has been marked active", () => {
     const isPausedA = { current: true };
     const playA = vi.fn(() => {
       isPausedA.current = false;
@@ -359,6 +386,191 @@ describe("global Space handler (issue #300)", () => {
     } finally {
       act(() => root.unmount());
       container.remove();
+    }
+  });
+
+  test("Space toggles the markActive target, not the most recently registered", () => {
+    // Two players A and B, registered in that order. Without markActive,
+    // the fallback would target B. Marking A active should override that.
+    const isPausedA = { current: true };
+    const playA = vi.fn(() => {
+      isPausedA.current = false;
+    });
+    const pauseA = vi.fn(() => {
+      isPausedA.current = true;
+    });
+    const handleA = makeHandle({
+      play: playA,
+      pause: pauseA,
+      isPaused: () => isPausedA.current,
+    });
+
+    const isPausedB = { current: true };
+    const playB = vi.fn(() => {
+      isPausedB.current = false;
+    });
+    const pauseB = vi.fn(() => {
+      isPausedB.current = true;
+    });
+    const handleB = makeHandle({
+      play: playB,
+      pause: pauseB,
+      isPaused: () => isPausedB.current,
+    });
+
+    let markActiveFromConsumer: (name: string) => void = () => {};
+    function Registrar(): ReactNode {
+      const a = useMemo(() => handleA, []);
+      const b = useMemo(() => handleB, []);
+      useRegisterPlayback("a", a);
+      useRegisterPlayback("b", b);
+      markActiveFromConsumer = useMarkActive();
+      return null;
+    }
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    let root: Root;
+    act(() => {
+      root = createRoot(container);
+      root.render(
+        <PlaybackProvider>
+          <Registrar />
+        </PlaybackProvider>,
+      );
+    });
+    try {
+      act(() => markActiveFromConsumer("a"));
+      dispatchSpaceOn(document.body);
+      expect(playA).toHaveBeenCalledTimes(1);
+      expect(playB).not.toHaveBeenCalled();
+
+      // Re-target B and try again.
+      act(() => markActiveFromConsumer("b"));
+      dispatchSpaceOn(document.body);
+      expect(playB).toHaveBeenCalledTimes(1);
+      expect(playA).toHaveBeenCalledTimes(1); // unchanged
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  test("markActive on an unknown name falls back to the last-registered handle", () => {
+    const isPausedA = { current: true };
+    const playA = vi.fn(() => {
+      isPausedA.current = false;
+    });
+    const handleA = makeHandle({
+      play: playA,
+      isPaused: () => isPausedA.current,
+    });
+    const isPausedB = { current: true };
+    const playB = vi.fn(() => {
+      isPausedB.current = false;
+    });
+    const handleB = makeHandle({
+      play: playB,
+      isPaused: () => isPausedB.current,
+    });
+
+    let markActive: (name: string) => void = () => {};
+    function Registrar(): ReactNode {
+      const a = useMemo(() => handleA, []);
+      const b = useMemo(() => handleB, []);
+      useRegisterPlayback("a", a);
+      useRegisterPlayback("b", b);
+      markActive = useMarkActive();
+      return null;
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    let root: Root;
+    act(() => {
+      root = createRoot(container);
+      root.render(
+        <PlaybackProvider>
+          <Registrar />
+        </PlaybackProvider>,
+      );
+    });
+    try {
+      act(() => markActive("does-not-exist"));
+      dispatchSpaceOn(document.body);
+      // Falls back to last-registered (b); a untouched.
+      expect(playB).toHaveBeenCalledTimes(1);
+      expect(playA).not.toHaveBeenCalled();
+    } finally {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+});
+
+describe("useIsActiveSpaceTarget", () => {
+  test("returns false on a single-player page even when active", () => {
+    let isActive = false;
+    let markActive: (n: string) => void = () => {};
+    function Registrar(): ReactNode {
+      const handle = useMemo(() => makeHandle(), []);
+      useRegisterPlayback("only", handle);
+      isActive = useIsActiveSpaceTarget("only");
+      markActive = useMarkActive();
+      return null;
+    }
+    const container = document.createElement("div");
+    let root: Root;
+    act(() => {
+      root = createRoot(container);
+      root.render(
+        <PlaybackProvider>
+          <Registrar />
+        </PlaybackProvider>,
+      );
+    });
+    try {
+      act(() => markActive("only"));
+      expect(isActive).toBe(false);
+    } finally {
+      act(() => root.unmount());
+    }
+  });
+
+  test("returns true for the active player when 2+ are mounted, false for the others", () => {
+    const states: { a?: boolean; b?: boolean } = {};
+    let markActive: (n: string) => void = () => {};
+    function Registrar(): ReactNode {
+      const a = useMemo(() => makeHandle(), []);
+      const b = useMemo(() => makeHandle(), []);
+      useRegisterPlayback("a", a);
+      useRegisterPlayback("b", b);
+      states.a = useIsActiveSpaceTarget("a");
+      states.b = useIsActiveSpaceTarget("b");
+      markActive = useMarkActive();
+      return null;
+    }
+    const container = document.createElement("div");
+    let root: Root;
+    act(() => {
+      root = createRoot(container);
+      root.render(
+        <PlaybackProvider>
+          <Registrar />
+        </PlaybackProvider>,
+      );
+    });
+    try {
+      // Initially nothing is marked → both false.
+      expect(states.a).toBe(false);
+      expect(states.b).toBe(false);
+      act(() => markActive("a"));
+      expect(states.a).toBe(true);
+      expect(states.b).toBe(false);
+      act(() => markActive("b"));
+      expect(states.a).toBe(false);
+      expect(states.b).toBe(true);
+    } finally {
+      act(() => root.unmount());
     }
   });
 });
