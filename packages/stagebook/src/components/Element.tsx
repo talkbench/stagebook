@@ -29,12 +29,13 @@ function resolveParams(
         key: string;
         value?: unknown;
         // After #240, references can be either the dotted-string sugar
-        // or the structured `{source, name?, path?}` form.
+        // or the structured `{position, source, name?, path?}` form.
+        // Per #298 position lives inside the reference; the pre-#298
+        // sibling `position:` field is gone.
         reference?: string | ReferenceType;
-        position?: string;
       }>
     | undefined,
-  resolve: (ref: string | ReferenceType, pos?: string) => unknown[],
+  resolve: (ref: string | ReferenceType) => unknown[],
 ): ResolvedParam[] {
   if (!urlParams) return [];
   return urlParams.map((param) => {
@@ -154,30 +155,25 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
     case "display": {
       // Per #298, the position is part of the reference itself —
       // `0.prompt.foo.value`, `all.prompt.recall.value`, etc. The
-      // Display element no longer takes a sibling `position:` field
-      // (the position is parsed out by the resolver and passed to the
-      // host via `get()`).
+      // Display element no longer takes a sibling `position:` field;
+      // the position is parsed out of the reference and used for
+      // layout hints. The resolver handles the same parsing internally
+      // when resolving values.
       const ref = element.reference ?? `self.prompt.${String(element.name)}`;
       const values = resolve(ref);
-      // Render a stable dotted-string for `data-reference` so
-      // downstream tooling that scrapes the attribute sees the
-      // familiar prefixed-dotted shape.
-      const refString =
-        typeof ref === "string"
-          ? parseDottedReference(ref).ok
-            ? ref
-            : ref // malformed strings pass through verbatim
-          : formatReference(ref);
-      // Extract the position from the (parsed) reference for layout
-      // hints — Display uses it to decide between single-value and
-      // per-participant rendering.
-      let positionForLayout: number | string | undefined;
+      // Parse once, derive both the canonical dotted-string form (for
+      // `data-reference`) and the position (for layout) from the same
+      // structured shape.
+      let parsed: ReferenceType | null = null;
       if (typeof ref === "string") {
-        const parsed = parseDottedReference(ref);
-        if (parsed.ok) positionForLayout = parsed.value.position;
+        const r = parseDottedReference(ref);
+        if (r.ok) parsed = r.value;
       } else {
-        positionForLayout = ref.position;
+        parsed = ref;
       }
+      const refString = parsed ? formatReference(parsed) : (ref as string); // malformed pass-through
+      const positionForLayout =
+        parsed === null ? undefined : String(parsed.position);
       return (
         <Display
           reference={refString}

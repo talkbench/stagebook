@@ -164,10 +164,17 @@ export function StagebookProvider({
         const parsed = parseToStructuredRef(reference);
         position = parsed.position;
         ({ referenceKey, path } = getReferenceKeyAndPath(parsed));
-      } catch {
-        console.error(
-          `Invalid reference: ${typeof reference === "string" ? `"${reference}"` : JSON.stringify(reference)}`,
-        );
+      } catch (err) {
+        // Surface the underlying parser/migration message so authors
+        // can act on it (e.g. the "missing position prefix" hint from
+        // #298 or the `urlParams` → `entryUrl.params` migration hint
+        // from #246).
+        const refStr =
+          typeof reference === "string"
+            ? `"${reference}"`
+            : JSON.stringify(reference);
+        const why = err instanceof Error ? err.message : String(err);
+        console.error(`Invalid reference: ${refStr} — ${why}`);
         return [];
       }
       // The position selector is now part of the reference (#298). The

@@ -143,10 +143,10 @@ function parsePositionToken(
   if (POSITION_SELECTOR_NAMES.has(token)) {
     return { ok: true, position: token as PositionSelectorType };
   }
-  // Numeric position. Use a tight regex so leading-zero / decimal / sign
-  // forms don't accidentally parse as positions; canonical positions are
-  // bare non-negative integers.
-  if (/^[0-9]+$/.test(token)) {
+  // Numeric position. Canonical form: non-negative integer with no
+  // leading zeros (`0`, `1`, `12`). Reject `01`, `007`, etc. so two
+  // distinct token strings can't normalize to the same selector.
+  if (/^(0|[1-9]\d*)$/.test(token)) {
     return { ok: true, position: Number(token) };
   }
   return { ok: false };
