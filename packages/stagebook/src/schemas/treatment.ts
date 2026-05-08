@@ -499,7 +499,38 @@ const templateFieldKeysSchema = z
     }
   });
 
-const templateFieldsSchema = z.record(templateFieldKeysSchema, z.any());
+// `fields:` is a flat map of values — not a place for template
+// invocations. A field value shaped like `{ template: "..." }` is
+// always either (a) a hidden template-as-field-value indirection that
+// works by accident (literal name) or (b) genuinely broken because
+// the recursive fill hits a parameterized template name before any
+// substitution can resolve it (#304). Reject either form at parse
+// time and point authors to the cleaner alternative: pass the name
+// as a string and put the invocation in the slot where it's used.
+const fieldValueIsTemplateInvocation = (val: unknown): boolean =>
+  val !== null &&
+  typeof val === "object" &&
+  !Array.isArray(val) &&
+  "template" in val;
+
+const templateFieldsSchema = z
+  .record(templateFieldKeysSchema, z.any())
+  .superRefine((fields, ctx) => {
+    for (const [key, value] of Object.entries(fields)) {
+      if (fieldValueIsTemplateInvocation(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message:
+            `Template invocations are not allowed as \`fields:\` values. ` +
+            `Move the invocation to the slot where it's used (e.g. a \`broadcast:\` dimension) ` +
+            `and pass only the template name as a string field. ` +
+            "For example, instead of `fields: { recallImages: { template: imageList } }` + `broadcast: { d0: ${recallImages} }`, " +
+            "write `fields: { imageSet: imageList }` + `broadcast: { d0: { template: ${imageSet} } }`.",
+        });
+      }
+    }
+  });
 
 const templateBroadcastAxisNameSchema = z.string().regex(/^d\d+$/, {
   message: "String must start with 'd' followed by a nonnegative integer",
