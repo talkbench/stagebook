@@ -88,9 +88,23 @@ function App() {
     const handler = (event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === "treatment") {
-        setTreatmentFile(msg.treatmentFile);
-        setIntroIndex(msg.introIndex ?? 0);
-        setTreatmentIndex(msg.treatmentIndex ?? 0);
+        const incoming = msg.treatmentFile as TreatmentFileType;
+        setTreatmentFile(incoming);
+        // Preserve the user's current picker selections across
+        // refreshes (the webview owns this state — the host's
+        // `msg.{treatment,intro}Index` is currently always 0 and is
+        // ignored after the initial useState defaults pick it up).
+        // Clamp to the new bounds in case the researcher edited the
+        // file to remove the previously-selected treatment / intro.
+        setTreatmentIndex((prev) =>
+          Math.min(prev, Math.max(0, incoming.treatments.length - 1)),
+        );
+        setIntroIndex((prev) =>
+          Math.min(
+            prev,
+            Math.max(0, (incoming.introSequences?.length ?? 1) - 1),
+          ),
+        );
         setWebviewBaseUri(msg.webviewBaseUri ?? "");
         setContentVersion((v) => v + 1);
         setError(null);
@@ -138,6 +152,8 @@ function App() {
       getAssetURL={contentFns.getAssetURL}
       selectedIntroIndex={introIndex}
       selectedTreatmentIndex={treatmentIndex}
+      onTreatmentIndexChange={setTreatmentIndex}
+      onIntroIndexChange={setIntroIndex}
       onRefresh={() => vscode.postMessage({ type: "refresh" })}
       contentVersion={contentVersion}
     />
