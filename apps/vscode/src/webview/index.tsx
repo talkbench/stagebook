@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import type { TreatmentFileType } from "stagebook";
 import { PreviewHost } from "stagebook-viewer/preview";
@@ -84,27 +84,41 @@ function App() {
   // with a fresh cache, forcing prompt files to re-fetch from disk.
   const [contentVersion, setContentVersion] = useState(0);
 
+  // Tracks whether we've received any `treatment` message yet. On the
+  // first load we honor `msg.{treatment,intro}Index` (today always 0;
+  // a future "open at cursor" command can send a non-zero starting
+  // index). On subsequent refreshes we ignore those fields and
+  // preserve the user's current picker selection.
+  const hasReceivedTreatmentRef = useRef(false);
+
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === "treatment") {
         const incoming = msg.treatmentFile as TreatmentFileType;
+        const isFirstLoad = !hasReceivedTreatmentRef.current;
+        hasReceivedTreatmentRef.current = true;
+
         setTreatmentFile(incoming);
-        // Preserve the user's current picker selections across
-        // refreshes (the webview owns this state — the host's
-        // `msg.{treatment,intro}Index` is currently always 0 and is
-        // ignored after the initial useState defaults pick it up).
-        // Clamp to the new bounds in case the researcher edited the
-        // file to remove the previously-selected treatment / intro.
-        setTreatmentIndex((prev) =>
-          Math.min(prev, Math.max(0, incoming.treatments.length - 1)),
-        );
-        setIntroIndex((prev) =>
-          Math.min(
-            prev,
+        // On first load: take msg.{treatment,intro}Index if provided.
+        // On refresh: preserve the user's current picker selection.
+        // Always clamp to the (new) bounds in case the researcher
+        // edited the file to remove the previously-selected entry.
+        setTreatmentIndex((prev) => {
+          const desired = isFirstLoad
+            ? ((msg.treatmentIndex as number | undefined) ?? prev)
+            : prev;
+          return Math.min(desired, Math.max(0, incoming.treatments.length - 1));
+        });
+        setIntroIndex((prev) => {
+          const desired = isFirstLoad
+            ? ((msg.introIndex as number | undefined) ?? prev)
+            : prev;
+          return Math.min(
+            desired,
             Math.max(0, (incoming.introSequences?.length ?? 1) - 1),
-          ),
-        );
+          );
+        });
         setWebviewBaseUri(msg.webviewBaseUri ?? "");
         setContentVersion((v) => v + 1);
         setError(null);

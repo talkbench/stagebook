@@ -62,8 +62,11 @@ export interface ViewerProps {
   /**
    * Optional setter for `selectedIntroIndex`. When provided AND the
    * treatment file has 2+ intro sequences, the header renders a
-   * dropdown for picking which intro to preview. With 0 or 1 intro
-   * sequences the dropdown is suppressed (nothing useful to switch).
+   * dropdown for picking which intro to preview. The schema requires
+   * a non-empty `introSequences` array, so the only suppressed case
+   * is the single-intro-sequence file (the typical shape) — there
+   * the dropdown is omitted entirely (no static label, since the
+   * intro is implicit context for the visible stages).
    */
   onIntroIndexChange?: (index: number) => void;
 }
@@ -83,11 +86,14 @@ export function Viewer({
   const treatment = treatmentFile.treatments[selectedTreatmentIndex];
   const introSequence = treatmentFile.introSequences[selectedIntroIndex];
 
-  // Whether to render the treatment/intro selectors as dropdowns. When
-  // the host doesn't pass setters the viewer is uncontrolled — fall
-  // back to the static-label layout. With only one treatment / intro
-  // sequence the dropdown collapses to a static label so the picker
-  // doesn't add noise for the trivial case.
+  // Whether to render the treatment/intro selectors as dropdowns.
+  // When the host doesn't pass setters the viewer is uncontrolled
+  // and falls back to the static-label layout. With only one
+  // treatment the dropdown collapses to a static name label
+  // (researchers still want to see *which* treatment they're
+  // looking at). With only one intro sequence the picker is
+  // omitted entirely — the intro is implicit context, not
+  // foreground UI worth labeling.
   const showTreatmentPicker =
     !!onTreatmentIndexChange && treatmentFile.treatments.length > 1;
   const showIntroPicker =
