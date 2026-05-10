@@ -83,31 +83,62 @@ if (result.success) {
 
 ## Treatment Hydration Pipeline
 
-Before passing treatment data to Stagebook's rendering components, the platform must **hydrate** it — expand templates, validate, and resolve all placeholders. Stagebook components expect fully resolved data with no template contexts or `${field}` placeholders remaining.
+Before passing treatment data to Stagebook's rendering components, the platform must **hydrate** it — resolve any `imports:`, expand templates, validate, and resolve all placeholders. Stagebook components expect fully resolved data with no template contexts or `${field}` placeholders remaining.
 
 ```typescript
-import { treatmentFileSchema, fillTemplates } from "stagebook";
-import { load as loadYaml } from "js-yaml";
+import {
+  treatmentFileSchema,
+  fillTemplates,
+  parseTreatmentYaml,
+  resolveImportPath,
+  resolveImports,
+} from "stagebook";
 
-// 1. Load and parse YAML
-const raw = loadYaml(yamlString);
+// 1. Parse the entry-point file. Stagebook bundles a safe YAML
+//    parser; surface `imports:` separately so the host can load them.
+const { parsed: root, imports: rootImports } =
+  parseTreatmentYaml(rootYamlString);
 
-// 2. Expand templates (replaces template contexts with resolved values)
-const templates = raw.templates ?? [];
+// 2. Host-owned loading loop: read every (transitively) imported
+//    file. The host owns sync vs async, error handling, and any
+//    extra path canonicalization (symlinks, case folding); stagebook
+//    owns syntactic path normalization via `resolveImportPath`.
+const loaded = new Map();
+const queue = rootImports.map((p) => resolveImportPath(rootPath, p));
+while (queue.length > 0) {
+  const path = queue.shift();
+  if (loaded.has(path)) continue;          // dedup — prevents cycles
+  const text = await loadFile(path);       // host's loader
+  const { parsed, imports } = parseTreatmentYaml(text);
+  loaded.set(path, parsed);
+  queue.push(...imports.map((p) => resolveImportPath(path, p)));
+}
+
+// 3. Stagebook merges templates + path-rewrites file references in
+//    imported templates so they resolve relative to the entry-point
+//    file's directory. After this step imported templates are
+//    indistinguishable from inline templates.
+const mergedTemplates = resolveImports({ main: root, files: loaded });
+
+// 4. Strip imports from root, attach merged templates, expand.
+const { imports: _, ...rest } = root;
+const merged = { ...rest, templates: mergedTemplates };
 const hydrated = {
-  ...raw,
-  introSequences: fillTemplates({ obj: raw.introSequences, templates }),
-  treatments: fillTemplates({ obj: raw.treatments, templates }),
+  ...merged,
+  introSequences: fillTemplates({ obj: merged.introSequences, templates: mergedTemplates }),
+  treatments: fillTemplates({ obj: merged.treatments, templates: mergedTemplates }),
 };
 
-// 3. Validate the expanded result
+// 5. Validate the expanded result.
 const result = treatmentFileSchema.safeParse(hydrated);
 if (!result.success) throw new Error(result.error.message);
 
-// 4. Pass resolved stages to Stagebook components
-// Each treatment.gameStages[i] is now a concrete stage object
-// that can be passed directly to <Stage stage={...} />
+// 6. Pass resolved stages to Stagebook components.
 ```
+
+If your study doesn't use `imports:`, steps 2-3 are no-ops (`rootImports` is empty, `mergedTemplates` is just `root.templates`). The pipeline above accommodates both shapes.
+
+**Hosts that prefer their own parser** (JSON, TOML, DB-backed) can skip `parseTreatmentYaml` and feed already-parsed objects to `resolveImports` directly — just extract the `imports:` array yourself before recursing.
 
 **Important:** The `<Stage>` component and `<Element>` component expect **hydrated** data. If you pass a stage that still contains `{ template: "..." }` objects or `${field}` placeholders, rendering will fail. Always run `fillTemplates()` before passing data to components.
 

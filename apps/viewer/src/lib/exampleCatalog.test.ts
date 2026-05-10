@@ -177,7 +177,10 @@ describe("exampleCatalog (discovered via import.meta.glob)", () => {
     // unresolved-fields check across all examples surfaces this kind
     // of bug.
     for (const entry of exampleCatalog) {
-      const parsed = parseTreatmentYaml(entry.yaml);
+      // Use mergedYaml so any imports declared in the example are
+      // included before template expansion. For examples without
+      // imports, mergedYaml === yaml.
+      const parsed = parseTreatmentYaml(entry.mergedYaml);
       const { unresolvedFields } = expandTreatmentFile(parsed);
       expect(unresolvedFields, `${entry.id} has unresolved fields`).toEqual([]);
     }

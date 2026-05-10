@@ -1,0 +1,31 @@
+# Example: cross-file template imports (#277).
+#
+# This file (the "root" / entry point) imports a template defined in
+# `./modules/consent.stagebook.yaml`. The imported template's
+# `file:` references get path-rewritten by `resolveImports` so they
+# remain valid relative to this file's location.
+#
+# Open this file in VS Code and run "Stagebook: Preview Treatment"
+# to see the imported consent step rendered as the first intro step.
+
+imports:
+  - ./modules/consent.stagebook.yaml
+
+introSequences:
+  - name: intro
+    introSteps:
+      # Bare `{ template: ... }` invocation — splices the imported
+      # template's content into the introSteps array.
+      - template: shared_consent_step
+
+treatments:
+  - name: imports_demo
+    playerCount: 1
+    gameStages:
+      - name: main
+        duration: 60
+        elements:
+          - type: prompt
+            file: greeting.prompt.md
+          - type: submitButton
+            buttonText: Done

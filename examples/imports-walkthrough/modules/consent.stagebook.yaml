@@ -1,0 +1,22 @@
+# Example template module: a reusable consent step.
+#
+# This file has only `templates:` — no `treatments:`. It's meant to
+# be imported by another study via:
+#
+#   imports:
+#     - ./modules/consent.stagebook.yaml
+#
+# When `resolveImports` merges the templates into the consuming
+# study, every `file:` field below gets prefixed with `modules/` so
+# the path is correct relative to the importing file.
+
+templates:
+  - name: shared_consent_step
+    contentType: introExitStep
+    content:
+      name: consent
+      elements:
+        - type: prompt
+          file: consent.prompt.md
+        - type: submitButton
+          buttonText: I agree, continue

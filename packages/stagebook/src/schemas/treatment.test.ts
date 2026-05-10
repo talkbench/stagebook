@@ -2487,3 +2487,85 @@ test("groupComposition rejects a non-placeholder string", () => {
   });
   expect(result.success).toBe(false);
 });
+
+// ----------------------------------------------------------------
+// Unified file shape (#277): a Stagebook file may have any subset
+// of `imports:`, `templates:`, `treatments:`, `introSequences:`.
+// The same file can be a runtime entry point and an importable
+// source of templates — there is no separate "module file" type.
+// ----------------------------------------------------------------
+
+test("module-shape file: only `templates:`, no `treatments:` or `introSequences:`", () => {
+  const result = treatmentFileSchema.safeParse({
+    templates: [
+      {
+        name: "tipi_q1",
+        contentType: "elements",
+        content: [{ type: "prompt", file: "q1.prompt.md" }],
+      },
+    ],
+  });
+  expect(result.success).toBe(true);
+});
+
+test("module-shape file: `imports:` only, nothing else", () => {
+  const result = treatmentFileSchema.safeParse({
+    imports: ["./surveys/tipi/tipi.stagebook.yaml"],
+  });
+  expect(result.success).toBe(true);
+});
+
+test("treatment-shape file: `imports:` plus `treatments:`", () => {
+  const result = treatmentFileSchema.safeParse({
+    imports: ["./surveys/tipi/tipi.stagebook.yaml"],
+    treatments: [
+      {
+        name: "t1",
+        playerCount: 1,
+        gameStages: [
+          {
+            name: "stage1",
+            duration: 60,
+            elements: [{ type: "submitButton" }],
+          },
+        ],
+      },
+    ],
+  });
+  expect(result.success).toBe(true);
+});
+
+test("rejects non-array `imports:`", () => {
+  const result = treatmentFileSchema.safeParse({
+    imports: "./single.stagebook.yaml",
+    treatments: [
+      {
+        name: "t1",
+        playerCount: 1,
+        gameStages: [
+          {
+            name: "stage1",
+            duration: 60,
+            elements: [{ type: "submitButton" }],
+          },
+        ],
+      },
+    ],
+  });
+  expect(result.success).toBe(false);
+});
+
+test("rejects empty-string entries in `imports:`", () => {
+  const result = treatmentFileSchema.safeParse({
+    imports: [""],
+  });
+  expect(result.success).toBe(false);
+});
+
+test("entirely empty file is permitted (no imports, no treatments, no templates)", () => {
+  // Pathological but useful — lets a host represent an empty file
+  // without a parse error. Researchers' actual entry-point files will
+  // have at least `treatments:`; the host enforces that at load time.
+  const result = treatmentFileSchema.safeParse({});
+  expect(result.success).toBe(true);
+});
