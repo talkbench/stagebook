@@ -173,6 +173,18 @@ function expandedFormBannerDiagnostic(
   const result = expandAndValidate(source);
 
   if (result.expandError) {
+    // If the file declares `imports:` and the error is a missing-
+    // template lookup, it's almost certainly because the validator
+    // (sync, no fs access) couldn't load the imported module that
+    // defines the template. Suppress the false-positive banner —
+    // the Preview Treatment command (async, uses vscode.workspace.fs)
+    // does the real check.
+    if (
+      hasImports(source) &&
+      /Template ".*" not found/.test(result.expandError)
+    ) {
+      return null;
+    }
     const diag = new vscode.Diagnostic(
       new vscode.Range(0, 0, 0, 1),
       `Stagebook: template expansion failed — ${result.expandError}\n\nRun "Stagebook: Preview Expanded Templates" to investigate.`,
@@ -192,6 +204,23 @@ function expandedFormBannerDiagnostic(
   );
   diag.source = "stagebook";
   return diag;
+}
+
+/**
+ * Quick check whether the source declares any `imports:` entries.
+ * Used to suppress the post-fill banner's false-positive
+ * "template not found" errors when the missing template is
+ * almost certainly defined in an unloaded import. Done by parsing
+ * the YAML rather than regex-matching the source so we don't
+ * confuse a comment or a string value for a top-level field.
+ */
+function hasImports(source: string): boolean {
+  try {
+    const { imports } = parseStagebookYaml(source);
+    return imports.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
