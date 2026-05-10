@@ -237,9 +237,18 @@ export function validateTreatmentFileReferences(
 
   // Templates: walk every template's content for reference sites and
   // flag any with concrete (placeholder-free) references that don't
-  // resolve against `globalProducedKeys`. This catches typos in
-  // template definitions that would otherwise only surface after
-  // expansion (when the template is invoked from a treatment).
+  // resolve against `globalProducedKeys`. Catches typos in template
+  // definitions that would otherwise only surface after expansion.
+  //
+  // We use the source-walked `globalProducedKeys` (which includes
+  // every template's content via `collectKeysFromAny`), NOT the
+  // hydrated form. Reasoning: templates may be defined but not
+  // currently invoked (e.g., commented-out broadcast, work-in-progress
+  // arms). The source-walked set treats them as "available", which is
+  // the right call — we don't want to flag references to elements
+  // inside a template that the researcher hasn't yet wired up to a
+  // live invocation.
+  //
   // References containing `${...}` placeholders are deferred — they
   // resolve at fill time and we can't predict the resolved name.
   templates.forEach((tmpl, tmplIdx) => {
@@ -247,11 +256,6 @@ export function validateTreatmentFileReferences(
     const tmplPath = ["templates", tmplIdx, "content"];
     for (const site of walkTemplateContentRefSites(tmpl.content, tmplPath)) {
       if (referenceContainsPlaceholder(site.reference)) continue;
-      // Pass empty producedAt and no rank/phase context — rank-based
-      // checks (forward references, always-skip-at-load) don't apply
-      // inside template definitions; only the unknown-reference rule
-      // is meaningful here, and applyRules handles that as a fall-
-      // through when producedAt has no entry for the key.
       applyRules({
         site,
         enclosingRank: 0,
@@ -313,6 +317,43 @@ function referenceContainsPlaceholder(ref: ReferenceType): boolean {
   // Re-render to dotted form and check for `${...}` — covers
   // placeholders in source/name/path segments alike.
   return formatReference(ref).includes("${");
+}
+
+/**
+ * Returns true if `referenceKey` matches any `globalProducedKeys`
+ * entry that contains `${...}` placeholders, treating each
+ * placeholder as a wildcard `[a-zA-Z0-9_]+` segment.
+ *
+ * Handles the prefix-extension convention (see
+ * docs/researcher/templates.md): a template that produces an
+ * element with `name: ${prefix}_q1` lands in the produced-keys
+ * set as the literal `prompt_${prefix}_q1`. A reference at a
+ * caller site that resolved the prefix concretely
+ * (`self.prompt.intake_q1`) needs to match the placeholder
+ * pattern, not the literal.
+ */
+function anyPlaceholderKeyMatches(
+  referenceKey: string,
+  globalProducedKeys: Set<string>,
+): boolean {
+  for (const producedKey of globalProducedKeys) {
+    if (!producedKey.includes("${")) continue;
+    const pattern =
+      "^" +
+      escapeRegex(producedKey).replace(
+        // After escapeRegex, `${name}` becomes `\$\{name\}`. Match
+        // that escaped form and replace with the wildcard.
+        /\\\$\\\{[a-zA-Z0-9_]+\\\}/g,
+        "[a-zA-Z0-9_]+",
+      ) +
+      "$";
+    if (new RegExp(pattern).test(referenceKey)) return true;
+  }
+  return false;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // ---------------------------------------------------------------------------
@@ -671,7 +712,20 @@ function applyRules({
     // treatment (concrete stages or templates). Almost always a typo on
     // the element name (e.g. `timeline.storySegment2` when the actual
     // element is `storySegment`).
-    if (globalProducedKeys && !globalProducedKeys.has(referenceKey)) {
+    //
+    // Wildcard fallback: a producing template may use `${prefix}` in its
+    // element names (e.g. `prompt_${prefix}_age`), which lands in
+    // `globalProducedKeys` literally. A concrete reference at a call
+    // site (e.g. `self.prompt.intake_age`, where the caller invoked
+    // the template with `prefix: intake`) won't match the literal —
+    // but it WOULD match a regex built by treating `${...}` as a
+    // wildcard. Accept those, since flagging would be a false
+    // positive on the prefix-extension convention (templates.md).
+    if (
+      globalProducedKeys &&
+      !globalProducedKeys.has(referenceKey) &&
+      !anyPlaceholderKeyMatches(referenceKey, globalProducedKeys)
+    ) {
       issues.push({
         path: site.path,
         message: `Reference "${refStr}" doesn't match any ${refType} element in the treatment. Check the name — no element produces the storage key "${referenceKey}".`,
