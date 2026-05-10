@@ -27,6 +27,7 @@ import {
   resolveImports,
   treatmentFileSchema,
   type ParsedFile,
+  type TreatmentFileType,
 } from "stagebook";
 
 const diagnosticCollection =
@@ -121,6 +122,21 @@ function validateTreatmentFile(document: vscode.TextDocument): void {
     return diag;
   });
 
+  // Post-fill banner. The source schema (`treatmentFileSchema`) is
+  // permissive enough to accept un-expanded template invocations
+  // (via `altTemplateContext`), so collisions / structural errors
+  // hidden inside template-expanded content don't surface in the
+  // squiggle pass above. Run a single expand+validate pass and, if
+  // it produces additional diagnostics, surface a single banner at
+  // line 1 directing the researcher to the expand command — where
+  // the expanded YAML's diagnostics are anchored to natural
+  // expanded-line positions and easy to navigate. Mapping post-fill
+  // paths back to source positions is genuinely hard (templates
+  // multiply structure); the expand-preview pivot sidesteps it
+  // entirely.
+  const banner = expandedFormBannerDiagnostic(source);
+  if (banner) vscodeDiagnostics.push(banner);
+
   diagnosticCollection.set(document.uri, vscodeDiagnostics);
 
   // File existence checking (async — updates diagnostics after stat)
@@ -137,6 +153,45 @@ function validateTreatmentFile(document: vscode.TextDocument): void {
       version,
     );
   }
+}
+
+/**
+ * Quick check whether the file's *expanded* form has issues the
+ * source-level validator missed. Returns a single line-1 diagnostic
+ * pointing the researcher at the expand-preview command, or null if
+ * the expanded form is clean.
+ *
+ * Intentionally does NOT load `imports:` (the lib helpers are sync
+ * and live without filesystem access). Files using imports will
+ * get a banner only for issues in the inline templates / treatments;
+ * import-side issues surface when the researcher actually runs the
+ * preview commands.
+ */
+function expandedFormBannerDiagnostic(
+  source: string,
+): vscode.Diagnostic | null {
+  const result = expandAndValidate(source);
+
+  if (result.expandError) {
+    const diag = new vscode.Diagnostic(
+      new vscode.Range(0, 0, 0, 1),
+      `Stagebook: template expansion failed — ${result.expandError}\n\nRun "Stagebook: Preview Expanded Templates" to investigate.`,
+      vscode.DiagnosticSeverity.Error,
+    );
+    diag.source = "stagebook";
+    return diag;
+  }
+
+  if (result.diagnostics.length === 0) return null;
+
+  const count = result.diagnostics.length;
+  const diag = new vscode.Diagnostic(
+    new vscode.Range(0, 0, 0, 1),
+    `Stagebook: ${count} validation issue${count === 1 ? "" : "s"} in this file's expanded form. Run "Stagebook: Preview Expanded Templates" to see them at their expanded-line positions.`,
+    vscode.DiagnosticSeverity.Warning,
+  );
+  diag.source = "stagebook";
+  return diag;
 }
 
 /**
@@ -594,6 +649,10 @@ function getNonce(): string {
   return nonce;
 }
 
+type PreviewResult =
+  | { ok: true; data: TreatmentFileType }
+  | { ok: false; error: string };
+
 /**
  * Parse a Stagebook treatment file for the preview command.
  *
@@ -605,16 +664,24 @@ function getNonce(): string {
  * expanded via `fillTemplates` and schema-validated.
  *
  * Async because import loading goes through `vscode.workspace.fs`.
- * Returns `null` on any failure (parse, missing import, validation)
- * — the caller surfaces a generic "could not parse" message and
- * leaves precise diagnostics to the in-editor validator.
+ * Returns `{ ok: false, error }` on any failure (parse, missing
+ * import, validation) so the caller can surface the actual error to
+ * the user — falling back to a generic "could not parse" message
+ * loses too much signal, especially for schema-validation failures
+ * with hundreds of issues spread across the file.
  */
-async function parseTreatmentForPreview(source: string, rootDir: vscode.Uri) {
+async function parseTreatmentForPreview(
+  source: string,
+  rootDir: vscode.Uri,
+): Promise<PreviewResult> {
   let rootParse: ReturnType<typeof parseStagebookYaml>;
   try {
     rootParse = parseStagebookYaml(source);
-  } catch {
-    return null;
+  } catch (err) {
+    return {
+      ok: false,
+      error: `YAML parse failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
   const root = rootParse.parsed as ParsedFile;
 
@@ -637,17 +704,20 @@ async function parseTreatmentForPreview(source: string, rootDir: vscode.Uri) {
     let bytes: Uint8Array;
     try {
       bytes = await vscode.workspace.fs.readFile(importUri);
-    } catch {
-      // Import file not found / unreadable. Could surface a real
-      // diagnostic here in a follow-up; for now the preview just
-      // refuses to render.
-      return null;
+    } catch (err) {
+      return {
+        ok: false,
+        error: `Could not read imported file "${importPath}": ${err instanceof Error ? err.message : String(err)}`,
+      };
     }
     let importedParse: ReturnType<typeof parseStagebookYaml>;
     try {
       importedParse = parseStagebookYaml(decoder.decode(bytes));
-    } catch {
-      return null;
+    } catch (err) {
+      return {
+        ok: false,
+        error: `YAML parse failed in imported file "${importPath}": ${err instanceof Error ? err.message : String(err)}`,
+      };
     }
     loaded.set(importPath, importedParse.parsed as ParsedFile);
     for (const next of importedParse.imports) {
@@ -659,8 +729,11 @@ async function parseTreatmentForPreview(source: string, rootDir: vscode.Uri) {
   let mergedTemplates: unknown[];
   try {
     mergedTemplates = resolveImports({ main: root, files: loaded });
-  } catch {
-    return null;
+  } catch (err) {
+    return {
+      ok: false,
+      error: `Import resolution failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
 
   // Strip `imports:` from the root and replace `templates:` with the
@@ -690,14 +763,34 @@ async function parseTreatmentForPreview(source: string, rootDir: vscode.Uri) {
         allowUnresolved: true,
       });
       expanded = result as Record<string, unknown>;
-    } catch {
-      return null;
+    } catch (err) {
+      return {
+        ok: false,
+        error: `Template expansion failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
     }
   }
 
   const parsed = treatmentFileSchema.safeParse(expanded);
-  if (!parsed.success) return null;
-  return parsed.data;
+  if (!parsed.success) {
+    const issues = parsed.error.issues;
+    const summary = issues
+      .slice(0, 3)
+      .map(
+        (i) =>
+          `  • ${i.path.length > 0 ? i.path.join(".") : "(root)"} — ${i.message}`,
+      )
+      .join("\n");
+    const moreNote =
+      issues.length > 3 ? `\n…and ${issues.length - 3} more.` : "";
+    return {
+      ok: false,
+      error:
+        `Validation failed (${issues.length} issue${issues.length === 1 ? "" : "s"}). ` +
+        `Run "Stagebook: Preview Expanded Templates" to see them at their expanded-form positions.\n\n${summary}${moreNote}`,
+    };
+  }
+  return { ok: true, data: parsed.data };
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -814,8 +907,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // Register stage preview webview command
   let previewPanel: vscode.WebviewPanel | undefined;
   // Mutable state updated on each command invocation — avoids stale closures
-  let currentTreatment: Awaited<ReturnType<typeof parseTreatmentForPreview>> =
-    null;
+  let currentTreatment: TreatmentFileType | null = null;
   let currentTreatmentUri: vscode.Uri | undefined;
   let currentTreatmentDir: vscode.Uri | undefined;
   let currentWorkspaceRootFsPath: string | undefined;
@@ -830,13 +922,20 @@ export function activate(context: vscode.ExtensionContext): void {
 
       const source = editor.document.getText();
       const previewRootDir = vscode.Uri.joinPath(editor.document.uri, "..");
-      currentTreatment = await parseTreatmentForPreview(source, previewRootDir);
-      if (!currentTreatment) {
+      const previewResult = await parseTreatmentForPreview(
+        source,
+        previewRootDir,
+      );
+      if (!previewResult.ok) {
         vscode.window.showErrorMessage(
-          "Could not parse treatment file for preview.",
+          `Preview failed.\n\n${previewResult.error}`,
+          {
+            modal: true,
+          },
         );
         return;
       }
+      currentTreatment = previewResult.data;
 
       const workspaceFolder =
         vscode.workspace.getWorkspaceFolder(editor.document.uri) ??
@@ -900,17 +999,18 @@ export function activate(context: vscode.ExtensionContext): void {
             try {
               const doc =
                 await vscode.workspace.openTextDocument(currentTreatmentUri);
-              const parsed = await parseTreatmentForPreview(
+              const refreshResult = await parseTreatmentForPreview(
                 doc.getText(),
                 treatmentDir,
               );
-              if (!parsed) {
+              if (!refreshResult.ok) {
                 vscode.window.showErrorMessage(
-                  "Refresh failed: could not parse treatment file.",
+                  `Refresh failed.\n\n${refreshResult.error}`,
+                  { modal: true },
                 );
                 return;
               }
-              currentTreatment = parsed;
+              currentTreatment = refreshResult.data;
               // Panel may have been disposed while we were awaiting above.
               if (!previewPanel) return;
               const baseUri = panel.webview
@@ -918,7 +1018,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 .toString();
               panel.webview.postMessage({
                 type: "treatment",
-                treatmentFile: parsed,
+                treatmentFile: refreshResult.data,
                 introIndex: 0,
                 treatmentIndex: 0,
                 webviewBaseUri: baseUri,

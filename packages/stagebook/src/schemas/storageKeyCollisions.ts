@@ -19,21 +19,37 @@
  * per-element `name:` override (e.g. `name: pretest_q1` vs
  * `name: posttest_q1`) to disambiguate.
  *
- * Key derivation mirrors the save() calls in src/components/elements/:
- *   audio        → `audio_${name ?? file}`
+ * Key derivation mirrors the save() calls in src/components/elements/.
+ * Per-type rules:
+ *
+ *   audio        → checked when `name:` is set. Unnamed audios fall
+ *                   back to a position-based key
+ *                   (`audio_<progressLabel>_<file>`) at runtime
+ *                   (Element.tsx:audio case), so two unnamed audios
+ *                   with the same file in different stages get
+ *                   distinct storage keys naturally.
  *   prompt       → `prompt_${name}` (runtime fallback uses progressLabel +
  *                   metadata, which isn't derivable from the YAML alone, so
  *                   we only check explicitly-named prompts)
- *   survey       → `survey_${name ?? surveyName}`
+ *   survey       → checked when `name:` is set. Unnamed surveys fall
+ *                   back to a position-based key at runtime, like audio.
  *   submitButton → `submitButton_${name}` (runtime fallback is progressLabel;
  *                   only checked when `name` is set)
- *   mediaPlayer  → `mediaPlayer_${name ?? file}` (runtime falls back to the
- *                   raw `file` field at Element.tsx:277, before URL resolution)
+ *   mediaPlayer  → checked when `name:` is set. Unnamed mediaPlayers fall
+ *                   back to a position-based key at runtime, like audio.
  *   qualtrics    → fixed key `qualtricsDataReady` (Qualtrics.tsx:50). Any
  *                   two qualtrics elements in the same scope collide
  *                   regardless of name/url, since the key is constant.
  *   timeline     → `timeline_${name}` (name is required by the schema)
  *   trackedLink  → `trackedLink_${name}` (name is required by the schema)
+ *
+ * Why the file/surveyName fallbacks aren't checked: a researcher who
+ * doesn't `name:` an audio is opting out of cross-stage data
+ * tracking — they just want the sound to play. The runtime gives
+ * each occurrence a unique position-derived key, so there's no
+ * silent overwrite to flag. Researchers who want stable cross-stage
+ * names set `name:` explicitly, at which point the collision
+ * detector kicks in.
  */
 
 export interface StorageKeyCollision {
@@ -57,23 +73,20 @@ function storageKeyFor(element: unknown): string | null {
   const el = element as Record<string, unknown>;
   if (typeof el.type !== "string") return null;
   const name = strField(el, "name");
-  let suffix: string | null;
   switch (el.type) {
+    // For these types, only check collisions when the researcher set
+    // `name:` explicitly. Unnamed elements get a position-based key
+    // at runtime (Element.tsx prepends `progressLabel`), so there's
+    // no collision to flag — opt in to cross-stage tracking by
+    // naming.
     case "audio":
-      suffix = name ?? strField(el, "file");
-      break;
     case "survey":
-      suffix = name ?? strField(el, "surveyName");
-      break;
     case "mediaPlayer":
-      suffix = name ?? strField(el, "file");
-      break;
     case "prompt":
     case "submitButton":
     case "timeline":
     case "trackedLink":
-      suffix = name;
-      break;
+      return name ? `${el.type}_${name}` : null;
     case "qualtrics":
       // Qualtrics writes to a fixed key regardless of element identity, so
       // any two qualtrics elements in the same scope collide. Return a
@@ -82,7 +95,6 @@ function storageKeyFor(element: unknown): string | null {
     default:
       return null;
   }
-  return suffix ? `${el.type}_${suffix}` : null;
 }
 
 function scanElements(
