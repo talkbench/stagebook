@@ -34,29 +34,29 @@
       "editor/context": [
         {
           "command": "stagebook.previewExpandedTemplates",
-          "when": "resourceLangId == treatmentsYaml",
+          "when": "resourceLangId == stagebookYaml",
           "group": "navigation"
         },
         {
           "command": "stagebook.previewStage",
-          "when": "resourceLangId == treatmentsYaml",
+          "when": "resourceLangId == stagebookYaml",
           "group": "navigation"
         }
       ]
     },
     "languages": [
       {
-        "id": "treatmentsYaml",
+        "id": "stagebookYaml",
         "aliases": [
           "Treatments YAML"
         ],
         "extensions": [
-          ".treatments.yaml"
+          ".stagebook.yaml"
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./icons/treatments-light.svg",
-          "dark": "./icons/treatments-dark.svg"
+          "light": "./icons/stagebook-light.svg",
+          "dark": "./icons/stagebook-dark.svg"
         }
       },
       {
@@ -75,9 +75,9 @@
     ],
     "grammars": [
       {
-        "language": "treatmentsYaml",
-        "scopeName": "source.treatments-yaml",
-        "path": "./syntaxes/treatmentsYaml.tmLanguage.json"
+        "language": "stagebookYaml",
+        "scopeName": "source.stagebook-yaml",
+        "path": "./syntaxes/stagebookYaml.tmLanguage.json"
       },
       {
         "language": "stagebookPrompt",
@@ -86,18 +86,18 @@
       }
     ],
     "configurationDefaults": {
-      "[treatmentsYaml]": {
+      "[stagebookYaml]": {
         "editor.tabSize": 2,
         "editor.insertSpaces": true,
         "editor.semanticHighlighting.enabled": true
       },
       "editor.semanticTokenColorCustomizations": {
         "rules": {
-          "type:treatmentsYaml": "#4EC9B0",
-          "keyword:treatmentsYaml": "#C586C0",
-          "variable:treatmentsYaml": "#9CDCFE",
-          "string:treatmentsYaml": "#DCDCAA",
-          "property:treatmentsYaml": "#569CD6"
+          "type:stagebookYaml": "#4EC9B0",
+          "keyword:stagebookYaml": "#C586C0",
+          "variable:stagebookYaml": "#9CDCFE",
+          "string:stagebookYaml": "#DCDCAA",
+          "property:stagebookYaml": "#569CD6"
         }
       }
     }

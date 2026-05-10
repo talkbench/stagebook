@@ -27,7 +27,7 @@ Both reference `prompt.offer` at `position: 0`, but the `showToPositions` filter
 
 ## Running it
 
-From the viewer's landing page click the **ultimatum-game** example card, or paste a GitHub URL to this repo's `ultimatum-game.treatments.yaml` into the URL input. To run the dev viewer locally:
+From the viewer's landing page click the **ultimatum-game** example card, or paste a GitHub URL to this repo's `ultimatum-game.stagebook.yaml` into the URL input. To run the dev viewer locally:
 
 ```
 npm run dev -w stagebook-viewer

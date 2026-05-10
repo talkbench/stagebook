@@ -39,8 +39,8 @@ const validationVersions = new Map<string, number>();
 
 function isTreatmentsYaml(document: vscode.TextDocument): boolean {
   return (
-    document.languageId === "treatmentsYaml" ||
-    document.fileName.endsWith(".treatments.yaml")
+    document.languageId === "stagebookYaml" ||
+    document.fileName.endsWith(".stagebook.yaml")
   );
 }
 
@@ -52,7 +52,7 @@ function isStagebookPrompt(document: vscode.TextDocument): boolean {
 }
 
 function validateDocument(document: vscode.TextDocument): void {
-  // The expanded-preview virtual documents also carry the treatmentsYaml
+  // The expanded-preview virtual documents also carry the stagebookYaml
   // language (for syntax highlighting), but their diagnostics are owned by
   // ExpandedTemplatesProvider. Skip them here to avoid clobbering.
   if (document.uri.scheme === EXPANDED_SCHEME) return;
@@ -627,7 +627,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // Register semantic token provider for treatment files
   context.subscriptions.push(
     vscode.languages.registerDocumentSemanticTokensProvider(
-      { language: "treatmentsYaml" },
+      { language: "stagebookYaml" },
       new TreatmentSemanticTokenProvider(),
       tokenLegend,
     ),
@@ -636,7 +636,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // Register file path quick-fix provider
   context.subscriptions.push(
     vscode.languages.registerCodeActionsProvider(
-      "treatmentsYaml",
+      "stagebookYaml",
       new FilePathQuickFixProvider(),
       {
         providedCodeActionKinds:
@@ -650,7 +650,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // that come from `safeParseTreatmentFile`.
   context.subscriptions.push(
     vscode.languages.registerCodeActionsProvider(
-      "treatmentsYaml",
+      "stagebookYaml",
       new UnrecognizedKeyQuickFixProvider(),
       {
         providedCodeActionKinds:
@@ -665,7 +665,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // provider can hit `workspace.findFiles`.
   context.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(
-      "treatmentsYaml",
+      "stagebookYaml",
       new FilePathCompletionProvider(),
       ":",
       "/",
@@ -692,7 +692,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const editor = vscode.window.activeTextEditor;
         if (!editor || !isTreatmentsYaml(editor.document)) {
           vscode.window.showWarningMessage(
-            "Open a .treatments.yaml file first.",
+            "Open a .stagebook.yaml file first.",
           );
           return;
         }
@@ -708,18 +708,18 @@ export function activate(context: vscode.ExtensionContext): void {
           preview: true,
           preserveFocus: true,
         });
-        // Set language for syntax highlighting. Using treatmentsYaml (rather
+        // Set language for syntax highlighting. Using stagebookYaml (rather
         // than plain yaml) wires up the TextMate grammar and semantic-tokens
         // provider, so the expanded preview gets the same colorization as
         // source treatment files (element types, comparators, template
         // variables, schema keywords).
-        await vscode.languages.setTextDocumentLanguage(doc, "treatmentsYaml");
+        await vscode.languages.setTextDocumentLanguage(doc, "stagebookYaml");
       },
     ),
   );
 
   // Auto-refresh the expanded preview when the source changes. The preview
-  // document itself also has languageId "treatmentsYaml"; skip it by scheme
+  // document itself also has languageId "stagebookYaml"; skip it by scheme
   // so we don't feed its (read-only, virtual) text back as a "source".
   context.subscriptions.push(
     vscode.workspace.onDidChangeTextDocument((e) => {
@@ -744,7 +744,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("stagebook.previewStage", () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor || !isTreatmentsYaml(editor.document)) {
-        vscode.window.showWarningMessage("Open a .treatments.yaml file first.");
+        vscode.window.showWarningMessage("Open a .stagebook.yaml file first.");
         return;
       }
 

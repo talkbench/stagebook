@@ -335,7 +335,7 @@ For example, given this file structure:
 
 ```
 my-study/
-  study.treatments.yaml
+  study.stagebook.yaml
   consent.prompt.md
   prompts/
     question.prompt.md

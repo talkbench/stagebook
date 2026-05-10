@@ -145,7 +145,7 @@ All schemas export corresponding TypeScript types (e.g., `TreatmentType`, `Stage
 
 ### For Researchers (designing experiments)
 
-- [Treatment Files](docs/researcher/treatment-files.md) — how to structure a `.treatments.yaml` file
+- [Treatment Files](docs/researcher/treatment-files.md) — how to structure a `.stagebook.yaml` file
 - [Page Elements](docs/researcher/elements.md) — all element types and their options
 - [Prompt Files](docs/researcher/prompts.md) — markdown format for prompts, sliders, surveys
 - [Conditions & References](docs/researcher/conditions.md) — conditional display and data references

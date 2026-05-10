@@ -32,8 +32,8 @@ describe("buildCatalog", () => {
   it("returns one entry per treatment YAML, sorted by id", () => {
     const catalog = buildCatalog(
       {
-        "/root/examples/b-example/foo.treatments.yaml": SAMPLE_YAML,
-        "/root/examples/a-example/foo.treatments.yaml": SAMPLE_YAML,
+        "/root/examples/b-example/foo.stagebook.yaml": SAMPLE_YAML,
+        "/root/examples/a-example/foo.stagebook.yaml": SAMPLE_YAML,
       },
       {},
     );
@@ -42,7 +42,7 @@ describe("buildCatalog", () => {
 
   it("uses the first treatment's name as the title and notes as description", () => {
     const [entry] = buildCatalog(
-      { "/root/examples/demo/foo.treatments.yaml": SAMPLE_YAML },
+      { "/root/examples/demo/foo.stagebook.yaml": SAMPLE_YAML },
       {},
     );
     expect(entry.title).toBe("Sample treatment title");
@@ -51,7 +51,7 @@ describe("buildCatalog", () => {
 
   it("collects prompts under the example directory, keyed by relative path", () => {
     const [entry] = buildCatalog(
-      { "/root/examples/demo/foo.treatments.yaml": SAMPLE_YAML },
+      { "/root/examples/demo/foo.stagebook.yaml": SAMPLE_YAML },
       {
         "/root/examples/demo/prompts/x.prompt.md":
           "---\ntype: noResponse\n---\nbody\n---\n",
@@ -64,7 +64,7 @@ describe("buildCatalog", () => {
 
   it("picks up the example's sibling README.md into the `readme` field", () => {
     const [entry] = buildCatalog(
-      { "/root/examples/demo/foo.treatments.yaml": SAMPLE_YAML },
+      { "/root/examples/demo/foo.stagebook.yaml": SAMPLE_YAML },
       {
         "/root/examples/demo/README.md": "# Demo study\n\nOverview text.",
         "/root/examples/other/README.md": "ignored",
@@ -76,7 +76,7 @@ describe("buildCatalog", () => {
 
   it("does NOT mix README.md into the `prompts` field", () => {
     const [entry] = buildCatalog(
-      { "/root/examples/demo/foo.treatments.yaml": SAMPLE_YAML },
+      { "/root/examples/demo/foo.stagebook.yaml": SAMPLE_YAML },
       {
         "/root/examples/demo/README.md": "# Demo",
         "/root/examples/demo/prompts/x.prompt.md":
@@ -89,7 +89,7 @@ describe("buildCatalog", () => {
 
   it("leaves `readme` undefined when no README.md is bundled", () => {
     const [entry] = buildCatalog(
-      { "/root/examples/demo/foo.treatments.yaml": SAMPLE_YAML },
+      { "/root/examples/demo/foo.stagebook.yaml": SAMPLE_YAML },
       {},
     );
     expect(entry.readme).toBeUndefined();
@@ -101,7 +101,7 @@ describe("buildCatalog", () => {
       "",
     );
     const [entry] = buildCatalog(
-      { "/root/examples/demo/foo.treatments.yaml": yaml },
+      { "/root/examples/demo/foo.stagebook.yaml": yaml },
       {},
     );
     expect(entry.notes).toBeUndefined();
@@ -111,7 +111,7 @@ describe("buildCatalog", () => {
 describe("createExampleContentFns", () => {
   it("resolves getTextContent from bundled prompts", async () => {
     const [entry] = buildCatalog(
-      { "/root/examples/demo/foo.treatments.yaml": SAMPLE_YAML },
+      { "/root/examples/demo/foo.stagebook.yaml": SAMPLE_YAML },
       {
         "/root/examples/demo/prompts/x.prompt.md": "hello",
       },
@@ -124,7 +124,7 @@ describe("createExampleContentFns", () => {
 
   it("rejects getTextContent for paths not in the example", async () => {
     const [entry] = buildCatalog(
-      { "/root/examples/demo/foo.treatments.yaml": SAMPLE_YAML },
+      { "/root/examples/demo/foo.stagebook.yaml": SAMPLE_YAML },
       {},
     );
     const fns = createExampleContentFns(entry);
@@ -135,7 +135,7 @@ describe("createExampleContentFns", () => {
 
   it("serves README.md via getTextContent when bundled", async () => {
     const [entry] = buildCatalog(
-      { "/root/examples/demo/foo.treatments.yaml": SAMPLE_YAML },
+      { "/root/examples/demo/foo.stagebook.yaml": SAMPLE_YAML },
       { "/root/examples/demo/README.md": "# Demo" },
     );
     const fns = createExampleContentFns(entry);
@@ -144,7 +144,7 @@ describe("createExampleContentFns", () => {
 
   it("rejects getTextContent for README.md when not bundled", async () => {
     const [entry] = buildCatalog(
-      { "/root/examples/demo/foo.treatments.yaml": SAMPLE_YAML },
+      { "/root/examples/demo/foo.stagebook.yaml": SAMPLE_YAML },
       {},
     );
     const fns = createExampleContentFns(entry);
@@ -211,7 +211,7 @@ describe("prepareExampleTreatment", () => {
     // Sanity: examples that don't use templates are still parsed
     // correctly and produce the same single-treatment result.
     const [entry] = buildCatalog(
-      { "/root/examples/demo/foo.treatments.yaml": SAMPLE_YAML },
+      { "/root/examples/demo/foo.stagebook.yaml": SAMPLE_YAML },
       {},
     );
     const prepared = prepareExampleTreatment(entry);

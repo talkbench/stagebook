@@ -23,13 +23,13 @@ The platform-coupled elements render as skeleton placeholders in the viewer — 
 
 ## How to read the file
 
-Open `walkthrough.treatments.yaml` in the viewer (or any editor) and scan top-to-bottom. Each stage, element, and template carries a `notes:` field explaining what it's demonstrating — the viewer surfaces these in the sidebar, and elements with notes get a small info-icon overlay you can click to focus that note.
+Open `walkthrough.stagebook.yaml` in the viewer (or any editor) and scan top-to-bottom. Each stage, element, and template carries a `notes:` field explaining what it's demonstrating — the viewer surfaces these in the sidebar, and elements with notes get a small info-icon overlay you can click to focus that note.
 
 The `notes:` fields are researcher documentation, not participant-facing content. Participant-facing copy lives in the `prompts/` directory as individual `*.prompt.md` files.
 
 ## Running it
 
-From the viewer's landing page you can either click the **annotated-walkthrough** example card, or paste a GitHub URL to this repo's `walkthrough.treatments.yaml` into the URL input and press Load. To run the dev viewer locally:
+From the viewer's landing page you can either click the **annotated-walkthrough** example card, or paste a GitHub URL to this repo's `walkthrough.stagebook.yaml` into the URL input and press Load. To run the dev viewer locally:
 
 ```
 npm run dev -w stagebook-viewer

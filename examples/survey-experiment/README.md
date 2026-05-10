@@ -28,7 +28,7 @@ The viewer's time scrubber lets you preview the participant's view at each break
 
 ## Running it
 
-From the viewer's landing page click the **survey-experiment** example card, or paste a GitHub URL to this repo's `survey-experiment.treatments.yaml` into the URL input. To run the dev viewer locally:
+From the viewer's landing page click the **survey-experiment** example card, or paste a GitHub URL to this repo's `survey-experiment.stagebook.yaml` into the URL input. To run the dev viewer locally:
 
 ```
 npm run dev -w stagebook-viewer

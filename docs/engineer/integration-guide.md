@@ -41,7 +41,7 @@ import { load as loadYaml } from "js-yaml";
 import { readFileSync } from "fs";
 
 // Load and parse
-const raw = loadYaml(readFileSync("study.treatments.yaml", "utf-8"));
+const raw = loadYaml(readFileSync("study.stagebook.yaml", "utf-8"));
 
 // Expand templates
 const templates = raw.templates ?? [];

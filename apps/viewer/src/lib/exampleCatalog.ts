@@ -74,10 +74,11 @@ function buildEntry(
 // `import.meta.glob` inlines every matched file's content at build
 // time, so the bundle is only rebuilt when an example is added,
 // removed, or edited — not on every build.
-const yamlByPath = import.meta.glob(
-  "../../../../examples/*/*.treatments.yaml",
-  { query: "?raw", import: "default", eager: true },
-) as Record<string, string>;
+const yamlByPath = import.meta.glob("../../../../examples/*/*.stagebook.yaml", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
 
 const textByPath = import.meta.glob(
   ["../../../../examples/**/*.prompt.md", "../../../../examples/*/README.md"],
@@ -97,7 +98,9 @@ export const exampleCatalog: ExampleEntry[] = buildCatalog(
  * single-button "Ready to view" state instead of showing radios for
  * each broadcasted variant. (Issue #229.)
  */
-export function prepareExampleTreatment(entry: ExampleEntry): TreatmentFileType {
+export function prepareExampleTreatment(
+  entry: ExampleEntry,
+): TreatmentFileType {
   const parsed = parseTreatmentYaml(entry.yaml);
   const { result } = expandTreatmentFile(parsed);
   return result;

@@ -1,6 +1,6 @@
 # Writing Treatment Files
 
-A treatment file is a YAML document (`.treatments.yaml`) that defines the complete flow of an interactive experiment. It specifies when and to whom different elements are displayed, under what conditions, and in what sequence — but not the content itself. Content such as prompts, instructions, and surveys are written separately in Markdown files and referenced within the treatment file.
+A treatment file is a YAML document (`.stagebook.yaml`) that defines the complete flow of an interactive experiment. It specifies when and to whom different elements are displayed, under what conditions, and in what sequence — but not the content itself. Content such as prompts, instructions, and surveys are written separately in Markdown files and referenced within the treatment file.
 
 ## File Structure
 

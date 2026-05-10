@@ -19,7 +19,7 @@ interface Example {
 const EXAMPLES: Example[] = [
   {
     name: "annotated-walkthrough",
-    treatmentFile: "annotated-walkthrough/walkthrough.treatments.yaml",
+    treatmentFile: "annotated-walkthrough/walkthrough.stagebook.yaml",
   },
 ];
 

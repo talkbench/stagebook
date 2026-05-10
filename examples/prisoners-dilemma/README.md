@@ -35,7 +35,7 @@ The two asymmetric outcomes use the same prompt files split across both perspect
 
 ## Running it
 
-From the viewer's landing page click the **prisoners-dilemma** example card, or paste a GitHub URL to this repo's `prisoners-dilemma.treatments.yaml` into the URL input. To run the dev viewer locally:
+From the viewer's landing page click the **prisoners-dilemma** example card, or paste a GitHub URL to this repo's `prisoners-dilemma.stagebook.yaml` into the URL input. To run the dev viewer locally:
 
 ```
 npm run dev -w stagebook-viewer

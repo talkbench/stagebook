@@ -8,7 +8,7 @@ All schemas are [Zod](https://zod.dev/) objects. Use `.safeParse(data)` for vali
 
 | Export | Description |
 |--------|-------------|
-| `treatmentFileSchema` | Top-level schema for `.treatments.yaml` files |
+| `treatmentFileSchema` | Top-level schema for `.stagebook.yaml` files |
 | `treatmentSchema` | Single treatment (name, playerCount, gameStages, exitSequence) |
 | `stageSchema` | Game stage (name, duration, elements, discussion) |
 | `elementSchema` | Any element type (discriminated union on `type`) |
