@@ -47,12 +47,42 @@ test.describe("Select", () => {
     await expect(component.locator("option")).toHaveCount(4);
     await expect(component).toContainText("Choose a fruit…");
     // The placeholder is the implicit selection when no value is set.
-    await expect(component.locator("select")).toHaveValue("");
+    // It uses an internal sentinel value (not "") so it can't collide
+    // with a researcher-authored option whose key is "".
+    const placeholderValue = "__stagebook_select_placeholder__";
+    await expect(component.locator("select")).toHaveValue(placeholderValue);
     // And it's disabled — researchers can't pick the placeholder as a
     // real answer.
-    await expect(component.locator('option[value=""]')).toHaveAttribute(
-      "disabled",
-      "",
+    await expect(
+      component.locator(`option[value="${placeholderValue}"]`),
+    ).toHaveAttribute("disabled", "");
+  });
+
+  test("placeholder sentinel doesn't collide with empty-string option key", async ({
+    mount,
+  }) => {
+    // A response line like `- ` (just the dash) parses to an empty
+    // option string. Using "" as the placeholder value would have
+    // made it impossible to select the empty option. Sentinel value
+    // sidesteps this entirely.
+    const optsWithEmptyKey = [
+      { key: "", value: "(no answer)" },
+      { key: "yes", value: "Yes" },
+      { key: "no", value: "No" },
+    ];
+    const component = await mount(
+      <Select
+        options={optsWithEmptyKey}
+        onChange={() => {}}
+        placeholder="Pick…"
+      />,
+    );
+    // Both the placeholder and the empty-key option exist with
+    // distinct values — no collision.
+    await expect(component.locator("option")).toHaveCount(4);
+    await expect(component.locator('option[value=""]')).toHaveCount(1);
+    await expect(component.locator('option[value=""]')).toContainText(
+      "(no answer)",
     );
   });
 
@@ -60,7 +90,13 @@ test.describe("Select", () => {
     mount,
   }) => {
     const component = await mount(<MockSelect options={options} />);
-    // Nothing selected initially (no value, no placeholder).
+    // No tracked value initially. The browser visibly defaults to the
+    // first option (standard <select> behavior); MockSelect's
+    // `selected-value` div is empty until the user actually changes
+    // the selection. Callers that want the visible-vs-saved state to
+    // line up should either pass an initial `value` or use a
+    // placeholder. (See also the dropdown-prompt auto-save in
+    // Prompt.tsx, which handles this for the dropdown prompt case.)
     await component.locator("select").selectOption("b");
     await expect(
       component.locator('[data-testid="selected-value"]'),

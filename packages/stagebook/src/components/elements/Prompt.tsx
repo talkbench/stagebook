@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Markdown } from "../form/Markdown.js";
 import { RadioGroup } from "../form/RadioGroup.js";
 import { CheckboxGroup } from "../form/CheckboxGroup.js";
@@ -133,6 +133,15 @@ export function Prompt({
     debugMessages,
   };
 
+  // Track whether we've auto-saved the dropdown default for this
+  // mount. Without this, the visual state ("Option A is shown
+  // selected because that's the browser default for an uncontrolled
+  // <select>") would diverge from the saved state ("nothing — the
+  // participant didn't interact"). Only fires when no placeholder is
+  // configured (with a placeholder, the dropdown intentionally shows
+  // "Pick one…" and the participant must explicitly choose).
+  const dropdownDefaultSavedRef = useRef(false);
+
   const saveData = useCallback(
     (newValue: unknown, recordData: typeof record, label?: string) => {
       const updatedRecord = {
@@ -172,6 +181,39 @@ export function Prompt({
     },
     [saveData],
   );
+
+  // Auto-save the dropdown's first option as the participant's
+  // default when no placeholder is configured and there's no prior
+  // saved value. The browser visually selects the first <option> by
+  // default — this keeps the saved data aligned with what the
+  // participant sees, so a prompt that "looks answered" is in fact
+  // recorded as answered. With a placeholder, the dropdown shows
+  // "Pick one…" and the participant must explicitly choose, so no
+  // auto-save.
+  //
+  // The ref guard means the save happens at most once per mount even
+  // though the effect re-runs on prop changes — so dependency churn
+  // from `record`/`responses` being recomputed each render is fine.
+  const firstOption = responses[0];
+  // `metadata.placeholder` only exists on the dropdown branch of
+  // the discriminated union; narrow explicitly so TypeScript
+  // doesn't widen to `unknown` here.
+  const placeholderConfigured: string | undefined =
+    metadata.type === "dropdown" ? metadata.placeholder : undefined;
+  useEffect(() => {
+    if (
+      promptType !== "dropdown" ||
+      placeholderConfigured !== undefined ||
+      value !== undefined ||
+      firstOption === undefined ||
+      firstOption.length === 0 ||
+      dropdownDefaultSavedRef.current
+    ) {
+      return;
+    }
+    dropdownDefaultSavedRef.current = true;
+    saveData(firstOption, record, firstOption);
+  }, [promptType, placeholderConfigured, value, firstOption, record, saveData]);
 
   return (
     <>
