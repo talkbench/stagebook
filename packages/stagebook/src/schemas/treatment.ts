@@ -2207,14 +2207,29 @@ export const templateSchema = z
 export type TemplateType = z.infer<typeof templateSchema>;
 
 // ------------------ Treatment File ------------------ //
+// Per #277, the file shape is unified: there is no separate "module
+// file" type. A Stagebook file may have any subset of `templates:`,
+// `treatments:`, `introSequences:`, and `imports:` — the same file
+// can be a runtime entry point (with `treatments:`) and an importable
+// source (whose `templates:` get merged into another study). Hosts
+// enforce "an entry-point file must have at least one treatment" at
+// load time, not at the schema level.
 export const treatmentFileSchema = z
   .object({
+    /**
+     * Relative paths to other Stagebook files whose `templates:`
+     * should be merged in before expansion. Resolved by
+     * `resolveImportPath` + `resolveImports` (#277). The schema
+     * permits the field; the host's loading loop is what actually
+     * fetches the imports.
+     */
+    imports: z.array(z.string().min(1)).optional(),
     templates: z
       .array(templateSchema)
       .min(1, "Templates cannot be empty")
       .optional(),
-    introSequences: introSequencesSchema,
-    treatments: treatmentsSchema,
+    introSequences: introSequencesSchema.optional(),
+    treatments: treatmentsSchema.optional(),
   })
   .superRefine((data, ctx) => {
     // Cross-stage reference validation (#197): forward-reference rejection

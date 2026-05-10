@@ -1,0 +1,54 @@
+# Example: cross-file template imports (#277).
+#
+# This file (the entry point) imports a `demographics_survey`
+# template defined in `./modules/demographics.stagebook.yaml` and
+# invokes it twice — once at intake, once at exit — passing a
+# different `prefix:` each time so the two sets of responses get
+# distinct storage keys (`prompt_intake_age`, `prompt_followup_age`,
+# etc.).
+#
+# Two things this example demonstrates end-to-end:
+#
+#   1. The `imports:` mechanism — module file's `file:` paths
+#      (e.g. `age.prompt.md`) are path-rewritten by `resolveImports`
+#      to be relative to this file's location.
+#   2. The `prefix:` convention for reusable modules — each
+#      invocation of `demographics_survey` gets a unique prefix so
+#      storage keys don't collide. See docs/researcher/templates.md
+#      for the full convention.
+#
+# Open this file in VS Code and run "Stagebook: Preview Treatment".
+
+imports:
+  - ./modules/demographics.stagebook.yaml
+
+introSequences:
+  - name: intro
+    introSteps:
+      - name: intake
+        elements:
+          - template: demographics_survey
+            fields:
+              prefix: intake
+          - type: submitButton
+            buttonText: Continue
+
+treatments:
+  - name: imports_demo
+    playerCount: 1
+    gameStages:
+      - name: main
+        duration: 60
+        elements:
+          - type: prompt
+            file: greeting.prompt.md
+          - type: submitButton
+            buttonText: Done
+    exitSequence:
+      - name: followup
+        elements:
+          - template: demographics_survey
+            fields:
+              prefix: followup
+          - type: submitButton
+            buttonText: Finish

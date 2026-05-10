@@ -22,9 +22,12 @@ import {
 import {
   fillTemplates,
   getReferencedAssets,
+  parseTreatmentYaml as parseStagebookYaml,
+  resolveImportPath,
+  resolveImports,
   treatmentFileSchema,
+  type ParsedFile,
 } from "stagebook";
-import { parse as parseYaml } from "yaml";
 
 const diagnosticCollection =
   vscode.languages.createDiagnosticCollection("stagebook");
@@ -591,23 +594,99 @@ function getNonce(): string {
   return nonce;
 }
 
-function parseTreatmentForPreview(source: string) {
-  let obj: unknown;
+/**
+ * Parse a Stagebook treatment file for the preview command.
+ *
+ * After #277, this loads any `imports:` declared in the file (and
+ * transitively in those imports) using vscode's filesystem API, then
+ * merges every imported file's `templates:` into the root file's
+ * templates list with path rewriting (per template, relative to the
+ * file it was declared in). The merged result is then template-
+ * expanded via `fillTemplates` and schema-validated.
+ *
+ * Async because import loading goes through `vscode.workspace.fs`.
+ * Returns `null` on any failure (parse, missing import, validation)
+ * — the caller surfaces a generic "could not parse" message and
+ * leaves precise diagnostics to the in-editor validator.
+ */
+async function parseTreatmentForPreview(source: string, rootDir: vscode.Uri) {
+  let rootParse: ReturnType<typeof parseStagebookYaml>;
   try {
-    obj = parseYaml(source);
+    rootParse = parseStagebookYaml(source);
   } catch {
     return null;
   }
-  if (typeof obj !== "object" || obj === null) return null;
-  const record = obj as Record<string, unknown>;
-  const templates = (record.templates ?? []) as unknown[];
+  const root = rootParse.parsed as ParsedFile;
 
-  let expanded = record;
-  if (templates.length > 0) {
+  // Imports loading loop. The host owns the loop (per #277's
+  // design); stagebook's helpers handle path canonicalization
+  // (`resolveImportPath`) and merging (`resolveImports`).
+  const loaded = new Map<string, ParsedFile>();
+  const queue: string[] = rootParse.imports.map((p) =>
+    // The root file's own path is the parent for resolving its imports.
+    // Using a fictional `root.stagebook.yaml` here gives the right
+    // relative behavior because `resolveImportPath` only uses the
+    // parent's directory portion.
+    resolveImportPath("root.stagebook.yaml", p),
+  );
+  const decoder = new TextDecoder();
+  while (queue.length > 0) {
+    const importPath = queue.shift()!;
+    if (loaded.has(importPath)) continue;
+    const importUri = vscode.Uri.joinPath(rootDir, importPath);
+    let bytes: Uint8Array;
+    try {
+      bytes = await vscode.workspace.fs.readFile(importUri);
+    } catch {
+      // Import file not found / unreadable. Could surface a real
+      // diagnostic here in a follow-up; for now the preview just
+      // refuses to render.
+      return null;
+    }
+    let importedParse: ReturnType<typeof parseStagebookYaml>;
+    try {
+      importedParse = parseStagebookYaml(decoder.decode(bytes));
+    } catch {
+      return null;
+    }
+    loaded.set(importPath, importedParse.parsed as ParsedFile);
+    for (const next of importedParse.imports) {
+      queue.push(resolveImportPath(importPath, next));
+    }
+  }
+
+  // Merge templates with per-file path rewriting.
+  let mergedTemplates: unknown[];
+  try {
+    mergedTemplates = resolveImports({ main: root, files: loaded });
+  } catch {
+    return null;
+  }
+
+  // Strip `imports:` from the root and replace `templates:` with the
+  // merged set. This is what the schema/runtime expects (no imports
+  // in the post-fill world).
+  //
+  // Re-attach `templates:` whenever the root explicitly had it,
+  // even if the merged array is empty — preserves the schema's
+  // rejection of `templates: []` in the root (an authoring error
+  // that would otherwise be silently masked by stripping the key).
+  const rootHadTemplates = "templates" in root;
+  const { imports: _imports, templates: _origTemplates, ...rest } = root;
+  void _imports;
+  void _origTemplates;
+  const merged: Record<string, unknown> = { ...rest };
+  if (mergedTemplates.length > 0 || rootHadTemplates) {
+    merged.templates = mergedTemplates;
+  }
+
+  // Template expansion (existing pipeline).
+  let expanded: Record<string, unknown> = merged;
+  if (mergedTemplates.length > 0) {
     try {
       const { result } = fillTemplates({
-        obj: record,
-        templates,
+        obj: merged,
+        templates: mergedTemplates,
         allowUnresolved: true,
       });
       expanded = result as Record<string, unknown>;
@@ -735,13 +814,14 @@ export function activate(context: vscode.ExtensionContext): void {
   // Register stage preview webview command
   let previewPanel: vscode.WebviewPanel | undefined;
   // Mutable state updated on each command invocation — avoids stale closures
-  let currentTreatment: ReturnType<typeof parseTreatmentForPreview> = null;
+  let currentTreatment: Awaited<ReturnType<typeof parseTreatmentForPreview>> =
+    null;
   let currentTreatmentUri: vscode.Uri | undefined;
   let currentTreatmentDir: vscode.Uri | undefined;
   let currentWorkspaceRootFsPath: string | undefined;
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("stagebook.previewStage", () => {
+    vscode.commands.registerCommand("stagebook.previewStage", async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor || !isStagebookYaml(editor.document)) {
         vscode.window.showWarningMessage("Open a .stagebook.yaml file first.");
@@ -749,7 +829,8 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       const source = editor.document.getText();
-      currentTreatment = parseTreatmentForPreview(source);
+      const previewRootDir = vscode.Uri.joinPath(editor.document.uri, "..");
+      currentTreatment = await parseTreatmentForPreview(source, previewRootDir);
       if (!currentTreatment) {
         vscode.window.showErrorMessage(
           "Could not parse treatment file for preview.",
@@ -819,7 +900,10 @@ export function activate(context: vscode.ExtensionContext): void {
             try {
               const doc =
                 await vscode.workspace.openTextDocument(currentTreatmentUri);
-              const parsed = parseTreatmentForPreview(doc.getText());
+              const parsed = await parseTreatmentForPreview(
+                doc.getText(),
+                treatmentDir,
+              );
               if (!parsed) {
                 vscode.window.showErrorMessage(
                   "Refresh failed: could not parse treatment file.",

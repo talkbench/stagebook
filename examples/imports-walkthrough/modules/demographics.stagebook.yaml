@@ -1,0 +1,23 @@
+# Reusable demographics module.
+#
+# This file has only `templates:` — no `treatments:`. Drop the
+# whole `imports-walkthrough/modules/` directory into another
+# study and import this file to reuse the same demographics
+# questions.
+#
+# The template uses a `${prefix}` field on every named element so
+# the consumer can invoke the module more than once (e.g., pre-game
+# and post-game) without storage-key collisions. See
+# docs/researcher/templates.md for the full prefix-extension
+# convention.
+
+templates:
+  - name: demographics_survey
+    contentType: elements
+    content:
+      - type: prompt
+        name: ${prefix}_age
+        file: age.prompt.md
+      - type: prompt
+        name: ${prefix}_country
+        file: country.prompt.md

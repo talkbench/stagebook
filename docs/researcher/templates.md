@@ -133,6 +133,81 @@ treatments:
         template: topicList
 ```
 
+## The `prefix:` convention for reusable modules
+
+Templates that get invoked more than once — including templates *imported* from another file (see [treatment-files.md](treatment-files.md#imports)) — need a way to give each invocation's elements unique names. Stagebook saves participant responses keyed by `<elementType>_<name>`, so two invocations of the same template with the same element names overwrite each other.
+
+The convention: **module templates take a `prefix:` field, and use it inside every named element.**
+
+```yaml
+# In a module file (e.g. surveys/tipi/tipi.stagebook.yaml):
+templates:
+  - name: tipi_questions
+    contentType: elements
+    content:
+      - type: prompt
+        name: ${prefix}_q1
+        file: q1.prompt.md
+      - type: prompt
+        name: ${prefix}_q2
+        file: q2.prompt.md
+```
+
+The consumer passes a different `prefix:` per invocation:
+
+```yaml
+# In the consuming treatment file:
+imports:
+  - ./surveys/tipi/tipi.stagebook.yaml
+
+introSequences:
+  - name: intro
+    introSteps:
+      - name: pre
+        elements:
+          - template: tipi_questions
+            fields:
+              prefix: preTIPI    # → preTIPI_q1, preTIPI_q2
+        # ... other intro elements
+treatments:
+  - name: my_study
+    playerCount: 1
+    exitSequence:
+      - name: post
+        elements:
+          - template: tipi_questions
+            fields:
+              prefix: postTIPI   # → postTIPI_q1, postTIPI_q2
+```
+
+Each invocation now produces unique storage keys (`prompt_preTIPI_q1`, `prompt_postTIPI_q1`, …) — no collisions, exports keep responses separable.
+
+### Modules that invoke other modules: extend the prefix
+
+When a module template invokes another module template, it should *extend* the prefix it received before passing it down — adding its own subnamespace. This keeps the convention compositional through arbitrary nesting:
+
+```yaml
+# In a "battery" module that bundles a TIPI questionnaire + a Likert scale:
+templates:
+  - name: tipi_battery
+    contentType: elements
+    content:
+      - template: tipi_questions
+        fields:
+          prefix: ${prefix}_tipi      # caller's prefix + this module's subnamespace
+      - template: likert_scale
+        fields:
+          prefix: ${prefix}_likert
+```
+
+Now invoking `tipi_battery` with `prefix: pre` produces storage keys under `pre_tipi_*` and `pre_likert_*` — every leaf is uniquely identified by the full path of nested invocations that produced it.
+
+### What happens if you forget
+
+If a module author forgets to extend the prefix (or the caller forgets to pass one), two invocations of the same template produce colliding storage keys. Stagebook's storage-key collision detector catches this at validation time — the treatment file fails to validate before participants ever run it, with a message identifying the colliding elements.
+
+The convention is enforced by the collision detector, not by the schema. There's nothing structurally requiring a `${prefix}` field in module templates; it's a discipline that lets modules be safely composed. Modules used only once in a study can skip the convention.
+
 ## Important Notes
 
 - All `${field}` placeholders must be resolved after expansion. Leftover placeholders cause validation errors.

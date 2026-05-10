@@ -4,15 +4,53 @@ A treatment file is a YAML document (`.stagebook.yaml`) that defines the complet
 
 ## File Structure
 
-Every treatment file has three top-level sections:
+A Stagebook file may have any subset of these top-level sections:
 
 ```yaml
+imports:         # optional — relative paths to other Stagebook files whose templates: should be merged in
 templates:       # optional — reusable blocks of structure
-introSequences:  # required — pre-randomization onboarding steps
-treatments:      # required — post-randomization experiment flows
+introSequences:  # used as the entry point — pre-randomization onboarding steps
+treatments:      # used as the entry point — post-randomization experiment flows
 ```
 
-Everything is validated after templates are expanded. Unfilled `${field}` placeholders or unresolved template blocks are errors.
+A file with `treatments:` is a study **entry point** the runtime can launch. A file with only `templates:` (and optionally `imports:`) is a **module** — it can't be launched directly, but other files can `imports:` it to reuse its templates. The same file can play either role; there is no separate file type or extension.
+
+Everything is validated after imports are resolved and templates are expanded. Unfilled `${field}` placeholders or unresolved template blocks are errors.
+
+## Imports
+
+Use `imports:` to pull templates defined in another Stagebook file into the current one. Paths are relative to the current file:
+
+```yaml
+imports:
+  - ./surveys/tipi/tipi.stagebook.yaml
+  - ./scoring/partisan-7pt/scoring.stagebook.yaml
+
+templates:
+  - name: extra_local_template
+    contentType: elements
+    content:
+      - type: prompt
+        file: extra.prompt.md
+
+treatments:
+  - name: my_study
+    playerCount: 1
+    gameStages:
+      - name: intro
+        duration: 60
+        elements:
+          - template: tipi_questions   # defined in surveys/tipi/tipi.stagebook.yaml
+          - template: extra_local_template
+```
+
+What gets pulled in: only the imported file's `templates:`. Any `treatments:` or `introSequences:` it declares are ignored — those are entry-point fields, not reusable building blocks.
+
+What about file paths inside imported templates: when an imported template references a file (`file: q1.prompt.md`), Stagebook automatically prepends the import directory so the path resolves correctly relative to the importing file. So if `surveys/tipi/tipi.stagebook.yaml` declares a template with `file: q1.prompt.md`, the merged result has `file: surveys/tipi/q1.prompt.md`.
+
+Nested imports (an imported file that itself has `imports:`) are supported. The same file imported via two paths is loaded only once.
+
+Template names must be unique across the main file and every imported file. The convention for sharing the same name across modules is to prefix with the module's namespace (e.g., `tipi_q1` instead of `q1`).
 
 ## Experiment Lifecycle
 
