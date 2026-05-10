@@ -37,7 +37,7 @@ const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** Version counter per document URI — used to discard stale async results. */
 const validationVersions = new Map<string, number>();
 
-function isTreatmentsYaml(document: vscode.TextDocument): boolean {
+function isStagebookYaml(document: vscode.TextDocument): boolean {
   return (
     document.languageId === "stagebookYaml" ||
     document.fileName.endsWith(".stagebook.yaml")
@@ -57,7 +57,7 @@ function validateDocument(document: vscode.TextDocument): void {
   // ExpandedTemplatesProvider. Skip them here to avoid clobbering.
   if (document.uri.scheme === EXPANDED_SCHEME) return;
 
-  if (isTreatmentsYaml(document)) {
+  if (isStagebookYaml(document)) {
     validateTreatmentFile(document);
   } else if (isStagebookPrompt(document)) {
     validatePromptFile(document);
@@ -690,7 +690,7 @@ export function activate(context: vscode.ExtensionContext): void {
       "stagebook.previewExpandedTemplates",
       async () => {
         const editor = vscode.window.activeTextEditor;
-        if (!editor || !isTreatmentsYaml(editor.document)) {
+        if (!editor || !isStagebookYaml(editor.document)) {
           vscode.window.showWarningMessage(
             "Open a .stagebook.yaml file first.",
           );
@@ -725,7 +725,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeTextDocument((e) => {
       if (
         e.document.uri.scheme !== EXPANDED_SCHEME &&
-        isTreatmentsYaml(e.document)
+        isStagebookYaml(e.document)
       ) {
         expandedProvider.refreshForSource(e.document.uri);
       }
@@ -743,7 +743,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("stagebook.previewStage", () => {
       const editor = vscode.window.activeTextEditor;
-      if (!editor || !isTreatmentsYaml(editor.document)) {
+      if (!editor || !isStagebookYaml(editor.document)) {
         vscode.window.showWarningMessage("Open a .stagebook.yaml file first.");
         return;
       }

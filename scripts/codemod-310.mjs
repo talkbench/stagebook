@@ -11,7 +11,13 @@
  * Usage:
  *   node scripts/codemod-310.mjs <root> [<root2> ...]
  *   node scripts/codemod-310.mjs --check <root>      # exit 1 if any rename needed; no writes
- *   node scripts/codemod-310.mjs --ignore=path/glob <root>
+ *   node scripts/codemod-310.mjs --ignore=substring <root>
+ *
+ * `--ignore` takes a literal substring matched against each candidate
+ * path (POSIX-normalized — forward slashes — so the same flag works
+ * on Windows). Not a glob matcher; deliberately simple. Common
+ * directories (`node_modules`, `.git`, `dist`, etc.) are skipped
+ * automatically.
  *
  * Designed to be run from any repo (stagebook itself, deliberation-
  * assets, backchannel-manipulation, private study folders) — has no
@@ -45,11 +51,17 @@ function* walk(root, extraIgnores) {
     }
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
+      // Normalize to posix (forward slashes) so a Windows user's
+      // `--ignore=foo/bar` matches `foo\bar` paths from readdir.
+      const normalized = full.split(path.sep).join("/");
       if (entry.isDirectory()) {
         if (SKIP_DIRS.has(entry.name)) continue;
-        if (extraIgnores.some((ignore) => full.includes(ignore))) continue;
+        if (extraIgnores.some((ignore) => normalized.includes(ignore)))
+          continue;
         stack.push(full);
       } else if (entry.isFile() && entry.name.endsWith(".treatments.yaml")) {
+        if (extraIgnores.some((ignore) => normalized.includes(ignore)))
+          continue;
         yield full;
       }
     }
@@ -70,7 +82,7 @@ function main() {
 
   if (roots.length === 0) {
     console.error(
-      "Usage: codemod-310.mjs [--check] [--ignore=path] <root> [...]",
+      "Usage: codemod-310.mjs [--check] [--ignore=substring] <root> [...]",
     );
     process.exit(2);
   }

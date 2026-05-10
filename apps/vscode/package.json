@@ -48,7 +48,7 @@
       {
         "id": "stagebookYaml",
         "aliases": [
-          "Treatments YAML"
+          "Stagebook YAML"
         ],
         "extensions": [
           ".stagebook.yaml"
