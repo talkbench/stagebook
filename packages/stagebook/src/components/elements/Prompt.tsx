@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef } from "react";
 import { Markdown } from "../form/Markdown.js";
 import { RadioGroup } from "../form/RadioGroup.js";
 import { CheckboxGroup } from "../form/CheckboxGroup.js";
+import { Select } from "../form/Select.js";
 import { TextArea, type DebugMessage } from "../form/TextArea.js";
 import { Slider } from "../form/Slider.js";
 import { ListSorter } from "../form/ListSorter.js";
@@ -83,10 +84,13 @@ export function Prompt({
   const maxLength =
     promptType === "openResponse" ? metadata.maxLength : undefined;
   // `shuffle` (renamed from `shuffleOptions` in #243) lives on
-  // multipleChoice and listSorter. Sliders never shuffle — points and
-  // labels share an i'th-position alignment that scrambling would break.
+  // multipleChoice, dropdown, and listSorter. Sliders never shuffle —
+  // points and labels share an i'th-position alignment that scrambling
+  // would break.
   const shouldShuffle =
-    (promptType === "multipleChoice" || promptType === "listSorter") &&
+    (promptType === "multipleChoice" ||
+      promptType === "dropdown" ||
+      promptType === "listSorter") &&
     metadata.shuffle === true;
 
   // Initialize shuffleOrder when responseItems first arrives or changes
@@ -220,6 +224,27 @@ export function Prompt({
           layout={metadata.layout}
           onChange={(newSelection) =>
             debouncedSaveInteractive(newSelection, record)
+          }
+        />
+      )}
+
+      {promptType === "dropdown" && (
+        // Same single-select semantics as multipleChoice text mode —
+        // saved value is the chosen option's text — but rendered as a
+        // compact `<select>` for long option lists. Numeric mode (#282)
+        // is intentionally not supported here; if a researcher needs
+        // numeric values they should use multipleChoice + numeric
+        // labels (which gives them the radio UI that pairs naturally
+        // with point-anchored Likert scales).
+        <Select
+          options={responses.map((choice) => ({
+            key: choice,
+            value: choice,
+          }))}
+          value={value as string | undefined}
+          placeholder={metadata.placeholder}
+          onChange={(e) =>
+            debouncedSaveInteractive(e.target.value, record, e.target.value)
           }
         />
       )}

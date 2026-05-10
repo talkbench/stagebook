@@ -59,6 +59,19 @@ const multipleChoiceMetadataSchema = z
   })
   .strict();
 
+// `dropdown` is a single-choice picker rendered as a `<select>` —
+// same response shape as a `multipleChoice` with `select: single`,
+// but compact UI for long option lists (countries, languages,
+// many-step Likert) where rendering every option as a radio is noisy.
+const dropdownMetadataSchema = z
+  .object({
+    type: z.literal("dropdown"),
+    ...baseMetadataFields,
+    placeholder: z.string().optional(),
+    shuffle: z.boolean().optional(),
+  })
+  .strict();
+
 const listSorterMetadataSchema = z
   .object({
     type: z.literal("listSorter"),
@@ -93,6 +106,7 @@ export const promptMetadataSchema = z
     noResponseMetadataSchema,
     openResponseMetadataSchema,
     multipleChoiceMetadataSchema,
+    dropdownMetadataSchema,
     listSorterMetadataSchema,
     sliderMetadataSchema,
   ])

@@ -12,6 +12,7 @@ export {
   type CheckboxOption,
   type CheckboxLayout,
 } from "./CheckboxGroup.js";
+export { Select, type SelectProps, type SelectOption } from "./Select.js";
 export {
   TextArea,
   type TextAreaProps,

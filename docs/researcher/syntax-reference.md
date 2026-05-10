@@ -180,7 +180,7 @@ Three sections separated by `---`:
 
 ```markdown
 ---
-type: multipleChoice | openResponse | noResponse | listSorter | slider
+type: multipleChoice | dropdown | openResponse | noResponse | listSorter | slider
 name: My Prompt # optional — human-readable identifier
 ---
 

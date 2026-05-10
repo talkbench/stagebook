@@ -4,7 +4,7 @@ Prompts are Markdown files with two or three sections separated by lines of thre
 
 1. **Metadata** — YAML frontmatter defining the prompt type and behavior.
 2. **Body** — Markdown-formatted text displayed to the participant.
-3. **Responses** — Response options (format depends on type). Required for `multipleChoice`, `openResponse`, `listSorter`, `slider`. **Omitted entirely for `noResponse`** (#243 — `noResponse` files are two-section).
+3. **Responses** — Response options (format depends on type). Required for `multipleChoice`, `dropdown`, `openResponse`, `listSorter`, `slider`. **Omitted entirely for `noResponse`** (#243 — `noResponse` files are two-section).
 
 ## Example
 
@@ -30,7 +30,7 @@ Each per-type schema is `.strict()` (#243) — unknown frontmatter keys (typos l
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | no | Optional human-readable identifier. Can be any string. |
-| `type` | enum | yes | `multipleChoice`, `openResponse`, `noResponse`, `listSorter`, `slider` |
+| `type` | enum | yes | `multipleChoice`, `dropdown`, `openResponse`, `noResponse`, `listSorter`, `slider` |
 | `notes` | string | no | Internal notes (not displayed) |
 
 ### Type-specific fields
@@ -50,6 +50,13 @@ Each per-type schema is `.strict()` (#243) — unknown frontmatter keys (typos l
 | `select` | `"single"` or `"multiple"` | Radio buttons (default: `single`) or checkboxes. The legacy `"undefined"` enum value was removed in #243 — omit the field for the default. |
 | `shuffle` | boolean | Randomize option order before display. (Renamed from `shuffleOptions:` in #243.) |
 | `layout` | `"vertical"` or `"horizontal"` | Option layout direction (default: `vertical`) |
+
+**`dropdown`:** A single-choice picker rendered as a `<select>`. Same response shape as `multipleChoice` with `select: single` (saved value is the chosen option's text), but compact UI for long option lists (countries, languages, many-step Likert) where rendering every option as a radio is noisy.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `placeholder` | string | Text shown as the leading disabled option before the participant has chosen anything (e.g. `"Pick one…"`). Omit to make the first option the implicit default. |
+| `shuffle` | boolean | Randomize option order before display. |
 
 **`slider`:**
 
@@ -85,7 +92,7 @@ Images use paths relative to the asset repository root:
 
 Per-type marker enforcement (#243): each type accepts exactly one of `-` or `>` for response lines. Mixing the wrong marker for the type is a preflight error.
 
-### Multiple Choice / List Sorter
+### Multiple Choice / Dropdown / List Sorter
 
 Each option on its own line, prefixed with `- `:
 
@@ -193,6 +200,28 @@ Please describe your experience in detail.
 ```
 
 The character counter appears automatically when `minLength` or `maxLength` is set. `maxLength` is enforced (input is capped); `minLength` is displayed but must be enforced separately via conditions if you want to block submission.
+
+### Dropdown
+
+A compact single-choice picker. Use it when `multipleChoice` would render too many radio buttons (long option lists like countries / languages, or many-step Likert scales where the rows take more vertical space than the question itself).
+
+```markdown
+---
+type: dropdown
+placeholder: "Pick one…"
+---
+
+What is your primary language of study?
+
+---
+
+- English
+- French
+- Spanish
+- (etc.)
+```
+
+Same response shape as `multipleChoice` with `select: single`: the saved value is the chosen option's text. If `placeholder` is set, the dropdown initially shows that disabled placeholder text so the participant can't accidentally submit the first option without picking it deliberately.
 
 ### Slider
 

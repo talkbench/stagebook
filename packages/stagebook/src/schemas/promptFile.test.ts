@@ -771,6 +771,77 @@ Pick all that apply
   // #282 — back-compat: sliderPoints still populated for sliders
   // ---------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------
+  // #181 — dropdown prompt type
+  // ---------------------------------------------------------------------
+
+  describe("dropdown", () => {
+    test("dropdown with options + optional placeholder is valid", () => {
+      const markdown = `---
+name: language
+type: dropdown
+placeholder: "Pick one…"
+---
+What's your primary language?
+---
+- eng: English
+- fra: French
+- spa: Spanish`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.metadata.type).toBe("dropdown");
+        expect(result.data.responseItems).toEqual([
+          "eng: English",
+          "fra: French",
+          "spa: Spanish",
+        ]);
+      }
+    });
+
+    test("dropdown without placeholder is valid", () => {
+      const markdown = `---
+type: dropdown
+---
+Pick a number
+---
+- 1
+- 2
+- 3`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(true);
+    });
+
+    test("dropdown rejects unknown keys (strict)", () => {
+      const result = promptMetadataSchema.safeParse({
+        type: "dropdown",
+        layout: "horizontal", // not a dropdown field
+      });
+      expect(result.success).toBe(false);
+    });
+
+    test("dropdown rejects `>` markers (those are openResponse-only)", () => {
+      const markdown = `---
+type: dropdown
+---
+Pick
+---
+> a
+> b`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(false);
+    });
+
+    test("dropdown requires a third section", () => {
+      const markdown = `---
+type: dropdown
+---
+Pick`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(false);
+    });
+  });
+
   test("slider populates both responsePoints and (deprecated) sliderPoints", () => {
     const markdown = `---
 name: heat

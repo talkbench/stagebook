@@ -198,6 +198,7 @@ Requires StagebookProvider. Dispatches to the appropriate element component base
 | `Separator` | `style?` (`"thin"`, `"regular"`, `"thick"`) |
 | `RadioGroup` | `options`, `value`, `onChange`, `label?` |
 | `CheckboxGroup` | `options`, `value`, `onChange`, `label?` |
+| `Select` | `options`, `value`, `onChange`, `label?`, `placeholder?` |
 | `TextArea` | `value`, `onChange`, `rows?`, `minLength?`, `maxLength?`, `showCharacterCount?`, `onDebugMessage?` |
 | `Slider` | `min`, `max`, `interval`, `value?`, `onChange`, `labelPts?` (parallel to `labels?`, sourced from `promptFileSchema.parse(...).sliderPoints` after #243), `labels?` |
 | `ListSorter` | `items`, `onChange` |
