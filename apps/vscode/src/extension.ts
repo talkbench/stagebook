@@ -472,12 +472,26 @@ class ExpandedTemplatesProvider implements vscode.TextDocumentContentProvider {
       key,
       setTimeout(() => {
         this.refreshTimers.delete(key);
-        const expandedUri = vscode.Uri.parse(
-          `${EXPANDED_SCHEME}:${sourceUri.path} (expanded)?${encodeURIComponent(sourceUri.toString())}`,
-        );
-        this._onDidChange.fire(expandedUri);
+        this.fireChangeForSource(sourceUri);
       }, DEBOUNCE_MS),
     );
+  }
+
+  /**
+   * Fire the change event immediately (no debounce) for the expanded
+   * preview corresponding to `sourceUri`. Used by the command handler
+   * right after the expanded document is opened, to force VS Code to
+   * re-fetch the content. Diagnostics set during the very first
+   * `provideTextDocumentContent` call don't attach to the editor's
+   * squiggle layer (the doc isn't fully open yet); a second fetch after
+   * the document is visible makes them appear without waiting for the
+   * user to edit the source.
+   */
+  fireChangeForSource(sourceUri: vscode.Uri): void {
+    const expandedUri = vscode.Uri.parse(
+      `${EXPANDED_SCHEME}:${sourceUri.path} (expanded)?${encodeURIComponent(sourceUri.toString())}`,
+    );
+    this._onDidChange.fire(expandedUri);
   }
 
   dispose(): void {
@@ -722,6 +736,15 @@ export function activate(context: vscode.ExtensionContext): void {
         // source treatment files (element types, comparators, template
         // variables, schema keywords).
         await vscode.languages.setTextDocumentLanguage(doc, "stagebookYaml");
+        // Force a re-fetch of the content now that the document is fully
+        // open. Diagnostics attached during the very first
+        // `provideTextDocumentContent` call don't appear in the editor
+        // until a subsequent fetch happens (the doc wasn't fully open
+        // yet, so VS Code didn't wire them to the squiggle layer). The
+        // second fetch hits the warmed-up pipeline (~60ms on pilot_3)
+        // and surfaces the diagnostics immediately instead of waiting
+        // for the user to edit the source file.
+        expandedProvider.fireChangeForSource(sourceUri);
       },
     ),
   );
