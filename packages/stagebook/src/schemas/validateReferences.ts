@@ -82,7 +82,7 @@ const RANK_GAME_BASE = 1;
  *  layout, …). We leave `discussion.*` refs alone rather than risk a
  *  false-positive "doesn't match any discussion element" on valid
  *  references. Forward-ref and unknown-ref checks both skip them. */
-export const STAGE_PRODUCED_REF_TYPES = new Set([
+const STAGE_PRODUCED_REF_TYPES = new Set([
   "prompt",
   "survey",
   "submitButton",
@@ -152,7 +152,6 @@ export function validateTreatmentFileReferences(
 
   const introSequences = toArray(treatmentFile.introSequences);
   const treatments = toArray(treatmentFile.treatments);
-  const templates = toArray(treatmentFile.templates);
 
   // Build the set of keys produced by any game stage or exit step across
   // all treatments. Intro-step references to any of these are forward
@@ -170,31 +169,21 @@ export function validateTreatmentFileReferences(
     }
   }
 
-  // Every key produced *anywhere* in the treatment file — intro + game +
-  // exit, plus whatever templates could produce. Used to catch "unknown
-  // reference" typos (e.g. `timeline.storySegment2` where the actual
-  // element is `storySegment`). We walk template content recursively so
-  // elements produced via template expansion don't false-positive as
-  // unknown.
-  const globalProducedKeys = new Set<string>();
+  // Intro-phase produced keys — merged across every intro sequence. Game
+  // stages and exit steps are allowed to reference any intro-phase key.
+  //
+  // `collectStepKeys` iterates a step's elements; `collectProducedKeys`
+  // operates on a single element and skips anything that isn't an
+  // element. Passing a step to `collectProducedKeys` was a pre-existing
+  // bug (#321 follow-up) that left this set empty — the result was
+  // silently masked by a `globalProducedKeys` fallthrough that's been
+  // removed (strict-by-default). Intro keys now flow correctly.
+  const introProducedKeys = new Set<string>();
   for (const seq of introSequences) {
     if (!isRecord(seq)) continue;
     for (const step of toArray(seq.introSteps)) {
-      for (const key of collectStepKeys(step)) globalProducedKeys.add(key);
+      for (const key of collectStepKeys(step)) introProducedKeys.add(key);
     }
-  }
-  for (const treatment of treatments) {
-    if (!isRecord(treatment)) continue;
-    for (const stage of toArray(treatment.gameStages)) {
-      for (const key of collectStepKeys(stage)) globalProducedKeys.add(key);
-    }
-    for (const step of toArray(treatment.exitSequence)) {
-      for (const key of collectStepKeys(step)) globalProducedKeys.add(key);
-    }
-  }
-  for (const tmpl of templates) {
-    if (!isRecord(tmpl)) continue;
-    collectKeysFromAny(tmpl.content, globalProducedKeys);
   }
 
   // Intro sequences: validate each sequence in isolation for within-sequence
@@ -209,19 +198,8 @@ export function validateTreatmentFileReferences(
       phase: "intro",
       issues,
       laterPhaseKeys,
-      globalProducedKeys,
     });
   });
-
-  // Intro-phase produced keys — merged across every intro sequence. Game
-  // stages and exit steps are allowed to reference any intro-phase key.
-  const introProducedKeys = new Set<string>();
-  for (const seq of introSequences) {
-    if (!isRecord(seq)) continue;
-    for (const step of toArray(seq.introSteps)) {
-      collectProducedKeys(step, introProducedKeys);
-    }
-  }
 
   // Each treatment has its own game/exit rank space.
   treatments.forEach((treatment, treatmentIdx) => {
@@ -231,7 +209,6 @@ export function validateTreatmentFileReferences(
       treatmentPath: ["treatments", treatmentIdx],
       introProducedKeys,
       issues,
-      globalProducedKeys,
     });
   });
 
@@ -251,7 +228,6 @@ function validateStepSequence({
   issues,
   priorPhaseKeys,
   laterPhaseKeys,
-  globalProducedKeys,
 }: {
   steps: unknown[];
   sequencePath: (string | number)[];
@@ -262,9 +238,6 @@ function validateStepSequence({
   /** Keys produced by later phases. Any intro-step reference to one of
    *  these is a cross-phase forward reference. */
   laterPhaseKeys?: Set<string>;
-  /** Union of every produced key anywhere in the file (incl. templates).
-   *  Used to flag unknown-reference typos. */
-  globalProducedKeys?: Set<string>;
 }): void {
   // Build producedAt: key → earliest step index that produces it.
   const producedAt = new Map<string, number>();
@@ -285,7 +258,6 @@ function validateStepSequence({
         issues,
         priorPhaseKeys,
         laterPhaseKeys,
-        globalProducedKeys,
         phaseLabel: phase === "intro" ? "intro step" : "exit step",
       });
     }
@@ -297,13 +269,11 @@ function validateTreatment({
   treatmentPath,
   introProducedKeys,
   issues,
-  globalProducedKeys,
 }: {
   treatment: Record<string, unknown>;
   treatmentPath: (string | number)[];
   introProducedKeys: Set<string>;
   issues: ReferenceValidationIssue[];
-  globalProducedKeys?: Set<string>;
 }): void {
   const gameStages = toArray(treatment.gameStages);
   const exitSequence = toArray(treatment.exitSequence);
@@ -356,7 +326,6 @@ function validateTreatment({
         producedAt,
         issues,
         allowedProducerRanks: new Set([RANK_INTRO]),
-        globalProducedKeys,
       });
     }
   });
@@ -373,7 +342,6 @@ function validateTreatment({
         producedAt,
         issues,
         phaseLabel: "game stage",
-        globalProducedKeys,
       });
     }
     // Discussion conditions nested under the stage
@@ -396,7 +364,6 @@ function validateTreatment({
           producedAt,
           issues,
           phaseLabel: "game stage",
-          globalProducedKeys,
         });
       }
     }
@@ -414,7 +381,6 @@ function validateTreatment({
         producedAt,
         issues,
         phaseLabel: "exit step",
-        globalProducedKeys,
       });
     }
   });
@@ -424,7 +390,7 @@ function validateTreatment({
 // Reference-site enumeration
 // ---------------------------------------------------------------------------
 
-export interface RefSite {
+interface RefSite {
   /** The reference, normalized to its structured form (#240). */
   reference: ReferenceType;
   kind: ReferenceKind;
@@ -444,7 +410,7 @@ export interface RefSite {
  *  operator object, or a single leaf — `walkConditionLeaves` flattens
  *  the tree and yields each leaf with its absolute path.
  */
-export function enumerateStepSites(
+function enumerateStepSites(
   step: unknown,
   stepPath: (string | number)[],
 ): RefSite[] {
@@ -533,7 +499,6 @@ function applyRules({
   laterPhaseKeys,
   allowedProducerRanks,
   phaseLabel,
-  globalProducedKeys,
 }: {
   site: RefSite;
   enclosingRank: number;
@@ -551,11 +516,6 @@ function applyRules({
   allowedProducerRanks?: Set<number>;
   /** Context word used in error messages — "game stage", "intro step", … */
   phaseLabel?: string;
-  /** Union of produced keys across every stage + template in the file.
-   *  When a reference's target isn't in this set, the reference is to
-   *  something that doesn't exist anywhere in the treatment — typically
-   *  a typo (e.g. `timeline.storySegment2` vs `timeline.storySegment`). */
-  globalProducedKeys?: Set<string>;
 }): void {
   // Try to derive the storage key from the (already normalised) ref.
   let referenceKey: string;
@@ -590,25 +550,52 @@ function applyRules({
       });
       return;
     }
-    // Unknown reference: the target key isn't produced anywhere in the
-    // treatment (concrete stages or templates). Almost always a typo on
-    // the element name (e.g. `timeline.storySegment2` when the actual
-    // element is `storySegment`).
-    if (globalProducedKeys && !globalProducedKeys.has(referenceKey)) {
-      issues.push({
-        path: site.path,
-        message: `Reference "${refStr}" doesn't match any ${refType} element in the treatment. Check the name — no element produces the storage key "${referenceKey}".`,
-      });
-    }
+    // Unknown reference: the target key isn't produced anywhere this
+    // treatment can reach. Strict by default (#321): every reference
+    // must resolve to a producer in the consuming treatment's
+    // reachable set (intros + own gameStages + own exit). The
+    // previous `globalProducedKeys` fallthrough was relaxed to allow
+    // any key produced anywhere in the file, which silently masked
+    // three categories of real bug: cross-treatment leaks (producer
+    // in another treatment), references to keys produced only in an
+    // uninvoked template, and refs to keys in templates this
+    // treatment doesn't invoke. All three look the same at runtime
+    // (consumer's participant never traverses the producer) and now
+    // surface here at the source position.
+    //
+    // On the source pass (pre-hydration), this rule will false-fire
+    // on legitimate template-injected references — their producer is
+    // in a template that this treatment invokes, but `producedAt`
+    // doesn't see template content until expansion. The diff
+    // orchestrator (`runValidationDiff`) routes those to the
+    // `sourceOnly` bucket and the editor surfaces them as warnings,
+    // not errors. Single-pass callers that validate raw source
+    // directly should use the orchestrator if they want to
+    // distinguish artifacts from real bugs; runtime hosts that
+    // validate hydrated content see this check fire only on real
+    // unreachable references.
+    issues.push({
+      path: site.path,
+      message: `Reference "${refStr}" doesn't match any ${refType} element reachable from this treatment. Check the name — no element produces the storage key "${referenceKey}" in this treatment's intro, game, or exit stages (or in a template this treatment invokes).`,
+    });
     return;
   }
 
   // groupComposition: target must be in the allowed-rank whitelist.
-  if (allowedProducerRanks && !allowedProducerRanks.has(producerRank)) {
-    issues.push({
-      path: site.path,
-      message: `groupComposition condition references "${refStr}", which is produced by a game or exit stage. groupComposition is evaluated before any stage runs — it can only reference intro-phase data or external values (entryUrl.params.*, participantInfo.*, …).`,
-    });
+  // When the whitelist applies and the producer is in it, the
+  // reference is good — skip the rank-based forward-ref check below.
+  // (The rank model puts groupComposition at -1, which is numerically
+  // less than RANK_INTRO. A naive Rule 1 application would reject any
+  // intro reference as a "forward reference," but allowedProducerRanks
+  // is exactly the whitelist that says "yes, this is reachable from
+  // groupComposition despite the rank arithmetic.")
+  if (allowedProducerRanks) {
+    if (!allowedProducerRanks.has(producerRank)) {
+      issues.push({
+        path: site.path,
+        message: `groupComposition condition references "${refStr}", which is produced by a game or exit stage. groupComposition is evaluated before any stage runs — it can only reference intro-phase data or external values (entryUrl.params.*, participantInfo.*, …).`,
+      });
+    }
     return;
   }
 
@@ -674,7 +661,7 @@ function pathTraversesNonAllOperator(path: (string | number)[]): boolean {
 
 /** Collect every storage key produced by the elements inside a single step
  *  (stage or intro/exit step). */
-export function collectStepKeys(step: unknown): Set<string> {
+function collectStepKeys(step: unknown): Set<string> {
   const keys = new Set<string>();
   if (!isRecord(step)) return keys;
   for (const el of toArray(step.elements)) {
@@ -683,31 +670,10 @@ export function collectStepKeys(step: unknown): Set<string> {
   return keys;
 }
 
-/** Recursively collect every storage key that appears anywhere under
- *  `node`. Used for templates, where the `content` can be a bare
- *  element, a list of elements, a stage-shaped object, etc. We walk all
- *  sub-values rather than trying to shape-check against `contentType`,
- *  because template shapes are flexible and we just want "every key that
- *  could come out of this template."
- */
-export function collectKeysFromAny(node: unknown, acc: Set<string>): void {
-  if (typeof node !== "object" || node === null) return;
-  if (Array.isArray(node)) {
-    for (const item of node) collectKeysFromAny(item, acc);
-    return;
-  }
-  if (!isRecord(node)) return;
-  // Try as an element first (matches the concrete-walker shape).
-  collectProducedKeys(node, acc);
-  for (const value of Object.values(node)) {
-    collectKeysFromAny(value, acc);
-  }
-}
-
 /** Map an element to its storage key (or keys) and add them to `acc`.
  *  The key conventions mirror `getReferenceKeyAndPath` so lookups line up.
  */
-export function collectProducedKeys(element: unknown, acc: Set<string>): void {
+function collectProducedKeys(element: unknown, acc: Set<string>): void {
   if (!isRecord(element)) return;
   const type = element.type;
   const name = element.name;

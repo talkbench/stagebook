@@ -661,10 +661,24 @@ describe("Unknown-reference detection", () => {
     expect(typo).toBeDefined();
   });
 
-  test("reference whose target is produced by a template → accepted", () => {
-    // Templates produce elements via broadcast expansion; the walker
-    // collects their produced keys recursively so references aren't
-    // false-flagged as unknown.
+  test("reference whose target is produced by a template → flagged on source pass (strict-by-default)", () => {
+    // The reference's producer is inside a template's `content`,
+    // not in the consuming treatment's gameStages. Per the #321
+    // strict-by-default change, the schema's reference checker no
+    // longer treats "produced anywhere in the file" as reachable —
+    // the producer has to be in the treatment's reachable set
+    // (intros + own stages + own exit). On the unfilled source pass
+    // (templates not yet expanded), this fires.
+    //
+    // This is the canonical templating-artifact case: on the
+    // HYDRATED form (after fillTemplates injects the template's
+    // content into the treatment), the producer IS reachable and
+    // no error fires. The diff orchestrator routes the source-pass
+    // diagnostic to its `sourceOnly` bucket and the editor surfaces
+    // it as a warning, not an error. Callers that want to
+    // distinguish artifacts from real bugs should use the orchestrator
+    // (`runValidationDiff`) rather than calling
+    // `validateTreatmentFileReferences` directly on raw source.
     const file = {
       templates: [
         {
@@ -711,10 +725,9 @@ describe("Unknown-reference detection", () => {
       ],
     };
     const issues = validateTreatmentFileReferences(file);
-    // No unknown-reference complaint about `prompt.templatedPrompt` —
-    // the walker sees it in the template's content.
+    // The strict rule fires on source-pass for this case.
     const unknown = issues.find((i) => i.message.includes("templatedPrompt"));
-    expect(unknown).toBeUndefined();
+    expect(unknown).toBeDefined();
   });
 
   test("discussion.* references are not flagged as unknown (we don't model their storage keys)", () => {

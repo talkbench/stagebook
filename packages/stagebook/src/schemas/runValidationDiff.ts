@@ -2,7 +2,6 @@ import type { ZodIssue } from "zod";
 import { load as loadYaml } from "js-yaml";
 import { fillTemplates } from "../templates/fillTemplates.js";
 import { safeParseTreatmentFile } from "./safeParseTreatmentFile.js";
-import { findUnreachableReferences } from "./findUnreachableReferences.js";
 
 /**
  * Diff-based validation orchestrator.
@@ -103,17 +102,6 @@ export interface ValidationDiffResult {
   sourceOnly: ZodIssue[];
   /** Issues only in the hydrated pass — revealed by expansion. */
   hydratedOnly: ZodIssue[];
-  /**
-   * Cross-treatment / unreachable-reference issues from the strict
-   * per-treatment check on the hydrated form. Catches what the
-   * schema's existing reference checker silently passes via the
-   * `globalProducedKeys` fallthrough — references to keys produced
-   * elsewhere in the file but not reachable from the consuming
-   * treatment. Confidently real bugs (no false-positives by
-   * construction); display as errors. See
-   * `findUnreachableReferences.ts` for the rule details.
-   */
-  unreachableReferences: ZodIssue[];
 }
 
 /**
@@ -155,7 +143,6 @@ export function runValidationDiff({
     matched: [],
     sourceOnly: [],
     hydratedOnly: [],
-    unreachableReferences: [],
   };
 
   let parsed: unknown;
@@ -241,7 +228,6 @@ export function runValidationDiff({
       matched: [],
       sourceOnly: [],
       hydratedOnly: [],
-      unreachableReferences: [],
     };
   }
 
@@ -266,16 +252,6 @@ export function runValidationDiff({
     hydratedIssues,
   );
 
-  // Strict per-treatment reachable-keys check, only sound on the
-  // hydrated form. Catches what the schema's existing reference
-  // checker silently passes via globalProducedKeys fallthrough.
-  // Pass the merged templates explicitly — fillTemplates strips
-  // `templates:` from its output, so the hydrated form alone doesn't
-  // carry them, and we'd miss producer-in-uninvoked-template leaks.
-  const unreachableReferences = findUnreachableReferences(expanded, {
-    templates: mergedTemplates ?? [],
-  });
-
   return {
     hydrationError: null,
     sourceIssues,
@@ -283,7 +259,6 @@ export function runValidationDiff({
     matched,
     sourceOnly,
     hydratedOnly,
-    unreachableReferences,
   };
 }
 

@@ -369,13 +369,13 @@ treatments:
     });
   });
 
-  describe("unreachableReferences bucket", () => {
-    it("populates unreachableReferences for cross-treatment leaks the schema silently passes", () => {
-      // Treatment A references a key only Treatment B produces. The
-      // schema's existing reference check falls through to
-      // globalProducedKeys (silent pass), so neither sourceIssues nor
-      // hydratedIssues catches it. The orchestrator's strict per-
-      // treatment check (rung-3-strict, no fallthrough) does.
+  describe("cross-treatment leak detection (schema is strict by default)", () => {
+    it("flags a cross-treatment leak in `matched` (both passes fire, diff matches them)", () => {
+      // Treatment A references a key only Treatment B produces. Per
+      // #321's strict-by-default change, the schema's reference check
+      // no longer falls through to `globalProducedKeys`. Both source
+      // and hydrated passes see the unreachable-reference error;
+      // identical `(code, message)` → diff matches → `matched` bucket.
       const source = `introSequences:
   - name: i
     introSteps:
@@ -405,31 +405,22 @@ treatments:
 `;
       const result = runValidationDiff({ source });
       expect(result.hydrationError).toBeNull();
-      // Schema's pass through with fallthrough — no source/hydrated
-      // unknown-reference issues for the leak.
-      const leakInSourceIssues = result.sourceIssues.some((i) =>
+      // The schema fires on the leak in BOTH passes.
+      const leakInSource = result.sourceIssues.find((i) =>
         i.message.includes("prompt.bOnly"),
       );
-      const leakInHydratedIssues = result.hydratedIssues.some((i) =>
+      const leakInHydrated = result.hydratedIssues.find((i) =>
         i.message.includes("prompt.bOnly"),
       );
-      expect(leakInSourceIssues).toBe(false);
-      expect(leakInHydratedIssues).toBe(false);
-      // But the strict check catches it.
-      expect(result.unreachableReferences).toHaveLength(1);
-      expect(result.unreachableReferences[0].message).toContain("prompt.bOnly");
-      expect(result.unreachableReferences[0].path[0]).toBe("treatments");
-      expect(result.unreachableReferences[0].path[1]).toBe(0);
-    });
-
-    it("returns an empty unreachableReferences on hydration failure", () => {
-      const result = runValidationDiff({
-        source: `treatments:
-  - template: doesNotExist
-`,
-      });
-      expect(result.hydrationError).not.toBeNull();
-      expect(result.unreachableReferences).toEqual([]);
+      expect(leakInSource).toBeDefined();
+      expect(leakInHydrated).toBeDefined();
+      // Diff matches them → routes to `matched` (real bug at source).
+      const matchedLeak = result.matched.find((i) =>
+        i.message.includes("prompt.bOnly"),
+      );
+      expect(matchedLeak).toBeDefined();
+      expect(matchedLeak!.path[0]).toBe("treatments");
+      expect(matchedLeak!.path[1]).toBe(0); // Treatment A
     });
   });
 

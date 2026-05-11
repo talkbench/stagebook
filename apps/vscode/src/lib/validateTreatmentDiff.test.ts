@@ -5,7 +5,7 @@ import { validateTreatmentWithDiff } from "./validateTreatmentDiff";
  * Editor-side wrapper around the diff orchestrator. Verifies that:
  *
  *   - Real bugs (matched) surface as errors with source positions
- *   - Cross-treatment leaks surface (unreachableReferences)
+ *   - Cross-treatment leaks surface as matched (strict-by-default schema)
  *   - Templating artifacts (sourceOnly) surface as warnings
  *   - Hydrated-only issues are NOT surfaced on the source (the
  *     expanded preview is their home)
@@ -54,7 +54,7 @@ treatments:
     });
   });
 
-  describe("cross-treatment reference leaks (unreachableReferences)", () => {
+  describe("cross-treatment reference leaks (matched, since schema is strict)", () => {
     it("surfaces a leak as an error on the consuming treatment's source line", async () => {
       const source = `introSequences:
   - name: i

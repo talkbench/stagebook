@@ -21,12 +21,13 @@ import type { Diagnostic } from "./types";
  *   - Imports failed to load                  → error at line 1
  *   - Pre-hydration semantic issues           → error at source path
  *   - Hydration error (after lex/imports OK)  → error at top of file
- *   - matched (real bugs in both passes)      → error at source path
- *   - unreachableReferences                   → error at source path
- *                                               (walks up the path until
- *                                                resolvable in source)
- *   - sourceOnly (artifact OR template-def    → warning at source path
- *                 bug not surviving expansion)
+ *   - matched (real bugs in both passes —     → error at source path
+ *     including cross-treatment leaks, since
+ *     the schema is strict by default)
+ *   - sourceOnly (templating artifact —       → warning at source path
+ *     e.g. template-injected refs that
+ *     resolve post-fill, or refinements that
+ *     fire pre-fill but not on hydrated form)
  *   - hydratedOnly                            → not surfaced in source
  *                                               file; the expanded
  *                                               preview shows them
@@ -145,7 +146,9 @@ export async function validateTreatmentWithDiff({
   }
 
   // matched: real bugs in both passes. Source-positioned by virtue of
-  // being a source-pass issue.
+  // being a source-pass issue. Includes cross-treatment leaks now
+  // that the schema is strict by default — both passes fire on a
+  // leak, diff matches them, lands here.
   for (const issue of diff.matched) {
     diagnostics.push({
       message: appendPathIfMissing(issue),
@@ -154,23 +157,17 @@ export async function validateTreatmentWithDiff({
     });
   }
 
-  // unreachableReferences: paths are into the hydrated form. Walk up
-  // until we find a source-resolvable position. For fully-templated
-  // treatments that means landing on the template invocation node.
-  for (const issue of diff.unreachableReferences) {
-    diagnostics.push({
-      message: appendPathIfMissing(issue),
-      severity: "error",
-      range: resolveIssueRange(mapper, issue),
-    });
-  }
-
-  // sourceOnly: mixed bucket. Could be a templating artifact OR a
-  // real bug in a template definition / authoring oddity that didn't
-  // survive expansion. Surface as warning so the user has visibility
-  // without us overclaiming "this is definitely a bug." The
-  // expanded-preview document still shows the full hydrated-pass
-  // diagnostics for users who want to drill in.
+  // sourceOnly: templating artifact. The classic case is a refinement
+  // that fires on the unfilled source but passes on the hydrated form
+  // (e.g., intro-step advancement-element rule on a template
+  // invocation that expands to a submitButton); another common case
+  // is a reference whose producer lives in a template body — the
+  // strict reference check on source pass fires (templates not yet
+  // expanded), but the hydrated pass passes (templates injected the
+  // producer). Surface as warning so the user has visibility without
+  // overclaiming "this is definitely a bug." The expanded-preview
+  // document still shows the full hydrated-pass diagnostics for users
+  // who want to drill in.
   for (const issue of diff.sourceOnly) {
     diagnostics.push({
       message: appendPathIfMissing(issue),
