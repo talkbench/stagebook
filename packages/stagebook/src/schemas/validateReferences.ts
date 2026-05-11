@@ -82,7 +82,7 @@ const RANK_GAME_BASE = 1;
  *  layout, …). We leave `discussion.*` refs alone rather than risk a
  *  false-positive "doesn't match any discussion element" on valid
  *  references. Forward-ref and unknown-ref checks both skip them. */
-const STAGE_PRODUCED_REF_TYPES = new Set([
+export const STAGE_PRODUCED_REF_TYPES = new Set([
   "prompt",
   "survey",
   "submitButton",
@@ -424,7 +424,7 @@ function validateTreatment({
 // Reference-site enumeration
 // ---------------------------------------------------------------------------
 
-interface RefSite {
+export interface RefSite {
   /** The reference, normalized to its structured form (#240). */
   reference: ReferenceType;
   kind: ReferenceKind;
@@ -444,7 +444,7 @@ interface RefSite {
  *  operator object, or a single leaf — `walkConditionLeaves` flattens
  *  the tree and yields each leaf with its absolute path.
  */
-function enumerateStepSites(
+export function enumerateStepSites(
   step: unknown,
   stepPath: (string | number)[],
 ): RefSite[] {
@@ -674,7 +674,7 @@ function pathTraversesNonAllOperator(path: (string | number)[]): boolean {
 
 /** Collect every storage key produced by the elements inside a single step
  *  (stage or intro/exit step). */
-function collectStepKeys(step: unknown): Set<string> {
+export function collectStepKeys(step: unknown): Set<string> {
   const keys = new Set<string>();
   if (!isRecord(step)) return keys;
   for (const el of toArray(step.elements)) {
@@ -690,7 +690,7 @@ function collectStepKeys(step: unknown): Set<string> {
  *  because template shapes are flexible and we just want "every key that
  *  could come out of this template."
  */
-function collectKeysFromAny(node: unknown, acc: Set<string>): void {
+export function collectKeysFromAny(node: unknown, acc: Set<string>): void {
   if (typeof node !== "object" || node === null) return;
   if (Array.isArray(node)) {
     for (const item of node) collectKeysFromAny(item, acc);
@@ -707,7 +707,7 @@ function collectKeysFromAny(node: unknown, acc: Set<string>): void {
 /** Map an element to its storage key (or keys) and add them to `acc`.
  *  The key conventions mirror `getReferenceKeyAndPath` so lookups line up.
  */
-function collectProducedKeys(element: unknown, acc: Set<string>): void {
+export function collectProducedKeys(element: unknown, acc: Set<string>): void {
   if (!isRecord(element)) return;
   const type = element.type;
   const name = element.name;

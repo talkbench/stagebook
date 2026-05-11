@@ -117,6 +117,8 @@ export {
   type ValidationDiffResult,
 } from "./runValidationDiff.js";
 
+export { findUnreachableReferences } from "./findUnreachableReferences.js";
+
 export {
   resolvedElementSchema,
   resolvedStageSchema,
