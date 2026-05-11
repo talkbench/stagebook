@@ -97,8 +97,8 @@ export function collectPreHydrationIssues({
     if (name !== undefined) knownNames.add(name);
   }
 
-  // Pass 1: every `template: X` invocation must resolve. Skip
-  // parameterized names (they're handled at hydration).
+  // Pass 1a: every `template: X` invocation in the root must resolve.
+  // Skip parameterized names (they're handled at hydration).
   walkRecords(root, [], (record, path) => {
     const tName = record.template;
     if (typeof tName !== "string") return;
@@ -110,6 +110,39 @@ export function collectPreHydrationIssues({
       path: [...path, "template"],
     });
   });
+
+  // Pass 1b: same check inside imported template bodies. An imported
+  // template that invokes an undefined name would otherwise fail at
+  // hydration time with a generic error. Anchor the diagnostic to the
+  // root's `imports:` line (the editable surface from the root file's
+  // perspective). The user opens the imported file to fix the actual
+  // typo; the message includes the bad name plus the host template
+  // name to make navigation obvious.
+  const importsAnchor = rootAnchor(root);
+  const reportedFromImports = new Set<string>();
+  for (const tmpl of importedTemplates) {
+    const hostName = templateName(tmpl);
+    const content = isRecord(tmpl) ? tmpl.content : undefined;
+    walkRecords(content, [], (record) => {
+      const tName = record.template;
+      if (typeof tName !== "string") return;
+      if (hasFieldPlaceholder(tName)) return;
+      if (knownNames.has(tName)) return;
+      // De-dup so the same missing name invoked many times from
+      // imports doesn't produce N copies of the same diagnostic.
+      const dedupKey = `${hostName ?? "?"}→${tName}`;
+      if (reportedFromImports.has(dedupKey)) return;
+      reportedFromImports.add(dedupKey);
+      const hostDescription = hostName
+        ? ` inside imported template '${hostName}'`
+        : " inside an imported template";
+      issues.push({
+        code: "unknown-template",
+        message: `Template '${tName}'${hostDescription} is not defined in this file or its imports.`,
+        path: importsAnchor,
+      });
+    });
+  }
 
   // Pass 2: cycle detection over the static call graph.
   //
@@ -162,10 +195,11 @@ export function collectPreHydrationIssues({
   }
 
   function reportCycle(cycle: string[]): void {
-    // Normalize the cycle so the same loop reported via different starts
-    // doesn't surface as multiple issues.
-    const sorted = [...cycle].sort();
-    const signature = sorted.join("→");
+    // Normalize the cycle by rotating to start at the lexicographically
+    // smallest node. This preserves edge order (so A→B→C and A→C→B
+    // remain distinct cycles among the same node set) while collapsing
+    // the same cycle reported from different start points.
+    const signature = canonicalCycleSignature(cycle);
     if (reportedCycleSignatures.has(signature)) return;
     reportedCycleSignatures.add(signature);
 
@@ -194,8 +228,11 @@ export function collectPreHydrationIssues({
 }
 
 /**
- * Find a source path for a cycle diagnostic. Prefer a location in the
- * root file (the user's editable surface) over imports.
+ * Find a source path for a cycle diagnostic. Prefer the most specific
+ * location in the root file (the user's editable surface): an edge
+ * inside the root-defined `head` template if present, then any
+ * root-level invocation of `head`, then a stable always-present
+ * fallback (`imports:` if imports were used, else `templates:`).
  */
 function locateCycleAnchorPath(
   root: Record<string, unknown>,
@@ -222,5 +259,34 @@ function locateCycleAnchorPath(
     });
   });
 
-  return edgeWithinHead ?? firstHeadInvocation ?? ["templates"];
+  return edgeWithinHead ?? firstHeadInvocation ?? rootAnchor(root);
+}
+
+/**
+ * A stable, always-present path in the root for diagnostics that don't
+ * have a more precise location (e.g., cycles entirely inside imports,
+ * unknown invocations inside imported template bodies). Prefer
+ * `imports:` when present — it's the surface the user is editing when
+ * they brought the offending content into the file.
+ */
+function rootAnchor(root: Record<string, unknown>): Path {
+  if ("imports" in root) return ["imports"];
+  if ("templates" in root) return ["templates"];
+  return [];
+}
+
+/**
+ * Canonicalize a cycle by rotating so it starts at the smallest node
+ * name. Preserves edge order so genuinely different cycles among the
+ * same node set (e.g., A→B→C vs A→C→B in a graph with both pairs of
+ * edges) remain distinct.
+ */
+function canonicalCycleSignature(cycle: string[]): string {
+  if (cycle.length === 0) return "";
+  let minIndex = 0;
+  for (let i = 1; i < cycle.length; i++) {
+    if (cycle[i] < cycle[minIndex]) minIndex = i;
+  }
+  const rotated = [...cycle.slice(minIndex), ...cycle.slice(0, minIndex)];
+  return rotated.join("→");
 }

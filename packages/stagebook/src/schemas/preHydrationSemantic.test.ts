@@ -260,6 +260,38 @@ describe("collectPreHydrationIssues", () => {
       expect(cycles).toEqual([]);
     });
 
+    it("anchors a cycle that exists entirely in imports to a position the editor can resolve", () => {
+      // When A → B → A is defined entirely inside imported templates and
+      // the root file doesn't invoke either, the diagnostic still needs
+      // a path that the editor's YAML AST mapper can convert to a
+      // position. Falling through to `["templates"]` would fail when
+      // the root has no `templates:` key; fall back to `["imports"]`
+      // (always present when imports are in play) instead.
+      const root = {
+        imports: ["./module.stagebook.yaml"],
+        treatments: [{ name: "t", playerCount: 1, gameStages: [] }],
+      };
+      const importedTemplates = [
+        {
+          name: "a",
+          contentType: "elements",
+          content: [{ template: "b" }],
+        },
+        {
+          name: "b",
+          contentType: "elements",
+          content: [{ template: "a" }],
+        },
+      ];
+      const cycles = collectPreHydrationIssues({
+        root,
+        importedTemplates,
+      }).filter((i) => i.code === "circular-template");
+      expect(cycles).toHaveLength(1);
+      // Anchor to a path that's actually present in the root.
+      expect(cycles[0].path[0]).toBe("imports");
+    });
+
     it("skips cycles that go through parameterized invocations", () => {
       // If A → ${x} is parameterized, we can't statically determine which
       // template it resolves to. Treat as not part of the call graph for
@@ -278,6 +310,34 @@ describe("collectPreHydrationIssues", () => {
         (i) => i.code === "circular-template",
       );
       expect(cycles).toEqual([]);
+    });
+  });
+
+  describe("imported template bodies", () => {
+    it("flags an imported template whose body invokes an undefined name", () => {
+      // An imported template `outer` whose body invokes a missing
+      // template would today fail at hydration with a generic error.
+      // The diagnostic anchors to the root's `imports:` line since
+      // that's the editable surface the user has when working in the
+      // root file.
+      const root = {
+        imports: ["./module.stagebook.yaml"],
+        treatments: [{ template: "outer" }],
+      };
+      const importedTemplates = [
+        {
+          name: "outer",
+          contentType: "elements",
+          content: [{ template: "missingFromImport" }],
+        },
+      ];
+      const issues = collectPreHydrationIssues({ root, importedTemplates });
+      const unknown = issues.filter((i) => i.code === "unknown-template");
+      expect(unknown).toHaveLength(1);
+      expect(unknown[0].message).toContain("missingFromImport");
+      // Anchor in the root file, not just `["templates"]` which doesn't
+      // exist when the root only declares `imports:`.
+      expect(unknown[0].path[0]).toBe("imports");
     });
   });
 
