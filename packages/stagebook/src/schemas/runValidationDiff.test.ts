@@ -205,9 +205,11 @@ treatments:
 
     it("preserves a non-array `templates:` so the schema flags the type error", () => {
       // If the user wrote `templates: notAnArray`, silently coercing
-      // to `[]` would suppress the real type error. Both passes should
-      // surface it (matched), pinpointing the bad declaration rather
-      // than letting downstream errors confuse the user.
+      // to `[]` would suppress the real type error. The source pass
+      // must surface it. (The hydrated pass doesn't see `templates:`
+      // — fillTemplates strips it — so this lands in `sourceOnly`,
+      // but the `templates`-prefixed path identifies it as a real
+      // bug per the routing contract in the function header.)
       const source = `templates: notAnArray
 treatments:
   - name: t
@@ -225,27 +227,69 @@ introSequences:
           - type: submitButton
 `;
       const result = runValidationDiff({ source });
-      // The schema flags `templates: notAnArray` as an invalid type
-      // in both passes; the diff routes it to matched.
-      expect(
-        result.matched.some(
+      const templatesTypeIssue = (bucket: typeof result.matched) =>
+        bucket.some(
           (i) =>
             Array.isArray(i.path) &&
             i.path[0] === "templates" &&
             (i.code === "invalid_type" || i.code === "invalid_union"),
-        ),
+        );
+      // Present somewhere — must not be silently dropped.
+      expect(
+        templatesTypeIssue(result.matched) ||
+          templatesTypeIssue(result.sourceOnly),
       ).toBe(true);
     });
   });
 
   describe("template-definition errors", () => {
-    it("classifies an error inside a template definition as matched, not source-only", () => {
-      // `fillTemplates` strips `templates:` from its output, so without
-      // re-attachment the hydrated pass wouldn't see template-definition
-      // errors at all, and a real authoring bug inside a (possibly
-      // unused) template would get silently bucketed as a templating
-      // artifact. Re-attaching `templates:` to the hydrated input is
-      // what makes this work.
+    it("classifies an error in a USED template's definition as matched (def site)", () => {
+      // The template is invoked from a treatment. The source pass
+      // surfaces the bug at the def site; the hydrated pass surfaces
+      // it at the expansion site. After normalization both share the
+      // same (code, message), so the diff puts one instance in
+      // `matched` (with the def-site path — the canonical fix
+      // location) and any further expansion sites in `hydratedOnly`.
+      const source = `templates:
+  - name: usedAndBroken
+    contentType: element
+    content:
+      type: prompt
+      file: 12345
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - type: submitButton
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - template: usedAndBroken
+          - type: submitButton
+`;
+      const result = runValidationDiff({ source });
+      expect(result.hydrationError).toBeNull();
+      // The matched entry points at the def site (path starts with
+      // "templates").
+      const matchedAtDef = result.matched.filter(
+        (i) => Array.isArray(i.path) && i.path[0] === "templates",
+      );
+      expect(matchedAtDef.length).toBeGreaterThan(0);
+    });
+
+    it("classifies an error in an UNUSED template's definition as sourceOnly with a templates-prefixed path", () => {
+      // The template is defined but never invoked. The hydrated form
+      // has no expansion site for it; the source pass is the only run
+      // that sees the error. It lands in `sourceOnly`, but the path
+      // identifies it as a template-definition issue (path[0] ===
+      // "templates"). Callers route this as a real bug, not as a
+      // templating artifact. See the function header for the routing
+      // contract.
       const source = `templates:
   - name: brokenButUnused
     contentType: element
@@ -269,15 +313,16 @@ treatments:
 `;
       const result = runValidationDiff({ source });
       expect(result.hydrationError).toBeNull();
-      // The non-string `file:` inside the template definition fires in
-      // both passes; the diff routes it to matched (not sourceOnly,
-      // which would tell callers to suppress it).
-      const templatePathIssues = (bucket: typeof result.matched) =>
-        bucket.filter(
-          (i) => Array.isArray(i.path) && i.path[0] === "templates",
-        );
-      expect(templatePathIssues(result.matched).length).toBeGreaterThan(0);
-      expect(templatePathIssues(result.sourceOnly).length).toBe(0);
+      const sourceOnlyAtDef = result.sourceOnly.filter(
+        (i) => Array.isArray(i.path) && i.path[0] === "templates",
+      );
+      expect(sourceOnlyAtDef.length).toBeGreaterThan(0);
+      // It must not be in matched (no hydrated counterpart since
+      // the template wasn't invoked).
+      const matchedAtDef = result.matched.filter(
+        (i) => Array.isArray(i.path) && i.path[0] === "templates",
+      );
+      expect(matchedAtDef).toEqual([]);
     });
   });
 

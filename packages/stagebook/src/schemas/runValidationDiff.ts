@@ -14,18 +14,34 @@ import { safeParseTreatmentFile } from "./safeParseTreatmentFile.js";
  *                source position; the hydrated-pass instance confirms
  *                the bug isn't a pre-fill artifact. Real bug.
  *
- *   sourceOnly   Issues only in the source pass. Disappears after
- *                hydration → was a templating artifact (the most
- *                common is the intro/exit "needs advancement element"
- *                refinement firing on a `template:` invocation that
- *                expands to a submitButton). Suppress.
+ *   sourceOnly   Issues only in the source pass. Two sub-cases that
+ *                callers must distinguish by `issue.path[0]`:
+ *
+ *                  - path[0] === "templates" or "imports":
+ *                    a real bug in a template definition or in the
+ *                    imports list. The hydrated form deliberately
+ *                    omits `templates:` (fillTemplates strips it as
+ *                    the runtime shape), so unused definitions have
+ *                    no hydrated counterpart even when they're
+ *                    broken. Surface as a real error.
+ *
+ *                  - anything else:
+ *                    a templating artifact. The canonical example is
+ *                    the intro/exit "needs advancement element"
+ *                    refinement firing on a `template:` invocation
+ *                    that expands to a submitButton. Suppress.
  *
  *   hydratedOnly Issues only in the hydrated pass. Bug that only
  *                surfaces after expansion (e.g., a field-substituted
- *                value violating a constraint). Real bug; the source
- *                position is harder to pin without provenance, so
- *                callers typically display it at the invocation site
- *                or in the expanded preview.
+ *                value violating a constraint, or a used template's
+ *                def error replicated at each expansion site). The
+ *                source position is harder to pin without provenance,
+ *                so callers typically display these at the invocation
+ *                site or in the expanded preview. Note that a used
+ *                template's def-error produces a `matched` entry at
+ *                the def site plus N-1 `hydratedOnly` entries at the
+ *                expansion sites — same bug, callers can de-dupe by
+ *                (code, normalized_message).
  *
  * Matching is by `(code, normalized_message)`. Coincidentally
  * identical issue text at different paths collapses — acceptable for
@@ -197,19 +213,28 @@ export function runValidationDiff({
     };
   }
 
-  // Re-attach `templates:` and `imports:` to the hydrated form so the
-  // schema validates them on the hydrated pass too. fillTemplates
-  // strips `templates:` from its output (intentional for runtime —
-  // template definitions aren't served), but for the diff we want
-  // both passes to see the same set of definitions. Otherwise an
-  // error inside a template definition appears only in the source
-  // pass and gets mis-bucketed as a templating artifact.
-  if ("templates" in merged) {
-    expanded.templates = merged.templates;
-  }
-  if ("imports" in merged) {
-    expanded.imports = merged.imports;
-  }
+  // The hydrated pass deliberately sees the post-fill runtime shape:
+  // fillTemplates strips `templates:`, and we leave it stripped. Two
+  // consequences worth knowing about:
+  //
+  // - Used templates with definition errors: source pass surfaces one
+  //   issue at the def, hydrated surfaces the same (code, message)
+  //   at each expansion site. The diff matches the def issue (so
+  //   `matched` correctly points at the source-fix location) and the
+  //   leftover expansion sites land in `hydratedOnly`. Callers can
+  //   de-dupe expansion sites against `matched` by (code, message).
+  //
+  // - Unused templates with definition errors: source pass surfaces
+  //   the issue but there's no hydrated counterpart, so the diff
+  //   classifies it as `sourceOnly`. This is *not* a templating
+  //   artifact — the path is `["templates", ...]`, which callers
+  //   should treat as a real bug. The doc header above codifies this
+  //   contract; see also #321 for the provenance-aware match that
+  //   would obviate the path-based distinction.
+  //
+  // imports stays naturally — fillTemplates only strips `templates:`,
+  // not `imports:` — so the schema's import-list type check runs in
+  // both passes and routes via the normal diff.
 
   // Hydrated pass — validate the expanded object.
   const hydratedResult = safeParseTreatmentFile(expanded);
