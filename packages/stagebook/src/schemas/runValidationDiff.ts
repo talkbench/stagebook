@@ -1,5 +1,5 @@
 import type { ZodIssue } from "zod";
-import { parse as parseYaml } from "yaml";
+import { load as loadYaml } from "js-yaml";
 import { fillTemplates } from "../templates/fillTemplates.js";
 import { safeParseTreatmentFile } from "./safeParseTreatmentFile.js";
 import { findUnreachableReferences } from "./findUnreachableReferences.js";
@@ -160,7 +160,10 @@ export function runValidationDiff({
 
   let parsed: unknown;
   try {
-    parsed = parseYaml(source);
+    // `js-yaml` (browser-safe, no `process` deps) — matches the rest
+    // of stagebook. The `yaml` package would pull in process-touching
+    // code that breaks the VS Code webview bundle.
+    parsed = loadYaml(source);
   } catch (e) {
     return {
       ...empty,

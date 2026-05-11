@@ -1,9 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
-import {
-  validateTreatmentSource,
-  type Diagnostic,
-} from "./lib/validateTreatment";
+import { type Diagnostic } from "./lib/validateTreatment";
+import { validateTreatmentWithDiff } from "./lib/validateTreatmentDiff";
 import { validatePromptSource } from "./lib/validatePrompt";
 import { pathToRange } from "./lib/yamlPositionMap";
 import {
@@ -99,13 +97,29 @@ function toVscodeRange(range: Diagnostic["range"]): vscode.Range {
   );
 }
 
-function validateTreatmentFile(document: vscode.TextDocument): void {
+async function validateTreatmentFile(
+  document: vscode.TextDocument,
+): Promise<void> {
   const uriKey = document.uri.toString();
   const version = (validationVersions.get(uriKey) ?? 0) + 1;
   validationVersions.set(uriKey, version);
 
   const source = document.getText();
-  const result = validateTreatmentSource(source);
+  const rootDir = vscode.Uri.joinPath(document.uri, "..");
+  const decoder = new TextDecoder();
+
+  const result = await validateTreatmentWithDiff({
+    source,
+    loadImport: async (importPath: string) => {
+      const importUri = vscode.Uri.joinPath(rootDir, importPath);
+      const bytes = await vscode.workspace.fs.readFile(importUri);
+      return decoder.decode(bytes);
+    },
+  });
+
+  // Stale-version guard: if another edit fired while we were awaiting,
+  // discard this result rather than clobbering the newer one.
+  if (validationVersions.get(uriKey) !== version) return;
 
   const vscodeDiagnostics = result.diagnostics.map((d) => {
     const diag = new vscode.Diagnostic(
