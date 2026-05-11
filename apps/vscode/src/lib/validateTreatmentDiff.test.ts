@@ -220,6 +220,93 @@ treatments:
     });
   });
 
+  describe("avoids double-reporting same failure", () => {
+    it("short-circuits before import loading when YAML is malformed (no generic top-of-file dup)", async () => {
+      // Malformed YAML — `extractYamlErrors` already emits a precise
+      // line/col diagnostic. Running the import loader would just emit
+      // an additional `YAML parse error: ...` at line 0, doubling the
+      // user's noise for one root cause.
+      const result = await validateTreatmentWithDiff({
+        source: "[[[invalid",
+        loadImport: noImports,
+      });
+      // The generic top-of-file "YAML parse error:" from
+      // loadAndMergeImports must not appear — only the precise
+      // line/col diagnostics from extractYamlErrors.
+      const genericTopOfFile = result.diagnostics.find(
+        (d) =>
+          d.range?.startLine === 0 && d.message.startsWith("YAML parse error:"),
+      );
+      expect(genericTopOfFile).toBeUndefined();
+    });
+
+    it("suppresses generic hydration error when pre-hydration semantic already explained it", async () => {
+      // A `template:` invocation that doesn't resolve produces an
+      // "unknown template" error from pre-hydration. Hydration also
+      // fails (since fillTemplates throws), but the generic
+      // "Template expansion failed" message is redundant — the
+      // specific pre-hydration error already named the missing
+      // template.
+      const source = `treatments:
+  - template: doesNotExist
+`;
+      const result = await validateTreatmentWithDiff({
+        source,
+        loadImport: noImports,
+      });
+      const errs = result.diagnostics.filter((d) => d.severity === "error");
+      // The specific "Template 'doesNotExist' is not defined" diagnostic
+      // is present.
+      expect(errs.some((d) => d.message.includes("doesNotExist"))).toBe(true);
+      // The generic "Template expansion failed" is NOT also present.
+      expect(
+        errs.some((d) => d.message.toLowerCase().includes("expansion failed")),
+      ).toBe(false);
+    });
+  });
+
+  describe("unrecognized-key quick-fix range", () => {
+    it("emits unrecognized-key issues with a key-token range (not value range)", async () => {
+      // `surveryName` (typo) should produce an unrecognized-key
+      // diagnostic. The range should land on the key token so the
+      // UnrecognizedKeyQuickFixProvider's `replace(range, suggestion)`
+      // correctly renames the key.
+      const source = `introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - type: submitButton
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: survey
+            surveryName: TIPI
+          - type: submitButton
+`;
+      const result = await validateTreatmentWithDiff({
+        source,
+        loadImport: noImports,
+      });
+      const unrecognized = result.diagnostics.find((d) =>
+        d.message.toLowerCase().includes("unrecognized key"),
+      );
+      expect(unrecognized).toBeDefined();
+      // The range should be on the `surveryName` line.
+      const lines = source.split("\n");
+      const keyLine = lines.findIndex((l) => l.includes("surveryName:"));
+      expect(unrecognized!.range?.startLine).toBe(keyLine);
+      // And specifically on the key token, not the value. The column
+      // should match the position of 's' in 'surveryName'.
+      const colInLine = lines[keyLine].indexOf("surveryName");
+      expect(unrecognized!.range?.startCol).toBe(colInLine);
+    });
+  });
+
   describe("YAML parse errors are preserved", () => {
     it("surfaces a YAML duplicate-key warning at the offending line", async () => {
       const source = `treatments:

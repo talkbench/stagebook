@@ -56,10 +56,14 @@ export async function validateTreatmentWithDiff({
   // YAML syntax + duplicate-key warnings (existing behavior, preserved
   // so we don't regress on noise-level diagnostics the orchestrator
   // doesn't cover).
-  for (const err of extractYamlErrors(source)) {
+  const yamlErrors = extractYamlErrors(source);
+  let hasYamlParseError = false;
+  for (const err of yamlErrors) {
+    const isDuplicateKey = err.message.match(/unique|duplicate/i);
+    if (!isDuplicateKey) hasYamlParseError = true;
     diagnostics.push({
       message: err.message,
-      severity: err.message.match(/unique|duplicate/i) ? "warning" : "error",
+      severity: isDuplicateKey ? "warning" : "error",
       range: {
         startLine: err.line,
         startCol: err.col,
@@ -73,6 +77,14 @@ export async function validateTreatmentWithDiff({
   // routed to a source position.
   const mapper = createPositionMapper(source);
   const parsedObj = mapper.toJSON();
+
+  // Short-circuit on YAML parse errors. `extractYamlErrors` already
+  // surfaced precise line/col diagnostics; running the import loader
+  // and orchestrator on malformed YAML would produce a duplicate
+  // top-of-file error ("YAML parse error: ...") plus a parade of
+  // downstream "couldn't expand" / "schema rejected" noise that's
+  // already explained by the parse failure.
+  if (hasYamlParseError) return { diagnostics, parsedObj };
 
   // Load imports asynchronously.
   const loadResult = await loadAndMergeImports({ source, loadImport });
@@ -117,13 +129,18 @@ export async function validateTreatmentWithDiff({
   const diff = runValidationDiff({ source, importedTemplates });
 
   if (diff.hydrationError) {
-    // Hydration failed. Top-of-file error; skip the diff buckets
-    // (they're empty anyway when hydration fails).
-    diagnostics.push({
-      message: diff.hydrationError,
-      severity: "error",
-      range: { startLine: 0, startCol: 0, endLine: 0, endCol: 1 },
-    });
+    // Hydration failed. If pre-hydration semantic already explained
+    // why (e.g., "Template 'foo' is not defined"), the generic
+    // hydration error is redundant noise — pre-hydration is the more
+    // specific diagnostic. Otherwise surface the hydration error at
+    // top of file so the user has *something*.
+    if (preHydration.length === 0) {
+      diagnostics.push({
+        message: diff.hydrationError,
+        severity: "error",
+        range: { startLine: 0, startCol: 0, endLine: 0, endCol: 1 },
+      });
+    }
     return { diagnostics, parsedObj };
   }
 
@@ -133,7 +150,7 @@ export async function validateTreatmentWithDiff({
     diagnostics.push({
       message: appendPathIfMissing(issue),
       severity: "error",
-      range: resolveOrWalkUp(mapper, issue.path),
+      range: resolveIssueRange(mapper, issue),
     });
   }
 
@@ -144,7 +161,7 @@ export async function validateTreatmentWithDiff({
     diagnostics.push({
       message: appendPathIfMissing(issue),
       severity: "error",
-      range: resolveOrWalkUp(mapper, issue.path),
+      range: resolveIssueRange(mapper, issue),
     });
   }
 
@@ -158,11 +175,42 @@ export async function validateTreatmentWithDiff({
     diagnostics.push({
       message: appendPathIfMissing(issue),
       severity: "warning",
-      range: resolveOrWalkUp(mapper, issue.path),
+      range: resolveIssueRange(mapper, issue),
     });
   }
 
   return { diagnostics, parsedObj };
+}
+
+/**
+ * Resolve a Zod issue to a source range, with special handling for
+ * the unrecognized-key issues rewritten by `safeParseTreatmentFile`.
+ *
+ * Those issues carry `params.badKey` and the path ends at the
+ * offending key string; the existing UnrecognizedKeyQuickFixProvider
+ * expects a key-token range so its `replace(diagnostic.range,
+ * suggestion)` correctly renames the key (rather than replacing the
+ * value). Mirrors the logic in `validateTreatmentSource`.
+ */
+function resolveIssueRange(
+  mapper: ReturnType<typeof createPositionMapper>,
+  issue: ZodIssue,
+): Diagnostic["range"] {
+  const params =
+    issue.code === "custom"
+      ? ((issue as { params?: unknown }).params as
+          | { badKey?: unknown }
+          | undefined)
+      : undefined;
+  const isUnrecognizedKey =
+    params !== undefined && typeof params.badKey === "string";
+  if (isUnrecognizedKey) {
+    const keyRange = mapper.resolveKey(issue.path);
+    if (keyRange) return keyRange;
+    // Fall through to the value/walk-up resolver when resolveKey can't
+    // pin a key range.
+  }
+  return resolveOrWalkUp(mapper, issue.path);
 }
 
 /**
