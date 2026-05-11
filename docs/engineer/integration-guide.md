@@ -61,6 +61,49 @@ if (!result.success) {
 }
 ```
 
+### Strict validation (recommended for editor / pre-deploy)
+
+The schema's reference checker has a permissive fallthrough that silently passes a reference to a key produced *anywhere* in the file — including in another treatment or an uninvoked template. Per #321, that fallthrough is preserved on the schema for backward compatibility, but stricter consumers (editor tooling, pre-deploy checks) should layer on the following helpers that catch the bugs the fallthrough masks:
+
+```typescript
+import {
+  treatmentFileSchema,
+  fillTemplates,
+  collectPreHydrationIssues, // template-name resolution + circular invocations
+  findUnreachableReferences,  // cross-treatment leaks (runs on hydrated form)
+  runValidationDiff,          // optional: full diff orchestrator (see below)
+} from "stagebook";
+
+// Pre-hydration semantic — catches "Template 'foo' is not defined"
+// and "Templates form an invocation cycle" before hydration would
+// throw a generic error.
+const preHydration = collectPreHydrationIssues({
+  root: raw,
+  importedTemplates,
+});
+
+// Hydrate (as before)
+const { result: expanded } = fillTemplates({
+  obj: raw,
+  templates: [...(raw.templates ?? []), ...importedTemplates],
+  allowUnresolved: true,
+});
+
+// Schema validation
+const schemaResult = treatmentFileSchema.safeParse(expanded);
+
+// Strict per-treatment reachable-keys check — catches references that
+// resolve to a key produced in another treatment, an uninvoked
+// template, or otherwise unreachable from the consuming treatment.
+// These are silent passes in the schema by design; the strict check
+// surfaces them.
+const unreachable = findUnreachableReferences(expanded, {
+  templates: [...(raw.templates ?? []), ...importedTemplates],
+});
+```
+
+The VS Code extension runs this exact pipeline plus a [diff orchestrator](https://github.com/deliberation-lab/stagebook/issues/321) that distinguishes "real bug in both source and hydrated form" from "templating artifact that disappears after expansion." Runtime hosts can use the same pieces (orchestrator output buckets) for fine-grained diagnostic routing, but the simpler "schema + pre-hydration + unreachable" sequence above is usually enough for build-time and pre-deploy checks.
+
 ## Validating Prompt Files
 
 ```typescript
