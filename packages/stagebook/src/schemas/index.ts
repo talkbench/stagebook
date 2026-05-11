@@ -111,6 +111,13 @@ export {
 } from "./preHydrationSemantic.js";
 
 export {
+  runValidationDiff,
+  normalizeIssueKey,
+  type ValidationDiffInput,
+  type ValidationDiffResult,
+} from "./runValidationDiff.js";
+
+export {
   resolvedElementSchema,
   resolvedStageSchema,
   resolvedIntroExitStepSchema,
