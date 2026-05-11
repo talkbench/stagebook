@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { expandTreatmentSource } from "./expandTreatment";
+import {
+  expandTreatmentSource,
+  expandTreatmentSourceWithImports,
+} from "./expandTreatment";
 
 describe("expandTreatmentSource", () => {
   describe("no templates", () => {
@@ -275,6 +278,72 @@ treatments:
 ${broadcastItems}`;
       const result = expandTreatmentSource(src, { maxBroadcastProduct: 100 });
       expect(result.error).toContain("Broadcast expansion would produce");
+      expect(result.yaml).toBe("");
+    });
+  });
+
+  describe("expandTreatmentSourceWithImports", () => {
+    const loaderFromMap = (files: Record<string, string>) => {
+      // resolveImportPath normalizes paths (strips `./`), so be tolerant
+      // of both forms when looking up the fixture.
+      return async (path: string): Promise<string> => {
+        const normalized = path.replace(/^\.\//, "");
+        const content = files[path] ?? files[normalized] ?? files[`./${path}`];
+        if (content === undefined) {
+          throw new Error(`Mock loader: no entry for ${path}`);
+        }
+        return content;
+      };
+    };
+
+    it("resolves a template defined in an imported module (#321 Repro 2 — full fix)", async () => {
+      const source = `imports:
+  - ./module.stagebook.yaml
+
+treatments:
+  - template: makeTreatment`;
+      const moduleSrc = `templates:
+  - name: makeTreatment
+    contentType: treatment
+    content:
+      name: t
+      playerCount: 1
+      gameStages:
+        - name: s
+          duration: 10
+          elements:
+            - type: submitButton
+`;
+      const result = await expandTreatmentSourceWithImports({
+        source,
+        loadImport: loaderFromMap({
+          "./module.stagebook.yaml": moduleSrc,
+        }),
+      });
+      expect(result.error).toBeNull();
+      expect(result.yaml).toContain("name: t");
+      expect(result.yaml).toContain("type: submitButton");
+      // Templates key should be stripped from the expanded output.
+      expect(result.yaml).not.toMatch(/^templates:/m);
+    });
+
+    it("returns an import-read error when an import file is missing", async () => {
+      const source = `imports:
+  - ./missing.stagebook.yaml
+
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: s
+        duration: 10
+        elements:
+          - type: submitButton`;
+      const result = await expandTreatmentSourceWithImports({
+        source,
+        loadImport: loaderFromMap({}),
+      });
+      expect(result.error).toContain("missing.stagebook.yaml");
       expect(result.yaml).toBe("");
     });
   });

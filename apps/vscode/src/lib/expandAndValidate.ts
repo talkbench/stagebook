@@ -1,4 +1,8 @@
-import { expandTreatmentSource, type ExpandOptions } from "./expandTreatment";
+import {
+  expandTreatmentSource,
+  expandTreatmentSourceWithImports,
+  type ExpandOptions,
+} from "./expandTreatment";
 import { validateTreatmentSource } from "./validateTreatment";
 import type { Diagnostic } from "./types";
 
@@ -33,7 +37,38 @@ export function expandAndValidate(
   options?: ExpandOptions,
 ): ExpandAndValidateResult {
   const expanded = expandTreatmentSource(source, options);
+  return finishExpandAndValidate(expanded);
+}
 
+/**
+ * Like `expandAndValidate`, but loads `imports:` through the supplied
+ * callback before expanding. Used by the "View Expanded Templates"
+ * provider so the expanded preview reflects the actual cross-file
+ * resolution (per #321 Repro 2).
+ */
+export async function expandAndValidateWithImports({
+  source,
+  loadImport,
+  options,
+}: {
+  source: string;
+  loadImport: (importPath: string) => Promise<string>;
+  options?: ExpandOptions;
+}): Promise<ExpandAndValidateResult> {
+  const expanded = await expandTreatmentSourceWithImports({
+    source,
+    loadImport,
+    options,
+  });
+  return finishExpandAndValidate(expanded);
+}
+
+function finishExpandAndValidate(expanded: {
+  yaml: string;
+  fullYaml: string;
+  error: string | null;
+  truncated: boolean;
+}): ExpandAndValidateResult {
   if (expanded.error) {
     return {
       yaml: expanded.yaml,
@@ -42,9 +77,7 @@ export function expandAndValidate(
       diagnostics: [],
     };
   }
-
   const { diagnostics } = validateTreatmentSource(expanded.fullYaml);
-
   return {
     yaml: expanded.yaml,
     truncated: expanded.truncated,

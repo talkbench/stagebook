@@ -10,7 +10,7 @@ import {
   computeSemanticTokens,
   type SemanticTokenType,
 } from "./lib/semanticTokens";
-import { expandAndValidate } from "./lib/expandAndValidate";
+import { expandAndValidateWithImports } from "./lib/expandAndValidate";
 import { findClosestMatch } from "./lib/levenshtein";
 import { UnrecognizedKeyQuickFixProvider } from "./lib/unrecognizedKeyQuickFix";
 import { isWithinWorkspace, relativizePath } from "./lib/filePaths";
@@ -408,7 +408,7 @@ class ExpandedTemplatesProvider implements vscode.TextDocumentContentProvider {
 
   constructor(private readonly diagnostics: vscode.DiagnosticCollection) {}
 
-  provideTextDocumentContent(uri: vscode.Uri): string {
+  async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
     const sourceUri = vscode.Uri.parse(decodeURIComponent(uri.query));
     const sourceDoc = vscode.workspace.textDocuments.find(
       (d) => d.uri.toString() === sourceUri.toString(),
@@ -418,7 +418,20 @@ class ExpandedTemplatesProvider implements vscode.TextDocumentContentProvider {
       return "# Source document not found. Please reopen the preview.";
     }
 
-    const result = expandAndValidate(sourceDoc.getText());
+    // Use the imports-aware expander so cross-file `template:` invocations
+    // resolve in the preview (per #321 Repro 2 — without imports loaded
+    // here, the preview surfaces a misleading "Template not found" error
+    // for templates defined in module files).
+    const sourceDir = vscode.Uri.joinPath(sourceUri, "..");
+    const decoder = new TextDecoder();
+    const result = await expandAndValidateWithImports({
+      source: sourceDoc.getText(),
+      loadImport: async (importPath: string) => {
+        const importUri = vscode.Uri.joinPath(sourceDir, importPath);
+        const bytes = await vscode.workspace.fs.readFile(importUri);
+        return decoder.decode(bytes);
+      },
+    });
     if (result.expandError) {
       this.diagnostics.delete(uri);
       const commentedError = result.expandError
