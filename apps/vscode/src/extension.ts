@@ -1,9 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
-import {
-  validateTreatmentSource,
-  type Diagnostic,
-} from "./lib/validateTreatment";
+import { type Diagnostic } from "./lib/validateTreatment";
+import { validateTreatmentWithDiff } from "./lib/validateTreatmentDiff";
 import { validatePromptSource } from "./lib/validatePrompt";
 import { pathToRange } from "./lib/yamlPositionMap";
 import {
@@ -99,13 +97,63 @@ function toVscodeRange(range: Diagnostic["range"]): vscode.Range {
   );
 }
 
-function validateTreatmentFile(document: vscode.TextDocument): void {
+async function validateTreatmentFile(
+  document: vscode.TextDocument,
+): Promise<void> {
   const uriKey = document.uri.toString();
   const version = (validationVersions.get(uriKey) ?? 0) + 1;
   validationVersions.set(uriKey, version);
 
   const source = document.getText();
-  const result = validateTreatmentSource(source);
+  const rootDir = vscode.Uri.joinPath(document.uri, "..");
+  const workspaceFolder =
+    vscode.workspace.getWorkspaceFolder(document.uri) ??
+    vscode.workspace.workspaceFolders?.[0];
+  const decoder = new TextDecoder();
+
+  // `validateTreatmentFile` runs fire-and-forget from the debounced
+  // validator; any uncaught rejection becomes an unhandled-promise
+  // warning that destabilizes the extension host. Catch everything
+  // and surface as a top-of-file diagnostic so the editor stays
+  // responsive.
+  let result;
+  try {
+    result = await validateTreatmentWithDiff({
+      source,
+      loadImport: async (importPath: string) => {
+        // Boundary guard: `resolveImportPath` can produce paths that
+        // start with `..` (legal for `./..` declarations in source)
+        // or even absolute paths. Without an explicit check,
+        // `vscode.workspace.fs.readFile` would happily read arbitrary
+        // files outside the workspace on every edit. Refuse those
+        // outright so validation can never trigger an unbounded read.
+        const importUri = vscode.Uri.joinPath(rootDir, importPath);
+        if (
+          workspaceFolder &&
+          !isWithinWorkspace(importUri.fsPath, workspaceFolder.uri.fsPath)
+        ) {
+          throw new Error(`Import path escapes workspace: ${importPath}`);
+        }
+        const bytes = await vscode.workspace.fs.readFile(importUri);
+        return decoder.decode(bytes);
+      },
+    });
+  } catch (e) {
+    if (validationVersions.get(uriKey) !== version) return;
+    const message = e instanceof Error ? e.message : String(e);
+    const fallback = new vscode.Diagnostic(
+      new vscode.Range(0, 0, 0, 1),
+      `Stagebook validator failed unexpectedly: ${message}`,
+      vscode.DiagnosticSeverity.Error,
+    );
+    fallback.source = "stagebook";
+    diagnosticCollection.set(document.uri, [fallback]);
+    return;
+  }
+
+  // Stale-version guard: if another edit fired while we were awaiting,
+  // discard this result rather than clobbering the newer one.
+  if (validationVersions.get(uriKey) !== version) return;
 
   const vscodeDiagnostics = result.diagnostics.map((d) => {
     const diag = new vscode.Diagnostic(
