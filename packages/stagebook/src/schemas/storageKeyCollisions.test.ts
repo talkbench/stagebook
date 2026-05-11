@@ -259,8 +259,32 @@ describe("collectStorageKeyCollisions", () => {
     expect(collectStorageKeyCollisions(data)).toEqual([]);
   });
 
-  it("derives keys for audio (name OR file fallback)", () => {
-    const data = {
+  it("flags audio collisions only when both elements are explicitly named", () => {
+    // Two unnamed audios sharing a file are NOT a collision —
+    // Element.tsx generates a position-based runtime key for unnamed
+    // audios so each occurrence gets a distinct storage key.
+    // Researchers opt in to cross-stage tracking by setting `name:`.
+    const dataNamed = {
+      treatments: [
+        {
+          name: "t1",
+          gameStages: [
+            {
+              name: "stage1",
+              elements: [
+                { type: "audio", name: "bell", file: "intro.mp3" },
+                { type: "audio", name: "bell", file: "other.mp3" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const namedCollisions = collectStorageKeyCollisions(dataNamed);
+    expect(namedCollisions).toHaveLength(1);
+    expect(namedCollisions[0].key).toBe("audio_bell");
+
+    const dataUnnamed = {
       treatments: [
         {
           name: "t1",
@@ -276,15 +300,29 @@ describe("collectStorageKeyCollisions", () => {
         },
       ],
     };
-    const collisions = collectStorageKeyCollisions(data);
-    expect(collisions).toHaveLength(1);
-    expect(collisions[0].key).toBe("audio_intro.mp3");
+    expect(collectStorageKeyCollisions(dataUnnamed)).toEqual([]);
   });
 
-  it("derives keys for mediaPlayer (name OR file fallback) — matches Element.tsx runtime", () => {
-    // Per Element.tsx:277, mediaPlayer falls back to the raw `file` field
-    // (NOT `url` — that field was renamed to `file` in #249).
-    const data = {
+  it("flags mediaPlayer collisions only when both elements are explicitly named", () => {
+    const dataNamed = {
+      treatments: [
+        {
+          name: "t1",
+          gameStages: [
+            {
+              name: "stage1",
+              elements: [
+                { type: "mediaPlayer", name: "intro", file: "a.mp4" },
+                { type: "mediaPlayer", name: "intro", file: "b.mp4" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(collectStorageKeyCollisions(dataNamed)).toHaveLength(1);
+
+    const dataUnnamed = {
       treatments: [
         {
           name: "t1",
@@ -300,9 +338,7 @@ describe("collectStorageKeyCollisions", () => {
         },
       ],
     };
-    const collisions = collectStorageKeyCollisions(data);
-    expect(collisions).toHaveLength(1);
-    expect(collisions[0].key).toBe("mediaPlayer_intro.mp4");
+    expect(collectStorageKeyCollisions(dataUnnamed)).toEqual([]);
   });
 
   it("flags any two qualtrics elements in the same scope as colliding (fixed key)", () => {
@@ -358,8 +394,26 @@ describe("collectStorageKeyCollisions", () => {
     expect(collisions[0].paths).toHaveLength(2);
   });
 
-  it("derives keys for survey (name OR surveyName fallback)", () => {
-    const data = {
+  it("flags survey collisions only when both elements are explicitly named", () => {
+    const dataNamed = {
+      treatments: [
+        {
+          name: "t1",
+          gameStages: [
+            {
+              name: "stage1",
+              elements: [
+                { type: "survey", name: "intake", surveyName: "TIPI" },
+                { type: "survey", name: "intake", surveyName: "Other" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(collectStorageKeyCollisions(dataNamed)).toHaveLength(1);
+
+    const dataUnnamed = {
       treatments: [
         {
           name: "t1",
@@ -375,9 +429,7 @@ describe("collectStorageKeyCollisions", () => {
         },
       ],
     };
-    const collisions = collectStorageKeyCollisions(data);
-    expect(collisions).toHaveLength(1);
-    expect(collisions[0].key).toBe("survey_TIPI");
+    expect(collectStorageKeyCollisions(dataUnnamed)).toEqual([]);
   });
 
   it("skips elements without a derivable storage key (unnamed prompts/submitButtons)", () => {

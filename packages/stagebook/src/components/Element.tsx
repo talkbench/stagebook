@@ -148,7 +148,13 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
         <AudioElement
           src={getAssetURL(element.file ?? "")}
           save={wrappedSave}
-          name={element.name ?? element.file}
+          // When `name:` is omitted, fall back to a position-based
+          // identifier (`<progressLabel>_<file>`) so two unnamed
+          // audios with the same file in different stages get
+          // distinct storage keys instead of silently overwriting
+          // each other. Researchers who do want a stable name
+          // across stages set `name:` explicitly.
+          name={element.name ?? `${progressLabel}_${element.file ?? ""}`}
         />
       );
 
@@ -287,7 +293,10 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
             : getAssetURL(rawCaptions);
       return (
         <MediaPlayer
-          name={String(element.name ?? rawURL)}
+          // Position-based fallback when `name:` is omitted — same
+          // intent as the audio case above: distinct storage keys
+          // for the same media used in different stages.
+          name={String(element.name ?? `${progressLabel}_${rawURL}`)}
           url={resolvedURL}
           save={wrappedSave}
           getElapsedTime={getElapsedTime}
@@ -371,7 +380,10 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
 
     case "survey": {
       const surveyName = element.surveyName ?? "";
-      const surveyKey = element.name ?? surveyName;
+      // Position-based fallback when `name:` is omitted — same
+      // intent as audio/mediaPlayer: distinct storage keys for the
+      // same survey used in different stages.
+      const surveyKey = element.name ?? `${progressLabel}_${surveyName}`;
       return (
         renderSurvey?.({
           surveyName,
