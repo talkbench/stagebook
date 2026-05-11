@@ -14,22 +14,37 @@ import { safeParseTreatmentFile } from "./safeParseTreatmentFile.js";
  *                source position; the hydrated-pass instance confirms
  *                the bug isn't a pre-fill artifact. Real bug.
  *
- *   sourceOnly   Issues only in the source pass. Two sub-cases that
- *                callers must distinguish by `issue.path[0]`:
+ *   sourceOnly   Issues only in the source pass. v1 can't reliably
+ *                tell artifacts apart from real bugs here. Two
+ *                independent mechanisms can land issues in this
+ *                bucket:
  *
- *                  - path[0] === "templates" or "imports":
- *                    a real bug in a template definition or in the
- *                    imports list. The hydrated form deliberately
- *                    omits `templates:` (fillTemplates strips it as
- *                    the runtime shape), so unused definitions have
- *                    no hydrated counterpart even when they're
- *                    broken. Surface as a real error.
- *
- *                  - anything else:
- *                    a templating artifact. The canonical example is
- *                    the intro/exit "needs advancement element"
+ *                  - true templating artifacts. The canonical example
+ *                    is the intro/exit "needs advancement element"
  *                    refinement firing on a `template:` invocation
- *                    that expands to a submitButton. Suppress.
+ *                    that expands to a submitButton. Path is usually
+ *                    inside `treatments`/`introSequences`, but can
+ *                    also land inside `templates[...]` when a
+ *                    template's content has `contentType:
+ *                    introExitStep` (or similar) and the inner
+ *                    refinement fires on its own pre-fill view of
+ *                    the elements list.
+ *
+ *                  - real bugs that didn't survive hydration into a
+ *                    matched pair. The most common: an unused
+ *                    template definition with a schema-level error
+ *                    (no invocation → no hydrated counterpart → no
+ *                    match). Path is inside `templates[...]`.
+ *
+ *                Path alone isn't a reliable discriminator (the
+ *                advancement-element case puts an artifact at a
+ *                `templates`-prefixed path). v1 callers should
+ *                surface sourceOnly at a lower visual priority than
+ *                matched/hydratedOnly (e.g., as warnings or expanded
+ *                on demand) rather than as hard errors, since some
+ *                fraction WILL be artifacts. Provenance-aware
+ *                matching (option 2/3 in #321) would eliminate this
+ *                ambiguity.
  *
  *   hydratedOnly Issues only in the hydrated pass. Bug that only
  *                surfaces after expansion (e.g., a field-substituted
@@ -214,23 +229,10 @@ export function runValidationDiff({
   }
 
   // The hydrated pass deliberately sees the post-fill runtime shape:
-  // fillTemplates strips `templates:`, and we leave it stripped. Two
-  // consequences worth knowing about:
-  //
-  // - Used templates with definition errors: source pass surfaces one
-  //   issue at the def, hydrated surfaces the same (code, message)
-  //   at each expansion site. The diff matches the def issue (so
-  //   `matched` correctly points at the source-fix location) and the
-  //   leftover expansion sites land in `hydratedOnly`. Callers can
-  //   de-dupe expansion sites against `matched` by (code, message).
-  //
-  // - Unused templates with definition errors: source pass surfaces
-  //   the issue but there's no hydrated counterpart, so the diff
-  //   classifies it as `sourceOnly`. This is *not* a templating
-  //   artifact — the path is `["templates", ...]`, which callers
-  //   should treat as a real bug. The doc header above codifies this
-  //   contract; see also #321 for the provenance-aware match that
-  //   would obviate the path-based distinction.
+  // fillTemplates strips `templates:`, and we leave it stripped. The
+  // ambiguous-sourceOnly note in the function header explains why
+  // path-based routing isn't sufficient and what callers should do
+  // with the bucket.
   //
   // imports stays naturally — fillTemplates only strips `templates:`,
   // not `imports:` — so the schema's import-list type check runs in

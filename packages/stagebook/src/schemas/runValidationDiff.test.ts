@@ -282,14 +282,13 @@ treatments:
       expect(matchedAtDef.length).toBeGreaterThan(0);
     });
 
-    it("classifies an error in an UNUSED template's definition as sourceOnly with a templates-prefixed path", () => {
-      // The template is defined but never invoked. The hydrated form
-      // has no expansion site for it; the source pass is the only run
-      // that sees the error. It lands in `sourceOnly`, but the path
-      // identifies it as a template-definition issue (path[0] ===
-      // "templates"). Callers route this as a real bug, not as a
-      // templating artifact. See the function header for the routing
-      // contract.
+    it("an UNUSED template's def error lands in sourceOnly (no hydrated counterpart)", () => {
+      // Defined but never invoked → source sees the bug, hydrated has
+      // no expansion site for it. Lands in `sourceOnly`. Honest about
+      // the bucket: v1 can't tell this case (real bug) apart from a
+      // genuine artifact at a `templates[...]` path, so callers
+      // present sourceOnly at lower visual priority than the
+      // confidently-real buckets.
       const source = `templates:
   - name: brokenButUnused
     contentType: element
@@ -317,12 +316,56 @@ treatments:
         (i) => Array.isArray(i.path) && i.path[0] === "templates",
       );
       expect(sourceOnlyAtDef.length).toBeGreaterThan(0);
-      // It must not be in matched (no hydrated counterpart since
-      // the template wasn't invoked).
       const matchedAtDef = result.matched.filter(
         (i) => Array.isArray(i.path) && i.path[0] === "templates",
       );
       expect(matchedAtDef).toEqual([]);
+    });
+
+    it("an artifact INSIDE a template body also lands in sourceOnly (path is not a reliable signal)", () => {
+      // The template's content is an introExitStep whose only direct
+      // element is a `template:` invocation of another template that
+      // does provide a submitButton. The schema's advancement-element
+      // refinement fires inside the source-pass validation of this
+      // template's content. After hydration the inner template expands
+      // to include the submitButton, so the same refinement passes —
+      // this is a genuine artifact. Crucially: the path is
+      // `templates[...]`, identical to the unused-broken-template
+      // case above. Path can't distinguish the two; callers handle
+      // sourceOnly with lower confidence than matched/hydratedOnly.
+      const source = `templates:
+  - name: wrapAdvance
+    contentType: introSteps
+    content:
+      - name: s
+        elements:
+          - template: innerAdvance
+  - name: innerAdvance
+    contentType: elements
+    content:
+      - type: submitButton
+introSequences:
+  - name: i
+    introSteps:
+      - template: wrapAdvance
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: submitButton
+`;
+      const result = runValidationDiff({ source });
+      expect(result.hydrationError).toBeNull();
+      const advancementInSourceOnly = result.sourceOnly.find(
+        (i) =>
+          Array.isArray(i.path) &&
+          i.path[0] === "templates" &&
+          i.message.toLowerCase().includes("advancement element"),
+      );
+      expect(advancementInSourceOnly).toBeDefined();
     });
   });
 
