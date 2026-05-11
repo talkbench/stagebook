@@ -69,40 +69,89 @@ The schema's reference checker has a permissive fallthrough that silently passes
 import {
   treatmentFileSchema,
   fillTemplates,
+  parseTreatmentYaml,
+  resolveImportPath,
+  resolveImports,
   collectPreHydrationIssues, // template-name resolution + circular invocations
-  findUnreachableReferences,  // cross-treatment leaks (runs on hydrated form)
-  runValidationDiff,          // optional: full diff orchestrator (see below)
+  findUnreachableReferences, // cross-treatment leaks (runs on hydrated form)
+  type ParsedFile,
 } from "stagebook";
+import { load as loadYaml } from "js-yaml";
+import { readFileSync } from "fs";
+import { resolve, dirname } from "path";
 
-// Pre-hydration semantic — catches "Template 'foo' is not defined"
-// and "Templates form an invocation cycle" before hydration would
-// throw a generic error.
+const yamlPath = "study.stagebook.yaml";
+const raw = loadYaml(readFileSync(yamlPath, "utf-8")) as ParsedFile;
+
+// 1. Resolve `imports:` — load each imported file and merge its
+//    `templates:` into one flat list. `importedTemplates` is the
+//    post-merge list of just the *imported* template definitions.
+const rootDir = dirname(yamlPath);
+const loaded = new Map<string, ParsedFile>();
+const queue = (raw.imports ?? []).map((p) =>
+  resolveImportPath("root.stagebook.yaml", p),
+);
+while (queue.length > 0) {
+  const importPath = queue.shift()!;
+  if (loaded.has(importPath)) continue;
+  const importedRaw = readFileSync(resolve(rootDir, importPath), "utf-8");
+  const { parsed, imports } = parseTreatmentYaml(importedRaw);
+  loaded.set(importPath, parsed as ParsedFile);
+  for (const next of imports) {
+    queue.push(resolveImportPath(importPath, next));
+  }
+}
+const mergedTemplates = resolveImports({ main: raw, files: loaded });
+const rootCount = (raw.templates ?? []).length;
+const importedTemplates = mergedTemplates.slice(rootCount);
+
+// 2. Pre-hydration semantic — catches "Template 'foo' is not defined"
+//    and "Templates form an invocation cycle" before hydration would
+//    throw a generic error.
 const preHydration = collectPreHydrationIssues({
   root: raw,
   importedTemplates,
 });
 
-// Hydrate (as before)
+// 3. Hydrate.
 const { result: expanded } = fillTemplates({
   obj: raw,
-  templates: [...(raw.templates ?? []), ...importedTemplates],
+  templates: mergedTemplates,
   allowUnresolved: true,
 });
 
-// Schema validation
+// 4. Schema validation (existing behavior).
 const schemaResult = treatmentFileSchema.safeParse(expanded);
 
-// Strict per-treatment reachable-keys check — catches references that
-// resolve to a key produced in another treatment, an uninvoked
-// template, or otherwise unreachable from the consuming treatment.
-// These are silent passes in the schema by design; the strict check
-// surfaces them.
+// 5. Strict per-treatment reachable-keys check — catches references
+//    that resolve to a key produced in another treatment, an uninvoked
+//    template, or otherwise unreachable from the consuming treatment.
+//    These are silent passes in the schema by design; the strict
+//    check surfaces them.
 const unreachable = findUnreachableReferences(expanded, {
-  templates: [...(raw.templates ?? []), ...importedTemplates],
+  templates: mergedTemplates,
 });
 ```
 
-The VS Code extension runs this exact pipeline plus a [diff orchestrator](https://github.com/deliberation-lab/stagebook/issues/321) that distinguishes "real bug in both source and hydrated form" from "templating artifact that disappears after expansion." Runtime hosts can use the same pieces (orchestrator output buckets) for fine-grained diagnostic routing, but the simpler "schema + pre-hydration + unreachable" sequence above is usually enough for build-time and pre-deploy checks.
+If your file doesn't use `imports:`, the resolve step is a no-op (`importedTemplates = []` and `mergedTemplates = raw.templates ?? []`). The example above runs end-to-end for either case.
+
+The VS Code extension runs this exact pipeline plus a [diff orchestrator](https://github.com/deliberation-lab/stagebook/issues/321) that distinguishes "real bug in both source and hydrated form" from "templating artifact that disappears after expansion." If your tooling needs the same fine-grained diagnostic routing (e.g., to display templating artifacts as warnings instead of errors), use `runValidationDiff` from `stagebook`:
+
+```typescript
+import { runValidationDiff } from "stagebook";
+
+const sourceText = readFileSync(yamlPath, "utf-8");
+const diff = runValidationDiff({
+  source: sourceText,
+  importedTemplates, // computed above
+});
+// diff.matched          — real bugs in both passes
+// diff.sourceOnly       — likely templating artifacts (display as warning)
+// diff.hydratedOnly     — revealed by expansion (display in expanded view)
+// diff.unreachableReferences — strict reachable-keys check, same as above
+```
+
+For build-time and pre-deploy checks the simpler "schema + pre-hydration + unreachable" sequence is usually enough — the diff orchestrator pays for two schema runs to enable the artifact/real-bug distinction, which only matters when you're surfacing diagnostics live to an author.
 
 ## Validating Prompt Files
 
