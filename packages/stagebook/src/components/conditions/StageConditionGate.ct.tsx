@@ -125,6 +125,49 @@ test.describe("StageConditionGate (#183)", () => {
     ).not.toBeVisible();
   });
 
+  test("exit-phase stage with a false condition skips cleanly (#315)", async ({
+    mount,
+    page,
+  }) => {
+    // The Stage component is phase-agnostic — game, intro, and exit
+    // stages all share the same StageConditionGate path because the
+    // viewer's flattenSteps collapses all three phases into a uniform
+    // step shape. This test makes that guarantee explicit using the
+    // dialogue-levers `second_discussion_followup` pattern from #315:
+    // an exit-sequence stage gated on whether the participant opted
+    // into the second discussion in a prior game stage. When the
+    // referenced prompt answer is absent (e.g. partner attrited, or
+    // the gating stage itself was skipped — the transitive-skip case),
+    // the gate skips the exit step end-to-end.
+    await mount(
+      <MockStageRenderer
+        stage={{
+          // No `duration:` — matches how the viewer flattens exit steps
+          // (only gameStages carry a duration). Keeping the field absent
+          // exercises the schema path the host hits for exit phases.
+          name: "second_discussion_followup",
+          conditions: [
+            {
+              reference: "0.prompt.continue_with_partner",
+              comparator: "equals",
+              value: "Yes",
+            },
+          ],
+          elements,
+        }}
+        // No stateValues — `0.prompt.continue_with_partner` is absent,
+        // which is what the runtime sees when the prior gating stage
+        // was itself skipped (transitive skip).
+      />,
+    );
+    const gate = page.locator('[data-testid="stage-condition-gate"]');
+    await expect(gate).toBeVisible();
+    await expect(gate).toHaveAttribute("data-state", "advancing");
+    await expect(
+      page.locator('[data-testid="stageContent"]'),
+    ).not.toBeVisible();
+  });
+
   test("no gate overhead when stage has no conditions", async ({
     mount,
     page,
