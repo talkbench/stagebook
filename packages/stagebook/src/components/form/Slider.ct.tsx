@@ -101,3 +101,83 @@ test("changing range input updates value", async ({ mount }) => {
     "75",
   );
 });
+
+// -- Thumb shape and alignment (#326) --
+
+test("thumb is a square (round via border-radius) — not an oblong", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <Slider min={0} max={100} interval={1} value={50} />,
+  );
+  const thumb = component.locator('[data-testid="slider-thumb"]');
+  await expect(thumb).toHaveCount(1);
+  // width === height for a true circle when border-radius is 50%
+  const box = await thumb.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.width).toBe(box!.height);
+  // And it's the expected 20×20
+  expect(box!.width).toBe(20);
+});
+
+test("thumb is centered on the track at value=min", async ({ mount }) => {
+  // At min, the thumb's horizontal center should be at the leftmost tick's
+  // horizontal center — i.e., at 0% of the track, not 10px in.
+  const component = await mount(
+    <Slider min={1} max={7} interval={1} labelPts={[1, 7]} value={1} />,
+  );
+  const track = component.locator('[data-testid="slider-track"]');
+  const thumb = component.locator('[data-testid="slider-thumb"]');
+  const trackBox = await track.boundingBox();
+  const thumbBox = await thumb.boundingBox();
+  expect(trackBox).not.toBeNull();
+  expect(thumbBox).not.toBeNull();
+  const thumbCenterX = thumbBox!.x + thumbBox!.width / 2;
+  // Thumb center should be at the track's left edge (within 1px tolerance
+  // for sub-pixel rendering).
+  expect(Math.abs(thumbCenterX - trackBox!.x)).toBeLessThanOrEqual(1);
+});
+
+test("thumb is centered on the track at value=max", async ({ mount }) => {
+  const component = await mount(
+    <Slider min={1} max={7} interval={1} labelPts={[1, 7]} value={7} />,
+  );
+  const track = component.locator('[data-testid="slider-track"]');
+  const thumb = component.locator('[data-testid="slider-thumb"]');
+  const trackBox = await track.boundingBox();
+  const thumbBox = await thumb.boundingBox();
+  expect(trackBox).not.toBeNull();
+  expect(thumbBox).not.toBeNull();
+  const thumbCenterX = thumbBox!.x + thumbBox!.width / 2;
+  const trackRight = trackBox!.x + trackBox!.width;
+  expect(Math.abs(thumbCenterX - trackRight)).toBeLessThanOrEqual(1);
+});
+
+test("thumb aligns with the tick at non-center values (value=5 on 1..7)", async ({
+  mount,
+}) => {
+  // The bug: at value=5 on a 1..7 scale, the thumb was ~3px left of the
+  // tick at 5 because the native range thumb's half-thumb-width offset
+  // doesn't match the tick coordinate system.
+  const component = await mount(
+    <Slider
+      min={1}
+      max={7}
+      interval={1}
+      labelPts={[1, 2, 3, 4, 5, 6, 7]}
+      value={5}
+    />,
+  );
+  const thumb = component.locator('[data-testid="slider-thumb"]');
+  // Ticks render in order before the thumb, so direct child index 4 is
+  // the 5th tick (the one at value=5).
+  const track = component.locator('[data-testid="slider-track"]');
+  const tickAt5 = track.locator("> div").nth(4);
+  const tickBox = await tickAt5.boundingBox();
+  const thumbBox = await thumb.boundingBox();
+  expect(tickBox).not.toBeNull();
+  expect(thumbBox).not.toBeNull();
+  const thumbCenterX = thumbBox!.x + thumbBox!.width / 2;
+  const tickCenterX = tickBox!.x + tickBox!.width / 2;
+  expect(Math.abs(thumbCenterX - tickCenterX)).toBeLessThanOrEqual(1);
+});
