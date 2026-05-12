@@ -73,7 +73,18 @@ export function TextArea({
   const generatedId = useId();
   const textAreaId = id || generatedId;
   const [localValue, setLocalValue] = useState(value || "");
+  // Transient flag set when a keystroke is rejected for exceeding maxLength;
+  // drives the brief red pulse animation on the character counter. The
+  // steady-state color stays valid-green when length === maxLength (#333).
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  // Bumped on each rejected overflow keystroke. Used as the React `key`
+  // on the counter element so that rapid repeat overflows reliably restart
+  // the pulse animation — without this, a second overflow within 300ms
+  // would not retrigger the keyframe (the animation prop string is
+  // unchanged, so the browser doesn't restart).
+  const [overflowPulseId, setOverflowPulseId] = useState(0);
   const debounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const overflowTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Inter-keystroke timing comes from character-producing and editing keys
   // (Backspace/Delete). Cursor-only keys (arrows, Home/End) are excluded so
@@ -103,6 +114,15 @@ export function TextArea({
       setLocalValue(value || "");
     }
   }, [value]);
+
+  // Clear the overflow timeout on unmount — without this, a stage/page
+  // change within the 300ms window would fire setIsOverflowing(false) on
+  // an unmounted component (silent in React 18+ but still a leak).
+  useEffect(() => {
+    return () => {
+      if (overflowTimeout.current) clearTimeout(overflowTimeout.current);
+    };
+  }, []);
 
   const submitChange = (val: string) => {
     if (onChange && typeof onChange === "function") {
@@ -135,7 +155,18 @@ export function TextArea({
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
-    if (maxLength && newValue.length > maxLength) return;
+    if (maxLength && newValue.length > maxLength) {
+      // Keystroke would overflow — reject it and pulse the counter red
+      // briefly. Distinguishes "you tried to overflow" (transient, this
+      // animation) from "you're at the limit" (steady valid state).
+      if (overflowTimeout.current) clearTimeout(overflowTimeout.current);
+      setIsOverflowing(true);
+      setOverflowPulseId((p) => p + 1);
+      overflowTimeout.current = setTimeout(() => {
+        setIsOverflowing(false);
+      }, 300);
+      return;
+    }
     setLocalValue(newValue);
     debouncedSubmit(newValue);
   };
@@ -253,13 +284,13 @@ export function TextArea({
     const currentLength = localValue.length;
 
     if (minLength && maxLength) {
-      countText = `(${currentLength} / ${minLength}-${maxLength} chars)`;
-      if (currentLength >= minLength && currentLength < maxLength) {
+      countText = `(${currentLength} / ${minLength}-${maxLength} characters)`;
+      // The valid range is [minLength, maxLength] inclusive on both ends.
+      // Hitting maxLength is "you're at the upper limit" — a fact, not an
+      // error. Attempts to type past it pulse red via isOverflowing (#333).
+      if (currentLength >= minLength && currentLength <= maxLength) {
         countColor = "var(--stagebook-success, #16a34a)";
         countState = "valid";
-      } else if (currentLength === maxLength) {
-        countColor = "var(--stagebook-warning, #dc2626)";
-        countState = "error";
       }
     } else if (minLength) {
       countText = `(${currentLength} / ${minLength}+ characters required)`;
@@ -268,19 +299,24 @@ export function TextArea({
         countState = "valid";
       }
     } else if (maxLength) {
-      countText = `(${currentLength} / ${maxLength} chars max)`;
-      if (currentLength === maxLength) {
-        countColor = "var(--stagebook-warning, #dc2626)";
-        countState = "error";
-      }
+      countText = `(${currentLength} / ${maxLength} characters max)`;
     } else {
       countText = `(${currentLength} characters)`;
     }
 
+    // Pulse animation takes priority over the steady-state color — when the
+    // participant tries to type past maxLength, the counter flashes red for
+    // 300ms regardless of the underlying valid state.
+    const animationStyle = isOverflowing
+      ? { animation: "stagebook-char-counter-pulse 300ms ease-out" }
+      : {};
+    const overflowState = isOverflowing ? "overflow" : countState;
+
     return (
       <div
+        key={isOverflowing ? `pulse-${overflowPulseId}` : "steady"}
         data-testid="char-counter"
-        data-state={countState}
+        data-state={overflowState}
         style={{
           textAlign: "right",
           fontSize: "0.75rem",
@@ -289,6 +325,7 @@ export function TextArea({
           color: countColor,
           boxSizing: "border-box",
           width: "100%",
+          ...animationStyle,
         }}
       >
         {countText}
@@ -327,6 +364,26 @@ export function TextArea({
         }}
       />
       {renderCharacterCount()}
+      <style>{`
+        /* Animate a box-shadow glow instead of the text color, so the
+           steady-state countColor (gray/green) is preserved throughout
+           the pulse — animating color back to "inherit" produced a brief
+           flash to the parent color before snapping back to countColor at
+           animation end. The warning color is referenced via the same
+           --stagebook-warning token used by host theming, so a themed
+           orange (etc.) propagates through the pulse. */
+        @keyframes stagebook-char-counter-pulse {
+          0% {
+            box-shadow: 0 0 0 0 var(--stagebook-warning, #dc2626);
+          }
+          30% {
+            box-shadow: 0 0 0 4px var(--stagebook-warning, #dc2626);
+          }
+          100% {
+            box-shadow: 0 0 0 0 var(--stagebook-warning, #dc2626);
+          }
+        }
+      `}</style>
     </div>
   );
 }

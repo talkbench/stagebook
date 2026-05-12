@@ -88,9 +88,14 @@ test.describe("CSS Variable Theme Override", () => {
     await expect(counter).toHaveCSS("color", "rgb(234, 88, 12)");
   });
 
-  test("TextArea counter uses overridden warning color (red → orange)", async ({
+  test("TextArea counter uses overridden warning color during overflow pulse (#333)", async ({
     mount,
   }) => {
+    // The warning color is no longer the steady state at maxLength —
+    // post-#333 that's the valid/default state. The warning color now
+    // appears only during the transient overflow-pulse box-shadow glow.
+    // We exercise the override by triggering an overflow keystroke and
+    // sampling the box-shadow color while data-state="overflow".
     const component = await mount(
       <ThemedTextArea
         value="12345"
@@ -99,9 +104,20 @@ test.describe("CSS Variable Theme Override", () => {
         themeOverrides={orangeTheme}
       />,
     );
+    const textarea = component.locator("textarea");
     const counter = component.locator('[data-testid="char-counter"]');
-    // #f97316 = rgb(249, 115, 22)
-    await expect(counter).toHaveCSS("color", "rgb(249, 115, 22)");
+    await textarea.focus();
+    await textarea.press("x");
+    await expect(counter).toHaveAttribute("data-state", "overflow");
+    // The pulse animates `box-shadow`; the keyframe's 0% frame uses the
+    // themed --stagebook-warning variable. Sample box-shadow and confirm
+    // the orange-override RGB is present.
+    const shadow = await counter.evaluate(
+      (el) => getComputedStyle(el).boxShadow,
+    );
+    // #f97316 = rgb(249, 115, 22); RGBA in box-shadow may render with
+    // alpha channel. We assert any RGB() containing the override hue.
+    expect(shadow).toMatch(/249,?\s*115,?\s*22/);
   });
 
   test("side-by-side: blue default vs orange override", async ({ mount }) => {

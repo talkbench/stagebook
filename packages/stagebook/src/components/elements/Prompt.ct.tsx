@@ -217,7 +217,7 @@ test.describe("Open Response", () => {
       />,
     );
     await expect(component.locator("textarea")).toBeVisible();
-    await expect(component).toContainText("(5 / 50-200 chars)");
+    await expect(component).toContainText("(5 / 50-200 characters)");
   });
 
   test("counter is gray when under minimum", async ({ mount }) => {
@@ -251,12 +251,14 @@ test.describe("Open Response", () => {
     await expect(counter).toHaveCSS("color", "rgb(22, 163, 74)");
   });
 
-  test("counter is red at maximum", async ({ mount }) => {
+  test("counter is green at maximum (#333 — upper bound is valid, not error)", async ({
+    mount,
+  }) => {
     const maxValue = "A".repeat(200);
     const component = await mount(
       <Prompt
         {...openResponseWithLimits}
-        name="testRed"
+        name="testAtMax"
         value={maxValue}
         progressLabel="game_0_test"
         save={() => {}}
@@ -264,7 +266,7 @@ test.describe("Open Response", () => {
       />,
     );
     const counter = component.locator('[data-testid="char-counter"]');
-    await expect(counter).toHaveCSS("color", "rgb(220, 38, 38)");
+    await expect(counter).toHaveCSS("color", "rgb(22, 163, 74)");
   });
 
   test("shared mode hides textarea (notepad slot)", async ({ mount }) => {
