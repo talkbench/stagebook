@@ -170,7 +170,12 @@ const discussionContainerStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   alignItems: "center",
-  justifyContent: "center",
+  // `flex-start` rather than `center` (#295): the real VideoCall renders
+  // video tiles starting from the top of its container, so anchoring the
+  // skeleton's informational content to the top matches the live
+  // experience better. Centering left the "Video Call" label floating in
+  // the middle of a mostly-empty dashed box at full height.
+  justifyContent: "flex-start",
   gap: "0.75rem",
   padding: "2rem",
   border: "2px dashed #93c5fd",

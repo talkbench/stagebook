@@ -235,6 +235,15 @@ export function Stage({
           width: "100%",
           flexDirection: "row",
           alignItems: "stretch",
+          // `alignContent: flex-start` (#295): in single-line (wide) mode
+          // this has no effect — `alignItems: stretch` still stretches
+          // both columns to the line height. In wrapped (narrow) mode
+          // it stops the default `stretch` behavior, which would
+          // otherwise inflate each wrapped line to fill the parent's
+          // `minHeight: "calc(100vh - 4rem)"` — the cause of the
+          // over-tall skeleton (≈50vh) and the obscured
+          // elements-column content reported in #295.
+          alignContent: "flex-start",
           gap: "1rem",
           paddingBottom: "1rem",
           paddingLeft: "1.5rem",
