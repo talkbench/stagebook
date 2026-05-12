@@ -4,7 +4,9 @@ import { computeIntervalQuantiles } from "./typingQuantiles.js";
 export interface TypingStats {
   type: "typingStats";
   totalKeystrokes: number;
-  backspaceCount: number;
+  // Backspace + Delete — both are participant edits to previously-typed text
+  // and contribute identically to keystroke timing.
+  editingKeyCount: number;
   arrowKeyCount: number;
   mouseClickCount: number;
   focusCount: number;
@@ -12,7 +14,10 @@ export interface TypingStats {
   avgInterval: number;
   stdDev: number;
   // 21 values at the 0%, 5%, 10%, ..., 95%, 100% quantiles of inter-keystroke
-  // intervals (ms). null when fewer than 2 keystrokes have been recorded.
+  // intervals (ms). null when fewer than 2 keystrokes (and thus zero
+  // intervals) have been recorded. With ≥2 keystrokes the vector is always
+  // 21 values long; a degenerate single-interval distribution emits 21
+  // identical values.
   intervalQuantiles: number[] | null;
   firstKeystrokeDelayMs: number | null;
   totalTypingTimeMs: number | null;
@@ -75,7 +80,7 @@ export function TextArea({
   // that pure navigation doesn't dilute the typing rhythm signal.
   const keystrokeTimestamps = useRef<number[]>([]);
 
-  const backspaceCount = useRef(0);
+  const editingKeyCount = useRef(0);
   const arrowKeyCount = useRef(0);
   const mouseClickCount = useRef(0);
   const focusCount = useRef(0);
@@ -157,6 +162,9 @@ export function TextArea({
           .map((x) => (x - avgInterval) ** 2)
           .reduce((a, b) => a + b, 0) / intervals.length,
       );
+      // intervals is non-empty here (timestamps.length >= 2), so the helper
+      // returns a 21-value vector. A single-interval distribution emits 21
+      // identical values rather than an empty array.
       intervalQuantiles = computeIntervalQuantiles(intervals);
     }
 
@@ -173,7 +181,7 @@ export function TextArea({
     return {
       type: "typingStats",
       totalKeystrokes: timestamps.length,
-      backspaceCount: backspaceCount.current,
+      editingKeyCount: editingKeyCount.current,
       arrowKeyCount: arrowKeyCount.current,
       mouseClickCount: mouseClickCount.current,
       focusCount: focusCount.current,
@@ -220,7 +228,7 @@ export function TextArea({
       return;
     }
     if (EDITING_KEYS.has(e.key)) {
-      backspaceCount.current += 1;
+      editingKeyCount.current += 1;
       keystrokeTimestamps.current.push(Date.now());
       return;
     }

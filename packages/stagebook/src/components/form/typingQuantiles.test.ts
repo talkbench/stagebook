@@ -30,9 +30,17 @@ describe("quantile", () => {
 });
 
 describe("computeIntervalQuantiles", () => {
-  it("returns empty array for inputs with fewer than 2 samples", () => {
+  it("returns empty array for empty input", () => {
     expect(computeIntervalQuantiles([])).toEqual([]);
-    expect(computeIntervalQuantiles([100])).toEqual([]);
+  });
+
+  it("returns 21 identical values for a single-sample (1-interval) input", () => {
+    // With 2 keystrokes there's exactly 1 interval. All quantiles of a
+    // degenerate distribution equal that one sample — emitting a 21-value
+    // vector keeps the schema fixed-length downstream.
+    const result = computeIntervalQuantiles([42]);
+    expect(result).toHaveLength(21);
+    expect(result.every((v) => v === 42)).toBe(true);
   });
 
   it("returns 21 values for valid input", () => {

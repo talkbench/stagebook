@@ -11,10 +11,12 @@ export function quantile(sorted: number[], q: number): number {
 }
 
 // 21 quantiles at 0%, 5%, 10%, ..., 95%, 100% of the input distribution.
-// Returns an empty array for inputs with fewer than 2 samples; callers
-// should gate on length and emit `null` in that case.
+// Returns 21 values for any non-empty input — a single-sample distribution
+// is degenerate but well-defined (all quantiles equal that sample). Returns
+// an empty array only for empty input; callers gate on emptiness and emit
+// `null` in that case.
 export function computeIntervalQuantiles(intervals: number[]): number[] {
-  if (intervals.length < 2) return [];
+  if (intervals.length === 0) return [];
   const sorted = [...intervals].sort((a, b) => a - b);
   const result: number[] = [];
   for (let i = 0; i <= 20; i++) {
