@@ -574,9 +574,22 @@ function applyRules({
     // distinguish artifacts from real bugs; runtime hosts that
     // validate hydrated content see this check fire only on real
     // unreachable references.
+    // Scope wording depends on which walker is calling us. Intro
+    // sequences validate in isolation (their reachable set is just the
+    // earlier intro steps in this sequence); treatments validate
+    // against `producedAt` seeded with intro + own gameStages + own
+    // exit + invoked templates. `phaseLabel === "intro step"` is the
+    // tell that we're in the intro-sequence walker.
+    const inIntroSequence = phaseLabel === "intro step";
+    const scopeDescription = inIntroSequence
+      ? "this intro sequence"
+      : "this treatment";
+    const reachableDescription = inIntroSequence
+      ? "earlier in this intro sequence"
+      : "in this treatment's intro, game, or exit stages (or in a template this treatment invokes)";
     issues.push({
       path: site.path,
-      message: `Reference "${refStr}" doesn't match any ${refType} element reachable from this treatment. Check the name — no element produces the storage key "${referenceKey}" in this treatment's intro, game, or exit stages (or in a template this treatment invokes).`,
+      message: `Reference "${refStr}" doesn't match any ${refType} element reachable from ${scopeDescription}. Check the name — no element produces the storage key "${referenceKey}" ${reachableDescription}.`,
     });
     return;
   }

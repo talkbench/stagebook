@@ -24,10 +24,19 @@ import type { Diagnostic } from "./types";
  *   - matched (real bugs in both passes —     → error at source path
  *     including cross-treatment leaks, since
  *     the schema is strict by default)
- *   - sourceOnly (templating artifact —       → warning at source path
- *     e.g. template-injected refs that
- *     resolve post-fill, or refinements that
- *     fire pre-fill but not on hydrated form)
+ *   - sourceOnly (MIXED bucket — see          → warning at source path
+ *     `runValidationDiff.ts`. Could be a
+ *     templating artifact (e.g.
+ *     template-injected refs that resolve
+ *     post-fill, or refinements that fire
+ *     pre-fill but pass on hydrated form),
+ *     OR a real bug that didn't survive
+ *     hydration into a matched pair — the
+ *     classic case is a schema error inside
+ *     an unused template definition. Path
+ *     alone doesn't reliably distinguish.
+ *     Warning severity reflects the
+ *     uncertainty.)
  *   - hydratedOnly                            → not surfaced in source
  *                                               file; the expanded
  *                                               preview shows them
@@ -157,17 +166,30 @@ export async function validateTreatmentWithDiff({
     });
   }
 
-  // sourceOnly: templating artifact. The classic case is a refinement
-  // that fires on the unfilled source but passes on the hydrated form
-  // (e.g., intro-step advancement-element rule on a template
-  // invocation that expands to a submitButton); another common case
-  // is a reference whose producer lives in a template body — the
-  // strict reference check on source pass fires (templates not yet
-  // expanded), but the hydrated pass passes (templates injected the
-  // producer). Surface as warning so the user has visibility without
-  // overclaiming "this is definitely a bug." The expanded-preview
-  // document still shows the full hydrated-pass diagnostics for users
-  // who want to drill in.
+  // sourceOnly: MIXED bucket — see `runValidationDiff.ts` for the full
+  // contract. Two distinct kinds of issue land here:
+  //
+  //   (a) Templating artifacts. The classic case is a refinement that
+  //       fires on the unfilled source but passes on the hydrated form
+  //       (e.g., intro-step advancement-element rule on a template
+  //       invocation that expands to a submitButton). Another common
+  //       case is a reference whose producer lives in a template body
+  //       — the strict reference check on source pass fires
+  //       (templates not yet expanded), but the hydrated pass passes
+  //       (templates injected the producer). These are not real bugs.
+  //
+  //   (b) Real bugs that didn't survive hydration into a matched pair.
+  //       The classic case is a schema error inside an unused template
+  //       definition: the source-pass schema flags it (template
+  //       content is validated), but it has no hydrated counterpart
+  //       (the template was never invoked, so no expansion-site
+  //       instance to match against). These ARE real bugs.
+  //
+  // Path alone doesn't reliably tell (a) from (b) — the
+  // advancement-element refinement can fire at a `templates[...]`
+  // path too. Surface as warning to express the uncertainty without
+  // overclaiming. The expanded-preview document still shows the full
+  // hydrated-pass diagnostics for users who want to drill in.
   for (const issue of diff.sourceOnly) {
     diagnostics.push({
       message: appendPathIfMissing(issue),
