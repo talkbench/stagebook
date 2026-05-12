@@ -69,7 +69,13 @@ export function Prompt({
   // its corresponding numeric value (#282 — without this, a shuffled
   // numeric multipleChoice records the wrong number for the chosen label).
   const [shuffleOrder, setShuffleOrder] = useState<number[]>([]);
+  // `debugMessages` is also mirrored to a ref (`debugMessagesRef`) so that
+  // saveData() reads the latest list at save-time, not at the time the
+  // debounced save was scheduled. Without this, telemetry emitted on blur
+  // (after onChange has already scheduled a save) would not appear in the
+  // saved record.
   const [debugMessages, setDebugMessages] = useState<DebugMessage[]>([]);
+  const debugMessagesRef = useRef<DebugMessage[]>([]);
   const debounceTextRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debounceInteractiveRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -146,6 +152,11 @@ export function Prompt({
     (newValue: unknown, recordData: typeof record, label?: string) => {
       const updatedRecord = {
         ...recordData,
+        // Always read debugMessages from the ref at save-time. The
+        // `recordData` closure may have been captured before a TypingStats
+        // or PasteAttempt was appended (e.g. blur emits stats after the
+        // value-change debounce was already scheduled).
+        debugMessages: debugMessagesRef.current,
         value: newValue,
         // For multipleChoice prompts (#282), record both the chosen value
         // and its display label. In numeric mode `value` is the number and
@@ -295,9 +306,10 @@ export function Prompt({
         <TextArea
           defaultText={responses.join("\n")}
           onChange={(val) => debouncedSaveText(val, record)}
-          onDebugMessage={(message) =>
-            setDebugMessages((prev) => [...prev, message])
-          }
+          onDebugMessage={(message) => {
+            debugMessagesRef.current = [...debugMessagesRef.current, message];
+            setDebugMessages(debugMessagesRef.current);
+          }}
           value={value as string | undefined}
           rows={rows}
           showCharacterCount={!!(minLength || maxLength)}
