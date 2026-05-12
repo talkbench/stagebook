@@ -158,14 +158,17 @@ export type MetadataRefineType = MetadataType;
  *   - `- 50` — bare number (no colon → label defaults to the number's
  *     string form)
  *   - `- 50: Somewhat familiar` — number + label
- *   - `- 50:` — number + explicit empty label. Useful for sliders where
- *     a researcher wants a tick at this snap point but no label text
- *     underneath it (#325).
+ *   - `- 50:` — number + explicit empty label. Only honored when
+ *     `allowEmptyLabel` is true (sliders, #325). For multipleChoice
+ *     numeric mode we fall back to the number string instead, because
+ *     an unlabeled radio is bad UX (empty visible text + empty
+ *     accessible name).
  * The first colon separates point from label, so labels can themselves
  * contain colons.
  */
 function parseNumericResponseLine(
   raw: string,
+  options: { allowEmptyLabel?: boolean } = {},
 ): { ok: true; point: number; label: string } | { ok: false; message: string } {
   // Caller has already stripped the `- ` prefix and `\n`.
   const trimmed = raw.trim();
@@ -184,13 +187,19 @@ function parseNumericResponseLine(
     pointStr = trimmed;
     label = null;
   } else {
-    // Colon present — preserve the post-colon text verbatim (after trim).
-    // An empty string here is a deliberate "tick with no label", not a
-    // missing label; the `??` fallback below keeps empty strings intact
-    // because `"" ?? x` is `""` (only null/undefined trigger the
-    // fallback).
     pointStr = trimmed.slice(0, colonIdx).trim();
-    label = trimmed.slice(colonIdx + 1).trim();
+    const afterColon = trimmed.slice(colonIdx + 1).trim();
+    if (options.allowEmptyLabel) {
+      // Slider case (#325): preserve `""` so a researcher can put a tick
+      // at this snap point with no label text. `"" ?? x` is `""`, so the
+      // empty string survives the fallback below.
+      label = afterColon;
+    } else {
+      // multipleChoice numeric mode (#282): collapse empty-after-colon
+      // back to null so the fallback produces the stringified number.
+      // Legacy behavior preserved — unlabeled radios are bad UX.
+      label = afterColon.length > 0 ? afterColon : null;
+    }
   }
   if (pointStr.length === 0) {
     return {
@@ -418,7 +427,11 @@ export const promptFileSchema: z.ZodType<
       for (const line of responseLines) {
         if (!(line.startsWith("- ") || line === "-")) continue;
         const stripped = line === "-" ? "" : line.substring(2);
-        const parsed = parseNumericResponseLine(stripped);
+        // Slider: `- N:` is a deliberate empty label (tick with no
+        // visible text). multipleChoice keeps the legacy fallback (#325).
+        const parsed = parseNumericResponseLine(stripped, {
+          allowEmptyLabel: true,
+        });
         if (!parsed.ok) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,

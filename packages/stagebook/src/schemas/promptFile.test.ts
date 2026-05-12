@@ -487,6 +487,28 @@ Rate.
     }
   });
 
+  test("multipleChoice numeric `- N:` keeps the legacy fallback (#325 scoping)", () => {
+    // The empty-label-after-colon change is scoped to sliders. For
+    // multipleChoice numeric mode, an empty label would produce an
+    // unlabeled radio (bad UX, no accessible name), so we keep the
+    // legacy fallback to the stringified number.
+    const markdown = `---
+name: scale
+type: multipleChoice
+---
+Rate it
+---
+- 1:
+- 2:
+- 3:`;
+    const result = promptFileSchema.safeParse(markdown);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.responsePoints).toEqual([1, 2, 3]);
+      expect(result.data.responseItems).toEqual(["1", "2", "3"]);
+    }
+  });
+
   test("slider with ticks-everywhere-but-labels-only-at-anchors (TIPI pattern, #325)", () => {
     // The motivating use case for #325: a 7-point Likert slider with
     // ticks at every snap point but text only at the endpoints and
