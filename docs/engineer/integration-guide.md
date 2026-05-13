@@ -36,7 +36,7 @@ import {
 The most basic integration is validation. Use this in build tools, CI pipelines, or editor extensions:
 
 ```typescript
-import { treatmentFileSchema, fillTemplates } from "stagebook";
+import { safeParseTreatmentFile, fillTemplates } from "stagebook";
 import { load as loadYaml } from "js-yaml";
 import { readFileSync } from "fs";
 
@@ -45,14 +45,13 @@ const raw = loadYaml(readFileSync("study.stagebook.yaml", "utf-8"));
 
 // Expand templates
 const templates = raw.templates ?? [];
-const expanded = {
-  ...raw,
-  introSequences: fillTemplates({ obj: raw.introSequences, templates }),
-  treatments: fillTemplates({ obj: raw.treatments, templates }),
-};
+const { result: expanded } = fillTemplates({
+  obj: raw,
+  templates,
+});
 
 // Validate
-const result = treatmentFileSchema.safeParse(expanded);
+const result = safeParseTreatmentFile(expanded);
 
 if (!result.success) {
   for (const issue of result.error.issues) {
@@ -61,19 +60,22 @@ if (!result.success) {
 }
 ```
 
+Prefer `safeParseTreatmentFile` over `treatmentFileSchema.safeParse` directly — it's a thin wrapper that rewrites Zod's `unrecognized_keys` issues with rich "Unrecognized key 'X'. Did you mean 'Y'? Valid keys: …" messages and splits multi-key issues so each squiggle lands on the specific bad key.
+
 ### Strict validation (recommended for editor / pre-deploy)
 
-The schema's reference checker has a permissive fallthrough that silently passes a reference to a key produced *anywhere* in the file — including in another treatment or an uninvoked template. Per #321, that fallthrough is preserved on the schema for backward compatibility, but stricter consumers (editor tooling, pre-deploy checks) should layer on the following helpers that catch the bugs the fallthrough masks:
+`treatmentFileSchema` is strict-by-default as of v0.10 (see #283 + #334): the `superRefine` already catches cross-treatment reference leaks, forward-references between stages, storage-key collisions across phases, and references to keys produced in uninvoked templates. There's no separate "strict" mode to opt into.
+
+For editor tooling and pre-deploy CI, the only extra step is the pre-hydration semantic check, which surfaces specific messages for the bugs that would otherwise fail mid-expansion with a generic "Template expansion failed" error:
 
 ```typescript
 import {
-  treatmentFileSchema,
+  safeParseTreatmentFile,
   fillTemplates,
   parseTreatmentYaml,
   resolveImportPath,
   resolveImports,
   collectPreHydrationIssues, // template-name resolution + circular invocations
-  findUnreachableReferences, // cross-treatment leaks (runs on hydrated form)
   type ParsedFile,
 } from "stagebook";
 import { load as loadYaml } from "js-yaml";
@@ -89,7 +91,7 @@ const raw = loadYaml(readFileSync(yamlPath, "utf-8")) as ParsedFile;
 const rootDir = dirname(yamlPath);
 const loaded = new Map<string, ParsedFile>();
 const queue = (raw.imports ?? []).map((p) =>
-  resolveImportPath("root.stagebook.yaml", p),
+  resolveImportPath(yamlPath, p),
 );
 while (queue.length > 0) {
   const importPath = queue.shift()!;
@@ -120,22 +122,17 @@ const { result: expanded } = fillTemplates({
   allowUnresolved: true,
 });
 
-// 4. Schema validation (existing behavior).
-const schemaResult = treatmentFileSchema.safeParse(expanded);
-
-// 5. Strict per-treatment reachable-keys check — catches references
-//    that resolve to a key produced in another treatment, an uninvoked
-//    template, or otherwise unreachable from the consuming treatment.
-//    These are silent passes in the schema by design; the strict
-//    check surfaces them.
-const unreachable = findUnreachableReferences(expanded, {
-  templates: mergedTemplates,
-});
+// 4. Schema validation. The schema's superRefine catches cross-
+//    treatment reference leaks, storage-key collisions across phases,
+//    forward references, and references into uninvoked templates.
+const schemaResult = safeParseTreatmentFile(expanded);
 ```
 
 If your file doesn't use `imports:`, the resolve step is a no-op (`importedTemplates = []` and `mergedTemplates = raw.templates ?? []`). The example above runs end-to-end for either case.
 
-The VS Code extension runs this exact pipeline plus a [diff orchestrator](https://github.com/deliberation-lab/stagebook/issues/321) that distinguishes "real bug in both source and hydrated form" from "templating artifact that disappears after expansion." If your tooling needs the same fine-grained diagnostic routing (e.g., to display templating artifacts as warnings instead of errors), use `runValidationDiff` from `stagebook`:
+### Diff orchestrator (for live editor diagnostics)
+
+The VS Code extension runs the same pipeline plus a [diff orchestrator](https://github.com/deliberation-lab/stagebook/issues/321) that distinguishes "real bug in both source and hydrated form" from "templating artifact that disappears after expansion." If your tooling needs the same fine-grained diagnostic routing (e.g., to display templating artifacts as warnings instead of errors), use `runValidationDiff`:
 
 ```typescript
 import { runValidationDiff } from "stagebook";
@@ -145,13 +142,15 @@ const diff = runValidationDiff({
   source: sourceText,
   importedTemplates, // computed above
 });
-// diff.matched          — real bugs in both passes
-// diff.sourceOnly       — likely templating artifacts (display as warning)
-// diff.hydratedOnly     — revealed by expansion (display in expanded view)
-// diff.unreachableReferences — strict reachable-keys check, same as above
+// diff.hydrationError — YAML-parse or hydration failure (string | null)
+// diff.sourceIssues   — schema issues from the source-pass run
+// diff.hydratedIssues — schema issues from the hydrated-pass run
+// diff.matched        — issues appearing in BOTH passes — real bugs
+// diff.sourceOnly     — issues only in the source pass — templating artifacts
+// diff.hydratedOnly   — issues only in the hydrated pass — revealed by expansion
 ```
 
-For build-time and pre-deploy checks the simpler "schema + pre-hydration + unreachable" sequence is usually enough — the diff orchestrator pays for two schema runs to enable the artifact/real-bug distinction, which only matters when you're surfacing diagnostics live to an author.
+For build-time and pre-deploy checks the simpler "imports + pre-hydration + schema" sequence above is usually enough — the diff orchestrator pays for two schema runs to enable the artifact/real-bug distinction, which only matters when you're surfacing diagnostics live to an author.
 
 ## Validating Prompt Files
 
@@ -179,7 +178,7 @@ Before passing treatment data to Stagebook's rendering components, the platform 
 
 ```typescript
 import {
-  treatmentFileSchema,
+  safeParseTreatmentFile,
   fillTemplates,
   parseTreatmentYaml,
   resolveImportPath,
@@ -212,17 +211,20 @@ while (queue.length > 0) {
 //    indistinguishable from inline templates.
 const mergedTemplates = resolveImports({ main: root, files: loaded });
 
-// 4. Strip imports from root, attach merged templates, expand.
+// 4. Strip imports from root, attach merged templates, expand. The
+//    walker handles `introSequences` and `treatments` together;
+//    `fillTemplates` returns `{ result, unresolvedFields }`.
 const { imports: _, ...rest } = root;
 const merged = { ...rest, templates: mergedTemplates };
-const hydrated = {
-  ...merged,
-  introSequences: fillTemplates({ obj: merged.introSequences, templates: mergedTemplates }),
-  treatments: fillTemplates({ obj: merged.treatments, templates: mergedTemplates }),
-};
+const { result: hydrated } = fillTemplates({
+  obj: merged,
+  templates: mergedTemplates,
+});
 
-// 5. Validate the expanded result.
-const result = treatmentFileSchema.safeParse(hydrated);
+// 5. Validate the expanded result. Prefer `safeParseTreatmentFile`
+//    over `treatmentFileSchema.safeParse` for rich unrecognized-key
+//    messages with did-you-mean suggestions.
+const result = safeParseTreatmentFile(hydrated);
 if (!result.success) throw new Error(result.error.message);
 
 // 6. Pass resolved stages to Stagebook components.
