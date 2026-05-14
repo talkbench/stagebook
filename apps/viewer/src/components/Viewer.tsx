@@ -325,7 +325,14 @@ export function Viewer({
             </div>
           ) : (
             <>
-              <div ref={stageContainerRef} style={stageContainerStyle}>
+              <div
+                ref={stageContainerRef}
+                style={
+                  currentStep.discussion
+                    ? stageContainerStyle
+                    : stageContainerStaticStyle
+                }
+              >
                 <StagebookProvider value={ctx}>
                   <Stage
                     key={`stage-${String(stageIndex)}-${String(stageResetVersion)}`}
@@ -481,22 +488,31 @@ const mainStyle: React.CSSProperties = {
   position: "relative",
 };
 
+// Discussion stages need a definite-height parent — stagebook's
+// discussion-page CSS uses `height: 100%` (post-#356) and only resolves
+// correctly when its parent has a fixed height. `flex: 1` + `min-height: 0`
+// makes this fill `<main>`'s remaining vertical space, mirroring what
+// deliberation-lab's `<div className="fixed top-12 left-0 right-0
+// bottom-0">` provides at its level (see Game.jsx).
 const stageContainerStyle: React.CSSProperties = {
   position: "relative",
   width: "100%",
-  // `flex: 1` + `min-height: 0` makes this fill `<main>`'s remaining
-  // vertical space (after the bottom spacer), giving Stage a
-  // definite-height parent. Stage's discussion-page CSS does
-  // `height: 100%` (post-stagebook#356) and resolves to auto when its
-  // parent has no definite height — which would let the discussion
-  // column grow past the viewport instead of pinning the video tile
-  // and scrolling the right-hand elements column. Mirrors what
-  // deliberation-lab's `<div className="fixed top-12 left-0 right-0
-  // bottom-0">` provides at its level (see Game.jsx).
   flex: 1,
   minHeight: 0,
   display: "flex",
   flexDirection: "column",
+};
+
+// Non-discussion stages flow naturally through `<main>`'s scroll: the
+// stage content drives main's scrollHeight, and the sibling
+// `<ScrollIndicator>` pins via `position: sticky; bottom: 0`. Using the
+// flex-fill style above for these stages was found to break sticky
+// positioning of the indicator — likely because the flex item's
+// definite box clips its visible-overflow contribution to the layout
+// flow that sticky observes.
+const stageContainerStaticStyle: React.CSSProperties = {
+  position: "relative",
+  width: "100%",
 };
 
 // Bottom-of-stage breathing room (#234). Without this, long stages end
