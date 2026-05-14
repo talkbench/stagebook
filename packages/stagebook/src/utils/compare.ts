@@ -46,9 +46,24 @@ export function compare(
 
   if (lhs === undefined) {
     // When lhs is undefined (e.g. player hasn't typed anything yet),
-    // return undefined to signal the comparison can't be made yet.
-    // Exception: doesNotEqual returns true because undefined is not equal to anything.
-    if (comparator === "doesNotEqual") return true;
+    // most comparators can't decide — return undefined and let Kleene
+    // logic propagate the "data not yet" state through the condition
+    // tree. The four "negative" comparators are an exception: by the
+    // author's mental model, an absent value satisfies "does not
+    // equal X" / "does not include X" / etc. (it's not X — it's
+    // nothing). This lets authors gate a fallback prompt on
+    // `doesNotEqual "Yes"` and have it render before the participant
+    // has answered (#348). The asymmetry with their positive twins
+    // (`equals`, `includes`, …) is intentional — authors mostly want
+    // positive gates to wait for definite data, negative gates to
+    // fire on absence.
+    switch (comparator) {
+      case "doesNotEqual":
+      case "doesNotInclude":
+      case "doesNotMatch":
+      case "isNotOneOf":
+        return true;
+    }
     return undefined;
   }
 

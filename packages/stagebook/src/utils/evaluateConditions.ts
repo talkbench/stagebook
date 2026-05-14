@@ -85,11 +85,17 @@ function evaluateLeafTriState(
 ): TriState {
   const { comparator, value } = condition;
 
-  // No values resolved at all — `doesNotExist` is satisfied
-  // (explicit absence assertion); every other comparator can't
-  // decide, so undefined.
+  // No values resolved at all — delegate to `compare(undefined, ...)`
+  // so the negative-comparator policy (`doesNotEqual` /
+  // `doesNotInclude` / `doesNotMatch` / `isNotOneOf` satisfied by
+  // absence) lives in one place. `doesNotExist` short-circuits to
+  // `true` directly since `compare` handles it via the explicit
+  // presence-probe branch above its undefined-lhs check; calling
+  // through would still give the same answer, but staying explicit
+  // makes the absence-assertion path obvious to readers. (#348)
   if (referenceValues.length === 0) {
-    return comparator === "doesNotExist" ? true : undefined;
+    if (comparator === "doesNotExist") return true;
+    return compare(undefined, comparator as Comparator, value);
   }
 
   let anyUnknown = false;

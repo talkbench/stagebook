@@ -817,3 +817,171 @@ describe("evaluateConditions — boolean tree (#235)", () => {
     });
   });
 });
+
+// --------------- Negative comparators vs unset reference (#348) ---------------
+//
+// Authors gate fallback prompts on negative comparators (`doesNotEqual "Yes"`)
+// and expect the gate to fire when the upstream value is absent. Previously
+// the empty-array short-circuit in `evaluateLeafTriState` returned `undefined`
+// for every comparator except `doesNotExist`, never reaching `compare.ts`'s
+// `doesNotEqual` special case. Now that path delegates to `compare(undefined,
+// ...)`, picking up the four-negative absence-satisfaction policy.
+//
+// See the "undefined lhs" block in compare.test.ts for the per-comparator
+// behavior; this block pins the composition cases that matter most to
+// authors building fallback gates.
+
+describe("evaluateConditions — negative comparators vs unset reference (#348)", () => {
+  const emptyResolve = (_ref: string): unknown[] => [];
+
+  test("doesNotEqual against [] is true (was undefined)", () => {
+    expect(
+      evaluateConditions(
+        {
+          reference: "self.prompt.q",
+          comparator: "doesNotEqual",
+          value: "Yes",
+        },
+        emptyResolve,
+      ),
+    ).toBe(true);
+  });
+
+  test("doesNotInclude against [] is true", () => {
+    expect(
+      evaluateConditions(
+        {
+          reference: "self.prompt.q",
+          comparator: "doesNotInclude",
+          value: "x",
+        },
+        emptyResolve,
+      ),
+    ).toBe(true);
+  });
+
+  test("doesNotMatch against [] is true", () => {
+    expect(
+      evaluateConditions(
+        {
+          reference: "self.prompt.q",
+          comparator: "doesNotMatch",
+          value: "/x/",
+        },
+        emptyResolve,
+      ),
+    ).toBe(true);
+  });
+
+  test("isNotOneOf against [] is true", () => {
+    expect(
+      evaluateConditions(
+        {
+          reference: "self.prompt.q",
+          comparator: "isNotOneOf",
+          value: ["a", "b"],
+        },
+        emptyResolve,
+      ),
+    ).toBe(true);
+  });
+
+  test("equals against [] stays undefined (collapsed to false at boundary)", () => {
+    // Positive comparators remain undefined-on-absence so authors can
+    // gate "render once data exists" without prematurely satisfying.
+    expect(
+      evaluateConditions(
+        { reference: "self.prompt.q", comparator: "equals", value: "Yes" },
+        emptyResolve,
+      ),
+    ).toBe(false);
+  });
+
+  test("exists against [] is false (was undefined-collapsed-to-false at boundary)", () => {
+    // Outer behavior unchanged in the common case; the difference matters
+    // for `none: [exists ...]` composition (see below).
+    expect(
+      evaluateConditions(
+        { reference: "self.prompt.q", comparator: "exists" },
+        emptyResolve,
+      ),
+    ).toBe(false);
+  });
+
+  test("any: [doesNotEqual, doesNotEqual] with both refs absent fires (was no-render)", () => {
+    // The dialogue-levers/pilot_3 repro case: a fallback gated on either
+    // player not having said "Yes". Was returning false-at-boundary;
+    // now correctly renders.
+    expect(
+      evaluateConditions(
+        {
+          any: [
+            {
+              reference: "0.prompt.continue_with_partner",
+              comparator: "doesNotEqual",
+              value: "Yes",
+            },
+            {
+              reference: "1.prompt.continue_with_partner",
+              comparator: "doesNotEqual",
+              value: "Yes",
+            },
+          ],
+        },
+        emptyResolve,
+      ),
+    ).toBe(true);
+  });
+
+  test("none: [equals against []] stays undefined-collapsed-to-false (unchanged)", () => {
+    // Positive comparator inside `none:` — leaf is `undefined`, none-of-
+    // undefined is undefined per Kleene, boundary collapses to false.
+    expect(
+      evaluateConditions(
+        {
+          none: [
+            { reference: "self.prompt.q", comparator: "equals", value: "Yes" },
+          ],
+        },
+        emptyResolve,
+      ),
+    ).toBe(false);
+  });
+
+  test("none: [exists against []] is true (intentional semantic shift)", () => {
+    // Previously: `none: [undefined]` → `undefined` → `false` at boundary.
+    // Now: `compare(undefined, "exists")` returns `false` directly →
+    // `none: [false]` → `true`. Arguably the more correct semantic ("none
+    // of these exist" is true when none do); pinned here so a future
+    // refactor doesn't silently revert it.
+    expect(
+      evaluateConditions(
+        {
+          none: [{ reference: "self.prompt.q", comparator: "exists" }],
+        },
+        emptyResolve,
+      ),
+    ).toBe(true);
+  });
+
+  test("none: [doesNotEqual against []] is false (new definite-false)", () => {
+    // After the fix, `doesNotEqual X` against `[]` is `true` (definite),
+    // so `none: [true]` is `false` (definite). Logically equivalent to
+    // `equals X` against `[]` which stays undefined-collapsed-to-false;
+    // the boundary results match but the internal definite-ness differs.
+    expect(
+      evaluateConditions(
+        {
+          none: [
+            {
+              reference: "self.prompt.q",
+              comparator: "doesNotEqual",
+              value: "Yes",
+            },
+          ],
+        },
+        emptyResolve,
+      ),
+    ).toBe(false);
+  });
+});

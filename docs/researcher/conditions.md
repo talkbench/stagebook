@@ -115,6 +115,17 @@ Each leaf condition can be **true**, **false**, or **unknown** (data not yet rec
 
 If neither row applies (because some children are still "unknown"), the operator itself is unknown — at the rendering boundary, that collapses to "don't show yet." The most common place this matters: a `none:` block whose children all reference data nobody has answered yet stays hidden until at least one answer arrives, instead of rendering as if "no one matched."
 
+**Negative comparators on absent data.** The four negative comparators — `doesNotEqual`, `doesNotInclude`, `doesNotMatch`, `isNotOneOf` — return **true** when the referenced value is absent, not unknown. The mental model: "the value is not X, because it's nothing." This lets a fallback like
+
+```yaml
+conditions:
+  - reference: self.prompt.continue
+    comparator: doesNotEqual
+    value: "Yes"
+```
+
+render before the participant has answered. The positive twins (`equals`, `includes`, `matches`, `isOneOf`) stay unknown on absent data so positive gates wait for definite answers. The asymmetry is intentional but means logically-equivalent rewrites can differ: `none: [doesNotEqual "X"]` resolves more definitively than its De Morgan twin `equals "X"` when the data is absent (both return false at the boundary, but only the second propagates as "unknown" into outer operators).
+
 For OR logic on a single reference (across positions, comparators, etc.), `any:` is usually clearer than creating separate elements. For NOR, `none:` replaces the De Morgan trick of stacking negated comparators (`doesNotEqual`, `doesNotInclude`, `isNotOneOf`).
 
 **Visibility-field interaction.** When an element also has `displayTime`, `hideTime`, `showToPositions`, or `hideFromPositions` set, all of those fields combine with `conditions` using implicit AND — the element is visible only when every visibility field that's set evaluates to "show." See [Element visibility](elements.md#visibility) for the full picture.

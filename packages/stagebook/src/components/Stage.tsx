@@ -227,63 +227,81 @@ export function Stage({
       | undefined;
 
     const discussionPage = (
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          height: "100%",
-          width: "100%",
-          flexDirection: "row",
-          alignItems: "stretch",
-          // `alignContent: flex-start` (#295): in single-line (wide) mode
-          // this has no effect — `alignItems: stretch` still stretches
-          // both columns to the line height. In wrapped (narrow) mode
-          // it stops the default `stretch` behavior, which would
-          // otherwise inflate each wrapped line to fill the parent's
-          // `minHeight: "calc(100vh - 4rem)"` — the cause of the
-          // over-tall skeleton (≈50vh) and the obscured
-          // elements-column content reported in #295.
-          alignContent: "flex-start",
-          gap: "1rem",
-          paddingBottom: "1rem",
-          paddingLeft: "1.5rem",
-          paddingRight: "1.5rem",
-          minHeight: "calc(100vh - 4rem)",
-        }}
-      >
+      <div className="stagebook-discussion-page">
         {/* Discussion column */}
-        <div
-          data-testid="discussion"
-          style={{
-            position: "relative",
-            flex: 1,
-            minWidth: "24rem",
-            minHeight: "16rem",
-          }}
-        >
+        <div data-testid="discussion" className="stagebook-discussion-column">
           {renderDiscussion(stage.discussion)}
         </div>
 
-        {/* Elements column — scrollable independently in `internal` mode.
-            flex: "1 1 20rem" lets it share space in row mode (40vw preferred)
-            but stretch to full width when the container wraps to column. */}
+        {/* Elements / content column. In host-scroll mode the host owns
+            the scroll container; in internal-scroll mode this column
+            scrolls itself, governed by the `data-internal-scroll` attr. */}
         <div
           ref={isHostScroll ? null : discussionContentRef}
           data-testid="stageContent"
-          style={{
-            flex: "1 1 20rem",
-            maxWidth: "48rem",
-            alignSelf: "stretch",
-            ...(isHostScroll
-              ? {}
-              : { overflowY: "auto", scrollBehavior: "smooth" }),
-          }}
+          className="stagebook-discussion-content"
+          data-internal-scroll={isHostScroll ? undefined : "true"}
         >
           {elementsColumn}
           {!isHostScroll && (
             <ScrollIndicator visible={showDiscussionScrollIndicator} />
           )}
         </div>
+        <style>{`
+          /* Mirrors deliberation-empirica's Stage layout (#295). On
+             narrow viewports the two columns stack; at the md breakpoint
+             they switch to a side-by-side row with the parent forced to
+             viewport-min-height so \`align-items: stretch\` reliably
+             extends both columns to fill the visible area. We avoid
+             \`flex-wrap\` here because the wrap path made the layout
+             depend on a brittle interaction between line-height,
+             align-content, and the discussion column's intrinsic
+             height — the empirica reference (which works) uses a
+             clean media-query switch. */
+          .stagebook-discussion-page {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            gap: 1rem;
+            padding-bottom: 1rem;
+          }
+          .stagebook-discussion-column {
+            position: relative;
+            width: 100%;
+            min-height: 16rem;
+          }
+          .stagebook-discussion-content {
+            width: 100%;
+            padding-left: 1rem;
+            padding-right: 1rem;
+          }
+          @media (min-width: 48rem) {
+            .stagebook-discussion-page {
+              flex-direction: row;
+              align-items: stretch;
+              padding-left: 1.5rem;
+              padding-right: 1.5rem;
+              min-height: calc(100vh - 4rem);
+            }
+            .stagebook-discussion-column {
+              flex: 1;
+              min-width: 24rem;
+            }
+            .stagebook-discussion-content {
+              flex: 0 1 auto;
+              width: 40vw;
+              min-width: 20rem;
+              max-width: 48rem;
+              align-self: stretch;
+              padding-left: 0;
+              padding-right: 0;
+            }
+            .stagebook-discussion-content[data-internal-scroll="true"] {
+              overflow-y: auto;
+              scroll-behavior: smooth;
+            }
+          }
+        `}</style>
       </div>
     );
 

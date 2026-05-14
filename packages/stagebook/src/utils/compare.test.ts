@@ -24,16 +24,49 @@ describe("exists / doesNotExist", () => {
 // ----------- Undefined LHS behavior ------------
 
 describe("undefined lhs", () => {
+  // Per #348: the four "negative" comparators are satisfied by
+  // absence — author's mental model is "the value is not X, because
+  // it's nothing". Positive comparators remain undefined so authors
+  // can gate fallbacks without prematurely satisfying positive
+  // checks. The asymmetry with positive twins is intentional.
   test("doesNotEqual returns true when lhs is undefined", () => {
     expect(compare(undefined, "doesNotEqual", "anything")).toBe(true);
+  });
+
+  test("doesNotInclude returns true when lhs is undefined (#348)", () => {
+    expect(compare(undefined, "doesNotInclude", "x")).toBe(true);
+  });
+
+  test("doesNotMatch returns true when lhs is undefined (#348)", () => {
+    expect(compare(undefined, "doesNotMatch", "/x/")).toBe(true);
+  });
+
+  test("isNotOneOf returns true when lhs is undefined (#348)", () => {
+    expect(compare(undefined, "isNotOneOf", ["a", "b"])).toBe(true);
   });
 
   test("equals returns undefined when lhs is undefined", () => {
     expect(compare(undefined, "equals", "anything")).toBeUndefined();
   });
 
+  test("includes returns undefined when lhs is undefined", () => {
+    expect(compare(undefined, "includes", "x")).toBeUndefined();
+  });
+
+  test("matches returns undefined when lhs is undefined", () => {
+    expect(compare(undefined, "matches", "/x/")).toBeUndefined();
+  });
+
+  test("isOneOf returns undefined when lhs is undefined", () => {
+    expect(compare(undefined, "isOneOf", ["a", "b"])).toBeUndefined();
+  });
+
   test("isAbove returns undefined when lhs is undefined", () => {
     expect(compare(undefined, "isAbove", 5)).toBeUndefined();
+  });
+
+  test("isAtLeast returns undefined when lhs is undefined", () => {
+    expect(compare(undefined, "isAtLeast", 0)).toBeUndefined();
   });
 });
 
