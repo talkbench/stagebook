@@ -464,6 +464,19 @@ const mainStyle: React.CSSProperties = {
 const stageContainerStyle: React.CSSProperties = {
   position: "relative",
   width: "100%",
+  // `flex: 1` + `min-height: 0` makes this fill `<main>`'s remaining
+  // vertical space (after the bottom spacer), giving Stage a
+  // definite-height parent. Stage's discussion-page CSS does
+  // `height: 100%` (post-stagebook#356) and resolves to auto when its
+  // parent has no definite height — which would let the discussion
+  // column grow past the viewport instead of pinning the video tile
+  // and scrolling the right-hand elements column. Mirrors what
+  // deliberation-lab's `<div className="fixed top-12 left-0 right-0
+  // bottom-0">` provides at its level (see Game.jsx).
+  flex: 1,
+  minHeight: 0,
+  display: "flex",
+  flexDirection: "column",
 };
 
 // Bottom-of-stage breathing room (#234). Without this, long stages end
