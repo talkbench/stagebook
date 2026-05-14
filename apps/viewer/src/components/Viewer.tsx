@@ -294,8 +294,20 @@ export function Viewer({
           />
         </aside>
 
-        {/* Main content */}
-        <main ref={mainScrollRef} style={mainStyle}>
+        {/* Main content. Padding is dropped for discussion stages —
+            stagebook's `.stagebook-discussion-page` adds its own
+            symmetric padding (#356) and needs the full vertical
+            budget for its `height: 100% / min-height: calc(100vh -
+            4rem)` to resolve without overflow. Non-discussion stages
+            keep main's padding so the centered content has its
+            existing breathing room. */}
+        <main
+          ref={mainScrollRef}
+          style={{
+            ...mainStyle,
+            ...(currentStep.discussion ? { padding: 0 } : {}),
+          }}
+        >
           {isSubmitted ? (
             <div style={submittedOverlayStyle}>
               <p style={submittedTextStyle}>
@@ -313,13 +325,20 @@ export function Viewer({
             </div>
           ) : (
             <>
-              <div ref={stageContainerRef} style={stageContainerStyle}>
+              <div
+                ref={stageContainerRef}
+                style={
+                  currentStep.discussion
+                    ? stageContainerStyle
+                    : stageContainerStaticStyle
+                }
+              >
                 <StagebookProvider value={ctx}>
                   <Stage
                     key={`stage-${String(stageIndex)}-${String(stageResetVersion)}`}
                     stage={stageConfig}
                     onSubmit={handleSubmit}
-                    scrollMode="host"
+                    scrollMode={currentStep.discussion ? "internal" : "host"}
                   />
                 </StagebookProvider>
                 <NotesIconsOverlay
@@ -327,13 +346,28 @@ export function Viewer({
                   currentStep={currentStep}
                 />
               </div>
-              {/* Bottom-of-stage breathing room — see comment on
-                  stageBottomSpacerStyle. aria-hidden because it has no
-                  semantic content. */}
-              <div aria-hidden="true" style={stageBottomSpacerStyle} />
+              {/* Bottom-of-stage breathing room (#234) — only for
+                  single-column stages. Discussion stages have their
+                  own internal scroll on the right column and already
+                  bake breathing room into the column's padding;
+                  rendering the spacer there would eat 8rem of vertical
+                  headroom that stagebook's discussion-page CSS needs
+                  to satisfy its `min-height: calc(100vh - 4rem)` floor
+                  (see PR #357 + the math in its commit). aria-hidden
+                  because it has no semantic content. */}
+              {!currentStep.discussion && (
+                <div aria-hidden="true" style={stageBottomSpacerStyle} />
+              )}
               {/* The indicator is `position: sticky; bottom: 0`, so it
-                  pins to the bottom of <main> as content scrolls past. */}
-              <ScrollIndicator visible={showScrollIndicator} />
+                  pins to the bottom of <main> as content scrolls past.
+                  Suppressed on discussion stages — there the right
+                  column scrolls internally (via `scrollMode="internal"`)
+                  and stagebook renders its own indicator inside that
+                  column. A main-level indicator would float over the
+                  fixed video column and confuse the source of scroll. */}
+              {!currentStep.discussion && (
+                <ScrollIndicator visible={showScrollIndicator} />
+              )}
             </>
           )}
         </main>
@@ -461,7 +495,29 @@ const mainStyle: React.CSSProperties = {
   position: "relative",
 };
 
+// Discussion stages need a definite-height parent — stagebook's
+// discussion-page CSS uses `height: 100%` (post-#356) and only resolves
+// correctly when its parent has a fixed height. `flex: 1` + `min-height: 0`
+// makes this fill `<main>`'s remaining vertical space, mirroring what
+// deliberation-lab's `<div className="fixed top-12 left-0 right-0
+// bottom-0">` provides at its level (see Game.jsx).
 const stageContainerStyle: React.CSSProperties = {
+  position: "relative",
+  width: "100%",
+  flex: 1,
+  minHeight: 0,
+  display: "flex",
+  flexDirection: "column",
+};
+
+// Non-discussion stages flow naturally through `<main>`'s scroll: the
+// stage content drives main's scrollHeight, and the sibling
+// `<ScrollIndicator>` pins via `position: sticky; bottom: 0`. Using the
+// flex-fill style above for these stages was found to break sticky
+// positioning of the indicator — likely because the flex item's
+// definite box clips its visible-overflow contribution to the layout
+// flow that sticky observes.
+const stageContainerStaticStyle: React.CSSProperties = {
   position: "relative",
   width: "100%",
 };

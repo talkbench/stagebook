@@ -282,6 +282,13 @@ export function Stage({
               padding-top: 1rem;
               padding-left: 1.5rem;
               padding-right: 1.5rem;
+              /* \`box-sizing: border-box\` so \`height: 100%\` (and the
+                 \`min-height\` floor) include the wrapper's own padding.
+                 Without this, the default \`content-box\` lets the
+                 padding render outside the 100% box, overflowing the
+                 host's definite-height slot by exactly the vertical
+                 padding (2rem). */
+              box-sizing: border-box;
               /* \`height: 100%\` (alongside the existing min-height floor)
                  makes the wrapper fill a definite-height host container
                  instead of growing past it. Without this, an elements
