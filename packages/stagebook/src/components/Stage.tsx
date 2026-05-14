@@ -279,8 +279,20 @@ export function Stage({
             .stagebook-discussion-page {
               flex-direction: row;
               align-items: stretch;
+              padding-top: 1rem;
               padding-left: 1.5rem;
               padding-right: 1.5rem;
+              /* \`height: 100%\` (alongside the existing min-height floor)
+                 makes the wrapper fill a definite-height host container
+                 instead of growing past it. Without this, an elements
+                 column whose content exceeds viewport height pushes the
+                 wrapper taller rather than triggering the column's
+                 own \`overflow-y: auto\` — defeating the "fixed video
+                 column, scrolling right column" layout. In hosts whose
+                 parent is content-sized (no definite height), height:
+                 100% resolves to auto and the min-height floor still
+                 applies, so this change is backward-compatible. */
+              height: 100%;
               min-height: calc(100vh - 4rem);
             }
             .stagebook-discussion-column {
