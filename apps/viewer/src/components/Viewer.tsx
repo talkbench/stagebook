@@ -338,7 +338,7 @@ export function Viewer({
                     key={`stage-${String(stageIndex)}-${String(stageResetVersion)}`}
                     stage={stageConfig}
                     onSubmit={handleSubmit}
-                    scrollMode="host"
+                    scrollMode={currentStep.discussion ? "internal" : "host"}
                   />
                 </StagebookProvider>
                 <NotesIconsOverlay
@@ -359,8 +359,15 @@ export function Viewer({
                 <div aria-hidden="true" style={stageBottomSpacerStyle} />
               )}
               {/* The indicator is `position: sticky; bottom: 0`, so it
-                  pins to the bottom of <main> as content scrolls past. */}
-              <ScrollIndicator visible={showScrollIndicator} />
+                  pins to the bottom of <main> as content scrolls past.
+                  Suppressed on discussion stages — there the right
+                  column scrolls internally (via `scrollMode="internal"`)
+                  and stagebook renders its own indicator inside that
+                  column. A main-level indicator would float over the
+                  fixed video column and confuse the source of scroll. */}
+              {!currentStep.discussion && (
+                <ScrollIndicator visible={showScrollIndicator} />
+              )}
             </>
           )}
         </main>
