@@ -183,3 +183,152 @@ test("no counter when showCharacterCount is false", async ({ mount }) => {
   await expect(component).not.toContainText("characters");
   await expect(component).not.toContainText("chars");
 });
+
+// -- UI polish (#371) --
+
+test("focus ring appears on keyboard focus via :focus-visible", async ({
+  mount,
+  page,
+}) => {
+  // Browsers apply `:focus-visible` to text inputs even on mouse
+  // click (text fields are always keyboard-active per WHATWG), so we
+  // can use Tab here for clarity but mouse click would also work.
+  // The ring is delivered via the component's class-scoped `<style>`
+  // block, so we assert on computed `boxShadow` rather than inline.
+  const component = await mount(<TextArea />);
+  const textarea = component.locator("textarea");
+
+  // Baseline: elevation shadow only.
+  const baseline = await textarea.evaluate(
+    (el) => window.getComputedStyle(el).boxShadow,
+  );
+
+  await page.keyboard.press("Tab");
+  await expect(textarea).toBeFocused();
+  // Poll for the 120ms box-shadow transition. The focused shadow
+  // includes the focus-ring var, distinguishing it from the baseline.
+  await expect
+    .poll(
+      () => textarea.evaluate((el) => window.getComputedStyle(el).boxShadow),
+      { timeout: 1500 },
+    )
+    .not.toBe(baseline);
+});
+
+test("focus ring goes away on blur", async ({ mount, page }) => {
+  const component = await mount(<TextArea />);
+  const textarea = component.locator("textarea");
+
+  const baseline = await textarea.evaluate(
+    (el) => window.getComputedStyle(el).boxShadow,
+  );
+
+  await page.keyboard.press("Tab");
+  await expect(textarea).toBeFocused();
+  // Confirm the ring is showing (different from baseline).
+  await expect
+    .poll(
+      () => textarea.evaluate((el) => window.getComputedStyle(el).boxShadow),
+      { timeout: 1500 },
+    )
+    .not.toBe(baseline);
+
+  await textarea.evaluate((el) => (el as HTMLElement).blur());
+  // After blur, the box-shadow should return to the baseline (the
+  // elevation shadow alone).
+  await expect
+    .poll(
+      () => textarea.evaluate((el) => window.getComputedStyle(el).boxShadow),
+      { timeout: 1500 },
+    )
+    .toBe(baseline);
+});
+
+test("focus ring also appears on mouse click (text inputs are always keyboard-active for :focus-visible)", async ({
+  mount,
+}) => {
+  // Symmetric to the keyboard-Tab test. Unlike Radio/Checkbox (where
+  // mouse click should NOT show the ring), text inputs get
+  // `:focus-visible` after mouse click in Chromium / Firefox /
+  // Safari 15.4+ because they're always keyboard-active. Guards
+  // against an accidental switch to `:focus-within` or React-state
+  // tracking that would regress this.
+  const component = await mount(<TextArea />);
+  const textarea = component.locator("textarea");
+
+  const baseline = await textarea.evaluate(
+    (el) => window.getComputedStyle(el).boxShadow,
+  );
+
+  await textarea.click();
+  await expect(textarea).toBeFocused();
+  await expect
+    .poll(
+      () => textarea.evaluate((el) => window.getComputedStyle(el).boxShadow),
+      { timeout: 1500 },
+    )
+    .not.toBe(baseline);
+});
+
+test("prefers-reduced-motion: pulse animation is replaced with a static red glow", async ({
+  mount,
+  page,
+}) => {
+  // Reduced-motion users still need the "you tried to type past max"
+  // signal — they just shouldn't see the pulsing animation. The
+  // CSS swap is: `animation: none` + static `box-shadow` so the
+  // counter shows a non-animated red ring for the 300ms window.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+
+  const component = await mount(
+    <MockTextArea value="abcdefgh" showCharacterCount maxLength={10} />,
+  );
+  const textarea = component.locator("textarea");
+
+  // Type two characters to hit max (10), then a third to trigger
+  // overflow.
+  await textarea.focus();
+  await textarea.pressSequentially("ij");
+  await textarea.press("k");
+
+  const counter = component.locator('[data-testid="char-counter"]');
+  // Animation should be 'none' under reduced-motion (the pulse was
+  // 'stagebook-char-counter-pulse 300ms ease-out' otherwise).
+  const animationName = await counter.evaluate(
+    (el) => window.getComputedStyle(el).animationName,
+  );
+  expect(animationName).toBe("none");
+  // And the static red glow stands in for the pulse.
+  const boxShadow = await counter.evaluate(
+    (el) => window.getComputedStyle(el).boxShadow,
+  );
+  expect(boxShadow).not.toBe("none");
+});
+
+test("focused-then-blurred textarea doesn't leave a stuck border color (no #367-style bleed)", async ({
+  mount,
+}) => {
+  // Regression guard for the shorthand-vs-longhand border bug — same
+  // pattern as the Radio/Checkbox/Select cases. Even though TextArea
+  // doesn't currently override `borderColor` on focus, switching to
+  // border longhands keeps future state-color additions safe.
+  const component = await mount(
+    <div>
+      <TextArea id="touched" />
+      <TextArea id="untouched" />
+    </div>,
+  );
+  const touched = component.locator('textarea[id="touched"]');
+  const untouched = component.locator('textarea[id="untouched"]');
+
+  await touched.focus();
+  await touched.blur();
+
+  const touchedBorder = await touched.evaluate(
+    (el) => window.getComputedStyle(el).borderColor,
+  );
+  const untouchedBorder = await untouched.evaluate(
+    (el) => window.getComputedStyle(el).borderColor,
+  );
+  expect(touchedBorder).toBe(untouchedBorder);
+});

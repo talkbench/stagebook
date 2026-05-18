@@ -72,6 +72,11 @@ export function TextArea({
 }: TextAreaProps) {
   const generatedId = useId();
   const textAreaId = id || generatedId;
+  // `useId` returns an opaque string the React docs call "not a valid
+  // HTML id/class on its own". Strip anything outside the class-name-
+  // safe set so the regex doesn't drift if React's format changes.
+  const safeId = generatedId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const textareaClass = `stagebook-textarea-${safeId}`;
   const [localValue, setLocalValue] = useState(value || "");
   // Transient flag set when a keystroke is rejected for exceeding maxLength;
   // drives the brief red pulse animation on the character counter. The
@@ -122,6 +127,23 @@ export function TextArea({
     return () => {
       if (overflowTimeout.current) clearTimeout(overflowTimeout.current);
     };
+  }, []);
+
+  // Listen to `prefers-reduced-motion` so the overflow signal can swap
+  // its animated pulse for a static red glow. The inline `animation`
+  // style applied while overflowing wins specificity over any CSS
+  // media query, so we need to switch in JS rather than purely in CSS.
+  // SSR-safe: matches `false` server-side; hydrates to the real value
+  // on the first useEffect tick.
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setPrefersReducedMotion(mq.matches);
+    const onChange = (e: MediaQueryListEvent) =>
+      setPrefersReducedMotion(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
   }, []);
 
   const submitChange = (val: string) => {
@@ -306,10 +328,16 @@ export function TextArea({
 
     // Pulse animation takes priority over the steady-state color — when the
     // participant tries to type past maxLength, the counter flashes red for
-    // 300ms regardless of the underlying valid state.
-    const animationStyle = isOverflowing
-      ? { animation: "stagebook-char-counter-pulse 300ms ease-out" }
-      : {};
+    // 300ms regardless of the underlying valid state. For participants who
+    // prefer reduced motion we drop the pulse animation but keep the signal
+    // visible as a static red glow for the same 300ms window — the React
+    // `key` on the wrapper div still re-mounts the element so the glow
+    // reliably re-appears on every overflow attempt.
+    const animationStyle = !isOverflowing
+      ? {}
+      : prefersReducedMotion
+        ? { boxShadow: "0 0 0 4px var(--stagebook-warning, #dc2626)" }
+        : { animation: "stagebook-char-counter-pulse 300ms ease-out" };
     const overflowState = isOverflowing ? "overflow" : countState;
 
     return (
@@ -339,6 +367,7 @@ export function TextArea({
     >
       <textarea
         id={textAreaId}
+        className={textareaClass}
         autoComplete="off"
         rows={rows}
         placeholder={defaultText}
@@ -354,17 +383,47 @@ export function TextArea({
           width: "100%",
           boxSizing: "border-box",
           padding: "0.5rem 0.75rem",
-          border: "1px solid var(--stagebook-border, #d1d5db)",
+          // Border longhands rather than the `border` shorthand —
+          // matches the pattern adopted in #367 (RadioGroup) and the
+          // sibling form components. Lets future state-based color
+          // overrides on `borderColor` (e.g. an error state) play
+          // nicely with React's inline-style diff.
+          borderWidth: "1px",
+          borderStyle: "solid",
+          borderColor: "var(--stagebook-border, #d1d5db)",
           borderRadius: "0.375rem",
-          boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
           fontSize: "0.875rem",
           lineHeight: "1.25rem",
           color: "var(--stagebook-text, #1f2937)",
           resize: "vertical",
+          // Note on `box-shadow`: kept in the class-scoped <style>
+          // block (not inline) so the `:focus-visible` rule can
+          // stack the focus ring on top of the elevation shadow.
+          // Inline `boxShadow` would win specificity over the class
+          // selector, blocking the focus ring.
+          transition: "box-shadow 120ms ease-out",
         }}
       />
       {renderCharacterCount()}
       <style>{`
+        /* Base subtle elevation, kept in CSS so the :focus-visible
+           rule below can layer the focus ring on top without
+           losing to an inline-style boxShadow on specificity. */
+        .${textareaClass} {
+          box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+        /* Focus ring on the textarea — uses :focus-visible (not
+           :focus). Browsers apply :focus-visible to text inputs even
+           on mouse click because text fields are always
+           keyboard-active. The ring matches the pattern used by the
+           sibling form components (Radio / Checkbox / Select). The
+           trailing 1px shadow preserves the textarea subtle elevation
+           under the ring. */
+        .${textareaClass}:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25)), 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+
         /* Animate a box-shadow glow instead of the text color, so the
            steady-state countColor (gray/green) is preserved throughout
            the pulse — animating color back to "inherit" produced a brief
@@ -381,6 +440,18 @@ export function TextArea({
           }
           100% {
             box-shadow: 0 0 0 0 var(--stagebook-warning, #dc2626);
+          }
+        }
+
+        /* Respect prefers-reduced-motion for the focus-ring
+           transition. (The char-counter overflow signal is handled
+           in JS via the prefersReducedMotion state — the inline
+           animation style applied while overflowing wins specificity
+           over any class-scoped CSS rule, so JS is the cleaner
+           path.) */
+        @media (prefers-reduced-motion: reduce) {
+          .${textareaClass} {
+            transition: none;
           }
         }
       `}</style>
