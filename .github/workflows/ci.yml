@@ -124,18 +124,28 @@ jobs:
     needs: changes
     if: needs.changes.outputs.ct == 'true'
     runs-on: ubuntu-latest
-    # Playwright runs are noisy — p50 ~2min but cold-cache runs have
-    # been observed up to ~7.5min. 10 leaves ~30% headroom over the
-    # worst observed; tighter trips false alarms on cold runners.
-    timeout-minutes: 10
+    # Playwright runs are noisy — p50 ~1.5min on the image, but a
+    # cold image pull can add 20-30s. 6 leaves ~50% headroom; tighter
+    # trips false alarms on cold runners.
+    timeout-minutes: 6
+    # Run inside Microsoft's official Playwright image. Chromium and
+    # its system deps are pre-installed under `/ms-playwright/`,
+    # skipping the ~33s `npx playwright install --with-deps` step that
+    # was the largest non-test cost. The image tag MUST match the
+    # `@playwright/experimental-ct-react` version pinned in
+    # `package-lock.json` — bump together. Same pattern as
+    # deliberation-lab/playwright_e2e.yml.
+    container:
+      image: mcr.microsoft.com/playwright:v1.58.2-noble
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: npm
+      # No `actions/setup-node` — the image ships Node 22+. This loses
+      # GitHub's npm tarball cache (npm ci is ~25s here vs ~10s
+      # cached), but that's more than offset by skipping the 33s
+      # browser install.
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # No `playwright install` — browsers + system deps are in the
+      # image, discovered via PLAYWRIGHT_BROWSERS_PATH.
       - run: npm run test:ct -w stagebook
 
   build:
