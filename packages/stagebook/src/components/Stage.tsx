@@ -155,7 +155,14 @@ function ElementsColumn({
     <>
       {elements.map((element, i) => (
         <WrappedElement
-          key={element.name ?? `element-${i}`}
+          // Key scopes by type so two elements with the same `name:`
+          // but different `type:` don't collide. Authors legitimately
+          // pair a `prompt` and a `submitButton` under the same `name`
+          // (the storage keys are `prompt_<name>` vs
+          // `submitButton_<name>` server-side — distinct). The React
+          // key needs to mirror that scoping or it warns about
+          // duplicate keys at render time.
+          key={`${element.type}_${element.name ?? `at-${i}`}`}
           element={element}
           siblings={elements}
           onSubmit={onSubmit}
