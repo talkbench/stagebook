@@ -22,6 +22,7 @@ Never skip the red step. Tests document intent.
 - PRs must pass CI before merge
 - Key decisions are recorded in `docs/decisions/` as ADRs (link back to the issue for full context)
 - Check `docs/decisions/` for architectural context before proposing changes to core systems
+- When a PR closes multiple issues, repeat the keyword for each one — `Fixes #331, fixes #359, fixes #360`. The comma-list form `Fixes #331, #359, #360` only auto-closes the first issue; the rest stay open silently.
 
 ## Conventions
 
