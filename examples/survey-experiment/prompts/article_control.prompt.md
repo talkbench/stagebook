@@ -1,6 +1,6 @@
 ---
 type: noResponse
-name: Article — control
+name: Article - control
 ---
 
 # Mechanical clocks: a short history

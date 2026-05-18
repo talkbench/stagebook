@@ -28,7 +28,7 @@
  */
 
 import { z } from "zod";
-import { nameSchema } from "./primitives.js";
+import { referenceNameSchema } from "./primitives.js";
 
 export const namedSourceEnum = z.enum([
   "prompt",
@@ -82,11 +82,20 @@ export const positionSelectorSchema = z.union([
 ]);
 export type PositionSelectorType = z.infer<typeof positionSelectorSchema>;
 
+// `name` uses the relaxed `referenceNameSchema` (256-char cap) rather
+// than the 64-char authoring `nameSchema`. This schema validates both
+// runtime auto-derived references (`<progressLabel>_<file slug>`, which
+// can exceed 64 chars even when each component is well-formed) and
+// user-authored references in YAML. User-authored names that don't
+// match any produced storage key still fail the forward-ref check in
+// `validateReferences.ts`, so the 64-char authoring discipline is
+// enforced at the source-of-truth (`element.name`, `metadata.name`)
+// rather than at every reference site.
 export const namedReferenceSchema = z
   .object({
     position: positionSelectorSchema,
     source: namedSourceEnum,
-    name: nameSchema,
+    name: referenceNameSchema,
     path: referencePathSchema.optional(),
   })
   .strict();

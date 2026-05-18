@@ -12,6 +12,7 @@ import {
 } from "../StagebookProvider.js";
 import { Stage, type StageConfig } from "../Stage.js";
 import { getReferenceKeyAndPath } from "../../utils/reference.js";
+import { sanitizeName } from "../../utils/deriveStorageKeyName.js";
 
 export interface MockStageRendererProps {
   stage: StageConfig;
@@ -91,7 +92,10 @@ export function MockStageRenderer({
     getTextContent: (path: string) =>
       Promise.resolve(
         // After #243 noResponse files are two-section (no trailing `---`).
-        `---\nname: ${path}\ntype: noResponse\n---\nMock content for ${path}\n`,
+        // After #360 the frontmatter `name:` is validated against
+        // `nameSchema`, so synthesized names must be sanitized — raw
+        // paths contain `/` and `.` which the regex rejects.
+        `---\nname: ${sanitizeName(path)}\ntype: noResponse\n---\nMock content for ${path}\n`,
       ),
     progressLabel: `game_0_${stage.name}`,
     playerId: "test-player-1",

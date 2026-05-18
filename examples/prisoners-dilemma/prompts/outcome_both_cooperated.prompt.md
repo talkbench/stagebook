@@ -1,6 +1,6 @@
 ---
 type: noResponse
-name: Outcome — both cooperated
+name: Outcome - both cooperated
 ---
 
 ## Mutual cooperation

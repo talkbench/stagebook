@@ -1,23 +1,42 @@
 /**
  * Tiny schema primitives shared between `reference.ts` and `treatment.ts`.
  * Lives in its own file so `reference.ts` (imported by the cross-stage
- * walker) can pull `nameSchema` without dragging in `treatment.ts`'s
+ * walker) can pull these schemas without dragging in `treatment.ts`'s
  * import-cycle with the walker.
  */
 
 import { z } from "zod";
 
-// Names should have properties:
-// max length: 64 characters
-// min length: 1 character
-// allowed characters: a-z, A-Z, 0-9, -, _, and space
+// Allowed identifier characters: a-z, A-Z, 0-9, -, _, and space.
 // Plus optional `${field}` template placeholders.
+const NAME_REGEX = /^(?:[a-zA-Z0-9 _-]|\$\{[a-zA-Z0-9_]+\})+$/;
+const NAME_REGEX_MESSAGE =
+  "Name must be alphanumeric, cannot have special characters, with optional template fields in the format ${fieldname}";
+
+/**
+ * Authoring constraint: applied where a human writes an identifier
+ * (treatment YAML `element.name`, prompt-file frontmatter `name:`).
+ * 64-char cap keeps hand-authored names short and readable.
+ */
 export const nameSchema = z
   .string()
   .min(1, "Name is required")
   .max(64)
-  .regex(/^(?:[a-zA-Z0-9 _-]|\$\{[a-zA-Z0-9_]+\})+$/, {
-    message:
-      "Name must be alphanumeric, cannot have special characters, with optional template fields in the format ${fieldname}",
-  });
+  .regex(NAME_REGEX, { message: NAME_REGEX_MESSAGE });
 export type NameType = z.infer<typeof nameSchema>;
+
+/**
+ * Lookup constraint: applied where the runtime parses a reference
+ * string and matches it against storage keys. Auto-derived names join
+ * separately-validated components (e.g. `<progressLabel>_<file slug>`)
+ * so the joined identifier can exceed the 64-char authoring cap even
+ * when every component is well-formed. 256 is a hard sanity ceiling
+ * that catches genuine bugs (unbounded key construction) without
+ * rejecting reasonable auto-derived names. The character regex is
+ * identical — no looser at the lookup boundary.
+ */
+export const referenceNameSchema = z
+  .string()
+  .min(1, "Name is required")
+  .max(256)
+  .regex(NAME_REGEX, { message: NAME_REGEX_MESSAGE });

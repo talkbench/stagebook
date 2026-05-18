@@ -1,6 +1,6 @@
 ---
 type: noResponse
-name: Outcome — you cooperated, partner defected
+name: Outcome - you cooperated partner defected
 ---
 
 ## You were exploited

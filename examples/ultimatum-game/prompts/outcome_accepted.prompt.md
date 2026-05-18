@@ -1,6 +1,6 @@
 ---
 type: noResponse
-name: Outcome — offer accepted
+name: Outcome - offer accepted
 ---
 
 ## Deal

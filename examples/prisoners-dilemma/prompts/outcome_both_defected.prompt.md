@@ -1,6 +1,6 @@
 ---
 type: noResponse
-name: Outcome — both defected
+name: Outcome - both defected
 ---
 
 ## Mutual defection

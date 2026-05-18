@@ -1,5 +1,6 @@
 import { z, ZodIssue } from "zod";
 import { load as loadYaml } from "js-yaml";
+import { nameSchema } from "./primitives.js";
 
 // ---------------------------------------------------------------------------
 // Prompt file format (#243)
@@ -28,7 +29,13 @@ import { load as loadYaml } from "js-yaml";
 const baseMetadataFields = {
   // `name` is kept (Principle 9 — name is the universal identifier
   // across all study portions, addressable or not). Optional.
-  name: z.string().optional(),
+  //
+  // Validated against `nameSchema` (64-char cap, alphanumeric + space +
+  // `_`/`-` + `${field}` templates) so a frontmatter `name: foo/bar`
+  // or `name: <65 chars>` is rejected at parse time with a clear
+  // message — instead of silently producing an invalid synthesized
+  // storage key later in the render path (#360).
+  name: nameSchema.optional(),
   notes: z.string().optional(),
 };
 

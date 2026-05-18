@@ -15,3 +15,4 @@ export {
   getReferencedAssets,
   type ReferencedAsset,
 } from "./referencedAssets.js";
+export { sanitizeName, deriveStorageKeyName } from "./deriveStorageKeyName.js";

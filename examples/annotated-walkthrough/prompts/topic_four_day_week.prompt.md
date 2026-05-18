@@ -1,6 +1,6 @@
 ---
 type: openResponse
-name: Four-day week — initial position
+name: Four-day week - initial position
 rows: 5
 minLength: 60
 maxLength: 600

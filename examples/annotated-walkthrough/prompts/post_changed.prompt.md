@@ -1,6 +1,6 @@
 ---
 type: multipleChoice
-name: Did your view change?
+name: Did your view change
 select: single
 layout: horizontal
 ---

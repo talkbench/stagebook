@@ -1,6 +1,6 @@
 ---
 type: noResponse
-name: Outcome — offer rejected
+name: Outcome - offer rejected
 ---
 
 ## No deal

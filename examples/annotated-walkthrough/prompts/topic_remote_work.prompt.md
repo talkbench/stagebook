@@ -1,6 +1,6 @@
 ---
 type: openResponse
-name: Remote work — initial position
+name: Remote work - initial position
 rows: 5
 minLength: 60
 maxLength: 600

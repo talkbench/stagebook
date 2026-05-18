@@ -5,7 +5,7 @@ describe("validatePromptSource", () => {
   describe("valid prompt files", () => {
     it("returns no diagnostics for a valid multipleChoice prompt", () => {
       const src = `---
-name: test/prompt.prompt.md
+name: test_prompt
 type: multipleChoice
 ---
 What is your favorite color?
@@ -19,7 +19,7 @@ What is your favorite color?
 
     it("returns no diagnostics for a valid noResponse prompt (#243 — two-section file)", () => {
       const src = `---
-name: test/info.prompt.md
+name: test_info
 type: noResponse
 ---
 Please read the following instructions carefully.
@@ -30,7 +30,7 @@ Please read the following instructions carefully.
 
     it("returns no diagnostics for a valid openResponse prompt", () => {
       const src = `---
-name: test/open.prompt.md
+name: test_open
 type: openResponse
 ---
 Please describe your experience.
@@ -52,7 +52,7 @@ Please describe your experience.
 
     it("reports error for only two delimiters on a multipleChoice prompt (third section required)", () => {
       const src = `---
-name: test.prompt.md
+name: test
 type: multipleChoice
 ---
 Body text but no third section`;
@@ -72,7 +72,7 @@ Body text but no third section`;
   describe("metadata errors", () => {
     it("reports error for missing type field", () => {
       const src = `---
-name: test/prompt.prompt.md
+name: test_prompt
 ---
 Body text`;
       const result = validatePromptSource(src);
@@ -82,7 +82,7 @@ Body text`;
 
     it("reports error for invalid type value", () => {
       const src = `---
-name: test/prompt.prompt.md
+name: test_prompt
 type: invalidType
 ---
 Body text`;
@@ -93,7 +93,7 @@ Body text`;
 
     it("reports error for rows on non-openResponse type (strict-keys per #243)", () => {
       const src = `---
-name: test/prompt.prompt.md
+name: test_prompt
 type: multipleChoice
 rows: 3
 ---
@@ -113,7 +113,7 @@ Pick one
   describe("response errors", () => {
     it("reports error for invalid response line format", () => {
       const src = `---
-name: test/prompt.prompt.md
+name: test_prompt
 type: multipleChoice
 ---
 Pick one
@@ -132,7 +132,7 @@ Blue`;
   describe("error position mapping", () => {
     it("maps metadata errors to the metadata section", () => {
       const src = `---
-name: test/prompt.prompt.md
+name: test_prompt
 type: invalidType
 ---
 Body text`;
@@ -146,7 +146,7 @@ Body text`;
 
     it("maps response errors to the response section", () => {
       const src = `---
-name: test/prompt.prompt.md
+name: test_prompt
 type: multipleChoice
 ---
 Pick one
@@ -168,7 +168,7 @@ bad line`;
       // section delimiter between body and responses), but the explicit
       // warning steers authors to *** / ___ instead.
       const src = `---
-name: test/prompt.prompt.md
+name: test_prompt
 type: multipleChoice
 ---
 Pick one
@@ -189,7 +189,7 @@ then a horizontal rule
   describe("slider type", () => {
     it("returns no diagnostics for a valid slider prompt (#243 — labels in body, `- <n>: <label>`)", () => {
       const src = `---
-name: test/slider.prompt.md
+name: test_slider
 type: slider
 min: 0
 max: 100
@@ -205,7 +205,7 @@ Rate your agreement.
 
     it("reports errors when slider is missing required fields (#243 — strict required)", () => {
       const src = `---
-name: test/slider.prompt.md
+name: test_slider
 type: slider
 ---
 Rate something.
@@ -223,7 +223,7 @@ Rate something.
   describe("listSorter type", () => {
     it("returns no diagnostics for a valid listSorter prompt (#243 — `-` marker required)", () => {
       const src = `---
-name: test/sort.prompt.md
+name: test_sort
 type: listSorter
 ---
 Rank these items.
@@ -239,7 +239,7 @@ Rank these items.
   describe("metadata YAML parse failure", () => {
     it("reports error for malformed YAML in metadata", () => {
       const src = `---
-name: test/prompt.prompt.md
+name: test_prompt
 type: [unclosed bracket
 ---
 Body text`;
@@ -256,7 +256,7 @@ Body text`;
   describe("CRLF line endings", () => {
     it("handles CRLF line endings correctly", () => {
       const src =
-        "---\r\nname: test/prompt.prompt.md\r\ntype: multipleChoice\r\n---\r\nPick one\r\n---\r\n- A\r\n- B";
+        "---\r\nname: test_prompt\r\ntype: multipleChoice\r\n---\r\nPick one\r\n---\r\n- A\r\n- B";
       const result = validatePromptSource(src);
       expect(result.diagnostics).toEqual([]);
     });
@@ -265,7 +265,7 @@ Body text`;
   describe("metadata field position mapping", () => {
     it("maps metadata field error to the specific YAML key line", () => {
       const src = `---
-name: test/prompt.prompt.md
+name: test_prompt
 type: multipleChoice
 rows: 3
 ---

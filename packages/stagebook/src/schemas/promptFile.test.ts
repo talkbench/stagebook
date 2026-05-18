@@ -960,4 +960,46 @@ How warm?
       expect(result.data.responseItems).toEqual(["Cold", "Mid", "Hot"]);
     }
   });
+
+  // ----------- metadata.name validation (#360) ------------
+
+  test("frontmatter name with a slash is rejected at parse time", () => {
+    const markdown = `---
+name: foo/bar
+type: noResponse
+---
+Body.`;
+    const result = promptFileSchema.safeParse(markdown);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      // The error from `nameSchema`'s regex
+      const msg = result.error.issues.map((i) => i.message).join(" | ");
+      expect(msg).toMatch(/alphanumeric|special characters/i);
+    }
+  });
+
+  test("frontmatter name over 64 chars is rejected at parse time", () => {
+    const longName = "a".repeat(65);
+    const markdown = `---
+name: ${longName}
+type: noResponse
+---
+Body.`;
+    const result = promptFileSchema.safeParse(markdown);
+    expect(result.success).toBe(false);
+  });
+
+  test("frontmatter name at the 64-char limit is accepted", () => {
+    const okName = "a".repeat(64);
+    const markdown = `---
+name: ${okName}
+type: noResponse
+---
+Body.`;
+    const result = promptFileSchema.safeParse(markdown);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.metadata.name).toBe(okName);
+    }
+  });
 });

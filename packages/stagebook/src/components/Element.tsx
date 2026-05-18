@@ -19,6 +19,7 @@ import { Timeline } from "./elements/Timeline.js";
 import { Prompt } from "./elements/Prompt.js";
 import { Qualtrics } from "./elements/Qualtrics.js";
 import { Loading } from "./form/Loading.js";
+import { deriveStorageKeyName } from "../utils/deriveStorageKeyName.js";
 
 // Resolve element URL params using the StagebookProvider's resolve.
 // Plain function — no hooks — so it's safe to call conditionally (e.g. in
@@ -154,7 +155,15 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           // distinct storage keys instead of silently overwriting
           // each other. Researchers who do want a stable name
           // across stages set `name:` explicitly.
-          name={element.name ?? `${progressLabel}_${element.file ?? ""}`}
+          //
+          // `deriveStorageKeyName` slugs the file path into the
+          // reference-name regex so a path like
+          // `intro/clips/welcome.mp3` doesn't produce a storage key
+          // that fails reference parsing (#359).
+          name={
+            element.name ??
+            deriveStorageKeyName(`${progressLabel}_${element.file ?? ""}`)
+          }
         />
       );
 
@@ -224,8 +233,19 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
         );
       }
       const { metadata, body, responseItems, responsePoints } = parsed.data;
+      // Auto-derivation when `element.name` is absent. Tier 2 is the
+      // frontmatter `metadata.name` (validated against `nameSchema` at
+      // parse time, so it's already regex-clean and ≤64 chars). Tier 3
+      // is the raw file path, which may contain `/` and `.` and may
+      // exceed the 64-char authoring cap. `deriveStorageKeyName` slugs
+      // the joined string into the reference-name regex and truncates
+      // with a stable hash suffix if the result exceeds the 256-char
+      // lookup cap (#331, #359, #360).
       const promptName =
-        element.name ?? `${progressLabel}_${metadata.name ?? element.file}`;
+        element.name ??
+        deriveStorageKeyName(
+          `${progressLabel}_${metadata.name ?? element.file}`,
+        );
 
       // Read current value from state. Position comes from the
       // reference itself per #298 — `shared.prompt.X` for shared

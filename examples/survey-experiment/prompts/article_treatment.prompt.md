@@ -1,6 +1,6 @@
 ---
 type: noResponse
-name: Article — treatment
+name: Article - treatment
 ---
 
 # Why some districts are pushing high school start times later
