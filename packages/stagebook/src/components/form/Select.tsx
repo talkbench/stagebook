@@ -1,4 +1,4 @@
-import React, { useId, useState } from "react";
+import React, { useId } from "react";
 
 export interface SelectOption {
   key: string;
@@ -34,17 +34,39 @@ export interface SelectProps {
  */
 const PLACEHOLDER_VALUE = "__stagebook_select_placeholder__";
 
-// Inline styles match the RadioGroup / CheckboxGroup theming (focus
-// ring, label color, border) so the Select renders consistently on
-// any host without depending on host CSS resets.
+// Trigger styling. Pattern matches RadioGroup / CheckboxGroup
+// (#368/#369): defensive structural rules live inline so they survive
+// aggressive host CSS resets (#213); the `:focus-visible` ring lives
+// in a class-scoped `<style>` block since pseudo-classes can't be
+// expressed inline.
+//
+// `:focus-visible` (not `:focus`) so the focus ring appears for
+// keyboard navigation. Note: Chromium/Firefox/Safari all also apply
+// `:focus-visible` after a mouse click on `<select>` because the open
+// dropdown is keyboard-navigable (combobox-style trigger) — that's
+// correct browser behavior, not a regression. No hover affordance on
+// the trigger itself — shadcn / Radix don't add one either; the
+// caret arrow is a sufficient interactivity signal.
 
 const selectBaseStyle: React.CSSProperties = {
   appearance: "none",
   WebkitAppearance: "none",
   MozAppearance: "none",
   width: "100%",
+  // Touch-target sizing — reuses the same token as RadioGroup /
+  // CheckboxGroup so the three families agree on row height.
+  minHeight: "var(--stagebook-row-min-height, 2.25rem)",
   padding: "0.5rem 2rem 0.5rem 0.75rem",
-  border: "1px solid var(--stagebook-border, #d1d5db)",
+  // Border longhands rather than the `border` shorthand. The focus
+  // state below overrides `borderColor` (longhand); mixing shorthand
+  // with a longhand override breaks React's inline-style diff — when
+  // the longhand drops out of the next render, React clears the
+  // individual longhand properties and the shorthand's expansion is
+  // lost, leaving the browser's appearance:none default (black
+  // border). Same root cause as #367 for RadioGroup.
+  borderWidth: "1px",
+  borderStyle: "solid",
+  borderColor: "var(--stagebook-border, #d1d5db)",
   borderRadius: "0.375rem",
   backgroundColor: "var(--stagebook-surface, #fff)",
   color: "var(--stagebook-text, #1f2937)",
@@ -59,12 +81,9 @@ const selectBaseStyle: React.CSSProperties = {
   backgroundRepeat: "no-repeat",
   backgroundPosition: "right 0.5rem center",
   backgroundSize: "1.25em",
-};
-
-const selectFocusStyle: React.CSSProperties = {
-  outline: "none",
-  borderColor: "var(--stagebook-primary, #3b82f6)",
-  boxShadow: "0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25))",
+  // Smooth box-shadow transition on focus; respects
+  // prefers-reduced-motion via the media query in the style block.
+  transition: "box-shadow 120ms ease-out",
 };
 
 export function Select({
@@ -78,13 +97,16 @@ export function Select({
 }: SelectProps) {
   // Generate a unique id when the caller doesn't provide one — multiple
   // <Select> instances on the same page (device pickers, repeated
-  // dropdowns) would otherwise share `id="select"` and break
+  // dropdowns) would otherwise share a default id and break
   // `<label htmlFor>` association + `data-testid` uniqueness.
   // Pattern matches Button/TextArea (#181 review).
   const generatedId = useId();
   const selectId = id ?? `select${generatedId}`;
-
-  const [focused, setFocused] = useState(false);
+  // `useId` returns an opaque string the React docs call "not a valid
+  // HTML id/class on its own". Strip anything outside the class-name-
+  // safe set so the regex doesn't drift if React's format changes.
+  const safeId = generatedId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const triggerClass = `stagebook-select-trigger-${safeId}`;
 
   // Always-controlled value. When the caller hasn't set `value`, pass
   // the placeholder sentinel (if a placeholder exists) or an empty
@@ -105,6 +127,17 @@ export function Select({
 
   return (
     <div data-testid={dataTestId ?? selectId} style={{ marginTop: "1rem" }}>
+      <style>{`
+        .${triggerClass}:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .${triggerClass} {
+            transition: none;
+          }
+        }
+      `}</style>
       {label && (
         <label
           htmlFor={selectId}
@@ -121,14 +154,10 @@ export function Select({
       )}
       <select
         id={selectId}
+        className={triggerClass}
         value={currentValue}
         onChange={handleChange}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        style={{
-          ...selectBaseStyle,
-          ...(focused ? selectFocusStyle : {}),
-        }}
+        style={selectBaseStyle}
       >
         {placeholder !== undefined && (
           <option value={PLACEHOLDER_VALUE} disabled>

@@ -163,4 +163,87 @@ test.describe("Select", () => {
     );
     await expect(component).toHaveAttribute("data-testid", "customId");
   });
+
+  // ----------- UI polish (#370) -----------
+
+  test("focus ring appears on keyboard focus and disappears on blur", async ({
+    mount,
+    page,
+  }) => {
+    // The focus ring lives in the component's `<style>` block (a
+    // class-scoped `:focus-visible` rule), so we assert on computed
+    // `boxShadow` rather than inline style.
+    const component = await mount(
+      <Select options={options} onChange={() => {}} />,
+    );
+    const select = component.locator("select");
+
+    // Tab into the page — first focusable element is the <select>.
+    await page.keyboard.press("Tab");
+    await expect(select).toBeFocused();
+    const shadowFocused = await select.evaluate(
+      (el) => window.getComputedStyle(el).boxShadow,
+    );
+    expect(shadowFocused).not.toBe("none");
+
+    // Blur — ring should go away.
+    await select.evaluate((el) => (el as HTMLElement).blur());
+    // Poll for the 120ms box-shadow transition.
+    await expect
+      .poll(
+        () => select.evaluate((el) => window.getComputedStyle(el).boxShadow),
+        { timeout: 1500 },
+      )
+      .toBe("none");
+  });
+
+  // Note: mouse-click on a <select> DOES trigger :focus-visible in
+  // Chromium (the open dropdown is keyboard-navigable), unlike the
+  // input-based Radio/Checkbox cases. That's correct browser behavior
+  // for a combobox-style trigger, so we don't assert the
+  // mouse-click-doesn't-ring case for Select.
+  //
+  // Hover affordance is intentionally omitted on the trigger. The
+  // caret arrow makes interactivity obvious; shadcn/Radix don't add
+  // a separate hover style here either. Whole-row hover only makes
+  // sense for the radio/checkbox option-row case where the entire
+  // row is a click target without an explicit affordance.
+
+  test("trigger meets touch-target sizing (≥36px tall)", async ({ mount }) => {
+    const component = await mount(
+      <Select options={options} onChange={() => {}} />,
+    );
+    const box = await component.locator("select").boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.height).toBeGreaterThanOrEqual(36);
+  });
+
+  test("focused-then-blurred trigger doesn't leave a stuck border color (no #367-style bleed)", async ({
+    mount,
+  }) => {
+    // Regression guard for the shorthand-vs-longhand border bug that
+    // bit RadioGroup (#367) — the same pattern was latent on Select
+    // because base style used `border` shorthand and the focus state
+    // overrides `borderColor` (longhand). Compare a never-touched
+    // Select's border to one that's been focused then blurred.
+    const component = await mount(
+      <div>
+        <Select options={options} onChange={() => {}} data-testid="touched" />
+        <Select options={options} onChange={() => {}} data-testid="untouched" />
+      </div>,
+    );
+    const touched = component.locator('[data-testid="touched"] select');
+    const untouched = component.locator('[data-testid="untouched"] select');
+
+    await touched.focus();
+    await touched.blur();
+
+    const touchedBorder = await touched.evaluate(
+      (el) => window.getComputedStyle(el).borderColor,
+    );
+    const untouchedBorder = await untouched.evaluate(
+      (el) => window.getComputedStyle(el).borderColor,
+    );
+    expect(touchedBorder).toBe(untouchedBorder);
+  });
 });
