@@ -1,4 +1,4 @@
-import React, { useId } from "react";
+import React, { useEffect, useId, useState } from "react";
 import {
   DragDropContext,
   Droppable,
@@ -174,13 +174,32 @@ export interface ListSorterProps {
 }
 
 export function ListSorter({ items, onChange }: ListSorterProps) {
+  // Optimistic local state. @hello-pangea/dnd renders whatever order
+  // we pass in, so a purely controlled component shows the OLD order
+  // for the moment between drop and the parent's onChange-driven
+  // prop update — which on hosts that persist via a server roundtrip
+  // can be 100s of ms. The visible effect is a "snap back to old
+  // order, then flash to new order" that makes it unclear whether
+  // the drop landed.
+  //
+  // Holding the order locally and updating it synchronously in
+  // onDragEnd eliminates the snap-back. The useEffect resyncs from
+  // props if the parent ever externally changes items (e.g. resets
+  // the list, or the server returns a different order). Parent
+  // remains authoritative.
+  const [order, setOrder] = useState(items);
+  useEffect(() => {
+    setOrder(items);
+  }, [items]);
+
   const onDragEnd = (result: DropResult) => {
     if (!result.destination) return;
     const reordered = reorder(
-      items,
+      order,
       result.source.index,
       result.destination.index,
     );
+    setOrder(reordered);
     onChange(reordered);
   };
 
@@ -244,7 +263,7 @@ export function ListSorter({ items, onChange }: ListSorterProps) {
         }
       `}</style>
       <DragDropContext onDragEnd={onDragEnd}>
-        <List items={items} itemClass={itemClass} />
+        <List items={order} itemClass={itemClass} />
       </DragDropContext>
     </>
   );

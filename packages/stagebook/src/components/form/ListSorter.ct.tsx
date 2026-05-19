@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/experimental-ct-react";
 import { MockListSorter } from "../testing/MockListSorter";
+import { NonPropagatingMockListSorter } from "../testing/NonPropagatingMockListSorter";
 
 const testItems = ["Alpha", "Bravo", "Charlie", "Delta"];
 
@@ -31,6 +32,43 @@ test.describe("ListSorter", () => {
       .locator('[data-testid="current-order"]')
       .textContent();
     expect(order).toBe("Alpha|Bravo|Charlie|Delta");
+  });
+
+  test("drop instantly reorders the visible list (no snap-back to props)", async ({
+    mount,
+    page,
+  }) => {
+    // Regression: with @hello-pangea/dnd as a purely controlled
+    // component, the visible row order would snap back to `items`
+    // immediately after every drop and wait for the parent's
+    // onChange-driven re-render to flip it forward again — a
+    // visible "drop -> revert -> flash to new order" sequence on
+    // hosts that round-trip onChange through a server. ListSorter
+    // holds optimistic local state so the new order is visible
+    // immediately on drop.
+    //
+    // Mock used here intentionally drops onChange on the floor —
+    // if ListSorter rendered purely from `items`, the visible
+    // order would not change at all.
+    const component = await mount(
+      <NonPropagatingMockListSorter items={testItems} />,
+    );
+    // Confirm starting visual order via the draggable test-ids.
+    await expect(component.getByTestId("draggable-0")).toContainText("Alpha");
+
+    // Keyboard-reorder Alpha down one slot. The keyboard path
+    // exercises the same `onDragEnd` codepath as a mouse drop.
+    const alpha = component.getByTestId("draggable-0");
+    await alpha.focus();
+    await page.keyboard.press("Space");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(100);
+
+    // Even though the parent never propagated onChange, the
+    // visible order should reflect the drop.
+    await expect(component.getByTestId("draggable-0")).toContainText("Bravo");
+    await expect(component.getByTestId("draggable-1")).toContainText("Alpha");
   });
 
   test("keyboard reorder: move first item down", async ({ mount, page }) => {
