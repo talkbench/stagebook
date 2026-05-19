@@ -54,6 +54,11 @@
   /* Primary action color (buttons, slider thumb, focus rings) */
   --stagebook-primary: #3b82f6;
   --stagebook-primary-hover: #2563eb;
+  /* One step darker than --stagebook-primary-hover for the
+   * `:active` (pressed) state on primary buttons. The
+   * hover→active progression telegraphs "the click registered"
+   * during slow clicks. */
+  --stagebook-primary-active: #1d4ed8;
 
   /* Status colors */
   --stagebook-success: #16a34a;
