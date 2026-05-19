@@ -1,0 +1,151 @@
+# Component gallery — single-player walkthrough of each form
+# component, with a description of what it is and when to use it.
+# Acts as living documentation: editing a prompt here changes both
+# the demo and the description, so the two can't drift apart.
+
+introSequences:
+  - name: gallery_intro
+    notes: |
+      Single welcome step. Kept minimal so visitors can dive straight
+      into the per-component stages.
+    introSteps:
+      - name: Welcome
+        elements:
+          - type: prompt
+            file: prompts/welcome.prompt.md
+          - type: submitButton
+            buttonText: Start the tour
+
+treatments:
+  - name: Component gallery
+    notes: |
+      Single-player walk through each interactive form component
+      stagebook ships, in roughly the order researchers reach for
+      them. Each stage shows a brief description (what the component
+      is, when to use it) followed by a working example.
+
+      Components covered: Markdown, RadioGroup, CheckboxGroup, Select,
+      TextArea, Slider, ListSorter, SubmitButton.
+    playerCount: 1
+    gameStages:
+      - name: markdown
+        duration: 600
+        notes: |
+          Markdown is the rendering substrate for every prompt body.
+          This stage uses a `noResponse` prompt — the participant
+          reads but doesn't answer — to showcase the markdown
+          features stagebook supports.
+        elements:
+          - type: prompt
+            file: prompts/markdown_description.prompt.md
+          - type: separator
+            style: thin
+          - type: prompt
+            file: prompts/markdown_demo.prompt.md
+          - type: submitButton
+
+      - name: radio_group
+        duration: 600
+        notes: |
+          RadioGroup — `multipleChoice` with `select: single` (the
+          default). Pick one of N. Polished in #375 (UI polish sweep,
+          #350): whole-row hover, `:focus-visible`, role=radiogroup.
+        elements:
+          - type: prompt
+            file: prompts/radio_description.prompt.md
+          - type: separator
+            style: thin
+          - type: prompt
+            name: radio_demo
+            file: prompts/radio_demo.prompt.md
+          - type: submitButton
+
+      - name: checkbox_group
+        duration: 600
+        notes: |
+          CheckboxGroup — `multipleChoice` with `select: multiple`.
+          Pick any subset. Same polish pass as RadioGroup (#376).
+        elements:
+          - type: prompt
+            file: prompts/checkbox_description.prompt.md
+          - type: separator
+            style: thin
+          - type: prompt
+            name: checkbox_demo
+            file: prompts/checkbox_demo.prompt.md
+          - type: submitButton
+
+      - name: select
+        duration: 600
+        notes: |
+          Select — `dropdown`. Compact picker for medium-to-large
+          option lists (>5 options) where vertical space is tight or
+          the choices are familiar enough that the participant
+          doesn't need to see them all at once.
+        elements:
+          - type: prompt
+            file: prompts/select_description.prompt.md
+          - type: separator
+            style: thin
+          - type: prompt
+            name: select_demo
+            file: prompts/select_demo.prompt.md
+          - type: submitButton
+
+      - name: text_area
+        duration: 600
+        notes: |
+          TextArea — `openResponse`. Free-text input. Stagebook bakes
+          in keystroke telemetry (paste detection, typing-interval
+          quantiles, first-keystroke delay) on every TextArea — see
+          the stored response shape in the inspector after submission.
+        elements:
+          - type: prompt
+            file: prompts/textarea_description.prompt.md
+          - type: separator
+            style: thin
+          - type: prompt
+            name: textarea_demo
+            file: prompts/textarea_demo.prompt.md
+          - type: submitButton
+
+      - name: slider
+        duration: 600
+        notes: |
+          Slider — `slider`. Continuous numeric scale. The thumb is
+          deliberately hidden until the participant clicks, so the
+          starting position doesn't anchor their response (#326). Tick
+          labels can be added at any subset of the snap points using
+          the `- N: label` syntax in the response section.
+        elements:
+          - type: prompt
+            file: prompts/slider_description.prompt.md
+          - type: separator
+            style: thin
+          - type: prompt
+            name: slider_demo
+            file: prompts/slider_demo.prompt.md
+          - type: submitButton
+
+      - name: list_sorter
+        duration: 600
+        notes: |
+          ListSorter — `listSorter`. Drag-to-reorder. Used for ranking
+          tasks where the participant produces an ordered list.
+        elements:
+          - type: prompt
+            file: prompts/listsorter_description.prompt.md
+          - type: separator
+            style: thin
+          - type: prompt
+            name: listsorter_demo
+            file: prompts/listsorter_demo.prompt.md
+          - type: submitButton
+
+    exitSequence:
+      - name: Done
+        elements:
+          - type: prompt
+            file: prompts/done.prompt.md
+          - type: submitButton
+            buttonText: Finish
