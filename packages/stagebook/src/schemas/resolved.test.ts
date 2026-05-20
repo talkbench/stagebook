@@ -1,7 +1,12 @@
 import { describe, expect, test } from "vitest";
 
-import { treatmentFileSchema } from "./treatment.js";
-import { resolvedStageSchema, resolvedTreatmentSchema } from "./resolved.js";
+import { treatmentFileSchema, promptFilePathSchema } from "./treatment.js";
+import {
+  resolvedStageSchema,
+  resolvedTreatmentSchema,
+  resolvedTreatmentFileSchema,
+  validateResolvedTreatmentFile,
+} from "./resolved.js";
 
 /**
  * `notes` is researcher-facing metadata. It's valid in authoring schemas so
@@ -259,5 +264,255 @@ describe("resolved schemas reject unresolved ${field} placeholders (#284)", () =
     };
     const result = resolvedStageSchema.safeParse(stage);
     expect(result.success).toBe(true);
+  });
+});
+
+// ----------- Resolved prompt.file checks (#398) -----------------
+//
+// The resolved schema enforces what the pre-fill schema relaxes for
+// `${field}`-bearing strings: every `prompt.file:` reaching post-fill
+// must end in `.prompt.md` and must carry no surviving `${...}`
+// placeholder. Mirror of the `resolvedDiscussionSchema.superRefine`
+// pattern for `discussion.rooms` / `layout.feeds`.
+
+describe("resolvedElementSchema — prompt.file enforcement (#398)", () => {
+  const baseStage = {
+    name: "stage1",
+    duration: 60,
+  };
+
+  test("accepts a fully-resolved prompt.file with .prompt.md extension", () => {
+    const result = resolvedStageSchema.safeParse({
+      ...baseStage,
+      elements: [
+        { type: "prompt", file: "prompts/welcome.prompt.md" },
+        { type: "submitButton" },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test("rejects a prompt.file missing the .prompt.md extension", () => {
+    const result = resolvedStageSchema.safeParse({
+      ...baseStage,
+      elements: [
+        { type: "prompt", file: "prompts/welcome.md" },
+        { type: "submitButton" },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const fileIssue = result.error.issues.find((i) =>
+        i.path.join(".").endsWith("file"),
+      );
+      expect(fileIssue?.message).toContain(".prompt.md");
+    }
+  });
+
+  test("rejects a prompt.file that still contains a `${field}` placeholder", () => {
+    // Annotator/host left the slot unbound. The pre-fill schema
+    // accepts `${field}` as a deferred check; the post-fill schema
+    // catches the leak before participants see a broken page.
+    const result = resolvedStageSchema.safeParse({
+      ...baseStage,
+      elements: [
+        { type: "prompt", file: "${unboundPath}" },
+        { type: "submitButton" },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const fileIssue = result.error.issues.find((i) =>
+        i.path.join(".").endsWith("file"),
+      );
+      expect(fileIssue?.message).toContain("unresolved");
+      expect(fileIssue?.message).toContain("${unboundPath}");
+    }
+  });
+
+  test("rejects a prompt.file with a placeholder mid-string (partial substitution)", () => {
+    // Even if `${field}` appears mid-path (`prefix/${unbound}.prompt.md`),
+    // the resolved form is still considered unresolved.
+    const result = resolvedStageSchema.safeParse({
+      ...baseStage,
+      elements: [
+        { type: "prompt", file: "prefix/${unbound}.prompt.md" },
+        { type: "submitButton" },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const fileIssue = result.error.issues.find((i) =>
+        i.path.join(".").endsWith("file"),
+      );
+      expect(fileIssue?.message).toContain("unresolved");
+    }
+  });
+
+  test("file check only applies to prompt elements (not submitButton, audio, etc.)", () => {
+    // A non-prompt element with a `file` field (e.g. audio, image,
+    // mediaPlayer) doesn't go through the prompt-file extension
+    // contract. The resolved schema's stringly `file:` is unchecked
+    // for those; their own validators in treatment.ts handle their
+    // path rules.
+    const result = resolvedStageSchema.safeParse({
+      ...baseStage,
+      elements: [
+        { type: "audio", file: "audio/clip.mp3" },
+        { type: "submitButton" },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+// ----------- Pre-fill / post-fill split (#398) ------------------
+//
+// The pre-fill schema now accepts `${field}` placeholders in
+// `prompt.file:`; the resolved schema enforces `.prompt.md` and
+// flags unresolved placeholders.
+
+describe("promptFilePathSchema pre-fill: `${field}` deferred to post-fill (#398)", () => {
+  test("accepts a bare `${field}` placeholder", () => {
+    // Was the user's annotation-workflow case before #398. Pre-fill
+    // would reject this with "Prompt files must use the .prompt.md
+    // extension" because the unbound `${field}` doesn't match the
+    // extension regex.
+    expect(promptFilePathSchema.safeParse("${field}").success).toBe(true);
+  });
+
+  test("accepts a mid-path placeholder (`prefix/${name}.prompt.md`)", () => {
+    expect(
+      promptFilePathSchema.safeParse("prefix/${name}.prompt.md").success,
+    ).toBe(true);
+  });
+
+  test("accepts a placeholder without the extension (`prefix/${name}`)", () => {
+    // The extension might be inside the placeholder's filled value.
+    // Deferred to post-fill.
+    expect(promptFilePathSchema.safeParse("prefix/${name}").success).toBe(true);
+  });
+
+  test("still rejects a literal path without .prompt.md", () => {
+    // No placeholder, no .prompt.md — pre-fill catches it.
+    const result = promptFilePathSchema.safeParse("prompts/foo.md");
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toContain(".prompt.md");
+    }
+  });
+
+  test("still rejects an empty string", () => {
+    expect(promptFilePathSchema.safeParse("").success).toBe(false);
+  });
+
+  test("still rejects a literal absolute path", () => {
+    expect(
+      promptFilePathSchema.safeParse("/prompts/foo.prompt.md").success,
+    ).toBe(false);
+  });
+});
+
+describe("validateResolvedTreatmentFile (#398)", () => {
+  const filledTreatmentFile = {
+    treatments: [
+      {
+        name: "t",
+        playerCount: 1,
+        gameStages: [
+          {
+            name: "stage1",
+            duration: 60,
+            elements: [
+              { type: "prompt", file: "prompts/welcome.prompt.md" },
+              { type: "submitButton" },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  test("clean fully-filled tree validates with no issues", () => {
+    const result = validateResolvedTreatmentFile(filledTreatmentFile);
+    expect(result.success).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
+  test("rejects a tree with a surviving `${field}` placeholder by default", () => {
+    const tree = JSON.parse(JSON.stringify(filledTreatmentFile)) as {
+      treatments: {
+        gameStages: { elements: { file?: string }[] }[];
+      }[];
+    };
+    tree.treatments[0].gameStages[0].elements[0].file = "${unbound}";
+    const result = validateResolvedTreatmentFile(tree);
+    expect(result.success).toBe(false);
+    expect(result.issues[0]?.reason).toBe("unresolved-placeholder");
+    expect(result.issues[0]?.message).toContain("unresolved");
+  });
+
+  test("with skipUnresolved: true, surviving placeholders are filtered out", () => {
+    const tree = JSON.parse(JSON.stringify(filledTreatmentFile)) as {
+      treatments: {
+        gameStages: { elements: { file?: string }[] }[];
+      }[];
+    };
+    tree.treatments[0].gameStages[0].elements[0].file = "${unbound}";
+    const result = validateResolvedTreatmentFile(tree, {
+      skipUnresolved: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
+  test("with skipUnresolved: true, non-placeholder issues still surface", () => {
+    // A path that's not templated but lacks .prompt.md should still
+    // be caught even in authoring (skipUnresolved) mode. That's the
+    // whole point — the VS Code extension can surface this kind of
+    // bug to the author even when they have other unbound fields.
+    const tree = JSON.parse(JSON.stringify(filledTreatmentFile)) as {
+      treatments: {
+        gameStages: { elements: { file?: string }[] }[];
+      }[];
+    };
+    tree.treatments[0].gameStages[0].elements[0].file = "prompts/foo.md";
+    const result = validateResolvedTreatmentFile(tree, {
+      skipUnresolved: true,
+    });
+    expect(result.success).toBe(false);
+    expect(result.issues[0]?.message).toContain(".prompt.md");
+  });
+
+  test("normalized issue path points at the offending element's file", () => {
+    const tree = JSON.parse(JSON.stringify(filledTreatmentFile)) as {
+      treatments: {
+        gameStages: { elements: { file?: string }[] }[];
+      }[];
+    };
+    tree.treatments[0].gameStages[0].elements[0].file = "prompts/foo.md";
+    const result = validateResolvedTreatmentFile(tree);
+    expect(result.issues[0]?.path).toEqual([
+      "treatments",
+      0,
+      "gameStages",
+      0,
+      "elements",
+      0,
+      "file",
+    ]);
+  });
+});
+
+describe("resolvedTreatmentFileSchema schema is exported", () => {
+  // Quick sanity check that the new schema is wired through the
+  // module's exports (matches the test in promptFile.test for
+  // splitOnTopLevelHrules).
+  test("rejects a non-object root", () => {
+    expect(resolvedTreatmentFileSchema.safeParse(null).success).toBe(false);
+  });
+
+  test("accepts the minimal empty shape", () => {
+    expect(resolvedTreatmentFileSchema.safeParse({}).success).toBe(true);
   });
 });

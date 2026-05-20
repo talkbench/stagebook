@@ -102,6 +102,14 @@ export interface ValidationDiffResult {
   sourceOnly: ZodIssue[];
   /** Issues only in the hydrated pass — revealed by expansion. */
   hydratedOnly: ZodIssue[];
+  /**
+   * The hydrated tree (`fillTemplates({ allowUnresolved: true })`
+   * output). Exposed so callers can run additional post-fill checks
+   * (e.g. `validateResolvedTreatmentFile` for #398's resolved-shape
+   * contracts) without re-running fillTemplates. `null` when
+   * hydration failed.
+   */
+  hydrated: Record<string, unknown> | null;
 }
 
 /**
@@ -143,6 +151,7 @@ export function runValidationDiff({
     matched: [],
     sourceOnly: [],
     hydratedOnly: [],
+    hydrated: null,
   };
 
   let parsed: unknown;
@@ -228,6 +237,7 @@ export function runValidationDiff({
       matched: [],
       sourceOnly: [],
       hydratedOnly: [],
+      hydrated: null,
     };
   }
 
@@ -256,6 +266,7 @@ export function runValidationDiff({
     hydrationError: null,
     sourceIssues,
     hydratedIssues,
+    hydrated: expanded,
     matched,
     sourceOnly,
     hydratedOnly,

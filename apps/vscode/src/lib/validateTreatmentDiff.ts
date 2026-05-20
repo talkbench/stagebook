@@ -2,6 +2,7 @@ import {
   runValidationDiff,
   collectPreHydrationIssues,
   parseTreatmentYaml as parseStagebookYaml,
+  validateResolvedTreatmentFile,
   type PreHydrationIssue,
 } from "stagebook";
 import type { ZodIssue } from "zod";
@@ -196,6 +197,27 @@ export async function validateTreatmentWithDiff({
       severity: "warning",
       range: resolveIssueRange(mapper, issue),
     });
+  }
+
+  // Post-fill resolved-schema validation (#398). Runs on the hydrated
+  // tree to surface issues that the relaxed pre-fill schema deferred —
+  // e.g. a `prompt.file` that lacks `.prompt.md` after a literal
+  // (non-templated) author entry. `skipUnresolved: true` filters out
+  // the "unresolved placeholder" issues that are EXPECTED in
+  // authoring contexts (the host hasn't bound `${field}` slots yet);
+  // those surface at runtime via the viewer's strict check or the
+  // production host's own call.
+  if (diff.hydrated) {
+    const resolved = validateResolvedTreatmentFile(diff.hydrated, {
+      skipUnresolved: true,
+    });
+    for (const issue of resolved.issues) {
+      diagnostics.push({
+        message: `${issue.message} (${formatPath(issue.path)})`,
+        severity: "error",
+        range: resolveOrWalkUp(mapper, issue.path),
+      });
+    }
   }
 
   return { diagnostics, parsedObj };
