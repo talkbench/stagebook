@@ -2,11 +2,13 @@
 
 Conditions control when elements are displayed and how participants are assigned to groups. They compare a referenced value against an expected value using a comparator.
 
+> **Every reference string starts with a position selector (#298).** The first segment of every reference is required and is one of: `self` (the current participant), `shared` (group-shared state), `all` (every participant as a list), or a non-negative integer slot index (`0`, `1`, …). Un-prefixed references like `prompt.topicVote` are rejected at parse time; the error message suggests `self.prompt.topicVote` for the common case. Examples below default to `self` unless the example illustrates cross-participant reads.
+
 ## Basic Syntax
 
 ```yaml
 conditions:
-  - reference: prompt.topicVote
+  - reference: self.prompt.topicVote
     comparator: equals
     value: "Yes"
 ```
@@ -15,10 +17,10 @@ Multiple conditions use AND logic — all must be satisfied:
 
 ```yaml
 conditions:
-  - reference: prompt.multipleChoice
+  - reference: self.prompt.multipleChoice
     comparator: equals
     value: response1
-  - reference: prompt.openResponse
+  - reference: self.prompt.openResponse
     comparator: hasLengthAtLeast
     value: 15
 ```
@@ -30,17 +32,17 @@ When you need OR or NOR logic, wrap conditions in an operator-keyed object. The 
 ```yaml
 # Implicit all (sugar)
 conditions:
-  - reference: prompt.a
+  - reference: self.prompt.a
     comparator: equals
     value: yes
-  - reference: prompt.b
+  - reference: self.prompt.b
     comparator: exists
 
 # Explicit all
 conditions:
   all:
-    - { reference: prompt.a, comparator: equals, value: yes }
-    - { reference: prompt.b, comparator: exists }
+    - { reference: self.prompt.a, comparator: equals, value: yes }
+    - { reference: self.prompt.b, comparator: exists }
 ```
 
 Use `any:` for OR, `none:` for NOR (none of these are true):
@@ -49,36 +51,16 @@ Use `any:` for OR, `none:` for NOR (none of these are true):
 # Show element if either participant's previous answer was "yes"
 conditions:
   any:
-    - {
-        reference: prompt.changedMind,
-        position: 0,
-        comparator: equals,
-        value: yes,
-      }
-    - {
-        reference: prompt.changedMind,
-        position: 1,
-        comparator: equals,
-        value: yes,
-      }
+    - { reference: 0.prompt.changedMind, comparator: equals, value: yes }
+    - { reference: 1.prompt.changedMind, comparator: equals, value: yes }
 ```
 
 ```yaml
 # Render fallback message when nobody hit the threshold
 conditions:
   none:
-    - {
-        reference: prompt.familiarity,
-        position: 0,
-        comparator: isAtLeast,
-        value: 50,
-      }
-    - {
-        reference: prompt.familiarity,
-        position: 1,
-        comparator: isAtLeast,
-        value: 50,
-      }
+    - { reference: 0.prompt.familiarity, comparator: isAtLeast, value: 50 }
+    - { reference: 1.prompt.familiarity, comparator: isAtLeast, value: 50 }
 ```
 
 Operators nest. Mix freely:
@@ -88,19 +70,9 @@ Operators nest. Mix freely:
 conditions:
   all:
     - any:
-        - {
-            reference: prompt.consensus,
-            position: 0,
-            comparator: equals,
-            value: disagree,
-          }
-        - {
-            reference: prompt.consensus,
-            position: 1,
-            comparator: equals,
-            value: disagree,
-          }
-    - { reference: prompt.discussion_overflow, comparator: doesNotExist }
+        - { reference: 0.prompt.consensus, comparator: equals, value: disagree }
+        - { reference: 1.prompt.consensus, comparator: equals, value: disagree }
+    - { reference: self.prompt.discussion_overflow, comparator: doesNotExist }
 ```
 
 ### Three-valued logic — what happens before data arrives
@@ -132,15 +104,15 @@ For OR logic on a single reference (across positions, comparators, etc.), `any:`
 
 ## Reference Strings
 
-References point to data collected earlier in the experiment. The dotted form uses one of two grammars depending on the source:
+References point to data collected earlier in the experiment. The dotted form is always `<position>.<source>.<...>`, where the position selector (`self`, `shared`, `all`, or a numeric slot index — see the note at the top) is required as the first segment and the rest depends on the source:
 
-- **Named sources** (`prompt`, `survey`, `submitButton`, `qualtrics`, `timeline`, `trackedLink`, `discussion`): `source.name(.path...)` — `name` is required, `path` is optional.
-- **External sources** (`entryUrl`, `connectionInfo`, `browserInfo`, `participantInfo`): `source.path...` — no `name`, `path` is required. `entryUrl` references must currently use the `params` subpath (see [URL Parameters](#url-parameters) below).
+- **Named sources** (`prompt`, `survey`, `submitButton`, `qualtrics`, `timeline`, `trackedLink`, `discussion`): `<position>.<source>.<name>(.<path>...)` — `name` is required, `path` is optional.
+- **External sources** (`entryUrl`, `connectionInfo`, `browserInfo`, `participantInfo`): `<position>.<source>.<path>...` — no `name`, `path` is required. `entryUrl` references must currently use the `params` subpath (see [URL Parameters](#url-parameters) below).
 
 ```yaml
-- reference: prompt.familiarity         # named source: source.name
-- reference: survey.TIPI.responses.q1   # named source: source.name.path...
-- reference: entryUrl.params.condition  # external source: source.path...
+- reference: self.prompt.familiarity         # named: position.source.name
+- reference: self.survey.TIPI.responses.q1   # named: position.source.name.path...
+- reference: self.entryUrl.params.condition  # external: position.source.path...
 ```
 
 After #240, references can also be written in **structured form** — preferred in new code, especially when you need to override the implicit defaults the dotted form bakes in (e.g. addressing the `debugMessages` field on a prompt's saved record instead of the default `value`):
@@ -166,7 +138,7 @@ Both forms parse to the same internal shape; either is accepted at every referen
 ### Prompt Responses
 
 ```
-prompt.<name>
+<position>.prompt.<name>
 ```
 
 Returns the value saved by a prompt element. The `<name>` matches what you set in the treatment YAML.
@@ -174,14 +146,14 @@ Returns the value saved by a prompt element. The `<name>` matches what you set i
 ### Survey Results
 
 ```
-survey.<name>.result.<scoreKey>     # computed scores
-survey.<name>.responses.<questionId> # raw answers
+<position>.survey.<name>.result.<scoreKey>     # computed scores
+<position>.survey.<name>.responses.<questionId> # raw answers
 ```
 
 ### Submit Button Timing
 
 ```
-submitButton.<name>.time
+<position>.submitButton.<name>.time
 ```
 
 Returns elapsed seconds when the button was clicked.
@@ -189,14 +161,14 @@ Returns elapsed seconds when the button was clicked.
 ### Tracked Link Events
 
 ```
-trackedLink.<name>.events
-trackedLink.<name>.totalTimeAwaySeconds
+<position>.trackedLink.<name>.events
+<position>.trackedLink.<name>.totalTimeAwaySeconds
 ```
 
 ### URL Parameters
 
 ```
-entryUrl.params.<paramName>
+<position>.entryUrl.params.<paramName>
 ```
 
 Query parameters from the participant's landing URL (e.g., `?role=confederate`). The `params` subpath is required — the `entryUrl.*` namespace is reserved so future additions like `entryUrl.path`, `entryUrl.host`, `entryUrl.href` can land non-breakingly.
@@ -226,19 +198,19 @@ Client-side browser information from onboarding.
 ### Participant Info
 
 ```
-participantInfo.name           # nickname
-participantInfo.sampleId       # recruiting platform ID
+<position>.participantInfo.name           # nickname
+<position>.participantInfo.sampleId       # recruiting platform ID
 ```
 
 ### Timeline Selections
 
 ```
-timeline.<name>                  # the full selections array
-timeline.<name>.length           # number of selections
-timeline.<name>.0.start          # start time of the first range selection (seconds)
-timeline.<name>.0.end            # end time of the first range selection (seconds)
-timeline.<name>.0.time           # time of the first point selection (seconds)
-timeline.<name>.0.track          # track index of the first selection (if track-scoped)
+<position>.timeline.<name>                  # the full selections array
+<position>.timeline.<name>.length           # number of selections
+<position>.timeline.<name>.0.start          # start time of the first range selection (seconds)
+<position>.timeline.<name>.0.end            # end time of the first range selection (seconds)
+<position>.timeline.<name>.0.time           # time of the first point selection (seconds)
+<position>.timeline.<name>.0.track          # track index of the first selection (if track-scoped)
 ```
 
 Array indices (0, 1, 2, ...) access individual selections in chronological order. Use this to validate that selections fall within expected time ranges:
@@ -248,10 +220,10 @@ Array indices (0, 1, 2, ...) access individual selections in chronological order
 # between 15 and 19 seconds (validating annotation accuracy)
 - type: submitButton
   conditions:
-    - reference: timeline.storySegment.0.start
+    - reference: self.timeline.storySegment.0.start
       comparator: isAtLeast
       value: 15
-    - reference: timeline.storySegment.0.start
+    - reference: self.timeline.storySegment.0.start
       comparator: isAtMost
       value: 19
 ```
@@ -261,7 +233,7 @@ You can also check that a minimum number of selections have been made:
 ```yaml
 - type: submitButton
   conditions:
-    - reference: timeline.storySegment.length
+    - reference: self.timeline.storySegment.length
       comparator: isAtLeast
       value: 3
 ```
@@ -269,8 +241,8 @@ You can also check that a minimum number of selections have been made:
 ### Discussion Metrics
 
 ```
-discussion.<name>.discussionFailed
-discussion.<name>.cumulativeSpeakingTime
+<position>.discussion.<name>.discussionFailed
+<position>.discussion.<name>.cumulativeSpeakingTime
 ```
 
 `<name>` is the `name:` of the discussion block on the stage. After #240 the storage namespace is `discussion_<name>`, so a per-discussion lookup needs the name segment between `discussion` and the metric path. Available metrics depend on the host platform's discussion implementation.
@@ -296,11 +268,9 @@ Show a submit button only when both players in a 2-player study have answered:
 - type: submitButton
   conditions:
     all:
-      - reference: prompt.topic_vote
-        position: 0
+      - reference: 0.prompt.topic_vote
         comparator: exists
-      - reference: prompt.topic_vote
-        position: 1
+      - reference: 1.prompt.topic_vote
         comparator: exists
 ```
 
@@ -311,12 +281,10 @@ Show content if either player chose "yes":
   file: game/either_yes.prompt.md
   conditions:
     any:
-      - reference: prompt.topic_vote
-        position: 0
+      - reference: 0.prompt.topic_vote
         comparator: equals
         value: yes
-      - reference: prompt.topic_vote
-        position: 1
+      - reference: 1.prompt.topic_vote
         comparator: equals
         value: yes
 ```
@@ -325,8 +293,7 @@ Display another participant's response:
 
 ```yaml
 - type: display
-  reference: prompt.topicA_prompt
-  position: 1
+  reference: 1.prompt.topicA_prompt
   showToPositions: [0]
 ```
 
@@ -390,13 +357,13 @@ treatments:
       - position: 0
         title: "Democrat"
         conditions:
-          - reference: survey.partyAffiliation.result.normPosition
+          - reference: self.survey.partyAffiliation.result.normPosition
             comparator: isBelow
             value: 0.5
       - position: 1
         title: "Republican"
         conditions:
-          - reference: survey.partyAffiliation.result.normPosition
+          - reference: self.survey.partyAffiliation.result.normPosition
             comparator: isAbove
             value: 0.5
 ```
@@ -408,18 +375,18 @@ groupComposition:
   - position: 0
     title: Confederate
     conditions:
-      - reference: entryUrl.params.role
+      - reference: self.entryUrl.params.role
         comparator: equals
         value: confederate
   - position: 1
     title: Participant
     conditions:
-      - reference: entryUrl.params.role
+      - reference: self.entryUrl.params.role
         comparator: equals
         value: participant
 ```
 
-**Note:** Group assignment conditions can only use the participant's own responses — no `position` modifier is available.
+**Note:** Group assignment conditions can only use the participant's own responses — reference strings must use the `self` position selector.
 
 ## Stage-level conditions
 
@@ -444,14 +411,12 @@ gameStages:
     duration: 300
     conditions:
       all:
-        - reference: survey.continueVote.result.keepGoing
+        - reference: 0.survey.continueVote.result.keepGoing
           comparator: equals
           value: "yes"
-          position: 0
-        - reference: survey.continueVote.result.keepGoing
+        - reference: 1.survey.continueVote.result.keepGoing
           comparator: equals
           value: "yes"
-          position: 1
     elements:
       - type: prompt
         file: round2.prompt.md
@@ -467,9 +432,8 @@ gameStages:
   - name: speed_round
     duration: 120
     conditions:
-      - reference: submitButton.speedSubmit
+      - reference: shared.submitButton.speedSubmit
         comparator: doesNotExist
-        position: shared
     elements:
       - type: submitButton
         name: speedSubmit
@@ -519,18 +483,16 @@ OK:
 
 ```yaml
 conditions:
-  - reference: submitButton.speedSubmit
+  - reference: shared.submitButton.speedSubmit
     comparator: doesNotExist # true against undefined → stage renders
-    position: shared
 ```
 
 Rejected at preflight:
 
 ```yaml
 conditions:
-  - reference: submitButton.speedSubmit
+  - reference: shared.submitButton.speedSubmit
     comparator: exists # false against undefined → always skips
-    position: shared
 ```
 
 This rule only applies to stage-level conditions. Element-level conditions, `display.reference`, `urlParams`, and discussion conditions all have "wait for data to arrive" semantics where false-at-load is the standard pattern (e.g., a submit button that appears only after the prompt is answered).

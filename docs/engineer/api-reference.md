@@ -74,17 +74,22 @@ Parse a DSL reference string into a storage key and nested path. The `StagebookP
 ```typescript
 import { getReferenceKeyAndPath } from "stagebook";
 
-getReferenceKeyAndPath("survey.bigFive.result.score");
+// Every reference string starts with a position selector — `self`,
+// `shared`, `all`, or a non-negative integer slot index (#298).
+// getReferenceKeyAndPath strips the position to return just the
+// storage key and path; un-prefixed strings throw at parse time.
+
+getReferenceKeyAndPath("self.survey.bigFive.result.score");
 // { referenceKey: "survey_bigFive", path: ["result", "score"] }
 
-getReferenceKeyAndPath("prompt.myQuestion");
+getReferenceKeyAndPath("self.prompt.myQuestion");
 // { referenceKey: "prompt_myQuestion", path: ["value"] }
 
-getReferenceKeyAndPath("entryUrl.params.condition");
+getReferenceKeyAndPath("self.entryUrl.params.condition");
 // { referenceKey: "entryUrl", path: ["params", "condition"] }
 ```
 
-Supported namespaces: `survey`, `submitButton`, `qualtrics`, `prompt`, `trackedLink`, `timeline`, `discussion`, `entryUrl`, `connectionInfo`, `browserInfo`, `participantInfo`. (`urlParams` was renamed to `entryUrl` in #246.) `entryUrl` references must use the `params` subpath, e.g. `entryUrl.params.condition` — bare `entryUrl.<key>` is rejected.
+Supported namespaces: `survey`, `submitButton`, `qualtrics`, `prompt`, `trackedLink`, `timeline`, `discussion`, `entryUrl`, `connectionInfo`, `browserInfo`, `participantInfo`. (`urlParams` was renamed to `entryUrl` in #246.) `entryUrl` references must use the `params` subpath, e.g. `self.entryUrl.params.condition` — bare `entryUrl.<key>` is rejected.
 
 ### `getNestedValueByPath(obj, path?)`
 

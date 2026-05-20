@@ -77,17 +77,21 @@ The 16 canonical comparators: `exists`, `doesNotExist`, `equals`, `doesNotEqual`
 
 ### Parsing reference strings
 
+Every reference begins with a position selector — `self`, `shared`, `all`, or a non-negative integer slot index (#298). The selector becomes part of the parsed `ReferenceType`; `getReferenceKeyAndPath` strips it to return the storage key and path:
+
 ```typescript
 import { getReferenceKeyAndPath } from "stagebook";
 
-getReferenceKeyAndPath("survey.bigFive.result.score");
+getReferenceKeyAndPath("self.survey.bigFive.result.score");
 // { referenceKey: "survey_bigFive", path: ["result", "score"] }
 
-getReferenceKeyAndPath("prompt.myQuestion");
+getReferenceKeyAndPath("self.prompt.myQuestion");
 // { referenceKey: "prompt_myQuestion", path: ["value"] }
 ```
 
-Supported namespaces: `survey`, `submitButton`, `qualtrics`, `prompt`, `trackedLink`, `timeline`, `discussion`, `entryUrl`, `connectionInfo`, `browserInfo`, `participantInfo`. (`urlParams` was renamed to `entryUrl` in #246.) `entryUrl` references must use the `params` subpath, e.g. `getReferenceKeyAndPath("entryUrl.params.foo")`.
+Un-prefixed strings (`"survey.bigFive.result.score"`) throw at parse time with an error suggesting the migration.
+
+Supported namespaces: `survey`, `submitButton`, `qualtrics`, `prompt`, `trackedLink`, `timeline`, `discussion`, `entryUrl`, `connectionInfo`, `browserInfo`, `participantInfo`. (`urlParams` was renamed to `entryUrl` in #246.) `entryUrl` references must use the `params` subpath, e.g. `getReferenceKeyAndPath("self.entryUrl.params.foo")`.
 
 ### Expanding templates
 

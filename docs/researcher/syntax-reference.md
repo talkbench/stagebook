@@ -38,21 +38,30 @@ Content types: `introSequence`, `introSequences`, `elements`, `element`, `stage`
 
 A reference identifies a value somewhere in the study state. Two forms (#240): the dotted-string sugar and the structured object form. Both are accepted at every reference site (conditions, `display.reference`, `trackedLink`/`qualtrics` `urlParams[].reference`); both parse to the same internal shape.
 
+**Every reference begins with a position selector (#298).** The first segment is required and is one of:
+
+- `self` — the current participant's value
+- `shared` — group-shared state
+- `all` — addresses every participant's value as a list (for aggregating across the group)
+- A non-negative integer (`0`, `1`, `2`, …) — a specific slot index
+
+Un-prefixed references like `prompt.topicVote` are rejected at parse time. The error message includes a migration hint suggesting `self.prompt.topicVote` for the common case.
+
 **String shorthand (the common form):**
 
-| Pattern                      | Example                                |
-| ---------------------------- | -------------------------------------- |
-| `prompt.<name>`              | `prompt.topicVote`                     |
-| `survey.<name>.<path...>`    | `survey.TIPI.responses.q1`             |
-| `submitButton.<name>.<path>` | `submitButton.confirm.time`            |
-| `qualtrics.<name>.<path>`    | `qualtrics.exit.sessionId`             |
-| `trackedLink.<name>.<path>`  | `trackedLink.signup.events`            |
-| `timeline.<name>(.<path>)`   | `timeline.story.0.start`               |
-| `discussion.<name>(.<path>)` | `discussion.lobby.messageCount`        |
-| `entryUrl.params.<key>`      | `entryUrl.params.PROLIFIC_PID`         |
-| `connectionInfo.<key>`       | `connectionInfo.country`               |
-| `browserInfo.<key>`          | `browserInfo.language`                 |
-| `participantInfo.<field>`    | `participantInfo.name`                 |
+| Pattern                                | Example                                |
+| -------------------------------------- | -------------------------------------- |
+| `<position>.prompt.<name>`             | `self.prompt.topicVote`                |
+| `<position>.survey.<name>.<path...>`   | `self.survey.TIPI.responses.q1`        |
+| `<position>.submitButton.<name>.<path>`| `self.submitButton.confirm.time`       |
+| `<position>.qualtrics.<name>.<path>`   | `self.qualtrics.exit.sessionId`        |
+| `<position>.trackedLink.<name>.<path>` | `self.trackedLink.signup.events`       |
+| `<position>.timeline.<name>(.<path>)`  | `self.timeline.story.0.start`          |
+| `<position>.discussion.<name>(.<path>)`| `shared.discussion.lobby.messageCount` |
+| `<position>.entryUrl.params.<key>`     | `self.entryUrl.params.PROLIFIC_PID`    |
+| `<position>.connectionInfo.<key>`      | `self.connectionInfo.country`          |
+| `<position>.browserInfo.<key>`         | `self.browserInfo.language`            |
+| `<position>.participantInfo.<field>`   | `self.participantInfo.name`            |
 
 **Structured form** (#240 — preferred in new code):
 
