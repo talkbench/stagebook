@@ -158,12 +158,3 @@ shuffle: true
 - option_c: Third option
 ```
 
-## Known limitation
-
-Stagebook's prompt-file parser splits on any `---` line in the file,
-including lines inside fenced code blocks. That means you can't put
-prompt-syntax examples (like those above) inside a `noResponse`
-prompt body — the `---` inside the code block gets read as a section
-delimiter. Worked around here by keeping the syntax examples in this
-README rather than inside the prompts themselves. See the follow-up
-issue linked from the gallery's PR for the parser fix.

@@ -292,6 +292,56 @@ export interface ParsedPromptFile {
   sliderPoints: number[];
 }
 
+/**
+ * Split a prompt-file string on top-level `---` section delimiters,
+ * skipping any `---` lines that appear inside a fenced code block.
+ *
+ * The previous implementation was a single regex split — `trimmed.
+ * split(/^-{3,}$/gm)` — which matched any line of three-or-more
+ * hyphens anywhere in the file, including inside fenced code
+ * (#380). A researcher quoting Stagebook's prompt-file syntax inside
+ * a `noResponse` prompt would have their body silently shredded into
+ * pseudo-sections and rejected with "must have exactly two sections."
+ *
+ * This walks line-by-line, tracking whether the cursor is inside a
+ * fence opened by ```` ``` ```` (any info-string allowed). Only `---`
+ * lines outside the fence count as section boundaries. Matches the
+ * regex split's output shape: a file starting with `---` produces a
+ * leading empty string section (sections[0]), the metadata YAML is
+ * sections[1], the body is sections[2], and the optional response
+ * string is sections[3].
+ *
+ * Edge cases not handled (deliberate, to keep the rule simple):
+ * - Indented fences (CommonMark allows up to 3 spaces). Stagebook
+ *   prompts don't author indented fences in practice.
+ * - Tilde-fenced code (`~~~`). Same reasoning; backtick is the only
+ *   form Stagebook prompts use.
+ */
+export function splitOnTopLevelHrules(input: string): string[] {
+  // Mask any in-fence `^-{3,}$` lines so the legacy regex split can't
+  // see them. The mask prepends a null byte ( ), which makes
+  // `^-{3,}$` no longer match (the line no longer starts with `-`),
+  // and won't collide with any byte in a real prompt file. After the
+  // split, strip the null bytes back out to restore the original
+  // line. This preserves the exact byte shape the regex split
+  // produced pre-#380 — leading / trailing newlines around each
+  // section stay where they were — so any future consumer that
+  // depends on the legacy output shape isn't silently broken.
+  const MASK = " ";
+  const lines = input.split("\n");
+  let insideFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith("```")) {
+      insideFence = !insideFence;
+    } else if (insideFence && /^-{3,}$/.test(line)) {
+      lines[i] = MASK + line;
+    }
+  }
+  const sections = lines.join("\n").split(/^-{3,}$/gm);
+  return sections.map((s) => s.replaceAll(MASK, ""));
+}
+
 export const promptFileSchema: z.ZodType<
   ParsedPromptFile,
   z.ZodTypeDef,
@@ -309,7 +359,7 @@ export const promptFileSchema: z.ZodType<
       return z.NEVER;
     }
 
-    const sections = trimmed.split(/^-{3,}$/gm);
+    const sections = splitOnTopLevelHrules(trimmed);
 
     // First section is the empty string before the leading `---`.
     if (sections.length < 3) {
