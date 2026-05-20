@@ -154,6 +154,32 @@ treatments:
             file: prompts/listsorter_demo.prompt.md
           - type: submitButton
 
+      - name: scroll_indicator
+        duration: 600
+        notes: |
+          ScrollIndicator — the chevron pill that appears at the
+          bottom of a Stage column when there's content below the
+          fold. The conditional second slab exercises the
+          growth-triggered re-appearance path: after the participant
+          selects a response, more content reveals and the indicator
+          re-shows even if they'd scrolled to the bottom previously.
+        elements:
+          - type: prompt
+            file: prompts/scroll_intro.prompt.md
+          - type: separator
+            style: thin
+          - type: prompt
+            name: scroll_demo_choice
+            file: prompts/scroll_demo_choice.prompt.md
+          - type: prompt
+            file: prompts/scroll_filler.prompt.md
+          - type: prompt
+            file: prompts/scroll_extra.prompt.md
+            conditions:
+              - reference: self.prompt.scroll_demo_choice
+                comparator: exists
+          - type: submitButton
+
     exitSequence:
       - name: Done
         elements:
