@@ -26,6 +26,7 @@ sugar; those rows are flagged.
 | Conditions        | `position: percentAgreement`                | no direct equivalent — see [Conditions](#conditions--position-is-a-read-selector-only-238) | breaking | [#238] |
 | Conditions        | flat-array AND only                         | `all:` / `any:` / `none:` boolean tree (flat array still parses as sugar for `all:`) | additive | [#235] |
 | References        | dotted strings only                         | `{source, name?, path?}` structured form (dotted strings still parse as sugar) | additive | [#240] |
+| References        | `prompt.X` (no position prefix)             | `self.prompt.X` / `0.prompt.X` / `all.prompt.X` etc. (position selector required) | breaking | [#298] |
 | References        | `urlParams.<key>`                           | `entryUrl.params.<key>`                        | breaking | [#246] |
 | References        | `discussion.<name>` storage key = `<name>`  | storage key = `discussion_<name>`              | breaking | [#240] |
 | Templates         | `templateName:` / `templateContent:` / `templateDesc:` | `name:` / `content:` (drop desc, fold into `notes:`) | breaking | [#244] |
@@ -54,19 +55,24 @@ form is preferred in new code, especially when you need to override
 defaults the dotted form bakes in:
 
 ```yaml
-# Before — dotted only
+# Before — dotted only, no position prefix
 - reference: prompt.familiarity
   comparator: isAtLeast
   value: 50
 
-# After — both forms accepted; both parse to the same internal shape
-- reference: prompt.familiarity        # string sugar — still works
+# After — both forms accepted; both parse to the same internal shape.
+# Note: the position prefix in the dotted string (`self.`, `0.`, etc.)
+# is now required — see References — required position prefix (#298)
+# below.
+- reference: self.prompt.familiarity   # string sugar — still works
 - reference:
+    position: self
     source: prompt
     name: familiarity
     path: [value]                      # explicit; same default the sugar applies
 
 - reference:
+    position: self
     source: prompt
     name: familiarity
     path: [debugMessages]              # newly possible — addresses other saved fields
@@ -76,6 +82,50 @@ Named sources (`prompt`, `survey`, `submitButton`, `qualtrics`,
 `timeline`, `trackedLink`, `discussion`) require `name:`, allow
 optional `path:`. External sources (`entryUrl`, `connectionInfo`,
 `browserInfo`, `participantInfo`) forbid `name:`, require `path:`.
+Every reference — dotted or structured — also requires a `position`
+selector; see the next section.
+
+### References — required position prefix (#298)
+
+Every reference must begin with an explicit position selector. In
+the dotted form that's the first segment; in the structured form
+it's the `position:` field. The selector is one of:
+
+- `self` — the current participant's value (matches what pre-#298
+  references defaulted to when no `position:` field was set)
+- `shared` — group-shared state
+- `all` — every participant's value as a list (for aggregating
+  across the group; pairs with the boolean-tree `all:` / `any:`
+  operators introduced in #235)
+- A non-negative integer (`0`, `1`, …) — a specific slot index
+
+Un-prefixed references fail preflight validation with an error
+that suggests the migration — e.g. `prompt.familiarity` is rejected
+with a hint pointing to `self.prompt.familiarity`.
+
+```yaml
+# Before — implicit "current participant"
+- reference: prompt.familiarity
+  comparator: equals
+  value: high
+
+# After — explicit position prefix; `self` matches the old default
+- reference: self.prompt.familiarity
+  comparator: equals
+  value: high
+
+# Cross-participant reads now live in the reference itself instead
+# of in a separate position field on the condition (which the
+# pre-#238 form also accepted for the same semantic):
+- reference: 0.prompt.familiarity      # slot 0 specifically
+- reference: 1.prompt.familiarity      # slot 1 specifically
+- reference: all.prompt.familiarity    # list of every participant's value
+```
+
+The pre-#298 `any` selector and `player` selector are removed.
+`any` belonged in the boolean-tree operator family ([#235]); use
+`any:` with explicit per-slot leaves. `player` is replaced by
+`self` — same semantic, clearer name, single canonical spelling.
 
 Two reference-grammar quirks were fixed in the same change:
 - **Timeline references accept paths** in both schema and runtime.
@@ -94,9 +144,11 @@ URL). Same word, opposite directions.
 
 | Before                          | After                                |
 |---------------------------------|--------------------------------------|
-| `reference: urlParams.condition` | `reference: entryUrl.params.condition` |
-| `{source: urlParams, path: [condition]}` | `{source: entryUrl, path: [params, condition]}` |
+| `reference: urlParams.condition` | `reference: self.entryUrl.params.condition` |
+| `{source: urlParams, path: [condition]}` | `{position: self, source: entryUrl, path: [params, condition]}` |
 | `urlParams:` element field      | unchanged — still means "outgoing params for this element's URL" |
+
+(The `After` column folds in the position prefix required by #298 — see [References — required position prefix](#references--required-position-prefix-298) above.)
 
 The `params` subpath is required today; bare `entryUrl.<key>` is
 rejected. The `entryUrl.*` namespace is reserved so future
@@ -111,14 +163,14 @@ The flat-array AND-of-leaves form is now sugar for `all:`. `any:` and
 ```yaml
 conditions:
   any:
-    - reference: prompt.foo
+    - reference: self.prompt.foo
       comparator: equals
       value: yes
     - all:
-        - reference: prompt.bar
+        - reference: self.prompt.bar
           comparator: equals
           value: yes
-        - reference: prompt.baz
+        - reference: self.prompt.baz
           comparator: exists
 ```
 
@@ -137,20 +189,20 @@ boolean-tree operators.
 `all:` operators with explicit per-slot leaves:
 
 ```yaml
-# Before — "all players said yes"
+# Before — "all players said yes" via a separate `position: all` field
 - reference: prompt.changedMind
   position: all
   comparator: equals
   value: yes
 
-# After — explicit per-slot leaves under all:
+# After — explicit per-slot leaves under all:, position prefix folded
+# into each reference string (per #298 — no separate position field
+# needed when the position is in the reference itself)
 - all:
-    - reference: prompt.changedMind
-      position: 0
+    - reference: 0.prompt.changedMind
       comparator: equals
       value: yes
-    - reference: prompt.changedMind
-      position: 1
+    - reference: 1.prompt.changedMind
       comparator: equals
       value: yes
 ```

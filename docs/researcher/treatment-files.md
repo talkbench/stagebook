@@ -183,16 +183,18 @@ treatments:
       - position: 0
         title: "Democrat"
         conditions:
-          - reference: survey.partyAffiliation.result.normPosition
+          - reference: self.survey.partyAffiliation.result.normPosition
             comparator: isBelow
             value: 0.5
       - position: 1
         title: "Republican"
         conditions:
-          - reference: survey.partyAffiliation.result.normPosition
+          - reference: self.survey.partyAffiliation.result.normPosition
             comparator: isAbove
             value: 0.5
 ```
+
+(Reference strings start with a position selector — `self` for the participant being checked against this slot, plus `shared`, `all`, or a numeric index for other reads. See [conditions](conditions.md) for the full rules; #298 made the prefix mandatory.)
 
 Positions must be unique and cover 0 through `playerCount - 1`.
 

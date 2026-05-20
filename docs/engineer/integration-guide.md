@@ -549,7 +549,7 @@ When Stagebook encounters a `type: "survey"` element, it:
 2. Computes the storage key: `survey_${name ?? surveyName}` (e.g., `survey_preTIPI`)
 3. Calls your `renderSurvey` function, passing `{ surveyName, onComplete }`
 4. When `onComplete(results)` is called, Stagebook saves the results: `save("survey_preTIPI", results)`
-5. The results are then available to other elements and conditions via the reference `survey.preTIPI.result.<key>` or `survey.preTIPI.responses.<questionId>`
+5. The results are then available to other elements and conditions via the reference `<position>.survey.preTIPI.result.<key>` or `<position>.survey.preTIPI.responses.<questionId>` (`<position>` is `self`, `shared`, `all`, or a numeric slot index — required first segment per #298)
 
 #### What the platform implements
 
@@ -579,12 +579,12 @@ The shape of `results` is determined by your survey library. Stagebook stores it
 
 ```yaml
 conditions:
-  - reference: survey.preTIPI.result.normAgreeableness
+  - reference: self.survey.preTIPI.result.normAgreeableness
     comparator: isAtLeast
     value: 0.75
 ```
 
-For this to work, the results object must have the structure that matches the reference path. If the reference is `survey.preTIPI.result.normAgreeableness`, then `results.result.normAgreeableness` must exist. This is a contract between the survey library and the treatment author — Stagebook just traverses the path.
+For this to work, the results object must have the structure that matches the reference path. If the reference is `self.survey.preTIPI.result.normAgreeableness`, then `results.result.normAgreeableness` must exist (the leading `self.` is the position selector required by #298; the remaining path resolves into the saved results object). This is a contract between the survey library and the treatment author — Stagebook just traverses the path.
 
 #### Example: full data flow
 
@@ -592,8 +592,8 @@ For this to work, the results object must have the structure that matches the re
 2. Participant completes the survey in the intro sequence
 3. Survey component calls `onComplete({ result: { normAgreeableness: 0.82, ... }, responses: { ... } })`
 4. Stagebook saves under key `survey_preTIPI`
-5. Later, in a treatment's `groupComposition`, a condition references `survey.preTIPI.result.normAgreeableness`
-6. Stagebook's `resolve("survey.preTIPI.result.normAgreeableness")` looks up `survey_preTIPI` in state, traverses `.result.normAgreeableness`, and returns `0.82`
+5. Later, in a treatment's `groupComposition`, a condition references `self.survey.preTIPI.result.normAgreeableness`
+6. Stagebook's `resolve("self.survey.preTIPI.result.normAgreeableness")` looks up `survey_preTIPI` in state, traverses `.result.normAgreeableness`, and returns `0.82`
 7. The condition `isAtLeast: 0.75` evaluates to `true`, and the participant is assigned to the matching position
 
 ### Discussion

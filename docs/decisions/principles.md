@@ -103,10 +103,10 @@ have to reverse-engineer is not. Sugar over an explicit form is fine — the
 explicit form must always exist and work.
 
 The implicit `[value]` path on prompt references (#240) is the canonical
-example: `prompt.foo` works as today, but the underlying
-`{source: prompt, name: foo, path: [value]}` is the documented model, and
-overriding the path with `[debugMessages]` etc. is supported. The shortcut
-isn't load-bearing.
+example: `self.prompt.foo` works as today, but the underlying
+`{position: self, source: prompt, name: foo, path: [value]}` is the
+documented model, and overriding the path with `[debugMessages]` etc. is
+supported. The shortcut isn't load-bearing.
 
 ## 8. Validation at the point of authoring
 

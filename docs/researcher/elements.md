@@ -62,12 +62,12 @@ A prompt element using all four visibility mechanisms together:
   hideTime: 90 # disappear after 90s of stage time
   showToPositions: [0, 1] # only players 0 and 1 see it
   conditions:
-    - reference: prompt.consent
+    - reference: self.prompt.consent
       comparator: equals
       value: yes # and only if they consented
 ```
 
-This element is visible to players 0 and 1, between stage time 30s and 90s, only if `prompt.consent` is `"yes"`. Any one of those failing hides the element.
+This element is visible to players 0 and 1, between stage time 30s and 90s, only if `self.prompt.consent` is `"yes"`. Any one of those failing hides the element. (Every reference starts with a position selector — `self`, `shared`, `all`, or a numeric slot index — per [#298](conditions.md); the conditions guide has the full rules.)
 
 See [Timing and Visibility Examples](#timing-and-visibility-examples) at the bottom of this page for more patterns.
 
@@ -90,11 +90,10 @@ Shows a previously captured value (usually a prompt response) as a styled blockq
 
 ```yaml
 - type: display
-  reference: prompt.topicA_prompt
-  position: 1 # show position 1's response (default: "player")
+  reference: 1.prompt.topicA_prompt # show position 1's response
 ```
 
-The `position` field accepts: a numeric index, `player` (current participant), `shared`, `all`, or `any`.
+The position selector is the first segment of the reference: a numeric index (`0`, `1`, …), `self` (current participant — the default behavior pre-#298), `shared`, or `all`.
 
 ## Submit Button
 
@@ -473,10 +472,10 @@ Embeds an external Qualtrics survey in an iframe. The stage auto-submits when th
     - key: condition
       value: topicA
     - key: prolificId
-      reference: urlParams.PROLIFIC_PID # resolved per-participant
+      reference: self.entryUrl.params.PROLIFIC_PID # resolved per-participant
 ```
 
-Each `urlParams` entry has a `key` and either a literal `value` or a `reference` string (not both). Add `position` to pull from a specific participant.
+Each `urlParams` entry has a `key` and either a literal `value` or a `reference` string (not both). The position selector in the reference (`self`, `0`, etc.) chooses which participant to read from. (`urlParams.<key>` was renamed to `entryUrl.params.<key>` in [#246](conditions.md#url-parameters).)
 
 ## Tracked Link
 
@@ -489,7 +488,7 @@ An instrumented external link that records click/blur/focus events and time spen
   displayText: Complete the bonus signup form
   urlParams:
     - key: participant
-      reference: participantInfo.sampleId
+      reference: self.participantInfo.sampleId
     - key: source
       value: deliberation_lab
 ```
@@ -619,6 +618,6 @@ Show an element only to position 0, only after a condition is met:
   file: game/leader_instructions.prompt.md
   showToPositions: [0]
   conditions:
-    - reference: prompt.readiness_check
+    - reference: self.prompt.readiness_check
       comparator: exists
 ```
