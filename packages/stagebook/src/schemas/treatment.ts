@@ -129,6 +129,13 @@ export const fileSchema = z
   .min(1, "File path cannot be empty.")
   .refine(
     (value) => {
+      // Defer all content-shape checks to post-fill when the path
+      // contains a `${field}` placeholder (#398). The host (annotator,
+      // deliberation-lab) binds the slot before the participant sees
+      // the page; `resolvedTreatmentFileSchema` runs the strict checks
+      // on the substituted value. A leak (placeholder still present
+      // after fillTemplates) gets caught there with a clear message.
+      if (containsFieldPlaceholder(value)) return true;
       // Reject scalars that are entirely whitespace.
       if (value.trim().length === 0) return false;
       // Reject opaque-scheme variants like `asset:clip.mp4` or
@@ -175,9 +182,15 @@ export type FileType = z.infer<typeof fileSchema>;
 /**
  * `promptFilePathSchema` — `fileSchema` plus the `.prompt.md` suffix
  * requirement. Applies only to `prompt.file:`.
+ *
+ * The extension check is deferred when the path contains a `${field}`
+ * placeholder (#398). At pre-fill time we can't know what the bound
+ * value will end in; `resolvedElementSchema` in `resolved.ts` enforces
+ * `.prompt.md` (and rejects unresolved leaks) once the host has
+ * substituted the slot.
  */
 export const promptFilePathSchema = fileSchema.refine(
-  (s) => s.endsWith(".prompt.md"),
+  (s) => containsFieldPlaceholder(s) || s.endsWith(".prompt.md"),
   {
     message:
       'Prompt files must use the .prompt.md extension (e.g., "myPrompt.prompt.md")',

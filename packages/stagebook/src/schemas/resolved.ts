@@ -20,7 +20,15 @@ import {
   hideFromPositionsSchema,
   discussionSchema,
   referenceSchema,
+  promptFilePathSchema,
 } from "./treatment.js";
+
+// Detects `${field}` placeholders that survived `fillTemplates` —
+// either because the field wasn't bound or because a typo broke
+// the substitution. Used by the resolved-stage superRefine below
+// to flag any stringly field that should have resolved to a
+// literal by the time we reach the post-fill schema.
+const FIELD_PLACEHOLDER_RE = /\$\{[^}]*\}/;
 
 // ----------------------------------------------------------------
 // Resolved condition — no template placeholders in values
@@ -167,7 +175,49 @@ const resolvedElementBaseSchema = z.object({
     .optional(),
 });
 
-export const resolvedElementSchema = resolvedElementBaseSchema;
+// Post-fill validation contract (#398). After `fillTemplates`, the
+// `file:` on a prompt element must:
+//   1. Carry no unresolved `${field}` placeholder (annotator/host left
+//      a slot unbound — would surface to the participant as a broken
+//      file path).
+//   2. End in `.prompt.md` (mirrors the pre-fill `promptFilePathSchema`
+//      from treatment.ts — the pre-fill check is now relaxed for
+//      `${...}`-containing strings, so this is where the strict
+//      enforcement actually lives).
+//
+// Other stringly fields (`url`, `displayText`, `reference`, etc.) are
+// NOT checked for placeholders here yet — the file path was the
+// immediate motivation (#398). Adding the same placeholder-leak guard
+// to those is a follow-up sweep once the pattern is proven.
+export const resolvedElementSchema = resolvedElementBaseSchema.superRefine(
+  (data, ctx) => {
+    if (data.type === "prompt" && typeof data.file === "string") {
+      if (FIELD_PLACEHOLDER_RE.test(data.file)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["file"],
+          message: `prompt.file contains an unresolved \`${data.file}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row, additionalFields, or annotator binding.`,
+          // Callers in authoring contexts (e.g. the VS Code extension)
+          // can filter these out via `skipUnresolved: true` on
+          // `validateResolvedTreatmentFile` — placeholders are
+          // expected when the host hasn't bound fields yet.
+          params: { reason: "unresolved-placeholder" },
+        });
+        return;
+      }
+      const fileCheck = promptFilePathSchema.safeParse(data.file);
+      if (!fileCheck.success) {
+        for (const issue of fileCheck.error.issues) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["file", ...issue.path],
+            message: issue.message,
+          });
+        }
+      }
+    }
+  },
+);
 export type ResolvedElementType = z.infer<typeof resolvedElementSchema>;
 
 // ----------------------------------------------------------------
@@ -186,6 +236,7 @@ const resolvedDiscussionSchema = discussionSchema.superRefine((data, ctx) => {
       code: z.ZodIssueCode.custom,
       path: ["rooms"],
       message: `discussion.rooms is an unresolved \`${data.rooms}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row or additionalFields.`,
+      params: { reason: "unresolved-placeholder" },
     });
   }
   if (data.layout && typeof data.layout === "object") {
@@ -200,6 +251,7 @@ const resolvedDiscussionSchema = discussionSchema.superRefine((data, ctx) => {
           code: z.ZodIssueCode.custom,
           path: ["layout", seat, "feeds"],
           message: `discussion.layout[${seat}].feeds is an unresolved \`${layoutDef.feeds}\` placeholder. The template field was not bound during fillTemplates.`,
+          params: { reason: "unresolved-placeholder" },
         });
       }
     }
@@ -246,6 +298,109 @@ export const resolvedTreatmentSchema = z.object({
   exitSequence: z.array(resolvedIntroExitStepSchema).optional(),
 });
 export type ResolvedTreatmentType = z.infer<typeof resolvedTreatmentSchema>;
+
+// ----------------------------------------------------------------
+// Resolved treatment file (#398) — post-fill outer envelope
+// ----------------------------------------------------------------
+//
+// `treatmentFileSchema` in treatment.ts is the pre-fill schema —
+// every stringly field accepts `${field}` placeholders. After
+// `fillTemplates` has run (host bound the placeholders), call
+// `validateResolvedTreatmentFile(filled)` to catch leaks that
+// would surface to participants:
+//
+//   - prompt.file values that lack `.prompt.md` (mirror of the
+//     pre-fill `promptFilePathSchema`).
+//   - prompt.file values that still carry a `${field}` placeholder
+//     (annotator forgot to bind a slot).
+//   - discussion.rooms / layout.feeds with unresolved placeholders
+//     (the existing pattern from `resolvedDiscussionSchema`).
+//
+// The schema deliberately omits cross-treatment refinements
+// (forward-reference checks, storage-key collisions, etc.) — those
+// are pre-fill static-shape checks that already run via
+// `treatmentFileSchema.superRefine`. The resolved schema's job is
+// strictly to catch what fillTemplates could have introduced or
+// failed to clear.
+
+const resolvedIntroSequenceSchema = z.object({
+  name: nameSchema,
+  introSteps: z.array(resolvedIntroExitStepSchema).nonempty(),
+});
+
+export const resolvedTreatmentFileSchema = z.object({
+  imports: z.array(z.string().min(1)).optional(),
+  // `templates:` is stripped by `fillTemplates` so it's not in the
+  // post-fill shape. Keep the field permissively typed in case a
+  // caller passes a not-yet-stripped tree.
+  templates: z.array(z.unknown()).optional(),
+  introSequences: z.array(resolvedIntroSequenceSchema).optional(),
+  treatments: z.array(resolvedTreatmentSchema).optional(),
+});
+export type ResolvedTreatmentFileType = z.infer<
+  typeof resolvedTreatmentFileSchema
+>;
+
+export interface ValidateResolvedOptions {
+  /**
+   * When `true`, drop any issue marked
+   * `params.reason === "unresolved-placeholder"`. Use in authoring
+   * contexts (e.g. the VS Code extension's expansion preview)
+   * where `${field}` placeholders are expected because the host
+   * hasn't bound them yet. Production hosts (annotator,
+   * deliberation-lab) leave this off so unbound fields surface as
+   * errors before the participant sees a broken page.
+   */
+  skipUnresolved?: boolean;
+}
+
+export interface ValidateResolvedIssue {
+  path: (string | number)[];
+  message: string;
+  /** Discriminator copied from the underlying Zod issue's `params`. */
+  reason?: string;
+}
+
+/**
+ * Validate a fully-filled treatment file against the post-fill
+ * resolved-schema contract (#398).
+ *
+ * Use this after `fillTemplates` (or any equivalent host hydration
+ * step) to catch issues that would otherwise surface to participants
+ * — e.g. a prompt.file that still contains `${field}` because the
+ * annotator left a slot unbound, or a file path that doesn't end
+ * in `.prompt.md`.
+ *
+ * Returns a normalized `{ success, issues }` shape so callers don't
+ * have to thread Zod's error type through their own error reporting.
+ */
+export function validateResolvedTreatmentFile(
+  filled: unknown,
+  options: ValidateResolvedOptions = {},
+): {
+  success: boolean;
+  issues: ValidateResolvedIssue[];
+} {
+  const result = resolvedTreatmentFileSchema.safeParse(filled);
+  if (result.success) return { success: true, issues: [] };
+  let issues: ValidateResolvedIssue[] = result.error.issues.map((issue) => {
+    const params =
+      issue.code === "custom"
+        ? ((issue as { params?: unknown }).params as
+            | { reason?: string }
+            | undefined)
+        : undefined;
+    return {
+      path: [...issue.path],
+      message: issue.message,
+      reason: params?.reason,
+    };
+  });
+  if (options.skipUnresolved) {
+    issues = issues.filter((i) => i.reason !== "unresolved-placeholder");
+  }
+  return { success: issues.length === 0, issues };
+}
 
 // ----------------------------------------------------------------
 // Re-export resolved condition type

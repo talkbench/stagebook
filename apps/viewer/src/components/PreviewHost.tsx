@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
-import type { TreatmentFileType } from "stagebook";
+import {
+  validateResolvedTreatmentFile,
+  type TreatmentFileType,
+} from "stagebook";
 import { expandTreatmentFile } from "../lib/expandTreatmentFile";
 import { FieldForm } from "./FieldForm";
 import { Viewer } from "./Viewer";
@@ -62,7 +65,7 @@ export function PreviewHost({
     null,
   );
 
-  const { resolved, unresolvedFields } = useMemo(() => {
+  const { resolved, unresolvedFields, resolvedIssues } = useMemo(() => {
     const merged = {
       ...(additionalFields ?? {}),
       ...(userValues ?? {}),
@@ -71,7 +74,19 @@ export function PreviewHost({
       treatmentFile,
       Object.keys(merged).length > 0 ? merged : undefined,
     );
-    return { resolved: result, unresolvedFields };
+    // Post-fill validation (#398): if every `${field}` placeholder
+    // was bound (unresolvedFields is empty), run the resolved-schema
+    // check on the filled tree. Catches issues that the relaxed
+    // pre-fill schema deferred — e.g. a `prompt.file` that doesn't
+    // end in `.prompt.md` after the host supplied the value. Skipped
+    // while there are still unresolved fields because the
+    // strict-mode validator would re-report every leak as an issue
+    // and bury the actual "we need bindings" path under noise.
+    const resolvedIssues =
+      unresolvedFields.length === 0
+        ? validateResolvedTreatmentFile(result).issues
+        : [];
+    return { resolved: result, unresolvedFields, resolvedIssues };
   }, [treatmentFile, additionalFields, userValues]);
 
   if (unresolvedFields.length > 0) {
@@ -83,6 +98,40 @@ export function PreviewHost({
           onFieldsResolved?.(values);
         }}
       />
+    );
+  }
+
+  if (resolvedIssues.length > 0) {
+    // After-fill validation surfaced a contract violation that
+    // would otherwise reach the participant as a broken page. Show
+    // an inline error panel rather than rendering Viewer. Matches
+    // the shape that `TreatmentValidationError` produces for
+    // pre-fill issues, so a future unification can route both
+    // through the same UI surface.
+    return (
+      <div
+        style={{
+          padding: "1.5rem",
+          maxWidth: "48rem",
+          margin: "2rem auto",
+          fontFamily: "system-ui, sans-serif",
+          color: "var(--stagebook-text, #1f2937)",
+        }}
+      >
+        <h2 style={{ marginTop: 0 }}>Post-fill validation failed</h2>
+        <p>
+          The treatment file expanded successfully, but the filled tree contains
+          issues that would surface to participants. Fix these before
+          continuing.
+        </p>
+        <ul>
+          {resolvedIssues.map((issue, i) => (
+            <li key={i}>
+              <code>{issue.path.join(".") || "(root)"}</code>: {issue.message}
+            </li>
+          ))}
+        </ul>
+      </div>
     );
   }
 
