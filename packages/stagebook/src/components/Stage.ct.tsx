@@ -494,3 +494,54 @@ test('scrollMode "host" still renders all elements correctly', async ({
   await expect(component.locator("hr")).toBeVisible();
   await expect(component).toContainText("Continue");
 });
+
+// ----------------------------------------------------------------
+// Reduced motion (#350 tier 2 polish)
+// ----------------------------------------------------------------
+//
+// The discussion content column gets `scroll-behavior: smooth` at the
+// md breakpoint so anchor jumps / programmatic scrolls animate. For
+// participants who opted into reduced motion (OS setting), that
+// animation can trigger vestibular discomfort — gate it on
+// `prefers-reduced-motion: reduce` and fall back to instant.
+//
+// The single-column path uses the browser default (instant) already,
+// so no override needed there.
+
+test("prefers-reduced-motion: discussion content column drops smooth scroll", async ({
+  mount,
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  // Set a viewport wide enough to trigger the md breakpoint where
+  // the smooth-scroll rule is active.
+  await page.setViewportSize({ width: 1024, height: 800 });
+  const component = await mount(
+    <MockStageRenderer stage={discussionStage} position={0} />,
+  );
+  const content = component.locator('[data-testid="stageContent"]');
+  const scrollBehavior = await content.evaluate(
+    (el) => getComputedStyle(el).scrollBehavior,
+  );
+  expect(scrollBehavior).toBe("auto");
+});
+
+test("default media: discussion content column uses smooth scroll at md+", async ({
+  mount,
+  page,
+}) => {
+  // Negative-case companion to the test above. Without reduced-motion
+  // emulation, the md+ breakpoint applies smooth scroll. If a future
+  // change inverts the rule (e.g. swaps the @media query), this test
+  // catches it.
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.setViewportSize({ width: 1024, height: 800 });
+  const component = await mount(
+    <MockStageRenderer stage={discussionStage} position={0} />,
+  );
+  const content = component.locator('[data-testid="stageContent"]');
+  const scrollBehavior = await content.evaluate(
+    (el) => getComputedStyle(el).scrollBehavior,
+  );
+  expect(scrollBehavior).toBe("smooth");
+});

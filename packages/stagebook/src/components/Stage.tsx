@@ -27,6 +27,23 @@ function laneFor(type: string): string {
   return ELEMENT_LANES[type] ?? DEFAULT_LANE;
 }
 
+// Shared layout for the stage's content column. Used by both the
+// single-column path and the discussion-fallback path so a future
+// layout tweak only has to land in one place. Internal-scroll mode
+// adds `height: 100%; overflow: auto; padding-bottom: 0.5rem` so the
+// column behaves as the scroll container; host-scroll mode drops
+// them so the host's own container governs scroll (#236).
+const stageContentBaseStyle: React.CSSProperties = {
+  display: "flex",
+  width: "100%",
+  flexDirection: "column",
+};
+const stageContentInternalScrollExtras: React.CSSProperties = {
+  height: "100%",
+  paddingBottom: "0.5rem",
+  overflow: "auto",
+};
+
 /**
  * Compute the max-width lane for an element. Separators span at least as
  * wide as the widest non-separator sibling on the stage so they read as
@@ -320,6 +337,15 @@ export function Stage({
               scroll-behavior: smooth;
             }
           }
+          /* Participants who opted into reduced motion get instant
+             scroll-to instead of the animated smooth scroll on the
+             discussion content column. Single-column / fallback paths
+             use the browser default (instant) already. */
+          @media (prefers-reduced-motion: reduce) {
+            .stagebook-discussion-content[data-internal-scroll="true"] {
+              scroll-behavior: auto;
+            }
+          }
         `}</style>
       </div>
     );
@@ -339,16 +365,8 @@ export function Stage({
                   <div
                     data-testid="stageContent"
                     style={{
-                      display: "flex",
-                      width: "100%",
-                      flexDirection: "column",
-                      ...(isHostScroll
-                        ? {}
-                        : {
-                            height: "100%",
-                            paddingBottom: "0.5rem",
-                            overflow: "auto",
-                          }),
+                      ...stageContentBaseStyle,
+                      ...(isHostScroll ? {} : stageContentInternalScrollExtras),
                     }}
                   >
                     {elementsColumn}
@@ -378,16 +396,8 @@ export function Stage({
             ref={isHostScroll ? null : singleColumnRef}
             data-testid="stageContent"
             style={{
-              display: "flex",
-              width: "100%",
-              flexDirection: "column",
-              ...(isHostScroll
-                ? {}
-                : {
-                    height: "100%",
-                    paddingBottom: "0.5rem",
-                    overflow: "auto",
-                  }),
+              ...stageContentBaseStyle,
+              ...(isHostScroll ? {} : stageContentInternalScrollExtras),
             }}
           >
             {elementsColumn}
