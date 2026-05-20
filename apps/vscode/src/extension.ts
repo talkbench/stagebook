@@ -626,7 +626,7 @@ function getWebviewContent(
       --stagebook-link: #2563eb;
       --stagebook-code-bg: rgba(0, 0, 0, 0.06);
       --stagebook-code-font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      --stagebook-blockquote-border: #d1d5db;
+      --stagebook-blockquote-border: #9ca3af;
       --stagebook-blockquote-bg: #f9fafb;
     }
     body {

@@ -263,8 +263,9 @@ test("nested ol uses flat decimal numbering at every level", async ({
   // lists as 1., 1.1, 1.1.1. The new inline approach can't express
   // counter-based nested numbering (no ::before in inline styles), so
   // every level uses decimal "1., 2., 3.". If a researcher needs
-  // counter-style nesting they can override --stagebook-prompt-* via a
-  // host stylesheet that targets `#markdown ol > li::before`.
+  // counter-style nesting they can override --stagebook-prompt-* via
+  // a host stylesheet that targets `.stagebook-markdown-* ol > li::before`
+  // (each Markdown instance now carries a useId-generated class).
   const component = await mount(
     <Markdown text={"1. outer\n   1. inner\n   2. inner two"} />,
   );
@@ -590,26 +591,23 @@ test("link gets focus ring on keyboard focus (:focus-visible)", async ({
     .not.toBe(baseline);
 });
 
-test("external link (target=_blank) gets rel=noopener noreferrer", async ({
+test("default markdown link has no target attribute (no rel rewrite triggers)", async ({
   mount,
 }) => {
-  // Polish: links opening in new tabs leak the opener window object
-  // unless rel="noopener noreferrer" is set. The handler now appends
-  // these automatically when target="_blank" is present. Researchers
-  // can write target=_blank via raw HTML or via rehype configuration.
-  //
-  // react-markdown by default doesn't emit target=_blank; we use a
-  // raw <a target="_blank"> via rehype-raw to test the handler.
-  // Since rehype-raw isn't wired in by default, we test the contract
-  // by passing the attribute via the handler directly — the unit
-  // assertion is that IF target=_blank is set, rel includes noopener
-  // and noreferrer.
+  // Confirms the *baseline* of the rel-rewrite contract: a vanilla
+  // markdown link never gets target=_blank from react-markdown, so
+  // it shouldn't get a synthetic rel either. The actual rel-rewrite
+  // logic (computeSafeRel) is unit-tested in Markdown.test.ts — it
+  // can't be driven from markdown source without wiring rehype-raw.
   const component = await mount(<Markdown text="[ext](https://example.com)" />);
-  // Confirm baseline: a default markdown link has no target.
   const target = await component
     .locator("a")
     .evaluate((el) => (el as HTMLAnchorElement).target);
+  const rel = await component
+    .locator("a")
+    .evaluate((el) => (el as HTMLAnchorElement).rel);
   expect(target).toBe("");
+  expect(rel).toBe("");
 });
 
 test("pre is in the tab order (tabIndex=0) so keyboard users can scroll", async ({

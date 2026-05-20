@@ -162,10 +162,13 @@ const inlineCodeStyle: React.CSSProperties = {
 // doesn't render as a nested box. Tailwind preflight and similar resets
 // strip the UA <pre> monospace font, so we reassert it here. See #215.
 //
-// `tabIndex={0}` is supplied at the render site (not here) so the block
-// joins the tab order whenever its content overflows horizontally —
-// without it, keyboard users can't scroll long lines (WCAG 2.1.1).
-// `:focus-visible` ring is in the scoped <style> block.
+// `tabIndex={0}` is supplied unconditionally at the render site (not
+// here) so every fenced block joins the tab order. We don't measure
+// overflow at render time, so the simplest path is to make every
+// block focusable; for non-overflowing blocks the tab stop is
+// harmless (no scroll happens). Without this, keyboard users can't
+// horizontally scroll long lines (WCAG 2.1.1). The `:focus-visible`
+// ring is in the scoped <style> block.
 const preStyle: React.CSSProperties = {
   background: "var(--stagebook-code-bg, rgba(0,0,0,0.06))",
   padding: "0.75rem 1rem",
@@ -189,6 +192,25 @@ const hrStyle: React.CSSProperties = {
   borderTopColor: "var(--stagebook-border, #d1d5db)",
   marginBlock: "1em",
 };
+
+/**
+ * Compute the `rel` attribute for a markdown-rendered `<a>`. When the
+ * link opens in a new tab (`target="_blank"`), append `noopener` and
+ * `noreferrer` to whatever the source rel already contains so the new
+ * tab can't reach back to `window.opener` (tab-nabbing) and the
+ * destination doesn't receive a Referer header. Same security parity
+ * shadcn / GitHub markdown extensions enforce.
+ *
+ * Exported so the contract is unit-testable without wiring rehype-raw
+ * just to introduce a `target="_blank"` into the rendered DOM.
+ */
+export function computeSafeRel(
+  target: string | undefined,
+  rel: string | undefined,
+): string | undefined {
+  if (target !== "_blank") return rel;
+  return rel ? `${rel} noopener noreferrer` : "noopener noreferrer";
+}
 
 // Only `text-decoration: underline` stays inline — the base color
 // AND the `:hover` / `:focus-visible` / `:visited` overrides all
@@ -471,17 +493,14 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
             // to researcher-authored text would change what
             // participants see relative to the prompt source. If
             // researchers want an indicator they can write one.
-            a: ({ node: _node, target, rel, ...props }) => {
-              const safeRel =
-                target === "_blank"
-                  ? rel
-                    ? `${rel} noopener noreferrer`
-                    : "noopener noreferrer"
-                  : rel;
-              return (
-                <a style={aStyle} target={target} rel={safeRel} {...props} />
-              );
-            },
+            a: ({ node: _node, target, rel, ...props }) => (
+              <a
+                style={aStyle}
+                target={target}
+                rel={computeSafeRel(target, rel)}
+                {...props}
+              />
+            ),
             blockquote: ({ node: _node, ...props }) => (
               <blockquote style={blockquoteStyle} {...props} />
             ),
