@@ -25,15 +25,21 @@ export interface DisplayProps {
 // Intentional duplication with Markdown.tsx's blockquote entry — both
 // render <blockquote> and should look identical so a markdown blockquote
 // and a Display element are visually consistent. See issue #33.
+// Polish (#350 sweep): dropped the redundant inner maxWidth (parent
+// already caps at 36rem), tightened padding to read taller-than-wide
+// like a quote rather than a box, muted text color so the quoted
+// participant data visually steps back from prompt body text, bumped
+// the default border to gray-400 in styles.css so the rail actually
+// reads against the page.
 const blockquoteStyle: React.CSSProperties = {
-  maxWidth: "36rem",
   wordBreak: "break-word",
-  padding: "1rem",
+  padding: "0.75rem 1rem",
   margin: "1rem 0",
   borderLeftWidth: "0.25rem",
   borderLeftStyle: "solid",
-  borderLeftColor: "var(--stagebook-blockquote-border, #d1d5db)",
+  borderLeftColor: "var(--stagebook-blockquote-border, #9ca3af)",
   background: "var(--stagebook-blockquote-bg, #f9fafb)",
+  color: "var(--stagebook-text-muted, #6b7280)",
 };
 
 export function Display({ reference, values }: DisplayProps) {

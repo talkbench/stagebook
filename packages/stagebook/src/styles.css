@@ -136,11 +136,24 @@
   --stagebook-prompt-h2-size: 1.5rem;
   --stagebook-prompt-h3-size: 1.25rem;
   --stagebook-prompt-h4-size: 1.125rem;
+  --stagebook-prompt-h5-size: 1rem;
+  --stagebook-prompt-h6-size: 0.875rem;
   --stagebook-prompt-h1-weight: 700;
   --stagebook-prompt-h2-weight: 600;
   --stagebook-prompt-h3-weight: 600;
   --stagebook-prompt-h4-weight: 600;
+  --stagebook-prompt-h5-weight: 600;
+  --stagebook-prompt-h6-weight: 600;
   --stagebook-link: #2563eb;
+  /* One step darker than --stagebook-link for the `:hover` state on
+   * markdown links. The hover → base progression telegraphs "I'm
+   * hovering this" without inventing a new hue. */
+  --stagebook-link-hover: #1d4ed8;
+  /* Purple for `:visited`, the established convention since 1993.
+   * Researcher prompts sometimes link back to consent / instructions
+   * pages — distinguishing visited tells participants they've already
+   * been there. */
+  --stagebook-link-visited: #7c3aed;
   --stagebook-code-bg: rgba(0, 0, 0, 0.06);
   --stagebook-code-font:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -149,8 +162,12 @@
   --stagebook-table-text: #4a5568;
   --stagebook-table-header-text: #1a202c;
 
-  /* Blockquote (used by Display element and markdown blockquotes) */
-  --stagebook-blockquote-border: #d1d5db;
+  /* Blockquote (used by Display element and markdown blockquotes).
+   * Border bumped from #d1d5db (gray-300) → #9ca3af (gray-400) so the
+   * quote rail actually reads against the page background — at #d1d5db
+   * the rail and the body text contrast was indistinguishable from
+   * "softly highlighted box" rather than "quote." */
+  --stagebook-blockquote-border: #9ca3af;
   --stagebook-blockquote-bg: #f9fafb;
 }
 
