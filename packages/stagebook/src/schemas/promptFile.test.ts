@@ -6,6 +6,7 @@ import {
   metadataLogicalSchema,
   validateSliderLabels,
   promptFileSchema,
+  splitOnTopLevelHrules,
 } from "./promptFile.js";
 
 // Back-compat aliases all point at `promptMetadataSchema` after #243; the
@@ -1000,6 +1001,143 @@ Body.`;
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.metadata.name).toBe(okName);
+    }
+  });
+});
+
+// ----------- Issue #380 — fenced code blocks containing `---` ------
+
+// The pre-#380 splitter was a single regex split that matched any line
+// of three-or-more hyphens anywhere in the file, including inside
+// fenced code blocks. Researchers writing meta-documentation prompts
+// (e.g. the component-gallery's per-component descriptions) couldn't
+// quote stagebook's own prompt-file syntax inside a `noResponse`
+// prompt without the inner `---` lines silently shredding the file
+// into pseudo-sections.
+
+describe("splitOnTopLevelHrules", () => {
+  test("matches the legacy regex split on inputs without fences", () => {
+    const input = "---\nmeta\n---\nbody\n---\nresponses";
+    expect(splitOnTopLevelHrules(input)).toEqual(input.split(/^-{3,}$/gm));
+  });
+
+  test("leading `---` produces a leading empty-string section (back-compat)", () => {
+    const input = "---\nmeta\n---\nbody";
+    const sections = splitOnTopLevelHrules(input);
+    expect(sections[0]).toBe("");
+    expect(sections).toHaveLength(3);
+  });
+
+  test("ignores `---` lines inside a backtick-fenced code block", () => {
+    const input = `---
+type: noResponse
+---
+Some body.
+
+\`\`\`yaml
+---
+type: multipleChoice
+---
+\`\`\`
+
+More body.`;
+    const sections = splitOnTopLevelHrules(input);
+    // Three sections: leading empty, frontmatter, body. The two `---`
+    // lines inside the fence must NOT have produced extra sections.
+    expect(sections).toHaveLength(3);
+    expect(sections[2]).toContain("```yaml");
+    expect(sections[2]).toContain("type: multipleChoice");
+  });
+
+  test("toggles fence state in/out across multiple fenced blocks", () => {
+    const input = `---
+meta
+---
+\`\`\`
+---
+\`\`\`
+between
+\`\`\`yaml
+---
+\`\`\``;
+    const sections = splitOnTopLevelHrules(input);
+    // Two fences each containing one `---` line — both should be
+    // suppressed. Result: leading empty, frontmatter, body.
+    expect(sections).toHaveLength(3);
+    expect(sections[2]).toContain("between");
+  });
+
+  test("a closing fence on the last line still toggles cleanly", () => {
+    // Documents the current behavior — an unclosed fence (terminating
+    // file inside the fence) suppresses any `---` from there to EOF.
+    // Stagebook prompts always close their fences in practice; this
+    // test pins the simple behavior so a future refactor doesn't
+    // silently change it.
+    const input = "---\nmeta\n---\nbody\n```\n---\nin fence";
+    const sections = splitOnTopLevelHrules(input);
+    expect(sections).toHaveLength(3);
+    expect(sections[2]).toContain("in fence");
+  });
+});
+
+describe("promptFileSchema — fenced code with `---` inside (#380)", () => {
+  test("noResponse body containing a fenced code block with `---` parses", () => {
+    const markdown = `---
+type: noResponse
+name: gallery_demo
+---
+
+# RadioGroup
+
+Authoring shape:
+
+\`\`\`yaml
+---
+type: multipleChoice
+name: my_question
+---
+\`\`\`
+
+That's the gist.`;
+    const result = promptFileSchema.safeParse(markdown);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.metadata.type).toBe("noResponse");
+      // The body must include the fenced code block verbatim.
+      expect(result.data.body).toContain("```yaml");
+      expect(result.data.body).toContain("type: multipleChoice");
+    }
+  });
+
+  test("multipleChoice prompt body containing fenced `---` still parses (responses follow)", () => {
+    // Three-section format: frontmatter / body / responses. The fenced
+    // `---` in the body must not be misread as the body/responses
+    // boundary.
+    const markdown = `---
+type: multipleChoice
+name: q1
+---
+
+Pick one. The Stagebook authoring shape is:
+
+\`\`\`yaml
+---
+type: noResponse
+---
+\`\`\`
+
+Now your answer:
+
+---
+
+- alpha
+- bravo`;
+    const result = promptFileSchema.safeParse(markdown);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.metadata.type).toBe("multipleChoice");
+      expect(result.data.body).toContain("```yaml");
+      expect(result.data.responseItems).toEqual(["alpha", "bravo"]);
     }
   });
 });
