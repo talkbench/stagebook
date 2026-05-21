@@ -239,7 +239,14 @@ export function HTML5Controls({
               alignItems: "center",
             }}
             onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+              } catch {
+                // setPointerCapture throws on firefox if the pointerId
+                // came from a synthetic dispatchEvent (#417). Real
+                // mouse events always succeed. Matches the defensive
+                // pattern in timeline/TimeRuler.tsx:88-92.
+              }
               onScrubStart(posFromEvent(e));
             }}
             onPointerMove={(e) => {
@@ -437,7 +444,14 @@ export function YouTubeControls({
               alignItems: "center",
             }}
             onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+              } catch {
+                // setPointerCapture throws on firefox if the pointerId
+                // came from a synthetic dispatchEvent (#417). Real
+                // mouse events always succeed. Matches the defensive
+                // pattern in timeline/TimeRuler.tsx:88-92.
+              }
               onScrubStart(posFromEvent(e));
             }}
             onPointerMove={(e) => {

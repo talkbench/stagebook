@@ -2011,11 +2011,19 @@ test("audio-only: controls always visible while playing (no hover needed)", asyn
   // set loadError and hide controls (see #72).
   // Serve a minimal valid WAV so the video element doesn't fire onerror
   // (which would set loadError and hide controls — see #72).
-  await page.route("**/test.mp3", (route) =>
+  // Use .wav for the URL extension to match the served content-type —
+  // firefox is stricter than chromium / webkit about extension/MIME
+  // alignment and refuses to load otherwise, triggering the
+  // loadError path (#417).
+  await page.route("**/test.wav", (route) =>
     route.fulfill({
       contentType: "audio/wav",
+      // Minimal valid WAV: 44-byte PCM header + 2 bytes of silent
+      // sample data. Firefox rejects header-only WAVs with a
+      // 0-byte data chunk and flips the MediaPlayer into its
+      // loadError state, which hides controls (#417).
       body: Buffer.from(
-        "UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=",
+        "UklGRiYAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQIAAAAAAA==",
         "base64",
       ),
     }),
@@ -2023,7 +2031,7 @@ test("audio-only: controls always visible while playing (no hover needed)", asyn
 
   const component = await mount(
     <MockMediaPlayer
-      url="https://example.com/test.mp3"
+      url="https://example.com/test.wav"
       name="test"
       playVideo={false}
       controls={{ playPause: true, seek: true }}
