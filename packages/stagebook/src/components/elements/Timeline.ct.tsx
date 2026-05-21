@@ -812,6 +812,12 @@ test("range mode: multiSelect false — drag-create preserves existing range", a
     isPrimary: true,
   });
 
+  // Wait for the post-drag save to settle before snapshotting; on
+  // webkit / heavy parallel load it lands a tick later than chromium
+  // (#416).
+  await expect
+    .poll(async () => (await readSaveLog(component)).length, { timeout: 1500 })
+    .toBeGreaterThan(0);
   const savesBefore = await readSaveLog(component);
   const before = savesBefore[savesBefore.length - 1]?.value as {
     start: number;
@@ -931,6 +937,18 @@ test("range mode: multiSelect true — ranges accumulate sorted", async ({
     isPrimary: true,
   });
 
+  // Wait for both range saves to land — under webkit / heavy parallel
+  // load the second save trails the read otherwise (#416).
+  await expect
+    .poll(
+      async () => {
+        const ss = await readSaveLog(component);
+        const v = ss[ss.length - 1]?.value as { start: number }[] | undefined;
+        return v?.length ?? 0;
+      },
+      { timeout: 1500 },
+    )
+    .toBe(2);
   const saves = await readSaveLog(component);
   const last = saves[saves.length - 1]?.value as {
     start: number;
@@ -1368,6 +1386,10 @@ test("save key is timeline_${name}", async ({ mount }) => {
     isPrimary: true,
   });
 
+  // Poll for the save to land (#416 — webkit / parallel-load timing).
+  await expect
+    .poll(async () => (await readSaveLog(component)).length, { timeout: 1500 })
+    .toBeGreaterThan(0);
   const saves = await readSaveLog(component);
   expect(saves[saves.length - 1]?.key).toBe("timeline_my_annotations");
 });
@@ -1657,6 +1679,18 @@ test("track scope: clicking different tracks creates ranges with track field", a
     isPrimary: true,
   });
 
+  // Poll for both range saves to land (#416 — webkit / parallel-load
+  // timing).
+  await expect
+    .poll(
+      async () => {
+        const ss = await readSaveLog(component);
+        const v = ss[ss.length - 1]?.value as { track: number }[] | undefined;
+        return v?.length ?? 0;
+      },
+      { timeout: 1500 },
+    )
+    .toBe(2);
   const saves = await readSaveLog(component);
   const last = saves[saves.length - 1]?.value as {
     track: number;
@@ -2017,6 +2051,13 @@ test("Space key never intercepted by timeline", async ({ mount }) => {
     />,
   );
   await createRangeViaDrag(component, 0.3, 0.5);
+  // Wait for the drag's save to settle before snapshotting — on webkit
+  // the post-drag save lands a tick later than on chromium, and if we
+  // read too early we'd misattribute it to the Space press below
+  // (#416).
+  await expect
+    .poll(async () => (await readSaveLog(component)).length, { timeout: 1500 })
+    .toBeGreaterThan(0);
   const beforeSaves = await readSaveLog(component);
 
   const timeline = component.locator('[data-testid="timeline"]');
@@ -2854,6 +2895,12 @@ test("multiple timelines on the same player share peaks but save independently",
     pointerId: 1,
     isPrimary: true,
   });
+  // Poll for the save to land — under webkit / heavy parallel test
+  // load the debounced save lands a tick later than chromium, and
+  // reading too early returns an empty log.
+  await expect
+    .poll(async () => (await readSaveLog(component)).length, { timeout: 1500 })
+    .toBeGreaterThan(0);
   const saves = await readSaveLog(component);
   expect(saves[saves.length - 1]?.key).toBe(
     "timeline_my_unique_timeline_name_42",
@@ -3418,15 +3465,32 @@ test("clicking the time ruler seeks the playhead", async ({ mount, page }) => {
   const playhead = component.locator('[data-testid="playhead"]');
   await expect(playhead).toBeAttached();
 
+  // Wait for the ResizeObserver in Timeline to publish a non-zero width
+  // to the ruler — under webkit / heavy parallel load the first
+  // bounding-box read can land before that effect fires, leaving the
+  // ruler at 0px wide and the click missing its target. Polling the
+  // box width is the most direct signal that the ruler is layout-ready.
+  await expect
+    .poll(async () => (await ruler.boundingBox())?.width ?? 0, {
+      timeout: 1500,
+    })
+    .toBeGreaterThan(0);
   const rulerBox = await ruler.boundingBox();
   if (!rulerBox) throw new Error("ruler not found");
 
   // Click ~50% of the ruler. With duration=60 zoom=1, that lands near 30s
   // and playhead's `left` should land near rulerBox.width / 2.
-  await page.mouse.click(
+  //
+  // On webkit, `page.mouse.click()` after a previous test leaves the
+  // pointer in a stale spot sometimes skips the pointerdown synthesis
+  // — splitting into explicit move → down → up forces the full pointer
+  // event sequence and makes the test reliable cross-engine (#416).
+  await page.mouse.move(
     rulerBox.x + rulerBox.width * 0.5,
     rulerBox.y + rulerBox.height / 2,
   );
+  await page.mouse.down();
+  await page.mouse.up();
 
   await expect
     .poll(async () =>
@@ -3454,6 +3518,13 @@ test("ruler drag scrubs the playhead", async ({ mount, page }) => {
   );
   const ruler = component.locator('[data-testid="time-ruler"]');
   const playhead = component.locator('[data-testid="playhead"]');
+  // Wait for ResizeObserver-driven layout so the ruler has a non-zero
+  // width before we start mouse-driving against its bounding box (#416).
+  await expect
+    .poll(async () => (await ruler.boundingBox())?.width ?? 0, {
+      timeout: 1500,
+    })
+    .toBeGreaterThan(0);
   const rulerBox = await ruler.boundingBox();
   if (!rulerBox) throw new Error("ruler not found");
 
@@ -4132,6 +4203,12 @@ test("range mode: Enter press-and-hold creates a range from press time to releas
     cancelable: true,
   });
 
+  // Poll for the save — the dispatched keyup runs an effect tick later
+  // on webkit / heavy parallel load (#416), so reading too early would
+  // see the pre-commit log.
+  await expect
+    .poll(async () => (await readSaveLog(component)).length, { timeout: 1500 })
+    .toBeGreaterThan(0);
   const saves = await readSaveLog(component);
   const value = saves[saves.length - 1]?.value as {
     start: number;
