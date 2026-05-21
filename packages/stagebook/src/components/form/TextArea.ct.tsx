@@ -332,3 +332,68 @@ test("focused-then-blurred textarea doesn't leave a stuck border color (no #367-
   );
   expect(touchedBorder).toBe(untouchedBorder);
 });
+
+// -- Font (#399) --
+
+test("textarea font matches the surrounding page (not the browser UA default)", async ({
+  mount,
+}) => {
+  // Without an explicit font-family Chrome's UA stylesheet resolves
+  // <textarea> to a monospace stack while Safari leaves it on sans-
+  // serif, so the same TextArea would render different fonts across
+  // browsers. Closes #399. The strongest assertion: the textarea's
+  // computed font-family should equal <body>'s — proving the var()
+  // pipeline resolved correctly AND that we match the surrounding
+  // page rather than drifting to a UA default.
+  const component = await mount(<TextArea />);
+  const textarea = component.locator("textarea");
+  const fontFamily = await textarea.evaluate(
+    (el) => window.getComputedStyle(el).fontFamily,
+  );
+  const bodyFontFamily = await component.evaluate(
+    () => window.getComputedStyle(document.body).fontFamily,
+  );
+  expect(fontFamily).toBe(bodyFontFamily);
+  // Hard-negative against the bug-report symptom: must not resolve
+  // to anything monospace-y. Catches a regression that removes the
+  // inline font and lets Chrome's UA default leak back in.
+  expect(fontFamily.toLowerCase()).not.toMatch(/mono|courier/);
+});
+
+test("bare <textarea> picks up the styles.css font reset", async ({
+  mount,
+}) => {
+  // The styles.css form-element reset block carries the same font
+  // stack, so a host that drops a raw <textarea> on the page (not
+  // through stagebook's TextArea component) still gets a consistent
+  // font instead of the browser UA default. This guards that path
+  // separately from the inline-style path the React component uses.
+  const component = await mount(
+    <div>
+      <textarea data-testid="bare" />
+    </div>,
+  );
+  const bare = component.locator('[data-testid="bare"]');
+  const fontFamily = await bare.evaluate(
+    (el) => window.getComputedStyle(el).fontFamily,
+  );
+  expect(fontFamily.toLowerCase()).not.toMatch(/mono|courier/);
+  expect(fontFamily).toMatch(/Inter|sans-serif/);
+});
+
+test("font respects --stagebook-font override", async ({ mount }) => {
+  // The whole point of the token: the host can deviate from the
+  // default by setting --stagebook-font on a parent. Confirms the
+  // var() pipeline works end-to-end so a host opting into Helvetica
+  // (etc.) sees the override applied.
+  const component = await mount(
+    <div style={{ ["--stagebook-font" as never]: "Helvetica, sans-serif" }}>
+      <TextArea />
+    </div>,
+  );
+  const textarea = component.locator("textarea");
+  const fontFamily = await textarea.evaluate(
+    (el) => window.getComputedStyle(el).fontFamily,
+  );
+  expect(fontFamily).toMatch(/Helvetica/);
+});

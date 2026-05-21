@@ -246,4 +246,40 @@ test.describe("Select", () => {
     );
     expect(touchedBorder).toBe(untouchedBorder);
   });
+
+  // -- Font (#399) — symmetric with the TextArea tests --
+
+  test("select font matches the surrounding page (not the browser UA default)", async ({
+    mount,
+  }) => {
+    // Mirror of the TextArea regression test. Native <select> picks
+    // up a browser UA-default font when font-family isn't set, which
+    // drifts cross-browser. The inline style in Select.tsx pins the
+    // same --stagebook-font cascade as TextArea.
+    const component = await mount(
+      <Select options={options} value="a" onChange={() => undefined} />,
+    );
+    const select = component.locator("select");
+    const fontFamily = await select.evaluate(
+      (el) => window.getComputedStyle(el).fontFamily,
+    );
+    const bodyFontFamily = await component.evaluate(
+      () => window.getComputedStyle(document.body).fontFamily,
+    );
+    expect(fontFamily).toBe(bodyFontFamily);
+    expect(fontFamily.toLowerCase()).not.toMatch(/mono|courier/);
+  });
+
+  test("select font respects --stagebook-font override", async ({ mount }) => {
+    const component = await mount(
+      <div style={{ ["--stagebook-font" as never]: "Helvetica, sans-serif" }}>
+        <Select options={options} value="a" onChange={() => undefined} />
+      </div>,
+    );
+    const select = component.locator("select");
+    const fontFamily = await select.evaluate(
+      (el) => window.getComputedStyle(el).fontFamily,
+    );
+    expect(fontFamily).toMatch(/Helvetica/);
+  });
 });

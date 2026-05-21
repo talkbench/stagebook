@@ -31,6 +31,10 @@ const baseInlineStyle: React.CSSProperties = {
   // fix pattern as the sibling form components.
   borderWidth: "1px",
   borderStyle: "solid",
+  // Pin the font for the same reason as TextArea / Select (#399) —
+  // bare <button> can pick up a UA-default that drifts cross-browser.
+  fontFamily:
+    'var(--stagebook-font, "Inter", ui-sans-serif, system-ui, sans-serif)',
   fontSize: "0.875rem",
   fontWeight: 500,
   borderRadius: "0.375rem",

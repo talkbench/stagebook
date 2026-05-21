@@ -392,6 +392,13 @@ export function TextArea({
           borderStyle: "solid",
           borderColor: "var(--stagebook-border, #d1d5db)",
           borderRadius: "0.375rem",
+          // Pin the font so it doesn't pick up the browser UA default
+          // for <textarea> — Chrome resolves that to a monospace
+          // stack, Safari to sans-serif, so the same TextArea would
+          // otherwise render different fonts cross-browser (#399).
+          // Hosts override --stagebook-font at :root to opt out.
+          fontFamily:
+            'var(--stagebook-font, "Inter", ui-sans-serif, system-ui, sans-serif)',
           fontSize: "0.875rem",
           lineHeight: "1.25rem",
           color: "var(--stagebook-text, #1f2937)",
