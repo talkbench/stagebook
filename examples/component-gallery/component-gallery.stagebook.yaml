@@ -173,6 +173,11 @@ treatments:
             name: gallery_clip
             file: media/sample-video.mp4
             playVideo: true
+            controls:
+              playPause: true
+              seek: true
+              step: true
+              speed: true
           - type: timeline
             source: gallery_clip
             name: gallery_clip_ranges

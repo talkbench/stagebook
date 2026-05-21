@@ -2,6 +2,7 @@ import React, {
   useRef,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useState,
 } from "react";
@@ -135,6 +136,13 @@ export function MediaPlayer({
   const eventsRef = useRef<VideoEvent[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const autoplayAttemptedRef = useRef(false);
+  // Per-instance class for the container's `:focus` ring. Same useId
+  // pattern as Timeline / Button / Slider — pairs with the Timeline
+  // ring so the two stacked components feel visually coherent and the
+  // "keyboard shortcuts are live" signal is identical across both.
+  const reactId = useId();
+  const safeId = reactId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const containerClass = `stagebook-mediaplayer-${safeId}`;
 
   // Ref unstable callbacks so `recordEvent`, `handleEnded`, and
   // `handleTimeUpdate` stay identity-stable even when the parent passes
@@ -998,6 +1006,7 @@ export function MediaPlayer({
 
     return (
       <div
+        className={containerClass}
         data-testid="mediaPlayer"
         role="region"
         aria-label="Media player"
@@ -1006,8 +1015,49 @@ export function MediaPlayer({
         onKeyUp={handleKeyUp}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        style={{ position: "relative" }}
+        style={{
+          position: "relative",
+          // outline:none + the scoped :focus ring below — same pattern
+          // as the Timeline so the two stacked components share an
+          // identical "keyboard shortcuts are live" affordance.
+          outline: "none",
+          // Border-radius matches the focus-ring outset so the ring
+          // doesn't appear as sharp corners around an unrounded box;
+          // YouTube's iframe is itself rectangular, but the ring sits
+          // 2px outside via box-shadow, so a slight radius here keeps
+          // the ring visually consistent with the Timeline's rounded
+          // container.
+          borderRadius: "0.5rem",
+        }}
       >
+        <style>{`
+          /* MediaPlayer focus ring (#382 follow-up).
+             Two design choices versus the Timeline / form-input
+             rings (which use a single faint blue stroke):
+
+             1. Halo pattern. The video frame can be any color —
+                dark on most clips, but sometimes blue or light. A
+                single-color ring washes out against same-color
+                content (the gallery's test clip happens to be blue,
+                which kills a blue ring). Stacked shadows render a
+                white inner halo + brand-blue outer ring, robust
+                against any background.
+             2. focus-within (not :focus). The container is
+                tabbable, but clicking interior controls (play /
+                scrub / etc.) moves focus to those children, which
+                drops :focus on the parent. The user is still
+                "in" the MediaPlayer though — keyboard shortcuts
+                still fire via the container handlers if they
+                bubble up. :focus-within keeps the ring visible
+                while any descendant has focus, so the "this is the
+                active component" affordance doesn't flicker as
+                the user moves between sub-controls. */
+          .${containerClass}:focus-within {
+            box-shadow:
+              0 0 0 2px var(--stagebook-bg, #fff),
+              0 0 0 5px var(--stagebook-primary, #3b82f6);
+          }
+        `}</style>
         <div data-testid="mediaPlayer-viewport" style={VIEWPORT_STYLE}>
           <YouTubePlayer
             videoId={youtubeVideoId}
@@ -1084,6 +1134,7 @@ export function MediaPlayer({
 
   return (
     <div
+      className={containerClass}
       data-testid="mediaPlayer"
       role="region"
       aria-label="Media player"
@@ -1092,8 +1143,22 @@ export function MediaPlayer({
       onKeyUp={handleKeyUp}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      style={{ position: "relative" }}
+      style={{
+        position: "relative",
+        outline: "none",
+        borderRadius: "0.5rem",
+      }}
     >
+      <style>{`
+        /* See the comment on the YouTube-path branch above for the
+           design rationale (halo pattern + :focus-within). Identical
+           rule here so both render paths get the same affordance. */
+        .${containerClass}:focus-within {
+          box-shadow:
+            0 0 0 2px var(--stagebook-bg, #fff),
+            0 0 0 5px var(--stagebook-primary, #3b82f6);
+        }
+      `}</style>
       {/* Audio-only: hidden video element (no viewport div) */}
       {!playVideo && (
         <video

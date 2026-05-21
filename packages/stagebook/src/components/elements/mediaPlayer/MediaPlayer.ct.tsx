@@ -2209,3 +2209,115 @@ test("default playback is 'once' when no controls or syncToStageTime", async ({
     component.locator('[data-testid="mediaPlayer-playOnce"]'),
   ).toBeVisible();
 });
+
+// ----------- UI polish: container focus ring -----------
+//
+// The MediaPlayer container is `tabIndex={0}` so keyboard shortcuts
+// (Space play/pause, J/L scrub, K toggle, etc.) become live once
+// focused. Pre-polish: no replacement for the browser default
+// outline — platform-dependent (Chromium blue, Safari light,
+// Firefox dotted) and visually inconsistent with the Timeline
+// container's `:focus` ring. Polish: useId-scoped `:focus` ring
+// matching the Timeline pattern. Fires on both Tab and click so
+// the affordance is identical across input modalities.
+
+test("polish: container shows focus ring on keyboard focus (Tab)", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <MockMediaPlayer url="/sample-video.mp4" name="ring_kbd" />,
+  );
+  const mp = component.locator('[data-testid="mediaPlayer"]');
+  const baseline = await mp.evaluate((el) => getComputedStyle(el).boxShadow);
+  await page.keyboard.press("Tab");
+  await expect(mp).toBeFocused();
+  await expect
+    .poll(() => mp.evaluate((el) => getComputedStyle(el).boxShadow), {
+      timeout: 1500,
+    })
+    .not.toBe(baseline);
+});
+
+test("polish: container shows focus ring on mouse / programmatic focus too", async ({
+  mount,
+}) => {
+  // Uses `:focus` (not `:focus-visible`) for the same reason the
+  // Timeline does: keyboard shortcuts go live whether you got
+  // there by click or by Tab, so the affordance has to match.
+  const component = await mount(
+    <MockMediaPlayer url="/sample-video.mp4" name="ring_mouse" />,
+  );
+  const mp = component.locator('[data-testid="mediaPlayer"]');
+  const baseline = await mp.evaluate((el) => getComputedStyle(el).boxShadow);
+  await mp.focus();
+  await expect(mp).toBeFocused();
+  await expect
+    .poll(() => mp.evaluate((el) => getComputedStyle(el).boxShadow), {
+      timeout: 1500,
+    })
+    .not.toBe(baseline);
+});
+
+test("polish: focus ring stays when an interior control takes focus (focus-within)", async ({
+  mount,
+}) => {
+  // The MediaPlayer uses `:focus-within` rather than `:focus` so
+  // the ring persists while a descendant (play button, scrubber,
+  // step button, etc.) has focus. Without this, the ring would
+  // flicker out the moment the user clicks a control — but the
+  // user is still "in" the MediaPlayer, just delegating to a
+  // sub-control, so the affordance should stay.
+  const component = await mount(
+    <MockMediaPlayer
+      url="/sample-video.mp4"
+      name="ring_within"
+      controls={{ playPause: true }}
+    />,
+  );
+  // Trigger loadedmetadata so the controls render.
+  await component
+    .locator('[data-testid="mediaPlayer-video"]')
+    .evaluate((el) => {
+      Object.defineProperty(el, "duration", {
+        get: () => 60,
+        configurable: true,
+      });
+      el.dispatchEvent(new Event("loadedmetadata"));
+    });
+  const mp = component.locator('[data-testid="mediaPlayer"]');
+
+  // Focus the container first; capture the ring's box-shadow.
+  await mp.focus();
+  const withContainerFocus = await mp.evaluate(
+    (el) => getComputedStyle(el).boxShadow,
+  );
+  expect(withContainerFocus).not.toBe("none");
+
+  // Now move focus into a descendant button. The container's
+  // :focus is gone but :focus-within is still active, so the ring
+  // should remain.
+  const playBtn = component.locator('[data-testid="mediaPlayer-playPause"]');
+  await expect(playBtn).toBeVisible();
+  await playBtn.focus();
+  await expect(playBtn).toBeFocused();
+  const withDescendantFocus = await mp.evaluate(
+    (el) => getComputedStyle(el).boxShadow,
+  );
+  expect(withDescendantFocus).toBe(withContainerFocus);
+});
+
+test("polish: container has scoped focus class (visible to consumers)", async ({
+  mount,
+}) => {
+  // The useId-scoped class is part of the public DOM contract for
+  // tests / debug tooling. Lock in the prefix so a future refactor
+  // doesn't silently rename it.
+  const component = await mount(
+    <MockMediaPlayer url="/sample-video.mp4" name="ring_class" />,
+  );
+  const className = await component
+    .locator('[data-testid="mediaPlayer"]')
+    .evaluate((el) => el.className);
+  expect(className).toContain("stagebook-mediaplayer-");
+});
