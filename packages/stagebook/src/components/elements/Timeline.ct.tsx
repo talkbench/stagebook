@@ -1092,6 +1092,134 @@ test("point mode: click ON an existing point selects it (no duplicate)", async (
   await expect(point0).toHaveAttribute("data-active", "true");
 });
 
+test("range mode: active range stacks above siblings (handle stays reachable when ranges abut)", async ({
+  mount,
+}) => {
+  // Regression for the "can't grab a handle on the abutting side"
+  // UX bug: range handles overhang 4px outside the range body
+  // (left: -4 / right: -4 with HANDLE_HIT_WIDTH=8). If two ranges
+  // abut, the second range's body covers the first range's right
+  // handle — and clicking the visible handle would land on the
+  // neighbor's body instead, switching the active selection rather
+  // than starting a handle drag. Fix: active range gets zIndex: 1
+  // so it floats above its siblings.
+  const component = await mount(
+    <MockTimeline
+      source="player"
+      playerName="player"
+      name="ranges"
+      selectionType="range"
+      multiSelect={true}
+      mockDuration={60}
+      initialSelections={[
+        { start: 10, end: 20 },
+        { start: 20, end: 30 },
+      ]}
+    />,
+  );
+  const range0 = component.locator('[data-testid="range-0"]');
+  const range1 = component.locator('[data-testid="range-1"]');
+  await expect(range0).toBeAttached();
+  await expect(range1).toBeAttached();
+
+  // Click range 0 to make it active.
+  const r0Box = await range0.boundingBox();
+  if (!r0Box) throw new Error("range-0 box not found");
+  await range0.dispatchEvent("pointerdown", {
+    clientX: r0Box.x + r0Box.width / 2,
+    clientY: r0Box.y + r0Box.height / 2,
+    button: 0,
+    buttons: 1,
+    pointerId: 1,
+    isPrimary: true,
+  });
+  await range0.dispatchEvent("pointerup", {
+    clientX: r0Box.x + r0Box.width / 2,
+    clientY: r0Box.y + r0Box.height / 2,
+    button: 0,
+    buttons: 1,
+    pointerId: 1,
+    isPrimary: true,
+  });
+
+  // Active range's zIndex should be 1; inactive sibling's zIndex
+  // should be 0 (or 'auto', which resolves to 0 in the cascade).
+  const r0Z = await range0.evaluate((el) =>
+    parseInt(getComputedStyle(el).zIndex, 10),
+  );
+  const r1Z = await range1.evaluate((el) => getComputedStyle(el).zIndex);
+  expect(r0Z).toBe(1);
+  // r1 is inactive — z-index is 0 or "auto" depending on browser; both
+  // are below the active range.
+  expect(["0", "auto"]).toContain(r1Z);
+});
+
+test("range mode: clicking the handle of an active range that abuts another range hits the handle (not the neighbor)", async ({
+  mount,
+  page,
+}) => {
+  // Stronger version of the z-order test: use elementFromPoint at
+  // the active range's right-handle visible position and confirm
+  // the topmost element is the handle (or a descendant), not the
+  // abutting range's body. This is the actual user-visible
+  // contract that motivated the fix.
+  const component = await mount(
+    <MockTimeline
+      source="player"
+      playerName="player"
+      name="ranges"
+      selectionType="range"
+      multiSelect={true}
+      mockDuration={60}
+      initialSelections={[
+        { start: 10, end: 20 },
+        { start: 20, end: 30 },
+      ]}
+    />,
+  );
+  const range0 = component.locator('[data-testid="range-0"]');
+  // Activate range 0.
+  const r0Box = await range0.boundingBox();
+  if (!r0Box) throw new Error("range-0 box not found");
+  await range0.dispatchEvent("pointerdown", {
+    clientX: r0Box.x + r0Box.width / 2,
+    clientY: r0Box.y + r0Box.height / 2,
+    button: 0,
+    buttons: 1,
+    pointerId: 1,
+    isPrimary: true,
+  });
+  await range0.dispatchEvent("pointerup", {
+    clientX: r0Box.x + r0Box.width / 2,
+    clientY: r0Box.y + r0Box.height / 2,
+    button: 0,
+    buttons: 1,
+    pointerId: 1,
+    isPrimary: true,
+  });
+
+  // The right-edge handle of range-0 overhangs into range-1's
+  // territory. Hit-test at the very rightmost pixel of range-0.
+  const handleEnd = component.locator('[data-testid="range-0-handle-end"]');
+  const hBox = await handleEnd.boundingBox();
+  if (!hBox) throw new Error("range-0 handle-end box not found");
+  const hitTestId = await page.evaluate(
+    ({ x, y }: { x: number; y: number }) => {
+      const el = document.elementFromPoint(x, y);
+      // Walk up to find a data-testid ancestor.
+      let cur: Element | null = el;
+      while (cur && !(cur as HTMLElement).dataset.testid) {
+        cur = cur.parentElement;
+      }
+      return (cur as HTMLElement | null)?.dataset.testid ?? null;
+    },
+    { x: hBox.x + hBox.width / 2, y: hBox.y + hBox.height / 2 },
+  );
+  // Pre-fix: this would be "range-1" (the neighbor's body covered
+  // the handle). Post-fix: it's the handle itself.
+  expect(hitTestId).toBe("range-0-handle-end");
+});
+
 test("point mode: click ON existing point → Delete removes it (the use case that motivated the fix)", async ({
   mount,
   page,

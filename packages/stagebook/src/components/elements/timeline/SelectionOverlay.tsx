@@ -637,6 +637,15 @@ export function SelectionOverlay({
             boxSizing: "border-box",
             cursor: "pointer",
             pointerEvents: "auto",
+            // Active range floats above siblings so its handles (which
+            // overhang 4px outside the range body via `left: -4` /
+            // `right: -4` with HANDLE_HIT_WIDTH=8) remain reachable
+            // when another range abuts. Without this, clicking the
+            // visible handle of an active range would hit the neighbor's
+            // body — and the neighbor's `handleRangeBodyPointerDown`
+            // would switch the active selection to the neighbor before
+            // the handle drag could begin.
+            zIndex: isActive ? 1 : 0,
           }}
         >
           {/* Start handle */}
