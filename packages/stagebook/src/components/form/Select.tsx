@@ -70,6 +70,10 @@ const selectBaseStyle: React.CSSProperties = {
   borderRadius: "0.375rem",
   backgroundColor: "var(--stagebook-surface, #fff)",
   color: "var(--stagebook-text, #1f2937)",
+  // Pin the font: same fix as TextArea (#399). Native <select>
+  // also picks up the browser UA default font otherwise.
+  fontFamily:
+    'var(--stagebook-font, "Inter", ui-sans-serif, system-ui, sans-serif)',
   fontSize: "0.875rem",
   lineHeight: "1.25rem",
   cursor: "pointer",

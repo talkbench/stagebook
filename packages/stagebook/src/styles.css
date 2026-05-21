@@ -196,6 +196,15 @@
   --stagebook-code-bg: rgba(0, 0, 0, 0.06);
   --stagebook-code-font:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* Body font stack. Baked into all stagebook form components so a
+   * <textarea> / <select> / <input> never picks up the browser UA
+   * default (Chrome's textarea default is monospace, Safari's is
+   * sans-serif — without this token the same TextArea would render
+   * different fonts cross-browser, drifting from the measurement-
+   * instrument goal). Hosts override at :root to opt into a different
+   * font; the fallback inside each var() call lets the component
+   * render correctly even when styles.css isn't loaded. */
+  --stagebook-font: "Inter", ui-sans-serif, system-ui, sans-serif;
 
   /* Markdown GFM tables (used by the Markdown component, issue #214) */
   --stagebook-table-text: #4a5568;
@@ -249,7 +258,7 @@
 /* ------------------------------------------------------------------ */
 
 body {
-  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--stagebook-font, "Inter", ui-sans-serif, system-ui, sans-serif);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -271,6 +280,10 @@ select {
   border: 1px solid var(--stagebook-border, #d1d5db);
   border-radius: 0.375rem;
   padding: 0.5rem 0.75rem;
+  /* Pin the font so native form elements don't pick up the browser UA
+   * default — Chrome's textarea inherits a monospace stack while
+   * Safari's stays sans-serif (#399). */
+  font-family: var(--stagebook-font, "Inter", ui-sans-serif, system-ui, sans-serif);
   font-size: 0.875rem;
   line-height: 1.25rem;
   color: var(--stagebook-text, #1f2937);

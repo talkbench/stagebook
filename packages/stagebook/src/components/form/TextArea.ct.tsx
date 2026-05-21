@@ -332,3 +332,45 @@ test("focused-then-blurred textarea doesn't leave a stuck border color (no #367-
   );
   expect(touchedBorder).toBe(untouchedBorder);
 });
+
+// -- Font (#399) --
+
+test("uses the stagebook font stack — not the browser UA default", async ({
+  mount,
+}) => {
+  // Without an explicit font-family Chrome's UA stylesheet resolves
+  // <textarea> to a monospace stack while Safari leaves it on sans-
+  // serif, so the same TextArea would render different fonts across
+  // browsers. Closes #399. We assert against the resolved name list
+  // (test environment may or may not have Inter loaded), checking
+  // that the first family in the cascade is Inter — the canonical
+  // stagebook body font.
+  const component = await mount(<TextArea />);
+  const textarea = component.locator("textarea");
+  const fontFamily = await textarea.evaluate(
+    (el) => window.getComputedStyle(el).fontFamily,
+  );
+  // Computed style returns the resolved cascade string; the first
+  // family is the one the browser will use when Inter is available.
+  expect(fontFamily).toMatch(/^"?Inter"?/);
+  // Hard-negative: must not resolve to anything monospace-y, which
+  // is the cross-browser drift symptom from the bug report.
+  expect(fontFamily.toLowerCase()).not.toMatch(/mono|courier/);
+});
+
+test("font respects --stagebook-font override", async ({ mount }) => {
+  // The whole point of the token: the host can deviate from the
+  // default by setting --stagebook-font on a parent. Confirms the
+  // var() pipeline works end-to-end so a host opting into Helvetica
+  // (etc.) sees the override applied.
+  const component = await mount(
+    <div style={{ ["--stagebook-font" as never]: "Helvetica, sans-serif" }}>
+      <TextArea />
+    </div>,
+  );
+  const textarea = component.locator("textarea");
+  const fontFamily = await textarea.evaluate(
+    (el) => window.getComputedStyle(el).fontFamily,
+  );
+  expect(fontFamily).toMatch(/Helvetica/);
+});
