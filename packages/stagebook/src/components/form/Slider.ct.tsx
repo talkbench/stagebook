@@ -10,12 +10,17 @@ test("renders without thumb initially (no anchoring)", async ({ mount }) => {
   await expect(component).toContainText("Click the bar to select a value");
 });
 
-test("shows range input after clicking the track", async ({ mount }) => {
+test("shows range input after clicking the track", async ({ mount, page }) => {
   const component = await mount(<Slider min={0} max={100} interval={1} />);
-  // Dispatch a click event on the track (element may be thin/outside viewport)
-  await component
-    .locator('[role="presentation"]')
-    .dispatchEvent("click", { clientX: 150, clientY: 5 });
+  // Real mouse click instead of dispatchEvent — webkit doesn't route a
+  // synthetic `dispatchEvent("click", { clientX })` through React's
+  // delegated click listener reliably, so the onClick handler on the
+  // wrapper never fires and the slider stays in its unanchored state
+  // (#420). page.mouse.click drives the full native event sequence.
+  const wrapper = component.locator('[role="presentation"]');
+  const box = await wrapper.boundingBox();
+  if (!box) throw new Error("slider wrapper not found");
+  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
   // Now the range input should be in the DOM
   await expect(component.locator('input[type="range"]')).toHaveCount(1);
   // Instruction text should be gone
