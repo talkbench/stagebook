@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useRef } from "react";
 
 function ExternalLinkIcon() {
   return (
@@ -163,23 +163,60 @@ export function TrackedLink({
     };
   }, [handleBlur, handleFocus]);
 
+  // Per-instance class for the hover / :focus-visible rules. Same
+  // useId pattern as Button / Slider / Timeline. State-dependent
+  // properties (hover color shift, focus ring) live in a scoped
+  // <style> block so the inline structural styles can't block them.
+  const reactId = useId();
+  const safeId = reactId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const linkClass = `stagebook-trackedlink-${safeId}`;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+      <style>{`
+        /* Base color + hover color both live in CSS (not inline) so
+           the hover rule can actually win — an inline color would
+           outrank the :hover class selector on specificity (same
+           trap as Slider / Button / TextArea). */
+        .${linkClass} {
+          color: var(--stagebook-primary, #3b82f6);
+          transition: color 120ms ease-out;
+        }
+        .${linkClass}:hover {
+          color: var(--stagebook-primary-hover, #2563eb);
+        }
+        /* :focus-visible (keyboard-only) ring. Mouse clicks don't
+           leave a lingering ring around the link after release. */
+        .${linkClass}:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+          border-radius: 0.125rem;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .${linkClass} {
+            transition: none;
+          }
+        }
+      `}</style>
       <a
         href={href}
         target="_blank"
         rel="noreferrer noopener"
         onClick={handleClick}
+        className={linkClass}
         style={{
           display: "inline-flex",
           alignItems: "center",
           gap: "0.5rem",
-          color: "var(--stagebook-primary, #3b82f6)",
           fontWeight: 600,
+          // Underline the visible text so the link still reads as
+          // a link without relying on color alone (WCAG 1.4.1).
+          // Applied to the <a> itself, not the icon — the
+          // ExternalLinkIcon is decorative chrome.
           textDecoration: "none",
         }}
       >
-        <span>{displayText}</span>
+        <span style={{ textDecoration: "underline" }}>{displayText}</span>
         <ExternalLinkIcon />
       </a>
       {resolvedHelperText && (

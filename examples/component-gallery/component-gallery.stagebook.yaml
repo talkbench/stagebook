@@ -218,6 +218,46 @@ treatments:
                 comparator: exists
           - type: submitButton
 
+      - name: timer
+        duration: 60
+        notes: |
+          Timer — a visual progress bar that fills as the stage's
+          elapsed time approaches a deadline. Communicates "time
+          pressure" without auto-advancing the stage. Polished with
+          progressbar ARIA semantics + reduced-motion respect +
+          mount-time transition suppression (so it doesn't animate
+          back to 0 on a stage transition).
+        elements:
+          - type: prompt
+            file: prompts/timer_intro.prompt.md
+          - type: separator
+            style: thin
+          - type: timer
+            endTime: 30
+            warnTimeRemaining: 10
+          - type: submitButton
+
+      - name: tracked_link
+        duration: 600
+        notes: |
+          TrackedLink — an external link that records click/blur/
+          focus events and time spent away from the study tab.
+          Useful for routing participants to consent forms or
+          surveys hosted elsewhere while preserving engagement
+          telemetry. Polished with the standard link affordances
+          (hover, focus-visible ring, underline) so it reads as
+          a link without relying on color alone.
+        elements:
+          - type: prompt
+            file: prompts/trackedlink_intro.prompt.md
+          - type: separator
+            style: thin
+          - type: trackedLink
+            name: gallery_outbound
+            url: https://github.com/deliberation-lab/stagebook
+            displayText: View stagebook on GitHub
+          - type: submitButton
+
     exitSequence:
       - name: Done
         elements:

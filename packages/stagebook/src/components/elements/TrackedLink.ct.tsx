@@ -281,3 +281,105 @@ test("participantInfo-style values are URL-encoded into the href", async ({
   expect([...url.searchParams.keys()]).toEqual(["participant"]);
   expect(url.searchParams.get("participant")).toBe(nicknameRaw);
 });
+
+// ----------- UI polish -----------
+
+test("polish: link darkens on hover", async ({ mount }) => {
+  // Pre-polish: link color stayed at primary on hover, with no
+  // affordance change. Now hover shifts to primary-hover (matches the
+  // Button hover treatment).
+  const component = await mount(
+    <TrackedLink
+      name="hover"
+      url="https://example.org/"
+      displayText="Hover me"
+      save={() => {}}
+      getElapsedTime={() => 0}
+      progressLabel="t"
+    />,
+  );
+  const link = component.locator("a");
+  const before = await link.evaluate((el) => getComputedStyle(el).color);
+  await link.hover();
+  await expect
+    .poll(() => link.evaluate((el) => getComputedStyle(el).color), {
+      timeout: 1500,
+    })
+    .not.toBe(before);
+});
+
+test("polish: link shows focus-visible ring on keyboard focus", async ({
+  mount,
+  page,
+}) => {
+  // Pre-polish: keyboard tab to the link → no ring. Now :focus-visible
+  // shows the 2px focus-ring box-shadow (mouse clicks don't leave a
+  // lingering ring after release).
+  const component = await mount(
+    <TrackedLink
+      name="ring"
+      url="https://example.org/"
+      displayText="Tab to me"
+      save={() => {}}
+      getElapsedTime={() => 0}
+      progressLabel="t"
+    />,
+  );
+  const link = component.locator("a");
+  const baseline = await link.evaluate((el) => getComputedStyle(el).boxShadow);
+  await page.keyboard.press("Tab");
+  await expect(link).toBeFocused();
+  await expect
+    .poll(() => link.evaluate((el) => getComputedStyle(el).boxShadow), {
+      timeout: 1500,
+    })
+    .not.toBe(baseline);
+});
+
+test("polish: displayText is underlined (WCAG 1.4.1 — link not signalled by color alone)", async ({
+  mount,
+}) => {
+  // Pre-polish: the <a> had textDecoration: "none" and relied
+  // entirely on the primary-blue color to signal "this is a link"
+  // — which fails for colorblind users and is a WCAG 1.4.1
+  // ("Use of Color") violation. Polish: underline the visible
+  // text. The external-link icon stays separate (decorative,
+  // no underline on it).
+  const component = await mount(
+    <TrackedLink
+      name="underline"
+      url="https://example.org/"
+      displayText="Visible text"
+      save={() => {}}
+      getElapsedTime={() => 0}
+      progressLabel="t"
+    />,
+  );
+  const decoration = await component
+    .locator('a span:has-text("Visible text")')
+    .evaluate((el) => getComputedStyle(el).textDecorationLine);
+  expect(decoration).toContain("underline");
+});
+
+test("polish: prefers-reduced-motion drops the hover color transition", async ({
+  mount,
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const component = await mount(
+    <TrackedLink
+      name="rm"
+      url="https://example.org/"
+      displayText="Reduced motion"
+      save={() => {}}
+      getElapsedTime={() => 0}
+      progressLabel="t"
+    />,
+  );
+  const link = component.locator("a");
+  const transition = await link.evaluate(
+    (el) => getComputedStyle(el).transition,
+  );
+  // "all 0s ease 0s" is the computed-value form of `transition: none`.
+  expect(transition).toMatch(/all 0s|none/);
+});
