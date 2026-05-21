@@ -154,6 +154,39 @@ treatments:
             file: prompts/listsorter_demo.prompt.md
           - type: submitButton
 
+      - name: media_timeline
+        duration: 600
+        notes: |
+          MediaPlayer + Timeline pair. The Timeline binds to the
+          MediaPlayer by `source: <name>` and reads the same
+          duration/currentTime through the PlaybackProvider context.
+          Annotation use case: participant watches the video, then
+          marks ranges or points on the timeline to indicate moments
+          of interest (e.g., where the speaker hedges, where the
+          stimulus appears).
+        elements:
+          - type: prompt
+            file: prompts/timeline_intro.prompt.md
+          - type: separator
+            style: thin
+          - type: mediaPlayer
+            name: gallery_clip
+            file: media/sample-video.mp4
+            playVideo: true
+          - type: timeline
+            source: gallery_clip
+            name: gallery_clip_ranges
+            selectionType: range
+            multiSelect: true
+            showWaveform: true
+          - type: timeline
+            source: gallery_clip
+            name: gallery_clip_points
+            selectionType: point
+            multiSelect: true
+            showWaveform: true
+          - type: submitButton
+
       - name: scroll_indicator
         duration: 600
         notes: |

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useId } from "react";
 import { WaveformRenderer } from "./WaveformRenderer.js";
 
 export interface TimelineTrackProps {
@@ -43,6 +43,11 @@ export function TimelineTrack({
   muted,
   onToggleMute,
 }: TimelineTrackProps) {
+  // Scoped class for the mute button's `:focus-visible` ring + hover
+  // (#382 polish). Same useId pattern as Button / Slider / ListSorter.
+  const reactId = useId();
+  const safeId = reactId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const muteClass = `stagebook-timeline-mute-${safeId}`;
   return (
     <div
       data-testid="timeline-track"
@@ -52,6 +57,15 @@ export function TimelineTrack({
         height: `${String(height)}px`,
       }}
     >
+      <style>{`
+        .${muteClass}:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+        }
+        .${muteClass}:hover {
+          background: var(--stagebook-hover-bg, #f3f4f6);
+        }
+      `}</style>
       <div
         data-testid="track-gutter"
         style={{
@@ -66,6 +80,7 @@ export function TimelineTrack({
       >
         <button
           type="button"
+          className={muteClass}
           data-testid="track-mute"
           data-muted={muted}
           aria-label={muted ? `Unmute ${label}` : `Mute ${label}`}
@@ -111,7 +126,8 @@ export function TimelineTrack({
             fontSize: "0.7rem",
             lineHeight: 1.4,
             color: "var(--stagebook-text-faint, #6b7280)",
-            background: "rgba(255, 255, 255, 0.85)",
+            background:
+              "var(--stagebook-timeline-track-label-bg, rgba(255, 255, 255, 0.85))",
             border: "1px solid var(--stagebook-border, #e5e7eb)",
             borderRadius: "0.25rem",
             userSelect: "none",

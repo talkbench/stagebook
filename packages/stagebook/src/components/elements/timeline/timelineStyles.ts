@@ -57,7 +57,7 @@ export function handleTooltipStyle(
       ? { right: "100%", marginRight: 4 }
       : { left: "100%", marginLeft: 4 }),
     transform: "translateY(-50%)",
-    background: "rgba(30, 64, 175, 0.9)",
+    background: "var(--stagebook-timeline-tooltip-bg, rgba(30, 64, 175, 0.9))",
     zIndex: 5,
     ...tooltipBaseStyle,
   };

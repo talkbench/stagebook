@@ -390,6 +390,17 @@ export function SelectionOverlay({
           // Clicked a handle without dragging — keep it selected so
           // arrow keys adjust the handle rather than scrubbing the playhead.
           onRequestFocus();
+        } else if (drag.mode === "reposition-point") {
+          // Clicked an existing point without dragging — keep it
+          // selected (handlePointPointerDown already called onSelect)
+          // so the next keystroke (Delete, arrows) acts on the
+          // selected point rather than creating a new one. Without
+          // this branch a click on an existing point's hit area
+          // would fall through to the `selectionType === "point"`
+          // case below and silently stack a duplicate point at the
+          // same time — making the existing point feel impossible
+          // to delete via the click-then-Delete flow.
+          onRequestFocus();
         } else if (selectionType === "point") {
           // Point mode: click anywhere creates a point. The reducer
           // enforces multiSelect (replacing an existing point in single
@@ -618,11 +629,11 @@ export function SelectionOverlay({
             width: `${String(rangeWidth)}px`,
             height: `${String(rangeHeight)}px`,
             background: isActive
-              ? "rgba(59, 130, 246, 0.35)"
-              : "rgba(59, 130, 246, 0.18)",
+              ? "var(--stagebook-timeline-range-active, rgba(59, 130, 246, 0.35))"
+              : "var(--stagebook-timeline-range-inactive, rgba(59, 130, 246, 0.18))",
             border: isActive
-              ? "1px solid rgba(59, 130, 246, 0.9)"
-              : "1px solid rgba(59, 130, 246, 0.4)",
+              ? "1px solid var(--stagebook-timeline-range-active-border, rgba(37, 99, 235, 1))"
+              : "1px solid var(--stagebook-timeline-range-inactive-border, rgba(59, 130, 246, 0.6))",
             boxSizing: "border-box",
             cursor: "pointer",
             pointerEvents: "auto",
@@ -658,8 +669,8 @@ export function SelectionOverlay({
               handle="start"
               color={
                 isActive && activeHandle === "start"
-                  ? "rgba(37, 99, 235, 1)"
-                  : "rgba(59, 130, 246, 0.7)"
+                  ? "var(--stagebook-timeline-handle-active, rgba(37, 99, 235, 1))"
+                  : "var(--stagebook-timeline-handle-inactive, rgba(59, 130, 246, 0.7))"
               }
             />
             {hoveredHandle?.index === i &&
@@ -700,8 +711,8 @@ export function SelectionOverlay({
               handle="end"
               color={
                 isActive && activeHandle === "end"
-                  ? "rgba(37, 99, 235, 1)"
-                  : "rgba(59, 130, 246, 0.7)"
+                  ? "var(--stagebook-timeline-handle-active, rgba(37, 99, 235, 1))"
+                  : "var(--stagebook-timeline-handle-inactive, rgba(59, 130, 246, 0.7))"
               }
             />
             {hoveredHandle?.index === i && hoveredHandle?.handle === "end" && (
@@ -758,8 +769,8 @@ export function SelectionOverlay({
               width: 2,
               height: "100%",
               background: isActive
-                ? "rgba(37, 99, 235, 1)"
-                : "rgba(59, 130, 246, 0.8)",
+                ? "var(--stagebook-timeline-handle-active, rgba(37, 99, 235, 1))"
+                : "var(--stagebook-timeline-handle-inactive, rgba(59, 130, 246, 0.7))",
             }}
           />
           <div
@@ -771,8 +782,8 @@ export function SelectionOverlay({
               height: 10,
               borderRadius: "50%",
               background: isActive
-                ? "rgba(37, 99, 235, 1)"
-                : "rgba(59, 130, 246, 0.9)",
+                ? "var(--stagebook-timeline-handle-active, rgba(37, 99, 235, 1))"
+                : "var(--stagebook-timeline-handle-inactive, rgba(59, 130, 246, 0.7))",
             }}
           />
         </div>
@@ -826,8 +837,10 @@ export function SelectionOverlay({
           top: `${String(top)}px`,
           width: `${String(previewWidth)}px`,
           height: `${String(previewHeight)}px`,
-          background: "rgba(59, 130, 246, 0.25)",
-          border: "1px dashed rgba(59, 130, 246, 0.6)",
+          background:
+            "var(--stagebook-timeline-preview-bg, rgba(59, 130, 246, 0.25))",
+          border:
+            "1px dashed var(--stagebook-timeline-preview-border, rgba(59, 130, 246, 0.6))",
           boxSizing: "border-box",
           pointerEvents: "none",
         }}
@@ -864,6 +877,7 @@ export function SelectionOverlay({
         <div
           key={`pulse-${String(pulseTrigger.token)}-${String(idx)}`}
           data-testid="range-blocked-pulse"
+          className="stagebook-range-blocked-pulse"
           style={{
             position: "absolute",
             left: `${String(left)}px`,
@@ -872,7 +886,15 @@ export function SelectionOverlay({
             height: `${String(pulseHeight)}px`,
             pointerEvents: "none",
             borderRadius: 2,
-            animation: "stagebookRangeBlockedPulse 600ms ease-out",
+            // `animation` lives in the scoped <style> block (not
+            // inline) so the `@media (prefers-reduced-motion: reduce)`
+            // rule below can set it to `none`. Inline-style specificity
+            // would block the media-query override — same trap as
+            // Slider / TextArea / Button. The pre-#382 implementation
+            // redefined the keyframes inside the media query, which
+            // does work for swapping animation content but doesn't
+            // honor a true "no animation" preference (a background
+            // fade is still motion).
           }}
         />
       );
@@ -916,8 +938,10 @@ export function SelectionOverlay({
           top: `${String(top)}px`,
           width: `${String(previewWidth)}px`,
           height: `${String(previewHeight)}px`,
-          background: "rgba(59, 130, 246, 0.25)",
-          border: "1px dashed rgba(59, 130, 246, 0.6)",
+          background:
+            "var(--stagebook-timeline-preview-bg, rgba(59, 130, 246, 0.25))",
+          border:
+            "1px dashed var(--stagebook-timeline-preview-border, rgba(59, 130, 246, 0.6))",
           boxSizing: "border-box",
           pointerEvents: "none",
         }}
@@ -971,10 +995,20 @@ export function SelectionOverlay({
           30% { box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.55); }
           100% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
         }
+        .stagebook-range-blocked-pulse {
+          animation: stagebookRangeBlockedPulse 600ms ease-out;
+        }
         @media (prefers-reduced-motion: reduce) {
-          @keyframes stagebookRangeBlockedPulse {
-            0%, 100% { background: rgba(220, 38, 38, 0); }
-            30% { background: rgba(220, 38, 38, 0.25); }
+          .stagebook-range-blocked-pulse {
+            /* True reduced-motion: drop the animation. The pre-#382
+               implementation redefined the keyframes to a background
+               fade — still animation, just less. Users who opted
+               into reduced motion get a static (no-op) pulse div
+               for the 600ms its lifecycle covers. The
+               range-blocked-pulse is a redundant signal (the
+               attempted range visibly fails to commit), so dropping
+               the animation isn't a hard accessibility regression. */
+            animation: none;
           }
         }
       `}</style>
