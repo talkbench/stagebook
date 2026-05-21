@@ -135,6 +135,7 @@ export function MediaPlayer({
 
   const eventsRef = useRef<VideoEvent[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const autoplayAttemptedRef = useRef(false);
   // Per-instance class for the container's `:focus` ring. Same useId
   // pattern as Timeline / Button / Slider — pairs with the Timeline
@@ -948,6 +949,30 @@ export function MediaPlayer({
   // In audio-only mode (playVideo:false) there's no video to obscure, so always show.
   const controlsVisible = hasControls && (isPaused || isHovered || !playVideo);
 
+  // Focus rescue (#300): when the controls overlay hides (mouse leaves while
+  // playing), any control that currently held focus — e.g. the play/pause
+  // button the user just keyboard-toggled — unmounts. The browser drops focus
+  // to <body>, and a subsequent Space press scrolls the page instead of
+  // pausing. We catch that exact transition and move focus to the container
+  // (tabIndex=0), which is always mounted; :focus-within keeps the ring lit
+  // and the keydown handler keeps Space wired to play/pause.
+  const prevControlsVisibleRef = useRef(controlsVisible);
+  useEffect(() => {
+    const prev = prevControlsVisibleRef.current;
+    prevControlsVisibleRef.current = controlsVisible;
+    if (!prev || controlsVisible) return;
+    // Only rescue when the orphaned focus landed on <body>. If the user
+    // tabbed or clicked elsewhere, activeElement would be that element and
+    // we leave it alone.
+    if (
+      typeof document !== "undefined" &&
+      document.activeElement === document.body &&
+      containerRef.current
+    ) {
+      containerRef.current.focus({ preventScroll: true });
+    }
+  }, [controlsVisible]);
+
   // Scrub bar bounds
   const scrubMin = allowScrubOutsideBounds ? 0 : (startAt ?? 0);
   const scrubMax = allowScrubOutsideBounds
@@ -1006,6 +1031,7 @@ export function MediaPlayer({
 
     return (
       <div
+        ref={containerRef}
         className={containerClass}
         data-testid="mediaPlayer"
         role="region"
@@ -1134,6 +1160,7 @@ export function MediaPlayer({
 
   return (
     <div
+      ref={containerRef}
       className={containerClass}
       data-testid="mediaPlayer"
       role="region"

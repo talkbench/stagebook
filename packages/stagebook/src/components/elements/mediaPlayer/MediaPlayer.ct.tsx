@@ -2321,3 +2321,91 @@ test("polish: container has scoped focus class (visible to consumers)", async ({
     .evaluate((el) => el.className);
   expect(className).toContain("stagebook-mediaplayer-");
 });
+
+// -- #300: focus survives controls auto-hide --
+
+test("focus moves to container when the focused control unmounts on mouse-leave", async ({
+  mount,
+  page,
+}) => {
+  // Repro: user toggles play/pause via keyboard so the button is the
+  // active element, then the mouse leaves the player. The controls
+  // overlay unmounts while playing, the focused button goes with it,
+  // and a follow-up Space keypress lands on <body> and scrolls the
+  // page instead of pausing the video. The fix watches for that
+  // exact transition (controls visible → hidden with activeElement
+  // orphaned to <body>) and refocuses the container, which is always
+  // mounted and tabbable.
+  const component = await mount(
+    <MockMediaPlayer
+      url={FIXTURE_VIDEO}
+      name="test"
+      controls={{ playPause: true }}
+    />,
+  );
+  const mp = component.locator('[data-testid="mediaPlayer"]');
+  const playBtn = component.locator('[data-testid="mediaPlayer-playPause"]');
+
+  // 1. Hover the player (real mouse — React's onMouseLeave is driven
+  //    from delegated mouseout, so a synthetic dispatch wouldn't fire
+  //    it). Then focus the play button as if reached by keyboard.
+  await mp.hover();
+  await playBtn.focus();
+  await expect(playBtn).toBeFocused();
+
+  // 2. Start playback by dispatching the video's play event directly.
+  //    The MockMediaPlayer wires onPlay through, flipping isPaused=false.
+  await component
+    .locator('[data-testid="mediaPlayer-video"]')
+    .evaluate((el) => el.dispatchEvent(new Event("play")));
+
+  // 3. Move the mouse off the player. With isPaused=false and
+  //    isHovered=false, controlsVisible flips false and the controls
+  //    overlay unmounts — taking the focused play/pause button with it.
+  await page.mouse.move(0, 0);
+
+  // Controls really did unmount (sanity check).
+  await expect(playBtn).not.toBeAttached();
+
+  // 4. The container should now hold focus — not <body>. The keydown
+  //    handler is attached here, so Space will still pause the video.
+  await expect(mp).toBeFocused();
+});
+
+test("focus is left alone when activeElement is somewhere else entirely", async ({
+  mount,
+  page,
+}) => {
+  // The rescue should ONLY fire when focus orphaned to <body>. If the
+  // user deliberately moved focus elsewhere (tabbed to another input,
+  // clicked a different control), we must not yank it back.
+  const component = await mount(
+    <div>
+      <MockMediaPlayer
+        url={FIXTURE_VIDEO}
+        name="test"
+        controls={{ playPause: true }}
+      />
+      <input data-testid="other-input" />
+    </div>,
+  );
+  const mp = component.locator('[data-testid="mediaPlayer"]');
+  const playBtn = component.locator('[data-testid="mediaPlayer-playPause"]');
+  const other = component.locator('[data-testid="other-input"]');
+
+  await mp.hover();
+  await playBtn.focus();
+  await component
+    .locator('[data-testid="mediaPlayer-video"]')
+    .evaluate((el) => el.dispatchEvent(new Event("play")));
+
+  // User moves focus to the other input BEFORE controls hide.
+  await other.focus();
+  await expect(other).toBeFocused();
+
+  // Now trigger controls hide via real mouse-leave.
+  await page.mouse.move(0, 0);
+
+  // Focus should stay on the other input, not get stolen.
+  await expect(other).toBeFocused();
+});
