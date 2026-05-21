@@ -942,6 +942,58 @@ test("range mode: multiSelect true — ranges accumulate sorted", async ({
   expect(last[1]?.start).toBeCloseTo(36, 0);
 });
 
+test("point mode: click does NOT move the playhead (matches range mode)", async ({
+  mount,
+}) => {
+  // Previously a click in point mode placed the point AND seeked the
+  // playhead to that time; range mode left the playhead alone. The
+  // asymmetry confused users — the ruler is the dedicated seek surface
+  // (standard NLE convention), so creation gestures on the overlay
+  // should leave the playhead where it was for both modes.
+  const component = await mount(
+    <MockTimeline
+      source="player"
+      playerName="player"
+      name="points_no_seek"
+      selectionType="point"
+      multiSelect={true}
+      mockDuration={60}
+      mockCurrentTime={0}
+    />,
+  );
+  const overlay = component.locator('[data-testid="selection-overlay"]');
+  const playhead = component.locator('[data-testid="playhead"]');
+  const box = await overlay.boundingBox();
+  if (!box) throw new Error("overlay not found");
+
+  const beforeLeft = await playhead.evaluate(
+    (el) => parseFloat((el as HTMLElement).style.left) || 0,
+  );
+
+  await overlay.dispatchEvent("pointerdown", {
+    clientX: box.x + box.width * 0.7,
+    clientY: box.y + box.height * 0.5,
+    button: 0,
+    buttons: 1,
+    pointerId: 1,
+    isPrimary: true,
+  });
+  await overlay.dispatchEvent("pointerup", {
+    clientX: box.x + box.width * 0.7,
+    clientY: box.y + box.height * 0.5,
+    button: 0,
+    buttons: 1,
+    pointerId: 1,
+    isPrimary: true,
+  });
+
+  await expect(component.locator('[data-testid="point-0"]')).toBeAttached();
+  const afterLeft = await playhead.evaluate(
+    (el) => parseFloat((el as HTMLElement).style.left) || 0,
+  );
+  expect(afterLeft).toBe(beforeLeft);
+});
+
 test("point mode: click places a point and saves", async ({ mount }) => {
   const component = await mount(
     <MockTimeline

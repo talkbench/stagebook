@@ -33,8 +33,7 @@ export interface SelectionOverlayProps {
   /** Active handle in range mode. */
   activeHandle: "start" | "end" | null;
 
-  // ── Callbacks (Timeline.tsx wires these to dispatch + seek) ──
-  onSeek: (time: number) => void;
+  // ── Callbacks (Timeline.tsx wires these to dispatch) ──
   onCreateRange: (
     start: number,
     end: number,
@@ -226,7 +225,6 @@ export function SelectionOverlay({
   selections,
   activeIndex,
   activeHandle,
-  onSeek,
   onCreateRange,
   onCreatePoint,
   onAdjustHandle,
@@ -405,8 +403,9 @@ export function SelectionOverlay({
           // Point mode: click anywhere creates a point. The reducer
           // enforces multiSelect (replacing an existing point in single
           // mode, appending otherwise), so this one path covers both.
+          // Match range mode and leave the playhead alone — the ruler is
+          // the dedicated seek surface (standard NLE convention).
           onCreatePoint(time, track);
-          onSeek(time);
           onRequestFocus();
         } else {
           // Range mode: click creates a default-width range starting at
@@ -487,7 +486,6 @@ export function SelectionOverlay({
       selections,
       multiSelect,
       onCreatePoint,
-      onSeek,
       onDeselect,
       onCreateRange,
       onEndDrag,

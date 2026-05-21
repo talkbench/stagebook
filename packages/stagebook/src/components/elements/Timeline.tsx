@@ -975,7 +975,6 @@ export function Timeline({
             selections={state.selections}
             activeIndex={state.activeIndex}
             activeHandle={state.activeHandle}
-            onSeek={(t) => handle.seekTo(t)}
             onCreateRange={(start, end, track) =>
               dispatch({
                 type: "CREATE_RANGE",
