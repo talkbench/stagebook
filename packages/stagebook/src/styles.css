@@ -136,6 +136,37 @@
   --stagebook-scroll-indicator-bg: rgba(229, 231, 235, 0.8);
   --stagebook-scroll-indicator-fg: #4b5563;
 
+  /* Timeline (#382): selection overlay + minimap chrome. Defaults are
+   * all primary-blue-derived; hosts can override per-token if their
+   * brand wants a different accent for annotations.
+   *
+   * Ranges have two intensities — `active` (the range the keyboard
+   * shortcuts will act on) and `inactive` (saved-but-not-focused). The
+   * `preview` pair is used during click-drag and keyboard press-and-
+   * hold range creation. Handles are the small grab indicators at the
+   * start/end of an active range.
+   *
+   * Tooltip background lives here too so the playhead time box and
+   * range-handle hover tooltips theme together. */
+  --stagebook-timeline-range-active: rgba(59, 130, 246, 0.35);
+  --stagebook-timeline-range-active-border: rgba(37, 99, 235, 1);
+  --stagebook-timeline-range-inactive: rgba(59, 130, 246, 0.18);
+  --stagebook-timeline-range-inactive-border: rgba(59, 130, 246, 0.6);
+  --stagebook-timeline-handle-active: rgba(37, 99, 235, 1);
+  --stagebook-timeline-handle-inactive: rgba(59, 130, 246, 0.7);
+  --stagebook-timeline-preview-bg: rgba(59, 130, 246, 0.25);
+  --stagebook-timeline-preview-border: rgba(59, 130, 246, 0.6);
+  --stagebook-timeline-tooltip-bg: rgba(30, 64, 175, 0.9);
+  --stagebook-timeline-track-label-bg: rgba(255, 255, 255, 0.85);
+  /* Minimap chrome — viewport rect (the draggable indicator of where
+   * the main timeline window sits in the full duration) plus the
+   * miniaturized range / point marks. Tuned a touch brighter than the
+   * main-timeline range tokens because the minimap is small and needs
+   * its marks to pop. */
+  --stagebook-timeline-minimap-viewport-border: rgba(59, 130, 246, 0.9);
+  --stagebook-timeline-minimap-range: rgba(59, 130, 246, 0.4);
+  --stagebook-timeline-minimap-point: rgba(59, 130, 246, 0.7);
+
   /* Markdown / prompt typography (used by the Markdown component) */
   --stagebook-prompt-max-width: 36rem;
   --stagebook-prompt-text-size: 1rem;

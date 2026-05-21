@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useId,
   useReducer,
   useRef,
   useState,
@@ -142,6 +143,12 @@ export function Timeline({
   // Also stores the element in containerElRef so we can call .focus() later.
   const observerRef = useRef<ResizeObserver | null>(null);
   const containerElRef = useRef<HTMLDivElement | null>(null);
+  // Per-instance class for the container's `:focus-visible` ring (#382
+  // polish). Same useId pattern as Button / Slider / ListSorter /
+  // TextArea. Sanitized for use as a CSS class.
+  const reactId = useId();
+  const safeId = reactId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const containerClass = `stagebook-timeline-container-${safeId}`;
   const containerRef = useCallback((el: HTMLDivElement | null) => {
     containerElRef.current = el;
     observerRef.current?.disconnect();
@@ -846,14 +853,33 @@ export function Timeline({
         pendingRangeStartRef.current = null;
         setPendingRangeStartTime(null);
       }}
+      className={containerClass}
       style={{
         border: "1px solid var(--stagebook-border, #e5e7eb)",
         borderRadius: "0.5rem",
         overflow: "hidden",
+        // `outline: none` removes the browser default; the scoped
+        // `:focus-visible` ring below replaces it. Inline (not in the
+        // <style> block) because the ring is a box-shadow override
+        // that needs the outline killed unconditionally for both
+        // focus and non-focus states.
         outline: "none",
         position: "relative",
       }}
     >
+      <style>{`
+        /* Container focus ring (#382). The Timeline is tabbable
+           (tabIndex={0}) and receives focus programmatically via
+           onRequestFocus after selection actions, so keyboard
+           shortcuts (arrows, Tab handle-switch, Delete, Enter for
+           press-and-hold range creation) become live. Without a
+           visible focus indicator, participants doing keyboard
+           annotation had no signal that the Timeline was armed.
+           Matches the TextArea ring pattern from #381. */
+        .${containerClass}:focus-visible {
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+        }
+      `}</style>
       {/* Header: zoom controls (always) + minimap (when zoomed in) — puts
           the zoom buttons next to the minimap for context (issue #129). */}
       <TimelineHeader

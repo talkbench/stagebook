@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useId } from "react";
 import { formatTime } from "../../../utils/formatTime.js";
 import type { TimelineValue } from "./selections.js";
 
@@ -75,6 +75,11 @@ export function TimelineFooter({
   helpButtonRef,
   singleSelectFull = false,
 }: TimelineFooterProps) {
+  // Scoped class for the help button's `:focus-visible` ring + hover
+  // (#382 polish). Same useId pattern as Button / Slider / ListSorter.
+  const reactId = useId();
+  const safeId = reactId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const btnClass = `stagebook-timeline-help-${safeId}`;
   return (
     <div
       data-testid="timeline-footer"
@@ -89,6 +94,15 @@ export function TimelineFooter({
         userSelect: "none",
       }}
     >
+      <style>{`
+        .${btnClass}:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+        }
+        .${btnClass}:hover {
+          background: var(--stagebook-hover-bg, #f3f4f6);
+        }
+      `}</style>
       {/* Left: selection summary */}
       <div data-testid="timeline-selection-summary">
         {summary(selectionType, selections, activeIndex)}
@@ -107,6 +121,7 @@ export function TimelineFooter({
         <button
           ref={helpButtonRef}
           type="button"
+          className={btnClass}
           data-testid="timeline-help-button"
           onClick={onHelpToggle}
           aria-label="Show keyboard shortcuts"

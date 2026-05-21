@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useId } from "react";
 import { MIN_ZOOM, MAX_ZOOM } from "./viewport.js";
 
 export interface TimelineHeaderProps {
@@ -42,6 +42,14 @@ export function TimelineHeader({
   onZoomOut,
   minimap,
 }: TimelineHeaderProps) {
+  // Per-instance class scope for the `:focus-visible` ring on the zoom
+  // buttons (#382 polish). Same useId pattern as Button / Slider /
+  // ListSorter. State-dependent rules in a scoped <style> so the
+  // structural inline styles above (which win specificity battles)
+  // don't block them.
+  const reactId = useId();
+  const safeId = reactId.replace(/[^a-zA-Z0-9_-]/g, "");
+  const btnClass = `stagebook-timeline-zoom-${safeId}`;
   return (
     <div
       data-testid="timeline-header"
@@ -52,6 +60,15 @@ export function TimelineHeader({
         userSelect: "none",
       }}
     >
+      <style>{`
+        .${btnClass}:focus-visible {
+          outline: none;
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+        }
+        .${btnClass}:not(:disabled):hover {
+          background: var(--stagebook-hover-bg, #f3f4f6);
+        }
+      `}</style>
       {/* Zoom controls — sized to their content. (Used to be locked to the
           gutter width when the gutter held the per-track labels; the labels
           now overlay the waveform, so there's no alignment to preserve.) */}
@@ -66,6 +83,7 @@ export function TimelineHeader({
       >
         <button
           type="button"
+          className={btnClass}
           data-testid="timeline-zoom-out"
           onClick={onZoomOut}
           disabled={zoomLevel <= MIN_ZOOM}
@@ -76,6 +94,7 @@ export function TimelineHeader({
         </button>
         <button
           type="button"
+          className={btnClass}
           data-testid="timeline-zoom-in"
           onClick={onZoomIn}
           disabled={zoomLevel >= MAX_ZOOM}

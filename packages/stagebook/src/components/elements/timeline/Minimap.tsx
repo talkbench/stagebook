@@ -35,7 +35,8 @@ export interface MinimapProps {
 }
 
 const HEIGHT = 32;
-const VIEWPORT_RECT_BORDER = "1.5px solid rgba(59, 130, 246, 0.9)";
+const VIEWPORT_RECT_BORDER =
+  "1.5px solid var(--stagebook-timeline-minimap-viewport-border, rgba(59, 130, 246, 0.9))";
 
 function isRangeArray(
   s: TimelineValue,
@@ -160,13 +161,15 @@ export function Minimap({
       selectionMarks.push(
         <div
           key={`r-${String(i)}`}
+          aria-hidden="true"
           style={{
             position: "absolute",
             left: `${String(x1)}px`,
             top: 4,
             width: `${String(Math.max(x2 - x1, 1))}px`,
             height: HEIGHT - 8,
-            background: "rgba(59, 130, 246, 0.4)",
+            background:
+              "var(--stagebook-timeline-minimap-range, rgba(59, 130, 246, 0.4))",
             borderRadius: "1px",
             pointerEvents: "none",
           }}
@@ -179,13 +182,15 @@ export function Minimap({
       selectionMarks.push(
         <div
           key={`p-${String(i)}`}
+          aria-hidden="true"
           style={{
             position: "absolute",
             left: `${String(x - 1)}px`,
             top: 4,
             width: 2,
             height: HEIGHT - 8,
-            background: "rgba(59, 130, 246, 0.7)",
+            background:
+              "var(--stagebook-timeline-minimap-point, rgba(59, 130, 246, 0.7))",
             pointerEvents: "none",
           }}
         />,
@@ -250,6 +255,7 @@ export function Minimap({
       {currentTime >= 0 && currentTime <= duration && (
         <div
           data-testid="minimap-playhead"
+          aria-hidden="true"
           style={{
             position: "absolute",
             left: `${String(playheadX - 0.5)}px`,
@@ -264,6 +270,7 @@ export function Minimap({
       {/* Viewport rectangle */}
       <div
         data-testid="minimap-viewport"
+        aria-hidden="true"
         style={{
           position: "absolute",
           left: `${String(viewportLeft)}px`,
