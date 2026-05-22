@@ -74,7 +74,20 @@ export interface StagebookContext {
    */
   stageId?: string;
 
-  // Content resolution — platform handles fetching, caching, retries
+  // Content resolution — platform handles fetching, caching, retries.
+  //
+  // `getAssetURL(path)` returns a browser-safe URL for `path`.
+  //
+  // Contract:
+  // - Callers pass `path` as URL-safe (segments percent-encoded if
+  //   needed). The Markdown component does this segment encoding for
+  //   image refs before calling here (#431); host-direct callers
+  //   pass already-resolved file fields straight through.
+  // - Implementations should concatenate `path` with their base URL
+  //   without further re-encoding — the base URL may itself contain
+  //   intentional `%XX` sequences (e.g. VS Code's `asWebviewUri`
+  //   yields `https://file%2B.vscode-resource.vscode-cdn.net/...`),
+  //   and re-encoding would double-encode the `%`.
   getAssetURL(path: string): string;
   getTextContent(path: string): Promise<string>;
 

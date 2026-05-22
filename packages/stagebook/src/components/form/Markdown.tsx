@@ -325,7 +325,22 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
         if (path.startsWith("http://") || path.startsWith("https://")) {
           return `![${alt}](${path})`;
         }
-        const resolved = resolveURL(path);
+        // Percent-encode the markdown source path BEFORE handing it
+        // to the host's resolver, segment-by-segment so `/` separators
+        // pass through. We encode here (not after resolve) because the
+        // markdown source is raw — researchers write paths like
+        // `images/my pic.jpg` — while the host's resolver returns an
+        // already-encoded base (e.g. VS Code's `asWebviewUri` yields
+        // `https://file%2B.vscode-resource.vscode-cdn.net/...`).
+        // Encoding the resolved URL would double-encode the `%2B` into
+        // `%252B` and break the host part. See #431.
+        //
+        // `encodeURIComponent` per segment (rather than `encodeURI` on
+        // the whole path) ensures `?`, `#`, and `&` get encoded too —
+        // those have URI-special meaning otherwise and would split the
+        // path from a query string / fragment / param.
+        const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+        const resolved = resolveURL(encodedPath);
         // Reject non-http protocols (e.g., javascript:)
         if (
           !resolved.startsWith("http://") &&
@@ -334,8 +349,7 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
         ) {
           return `![${alt}](${path})`; // fall back to original path
         }
-        const url = encodeURI(resolved);
-        return `![${alt}](${url})`;
+        return `![${alt}](${resolved})`;
       },
     );
   }

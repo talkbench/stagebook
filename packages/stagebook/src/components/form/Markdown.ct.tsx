@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { test, expect } from "@playwright/experimental-ct-react";
 import { Markdown } from "./Markdown";
+import { MockMarkdown } from "../testing/MockMarkdown";
 
 test("renders markdown text", async ({ mount }) => {
   const component = await mount(<Markdown text="**Bold text**" />);
@@ -26,6 +27,131 @@ test("passes through relative image paths without resolveURL", async ({
     "src",
     "images/test.png",
   );
+});
+
+// -- Image URL encoding (#431) --
+//
+// Playwright CT can't serialize inline arrow-function props across
+// the mount boundary, so these tests use `MockMarkdown` (a tiny
+// wrapper that builds the `resolveURL` callback from a serializable
+// `baseUrl` string) instead of <Markdown> directly.
+
+test("resolveURL: does NOT double-encode %XX sequences in the host's already-encoded base", async ({
+  mount,
+}) => {
+  // Regression for #431: VS Code's `asWebviewUri` returns URLs like
+  // `https://file%2B.vscode-resource.vscode-cdn.net/...` where the
+  // `%2B` is the encoded `+` in the synthetic host name. The old
+  // `encodeURI(resolved)` re-encoded `%` → `%25` so `%2B` became
+  // `%252B` and the image 404'd. The fix encodes the markdown PATH
+  // (the part we know is raw) before passing to resolveURL, leaving
+  // the host's already-encoded base alone.
+  const component = await mount(
+    <MockMarkdown
+      text="![photo](images/test.png)"
+      baseUrl="https://file%2B.example.cdn.net/dir/"
+    />,
+  );
+  const src = await component.locator("img").getAttribute("src");
+  // Exactly one `%2B`, never `%252B`.
+  expect(src).toContain("%2B");
+  expect(src).not.toContain("%252B");
+});
+
+test("resolveURL: encodes spaces in researcher-authored filenames", async ({
+  mount,
+}) => {
+  // Markdown source is raw — researchers write paths like
+  // `![](my pic.jpg)`. The fix encodes the path segment(s) before
+  // resolving, so spaces (and other URI-special chars) become
+  // `%20` rather than landing literally in the <img src>.
+  const component = await mount(
+    <MockMarkdown
+      text="![photo](folder/my pic.jpg)"
+      baseUrl="https://example.com/"
+    />,
+  );
+  const src = await component.locator("img").getAttribute("src");
+  expect(src).toBe("https://example.com/folder/my%20pic.jpg");
+});
+
+test("resolveURL: encodes ? and # in path (would otherwise split into query/fragment)", async ({
+  mount,
+}) => {
+  // `encodeURI` (the previous approach) left `?` and `#` alone since
+  // both have URI-special meaning. That's wrong here because the
+  // markdown path IS a path, not a URI — `confused?.png` is a
+  // filename. Per-segment `encodeURIComponent` catches these (#431).
+  const component = await mount(
+    <MockMarkdown
+      text="![photo](confused?.png)"
+      baseUrl="https://example.com/"
+    />,
+  );
+  const src = await component.locator("img").getAttribute("src");
+  expect(src).toBe("https://example.com/confused%3F.png");
+});
+
+test("resolveURL: preserves `/` separators when encoding the path", async ({
+  mount,
+}) => {
+  // Encoding via `encodeURIComponent` on the whole path would mangle
+  // the `/` separators. Per-segment encoding preserves them.
+  const component = await mount(
+    <MockMarkdown
+      text="![photo](a/b/c/image.png)"
+      baseUrl="https://example.com/"
+    />,
+  );
+  const src = await component.locator("img").getAttribute("src");
+  expect(src).toBe("https://example.com/a/b/c/image.png");
+});
+
+test("resolveURL: encodes `#` in path (would otherwise split into a fragment)", async ({
+  mount,
+}) => {
+  // Parallel to the `?` case — `#` in a path means "this file is named
+  // foo#bar.png", not "navigate to fragment bar". `encodeURI` left this
+  // alone; per-segment `encodeURIComponent` catches it.
+  const component = await mount(
+    <MockMarkdown
+      text="![photo](sketch#1.png)"
+      baseUrl="https://example.com/"
+    />,
+  );
+  const src = await component.locator("img").getAttribute("src");
+  expect(src).toBe("https://example.com/sketch%231.png");
+});
+
+test("resolveURL: encodes `+` in path (close to the bug's root)", async ({
+  mount,
+}) => {
+  // `+` is in `encodeURI`'s pass-through set (it's "reserved"), so the
+  // previous approach left `+` literal in URLs. Most servers treat `+`
+  // as space in query strings, which can cause real-world breakage for
+  // a file literally named `version+1.png`. Per-segment
+  // `encodeURIComponent` encodes to `%2B`, which is also the same
+  // sequence at the root of #431 — exercised here to confirm we
+  // produce exactly one `%2B`, never `%252B`.
+  const component = await mount(
+    <MockMarkdown
+      text="![photo](version+1.png)"
+      baseUrl="https://example.com/"
+    />,
+  );
+  const src = await component.locator("img").getAttribute("src");
+  expect(src).toBe("https://example.com/version%2B1.png");
+});
+
+test("resolveURL: encodes non-ASCII characters in path", async ({ mount }) => {
+  // Researchers may name files in non-English alphabets (`café.png`,
+  // `日本.png`, …). `encodeURIComponent` UTF-8-encodes these to
+  // `%XX` sequences correctly.
+  const component = await mount(
+    <MockMarkdown text="![photo](café.png)" baseUrl="https://example.com/" />,
+  );
+  const src = await component.locator("img").getAttribute("src");
+  expect(src).toBe("https://example.com/caf%C3%A9.png");
 });
 
 test("img renders with inline max-width: 100% and height: auto so it can't overflow the prompt (issue #211)", async ({
