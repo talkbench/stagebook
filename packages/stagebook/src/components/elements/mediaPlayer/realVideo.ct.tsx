@@ -165,49 +165,27 @@ test("audio-only renders an error placeholder when the audio fails to load", asy
 test("stagebook surfaces the problem when server doesn't advertise Accept-Ranges", async ({
   mount,
   page,
-  browserName,
 }) => {
-  // Firefox AND Linux-CI webkit both load the metadata even without
-  // Accept-Ranges and don't expose any signal to stagebook —
-  // `seekable` falsely reports [0, duration] on firefox; webkit on
-  // Linux (Playwright CI runner) behaves the same (different from
-  // macOS Safari, which surfaces an error overlay). Detecting either
-  // case needs a deeper product change (probe-seek or pre-flight
-  // HEAD) — tracked in #424. Until that lands, mark this expected-
-  // to-fail on the affected engines so CI stays green while still
-  // reporting (via fixme) that the gap exists. `fixme` is the
-  // standard Playwright idiom for "we know it's broken, please fix
-  // it" — semantically different from `skip`: it documents the
-  // known regression in test output, and Playwright flags it if the
-  // test ever starts passing (so we know to remove the gate).
-  test.fixme(
-    browserName === "firefox" || browserName === "webkit",
-    "tracked in #424",
-  );
   // Intercept the fixture and strip Accept-Ranges from the response.
-  // Cross-engine behavior diverges here:
+  // Stagebook surfaces the problem to the researcher via two paths:
   //
-  // - **Chromium** still loads the file (no range request → fetches
-  //   the whole thing), fires `loadedmetadata`, and exposes
-  //   `seekable.length=0`. Stagebook detects this and logs a warning.
+  // 1. **Pre-flight HEAD warning** (#424): on mount, MediaPlayer
+  //    issues a HEAD on the URL and inspects the response's
+  //    `Accept-Ranges` header. Missing or "none" → console warning.
+  //    This is the authoritative signal and fires across every
+  //    engine since it reads headers directly.
   //
-  // - **WebKit (Safari)** refuses to load a media response without
-  //   Accept-Ranges (it requires ranges for media buffering). The
-  //   browser dispatches `error` on the <video> element, MediaPlayer's
-  //   `handleError` flips into loadError state, and the user sees
-  //   "Video unavailable".
+  // 2. **loadedmetadata-derived warning** (#32): a fallback for cases
+  //    where the HEAD couldn't be read (CORS, network failure, server
+  //    doesn't support HEAD). Checks `v.seekable` after metadata
+  //    loads; fires on Chrome which reports seekable.length=0.
   //
-  // - **Firefox** loads the metadata AND falsely reports `seekable =
-  //   [0, duration]` even though range-requests aren't actually
-  //   supported. Stagebook's existing seekable check passes through,
-  //   so neither path fires. The seek will fail silently when the
-  //   user tries it. Detecting this needs a deeper product change
-  //   (probe-seek or pre-flight HEAD) — tracked in #424. This test
-  //   covers the chromium + webkit signals; firefox is parked.
+  // Plus, on macOS Safari the video element refuses to load entirely
+  // without Accept-Ranges → user sees the "Video unavailable" error
+  // overlay. The test accepts either the warning OR the error overlay
+  // — both communicate the problem.
   //
-  // The test asserts the universal contract for the covered engines:
-  // SOMETHING tells the researcher the video can't be served
-  // properly. Refs #418; firefox tracked in #424.
+  // Closes #424.
   await page.route("**/sample-video.mp4", async (route) => {
     const response = await route.fetch();
     const body = await response.body();

@@ -179,6 +179,51 @@ export function MediaPlayer({
     setShowPlayOnce(false);
   }, [url]);
 
+  // Pre-flight HEAD check for `Accept-Ranges` (#424). The existing
+  // detection at handleLoadedMetadata can only catch the case when
+  // the browser exposes the broken state via `seekable.length=0`
+  // (Chrome). Firefox and Linux WebKit both falsely report
+  // `seekable=[0, duration]` even when ranges aren't supported —
+  // their seek would silently fail with no diagnostic.
+  //
+  // The HEAD response's `Accept-Ranges` header is the authoritative
+  // signal across every engine, so we probe it on mount and warn
+  // proactively if missing. Failures (CORS, network, server doesn't
+  // support HEAD) fall through silently to the existing
+  // loadedmetadata-based check — no worse than today.
+  const acceptRangesWarnedRef = useRef(false);
+  useEffect(() => {
+    acceptRangesWarnedRef.current = false;
+    if (youtubeVideoId || !url || !isSafeURL(url)) return;
+    const controller = new AbortController();
+    fetch(url, { method: "HEAD", signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) return;
+        const acceptRanges = response.headers.get("accept-ranges");
+        if (!acceptRanges || acceptRanges.toLowerCase() === "none") {
+          acceptRangesWarnedRef.current = true;
+          console.warn(
+            `[MediaPlayer] ${url} returned without "Accept-Ranges: bytes". ` +
+              `The browser may not be able to seek the video — researchers ` +
+              `may see seek controls snap back toward the start. Check the ` +
+              `asset server's range-request configuration. If the asset is ` +
+              `cross-origin and seeking actually works, the server may need ` +
+              `to expose the header via "Access-Control-Expose-Headers: ` +
+              `Accept-Ranges" — without that, this check sees null and ` +
+              `false-positives.`,
+          );
+        }
+      })
+      .catch(() => {
+        // Best-effort. CORS blocks header reads from cross-origin
+        // responses that don't expose them, the network may be
+        // offline, the server may not support HEAD, etc. — in any
+        // of those cases we fall through to the loadedmetadata-
+        // based check (which works on Chrome at least).
+      });
+    return () => controller.abort();
+  }, [url, youtubeVideoId]);
+
   // YouTube-only: handle registered by YouTubePlayer once the IFrame API is ready
   const [ytHandle, setYtHandle] = useState<PlaybackHandle | null>(null);
 
@@ -564,6 +609,12 @@ export function MediaPlayer({
       const hasFiniteDuration = Number.isFinite(v.duration) && v.duration > 0;
       if (!hasFiniteDuration) return;
 
+      // Suppress this derived warning when the pre-flight HEAD check
+      // already surfaced the same problem (#424) — the HEAD response
+      // headers are the authoritative source; this seekable-based
+      // signal is a fallback for cases where HEAD wasn't readable
+      // (CORS, network failure, server doesn't support HEAD).
+      if (acceptRangesWarnedRef.current) return;
       const seekable = v.seekable;
       const fullySeekable =
         seekable.length > 0 &&
