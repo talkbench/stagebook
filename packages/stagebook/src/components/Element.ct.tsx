@@ -61,6 +61,48 @@ test.describe("Element router dispatch", () => {
     );
   });
 
+  test("type: image YAML file path with special chars is URL-encoded before resolve (#433)", async ({
+    mount,
+  }) => {
+    // YAML `file:` fields are researcher-authored — a filename like
+    // `My Photo!.png` or `round#3.png` must reach the host as URL-
+    // safe input. Without encoding, the special chars land literally
+    // in <img src> and either 404 or get misparsed by stricter
+    // backends (e.g. `?` would split into a query string).
+    const component = await mount(
+      <MockStageRenderer
+        stage={singleElementStage({
+          type: "image",
+          file: "shared/my pic.png",
+        })}
+      />,
+    );
+    await expect(component.locator("img")).toHaveAttribute(
+      "src",
+      "https://mock-cdn.test/shared/my%20pic.png",
+    );
+  });
+
+  test("type: image YAML file path with `asset://` scheme is NOT re-encoded (#433)", async ({
+    mount,
+  }) => {
+    // `asset://` is stagebook's platform-provided reference scheme
+    // (#188). The path encoder skips anything with a scheme prefix
+    // so the host's `asset://` handling stays intact.
+    const component = await mount(
+      <MockStageRenderer
+        stage={singleElementStage({
+          type: "image",
+          file: "asset://diagrams/flow.png",
+        })}
+      />,
+    );
+    await expect(component.locator("img")).toHaveAttribute(
+      "src",
+      "https://mock-cdn.test/asset://diagrams/flow.png",
+    );
+  });
+
   test("type: audio renders (invisible element)", async ({ mount }) => {
     const component = await mount(
       <MockStageRenderer

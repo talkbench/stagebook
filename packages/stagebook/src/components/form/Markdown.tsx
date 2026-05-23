@@ -1,6 +1,7 @@
 import React, { useId } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { encodeAssetPath } from "../../utils/encodeAssetPath.js";
 
 export interface MarkdownProps {
   text: string;
@@ -325,22 +326,13 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
         if (path.startsWith("http://") || path.startsWith("https://")) {
           return `![${alt}](${path})`;
         }
-        // Percent-encode the markdown source path BEFORE handing it
-        // to the host's resolver, segment-by-segment so `/` separators
-        // pass through. We encode here (not after resolve) because the
-        // markdown source is raw — researchers write paths like
-        // `images/my pic.jpg` — while the host's resolver returns an
-        // already-encoded base (e.g. VS Code's `asWebviewUri` yields
-        // `https://file%2B.vscode-resource.vscode-cdn.net/...`).
-        // Encoding the resolved URL would double-encode the `%2B` into
-        // `%252B` and break the host part. See #431.
-        //
-        // `encodeURIComponent` per segment (rather than `encodeURI` on
-        // the whole path) ensures `?`, `#`, and `&` get encoded too —
-        // those have URI-special meaning otherwise and would split the
-        // path from a query string / fragment / param.
-        const encodedPath = path.split("/").map(encodeURIComponent).join("/");
-        const resolved = resolveURL(encodedPath);
+        // Encode the markdown source path before handing it to the
+        // host's resolver — researchers write raw filesystem paths
+        // (`images/my pic.jpg`), while the host's resolver returns an
+        // already-encoded base. Encoding the resolved URL would
+        // double-encode the host's intentional `%XX` sequences
+        // (e.g. VS Code's `asWebviewUri` `%2B` → `%252B`). See #431.
+        const resolved = resolveURL(encodeAssetPath(path));
         // Reject non-http protocols (e.g., javascript:)
         if (
           !resolved.startsWith("http://") &&

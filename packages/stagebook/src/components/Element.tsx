@@ -20,6 +20,7 @@ import { Prompt } from "./elements/Prompt.js";
 import { Qualtrics } from "./elements/Qualtrics.js";
 import { Loading } from "./form/Loading.js";
 import { deriveStorageKeyName } from "../utils/deriveStorageKeyName.js";
+import { encodeAssetPath } from "../utils/encodeAssetPath.js";
 
 // Resolve element URL params using the StagebookProvider's resolve.
 // Plain function — no hooks — so it's safe to call conditionally (e.g. in
@@ -147,7 +148,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
     case "audio":
       return (
         <AudioElement
-          src={getAssetURL(element.file ?? "")}
+          src={getAssetURL(encodeAssetPath(element.file ?? ""))}
           save={wrappedSave}
           // When `name:` is omitted, fall back to a position-based
           // identifier (`<progressLabel>_<file>`) so two unnamed
@@ -201,7 +202,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
     case "image":
       return (
         <ImageElement
-          src={getAssetURL(element.file ?? "")}
+          src={getAssetURL(encodeAssetPath(element.file ?? ""))}
           width={element.width}
         />
       );
@@ -301,7 +302,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
       const resolvedURL =
         rawURL.startsWith("http://") || rawURL.startsWith("https://")
           ? rawURL
-          : getAssetURL(rawURL);
+          : getAssetURL(encodeAssetPath(rawURL));
       const rawCaptions =
         typeof element.captionsFile === "string" ? element.captionsFile : null;
       const resolvedCaptionsURL =
@@ -310,7 +311,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           : rawCaptions.startsWith("http://") ||
               rawCaptions.startsWith("https://")
             ? rawCaptions
-            : getAssetURL(rawCaptions);
+            : getAssetURL(encodeAssetPath(rawCaptions));
       return (
         <MediaPlayer
           // Position-based fallback when `name:` is omitted — same
