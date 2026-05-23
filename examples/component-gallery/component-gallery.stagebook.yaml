@@ -60,6 +60,18 @@ treatments:
             file: prompts/radio_demo.prompt.md
           - type: submitButton
 
+      - name: radio_group_horizontal
+        duration: 600
+        notes: |
+          RadioGroup — horizontal variant. Add `layout: horizontal` to
+          the frontmatter to render options side-by-side. Sweet spot:
+          3–7 short labels (Likert scales, traffic-light codes).
+          Defaults to `vertical`.
+        elements:
+          - type: prompt
+            file: prompts/radio_horizontal_demo.prompt.md
+          - type: submitButton
+
       - name: checkbox_group
         duration: 600
         notes: |
@@ -73,6 +85,17 @@ treatments:
           - type: prompt
             name: checkbox_demo
             file: prompts/checkbox_demo.prompt.md
+          - type: submitButton
+
+      - name: checkbox_group_horizontal
+        duration: 600
+        notes: |
+          CheckboxGroup — horizontal variant. Same `layout: horizontal`
+          knob as the radio variant. Wraps onto multiple rows if the
+          options overflow the container width.
+        elements:
+          - type: prompt
+            file: prompts/checkbox_horizontal_demo.prompt.md
           - type: submitButton
 
       - name: select
