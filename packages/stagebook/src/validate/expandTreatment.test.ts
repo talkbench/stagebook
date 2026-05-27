@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   expandTreatmentSource,
   expandTreatmentSourceWithImports,
-} from "./expandTreatment";
+} from "./expandTreatment.js";
 
 describe("expandTreatmentSource", () => {
   describe("no templates", () => {

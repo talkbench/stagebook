@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateTreatmentWithDiff } from "./validateTreatmentDiff";
+import { validateTreatmentWithDiff } from "./validateTreatmentDiff.js";
 
 /**
  * Editor-side wrapper around the diff orchestrator. Verifies that:

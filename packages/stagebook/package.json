@@ -28,6 +28,16 @@
         "types": "./dist/components/index.d.cts",
         "default": "./dist/components/index.cjs"
       }
+    },
+    "./validate": {
+      "import": {
+        "types": "./dist/validate/index.d.ts",
+        "default": "./dist/validate/index.js"
+      },
+      "require": {
+        "types": "./dist/validate/index.d.cts",
+        "default": "./dist/validate/index.cjs"
+      }
     }
   },
   "files": [
@@ -51,7 +61,8 @@
     "@hello-pangea/dnd": "^18.0.1",
     "js-yaml": "^4.1.0",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "yaml": "^2.8.3"
   },
   "peerDependencies": {
     "react": ">=18",
@@ -82,6 +93,7 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "tsup": "^8.0.0",
+    "yaml": "^2.8.3",
     "typescript": "^5.5.0",
     "typescript-eslint": "^8.0.0",
     "vitest": "^2.0.0",

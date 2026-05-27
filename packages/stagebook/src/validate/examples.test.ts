@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { validateTreatmentWithDiff } from "./validateTreatmentDiff";
+import { validateTreatmentWithDiff } from "./validateTreatmentDiff.js";
 
 /**
  * Regression test: every bundled example treatment file must pass the

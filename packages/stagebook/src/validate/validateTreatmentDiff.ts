@@ -4,11 +4,11 @@ import {
   parseTreatmentYaml as parseStagebookYaml,
   validateResolvedTreatmentFile,
   type PreHydrationIssue,
-} from "stagebook";
+} from "../index.js";
 import type { ZodIssue } from "zod";
-import { loadAndMergeImports } from "./loadAndMergeImports";
-import { createPositionMapper, extractYamlErrors } from "./yamlPositionMap";
-import type { Diagnostic } from "./types";
+import { loadAndMergeImports } from "./loadAndMergeImports.js";
+import { createPositionMapper, extractYamlErrors } from "./yamlPositionMap.js";
+import type { Diagnostic } from "./types.js";
 
 /**
  * Editor-side wrapper around the diff orchestrator. Loads imports

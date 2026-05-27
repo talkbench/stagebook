@@ -2,9 +2,9 @@ import {
   expandTreatmentSource,
   expandTreatmentSourceWithImports,
   type ExpandOptions,
-} from "./expandTreatment";
-import { validateTreatmentSource } from "./validateTreatment";
-import type { Diagnostic } from "./types";
+} from "./expandTreatment.js";
+import { validateTreatmentSource } from "./validateTreatment.js";
+import type { Diagnostic } from "./types.js";
 
 export interface ExpandAndValidateResult {
   /** The expanded YAML as displayed (possibly truncated). "" if expansion failed. */

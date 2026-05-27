@@ -1,14 +1,18 @@
 import * as path from "path";
 import * as vscode from "vscode";
-import { type Diagnostic } from "./lib/validateTreatment";
-import { validateTreatmentWithDiff } from "./lib/validateTreatmentDiff";
-import { validatePromptSource } from "./lib/validatePrompt";
-import { pathToRange } from "./lib/yamlPositionMap";
+import {
+  type Diagnostic,
+  validateTreatmentWithDiff,
+  validatePromptSource,
+  pathToRange,
+  expandAndValidateWithImports,
+  parseTreatmentSource,
+  type ParseResult,
+} from "stagebook/validate";
 import {
   computeSemanticTokens,
   type SemanticTokenType,
 } from "./lib/semanticTokens";
-import { expandAndValidateWithImports } from "./lib/expandAndValidate";
 import { findClosestMatch } from "./lib/levenshtein";
 import { UnrecognizedKeyQuickFixProvider } from "./lib/unrecognizedKeyQuickFix";
 import { isWithinWorkspace, relativizePath } from "./lib/filePaths";
@@ -17,10 +21,6 @@ import {
   buildCompletionGlob,
   parseFilePathCompletionContext,
 } from "./lib/filePathCompletion";
-import {
-  parseTreatmentSource,
-  type ParseResult,
-} from "./lib/parseTreatmentSource";
 import { getReferencedAssets } from "stagebook";
 
 const diagnosticCollection =

@@ -2,11 +2,11 @@ import {
   fillTemplates,
   treatmentFileSchema,
   type TreatmentFileType,
-} from "stagebook";
+} from "../index.js";
 import {
   loadAndMergeImports,
   type LoadFailureStage,
-} from "./loadAndMergeImports";
+} from "./loadAndMergeImports.js";
 
 /**
  * Stage at which parsing/expanding/validating failed.

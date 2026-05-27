@@ -4,7 +4,7 @@ import {
   extractYamlErrors,
   remapErrorPath,
   createPositionMapper,
-} from "./yamlPositionMap";
+} from "./yamlPositionMap.js";
 
 describe("pathToRange", () => {
   describe("scalar values", () => {

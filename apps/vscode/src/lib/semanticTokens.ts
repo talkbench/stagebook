@@ -4,7 +4,7 @@ import {
   validComparators,
   validReferenceTypes,
 } from "stagebook";
-import { offsetToLineCol } from "./offsetToLineCol";
+import { offsetToLineCol } from "stagebook/validate";
 
 // Map domain concepts to VS Code's built-in semantic token types.
 // These are standard types that all themes already color distinctly.

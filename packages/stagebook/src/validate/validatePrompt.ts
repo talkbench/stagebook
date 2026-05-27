@@ -1,6 +1,6 @@
-import { promptFileSchema } from "stagebook";
-import type { SourceRange } from "./yamlPositionMap";
-import type { Diagnostic } from "./types";
+import { promptFileSchema } from "../index.js";
+import type { SourceRange } from "./yamlPositionMap.js";
+import type { Diagnostic } from "./types.js";
 
 export interface PromptValidationResult {
   diagnostics: Diagnostic[];

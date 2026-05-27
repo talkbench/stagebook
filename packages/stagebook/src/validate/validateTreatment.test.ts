@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateTreatmentSource } from "./validateTreatment";
+import { validateTreatmentSource } from "./validateTreatment.js";
 
 describe("validateTreatmentSource", () => {
   describe("valid treatment files", () => {

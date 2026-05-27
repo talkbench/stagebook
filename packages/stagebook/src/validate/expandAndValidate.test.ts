@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { expandAndValidate } from "./expandAndValidate";
+import { expandAndValidate } from "./expandAndValidate.js";
 
 describe("expandAndValidate", () => {
   describe("valid expansion", () => {

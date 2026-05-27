@@ -1,6 +1,6 @@
-import { safeParseTreatmentFile } from "stagebook";
-import { createPositionMapper, extractYamlErrors } from "./yamlPositionMap";
-import type { Diagnostic } from "./types";
+import { safeParseTreatmentFile } from "../index.js";
+import { createPositionMapper, extractYamlErrors } from "./yamlPositionMap.js";
+import type { Diagnostic } from "./types.js";
 
 export type { Diagnostic };
 

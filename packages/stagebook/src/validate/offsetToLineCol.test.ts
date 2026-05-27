@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { offsetToLineCol } from "./offsetToLineCol";
+import { offsetToLineCol } from "./offsetToLineCol.js";
 
 /**
  * Reference implementation: linear scan from the start of the source.

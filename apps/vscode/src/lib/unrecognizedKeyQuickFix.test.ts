@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { safeParseTreatmentFile } from "stagebook";
-import { UNRECOGNIZED_KEY_DID_YOU_MEAN_RE } from "./unrecognizedKeyMessage";
+import { UNRECOGNIZED_KEY_DID_YOU_MEAN_RE } from "stagebook/validate";
 
 // Regression test: the quick-fix provider extracts the bad key + the
 // suggested replacement by regex-matching the diagnostic message. The

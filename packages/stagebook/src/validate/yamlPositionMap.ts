@@ -1,5 +1,5 @@
 import { parseDocument, isMap, isSeq, isScalar } from "yaml";
-import { offsetToLineCol } from "./offsetToLineCol";
+import { offsetToLineCol } from "./offsetToLineCol.js";
 
 export interface SourceRange {
   startLine: number;

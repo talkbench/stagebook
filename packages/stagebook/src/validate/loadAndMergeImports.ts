@@ -3,7 +3,7 @@ import {
   resolveImportPath,
   resolveImports,
   type ParsedFile,
-} from "stagebook";
+} from "../index.js";
 
 export type LoadFailureStage =
   | "parse"

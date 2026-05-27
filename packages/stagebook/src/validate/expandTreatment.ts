@@ -1,6 +1,6 @@
-import { fillTemplates } from "stagebook";
+import { fillTemplates } from "../index.js";
 import { parse, stringify } from "yaml";
-import { loadAndMergeImports } from "./loadAndMergeImports";
+import { loadAndMergeImports } from "./loadAndMergeImports.js";
 
 const DEFAULT_MAX_LINES = 5000;
 const DEFAULT_MAX_BROADCAST = 10000;

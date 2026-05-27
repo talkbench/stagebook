@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTreatmentSource } from "./parseTreatmentSource";
+import { parseTreatmentSource } from "./parseTreatmentSource.js";
 
 /**
  * Tests for the host-agnostic source parser/expander/validator that backs

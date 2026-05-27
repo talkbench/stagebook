@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { UNRECOGNIZED_KEY_DID_YOU_MEAN_RE } from "./unrecognizedKeyMessage";
+import { UNRECOGNIZED_KEY_DID_YOU_MEAN_RE } from "stagebook/validate";
 
 // Why parse the suggestion out of the message instead of attaching
 // structured params: vscode.Diagnostic has no extension-data field

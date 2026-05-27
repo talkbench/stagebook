@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validatePromptSource } from "./validatePrompt";
+import { validatePromptSource } from "./validatePrompt.js";
 
 describe("validatePromptSource", () => {
   describe("valid prompt files", () => {
