@@ -42,9 +42,13 @@
   },
   "files": [
     "dist",
+    "bin",
     "src/styles.css",
     "src/host-typography.css"
   ],
+  "bin": {
+    "stagebook": "./bin/stagebook.js"
+  },
   "scripts": {
     "build": "tsup",
     "build:watch": "tsup --watch",
@@ -62,6 +66,7 @@
     "js-yaml": "^4.1.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "tinyglobby": "^0.2.16",
     "yaml": "^2.8.3"
   },
   "peerDependencies": {
@@ -93,10 +98,10 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "tsup": "^8.0.0",
-    "yaml": "^2.8.3",
     "typescript": "^5.5.0",
     "typescript-eslint": "^8.0.0",
     "vitest": "^2.0.0",
+    "yaml": "^2.8.3",
     "zod": "^3.23.0"
   },
   "repository": {

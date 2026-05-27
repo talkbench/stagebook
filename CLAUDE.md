@@ -1,3 +1,47 @@
+## Treatment authoring
+
+After editing any `.stagebook.yaml` or `.prompt.md` file, validate it before reporting the task as done:
+
+```bash
+npx --package=stagebook stagebook validate <file>
+```
+
+Resolve all errors. The CLI dispatches by suffix (`.stagebook.yaml` → treatment validator, `.prompt.md` → prompt validator), expands templates and resolves `imports:` by default, and exits non-zero on errors.
+
+For machine-readable output:
+
+```bash
+npx --package=stagebook stagebook validate --format=json <file>
+```
+
+JSON shape (one entry per file with any diagnostics):
+
+```json
+{
+  "files": [
+    {
+      "path": "study.stagebook.yaml",
+      "diagnostics": [
+        {
+          "severity": "error",
+          "message": "Game-stage conditions must use a cross-client position prefix…",
+          "range": {
+            "startLine": 353,
+            "startCol": 14,
+            "endLine": 353,
+            "endCol": 18
+          }
+        }
+      ]
+    }
+  ],
+  "unreadable": [],
+  "summary": { "errors": 1, "warnings": 0, "files": 1 }
+}
+```
+
+Positions in JSON are 0-based (LSP convention); the text output formats them 1-based for editor jump-to-location. Exit codes: `0` clean, `1` errors, `2` couldn't read / unparseable / glob matched zero files. Use `--no-expand` to skip template expansion when you want to check raw syntax only, and `-` (with `--type=treatment|prompt`) to read from stdin.
+
 ## Workflow
 
 ### TDD (Red/Green/Refactor)
@@ -120,5 +164,7 @@ stagebook/                          # workspace root
 
 - `stagebook` — schemas, utils, templates (no React dependency)
 - `stagebook/components` — React components, StagebookProvider (peer-depends on React)
+- `stagebook/validate` — `validateTreatmentSource`, `validatePromptSource`, `loadAndMergeImports`, `expandAndValidateWithImports`, `Diagnostic` type, and position-mapping helpers. Used by the VS Code extension, the viewer, and the CLI; consumed externally by manager / deliberation-lab / annotator
+- `stagebook` bin — the `stagebook` CLI (subcommands: `validate`). Reached via `npx --package=stagebook stagebook <cmd>` in study repos that don't otherwise have a JS toolchain
 
 Each directory has an `index.ts` barrel; `src/index.ts` re-exports the full public API for the main entrypoint.

@@ -29,7 +29,35 @@ Peer dependencies: `zod >= 3.23`, `js-yaml >= 4`. React components additionally 
 
 ## Usage
 
-### Validating a treatment file
+### Validating treatment + prompt files from the command line
+
+The fastest way to check a file is the bundled CLI, which works in any directory — even study repos that have no JS toolchain at all (Node is the only requirement):
+
+```bash
+# One file
+npx --package=stagebook stagebook validate study.stagebook.yaml
+
+# Mixed inputs (treatments + prompts) + globs
+npx --package=stagebook stagebook validate \
+  'stagebook/**/*.stagebook.yaml' prompts/intro.prompt.md
+
+# Stdin (for agents validating buffered content before writing)
+cat study.stagebook.yaml | \
+  npx --package=stagebook stagebook validate --type=treatment -
+
+# Machine-readable for CI / agents
+npx --package=stagebook stagebook validate --format=json study.stagebook.yaml
+```
+
+Default is **expand-and-validate**: the validator expands templates + resolves `imports:` before checking the schema, so errors that only appear after template substitution are caught. `--no-expand` skips that for faster pre-expansion checks.
+
+Exit codes: `0` clean (warnings OK), `1` schema errors, `2` couldn't read a file / YAML unparseable / glob matched nothing (use `--allow-empty` to opt out of the last).
+
+Diagnostics match what the [VS Code extension](apps/vscode/) shows in its Problems panel — same text, positions, severities — so an editor user and a CI bot see the same errors.
+
+### Validating from TypeScript
+
+For programmatic access (e.g. building tooling), import the validators directly:
 
 ```typescript
 import { treatmentFileSchema } from "stagebook";
@@ -40,6 +68,21 @@ const result = treatmentFileSchema.safeParse(config);
 
 if (!result.success) {
   console.error(result.error.issues);
+}
+```
+
+For rich diagnostics with source positions (the format used by the editor and CLI), import from the `validate` subpath:
+
+```typescript
+import {
+  validateTreatmentSource,
+  validatePromptSource,
+  type Diagnostic,
+} from "stagebook/validate";
+
+const { diagnostics } = validateTreatmentSource(yamlString);
+for (const d of diagnostics) {
+  console.log(`${d.severity}: ${d.message} (line ${d.range?.startLine})`);
 }
 ```
 
@@ -139,11 +182,11 @@ All schemas export corresponding TypeScript types (e.g., `TreatmentType`, `Stage
 
 ### Templates
 
-| Export                                          | Description                                                        |
-| ----------------------------------------------- | ------------------------------------------------------------------ |
-| `fillTemplates({ obj, templates })`             | Expand all template references and validate no placeholders remain |
-| `expandTemplate({ templates, context })`        | Expand a single template context with fields and broadcast         |
-| `substituteFields({ content, fields })`         | Replace `${key}` placeholders with values                          |
+| Export                                   | Description                                                        |
+| ---------------------------------------- | ------------------------------------------------------------------ |
+| `fillTemplates({ obj, templates })`      | Expand all template references and validate no placeholders remain |
+| `expandTemplate({ templates, context })` | Expand a single template context with fields and broadcast         |
+| `substituteFields({ content, fields })`  | Replace `${key}` placeholders with values                          |
 
 ## Documentation
 

@@ -5,6 +5,7 @@ export default defineConfig({
     index: "src/index.ts",
     "components/index": "src/components/index.ts",
     "validate/index": "src/validate/index.ts",
+    "cli/validate": "src/cli/validate.ts",
   },
   format: ["cjs", "esm"],
   dts: true,

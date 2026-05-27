@@ -7,10 +7,10 @@ A treatment file is a YAML document (`.stagebook.yaml`) that defines the complet
 A Stagebook file may have any subset of these top-level sections:
 
 ```yaml
-imports:         # optional — relative paths to other Stagebook files whose templates: should be merged in
-templates:       # optional — reusable blocks of structure
-introSequences:  # used as the entry point — pre-randomization onboarding steps
-treatments:      # used as the entry point — post-randomization experiment flows
+imports: # optional — relative paths to other Stagebook files whose templates: should be merged in
+templates: # optional — reusable blocks of structure
+introSequences: # used as the entry point — pre-randomization onboarding steps
+treatments: # used as the entry point — post-randomization experiment flows
 ```
 
 A file with `treatments:` is a study **entry point** the runtime can launch. A file with only `templates:` (and optionally `imports:`) is a **module** — it can't be launched directly, but other files can `imports:` it to reuse its templates. The same file can play either role; there is no separate file type or extension.
@@ -40,7 +40,7 @@ treatments:
       - name: intro
         duration: 60
         elements:
-          - template: tipi_questions   # defined in surveys/tipi/tipi.stagebook.yaml
+          - template: tipi_questions # defined in surveys/tipi/tipi.stagebook.yaml
           - template: extra_local_template
 ```
 
@@ -125,13 +125,13 @@ treatments:
 
 Each game stage has:
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | Identifier for logging (not shown to participants) |
-| `duration` | integer | yes | Stage length in seconds |
-| `discussion` | object | no | Video/text chat configuration (see [Discussions](discussions.md)) |
-| `elements` | array | yes | UI elements displayed during the stage |
-| `notes` | string | no | Researcher-facing rationale, citations, or design decisions (see [Notes](#notes)) |
+| Field        | Type    | Required | Description                                                                       |
+| ------------ | ------- | -------- | --------------------------------------------------------------------------------- |
+| `name`       | string  | yes      | Identifier for logging (not shown to participants)                                |
+| `duration`   | integer | yes      | Stage length in seconds                                                           |
+| `discussion` | object  | no       | Video/text chat configuration (see [Discussions](discussions.md))                 |
+| `elements`   | array   | yes      | UI elements displayed during the stage                                            |
+| `notes`      | string  | no       | Researcher-facing rationale, citations, or design decisions (see [Notes](#notes)) |
 
 Intro and exit steps have `name` and `elements` but no `duration` (they are untimed).
 
@@ -230,7 +230,7 @@ The file lives in the treatment's own directory (or a sibling directory like `sh
   file: asset://group_recordings/session_001.mp4
 ```
 
-`asset://path/to/file` means *the platform will resolve this*. Stagebook passes the URI through `getAssetURL()`, and each host (annotator, viewer, VS Code extension) implements its own resolution strategy. `asset://` references are explicitly excluded from `getReferencedAssets()` — they aren't repo files.
+`asset://path/to/file` means _the platform will resolve this_. Stagebook passes the URI through `getAssetURL()`, and each host (annotator, viewer, VS Code extension) implements its own resolution strategy. `asset://` references are explicitly excluded from `getReferencedAssets()` — they aren't repo files.
 
 Use `asset://` for:
 
@@ -241,7 +241,7 @@ Use `asset://` for:
 
 ### `${field}` placeholders — per-task variable media
 
-Distinct from `asset://`: use a field when the asset *varies from task to task*.
+Distinct from `asset://`: use a field when the asset _varies from task to task_.
 
 ```yaml
 - type: mediaPlayer
@@ -255,15 +255,111 @@ The task definition supplies the value at creation time. The value itself can be
 ### Choosing between the three
 
 | Asset is the same every task? | Asset is in the repo? | Reference form |
-|---|---|---|
-| yes | yes | relative path |
-| yes | no — public URL | full URL |
-| yes | no — host storage | `asset://…` |
-| no (varies per task) | — | `${fieldName}` |
+| ----------------------------- | --------------------- | -------------- |
+| yes                           | yes                   | relative path  |
+| yes                           | no — public URL       | full URL       |
+| yes                           | no — host storage     | `asset://…`    |
+| no (varies per task)          | —                     | `${fieldName}` |
 
 ## Naming Rules
 
 Names (for stages, elements, treatments, etc.) must be:
+
 - 1 to 64 characters
 - Letters, numbers, spaces, `_`, `-`
 - May include template placeholders like `${fieldName}`
+
+## Validating
+
+The same validator the VS Code extension uses is available as a CLI you can run on any treatment or prompt file. It works without an `npm install` in your study repo — `npx` fetches the package on demand:
+
+```bash
+npx --package=stagebook stagebook validate study.stagebook.yaml
+```
+
+Dispatches by suffix: `.stagebook.yaml` → treatment validator, `.prompt.md` → prompt validator. Multiple files and globs both work:
+
+```bash
+npx --package=stagebook stagebook validate \
+  'stagebook/**/*.stagebook.yaml' \
+  'prompts/**/*.prompt.md'
+```
+
+### Flags
+
+| Flag                       | Effect                                                              |
+| -------------------------- | ------------------------------------------------------------------- |
+| `--format=json`            | Machine-readable output (see schema below)                          |
+| `--type=treatment\|prompt` | Required when reading from stdin (`-`)                              |
+| `--no-expand`              | Skip template expansion + import resolution; checks raw syntax only |
+| `--allow-empty`            | Exit 0 when a glob matches no files (default: exit 2)               |
+| `-h, --help`               | Print usage                                                         |
+
+### Exit codes
+
+| Code | Meaning                                                                     |
+| ---- | --------------------------------------------------------------------------- |
+| `0`  | No errors (warnings OK, or nothing to report)                               |
+| `1`  | At least one error in at least one file                                     |
+| `2`  | A file couldn't be read, YAML was unparseable, or a glob matched zero files |
+
+### JSON output schema
+
+```json
+{
+  "files": [
+    {
+      "path": "study.stagebook.yaml",
+      "diagnostics": [
+        {
+          "severity": "error",
+          "message": "Game-stage conditions must use a cross-client position prefix…",
+          "range": {
+            "startLine": 353,
+            "startCol": 14,
+            "endLine": 353,
+            "endCol": 18
+          }
+        }
+      ]
+    }
+  ],
+  "unreadable": [
+    { "path": "missing.stagebook.yaml", "message": "could not read: ENOENT…" }
+  ],
+  "summary": { "errors": 1, "warnings": 0, "files": 1 }
+}
+```
+
+Positions are **0-based** in JSON (LSP convention; same shape as the `Diagnostic` type exported from `stagebook/validate`). The default text output formats positions as **1-based** for editor jump-to-location.
+
+### Pre-commit hook in study repos
+
+If your study repo uses pre-commit hooks, add a stagebook-validate step. For [pre-commit](https://pre-commit.com):
+
+```yaml
+- repo: local
+  hooks:
+    - id: stagebook-validate
+      name: Validate Stagebook files
+      entry: npx --package=stagebook stagebook validate
+      language: system
+      files: '\.(stagebook\.yaml|prompt\.md)$'
+      pass_filenames: true
+```
+
+### Adding the agent-facing instruction to your study repo
+
+If your repo has a `CLAUDE.md` (or any agent-instruction file), add this block so agents validate their own work before declaring a task done:
+
+> ## Treatment authoring
+>
+> After editing any `.stagebook.yaml` or `.prompt.md` file, run:
+>
+> ```bash
+> npx --package=stagebook stagebook validate <file>
+> ```
+>
+> Resolve all errors. For machine-readable output use `--format=json`; the JSON schema is documented [here](https://github.com/deliberation-lab/stagebook/blob/main/docs/researcher/treatment-files.md#json-output-schema). Exit codes: `0` clean, `1` schema errors, `2` couldn't read.
+
+Without this hook agents can edit treatment files but have no way to check their own work — the only signal that something is wrong reaches them after you open VS Code, read the Problems panel, and paste the error back.
