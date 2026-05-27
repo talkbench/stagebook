@@ -1,8 +1,8 @@
 import { parseGitHubUrl } from "./github";
 import { expandTreatmentFile } from "./expandTreatmentFile";
-import { loadAndMergeTreatmentFile } from "./loadAndMergeTreatmentFile";
 import { TreatmentValidationError } from "./treatment";
 import { safeParseTreatmentFile, type TreatmentFileType } from "stagebook";
+import { loadAndMergeImports } from "stagebook/validate";
 
 export interface LoadResult {
   treatmentFile: TreatmentFileType;
@@ -53,14 +53,21 @@ export async function loadTreatmentFromUrl(
     return importResponse.text();
   };
 
-  // `loadAndMergeTreatmentFile` parses the root YAML, recursively fetches
-  // every imported file via `loadImport`, and returns the merged object
-  // with `imports:` stripped and `templates:` replaced by the merged set.
-  // It does not validate against `treatmentFileSchema` — we do that here
-  // so validation errors come through the same `TreatmentValidationError`
-  // path as the local-YAML flow.
-  const merged = await loadAndMergeTreatmentFile(rootYaml, loadImport);
-  const parsed = safeParseTreatmentFile(merged);
+  // `loadAndMergeImports` (from stagebook/validate) parses the root YAML,
+  // recursively fetches every imported file via `loadImport`, and returns
+  // a discriminated result with the merged object (`imports:` stripped,
+  // `templates:` replaced by the merged set). It does not validate
+  // against `treatmentFileSchema` — we do that here so validation errors
+  // come through the same `TreatmentValidationError` path as the
+  // local-YAML flow.
+  const loadResult = await loadAndMergeImports({
+    source: rootYaml,
+    loadImport,
+  });
+  if (!loadResult.ok) {
+    throw new Error(loadResult.message);
+  }
+  const parsed = safeParseTreatmentFile(loadResult.merged);
   if (!parsed.success) {
     throw new TreatmentValidationError(
       parsed.error.issues.map((issue) => ({

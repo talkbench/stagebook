@@ -77,8 +77,8 @@ function isExampleRoot(path: string): boolean {
  * key stripped and merged `templates:` re-attached.
  *
  * Synchronous because the example data is already in memory — no
- * I/O. The async equivalent for runtime URL loading lives in
- * `loadAndMergeTreatmentFile.ts`.
+ * I/O. The async equivalent for runtime URL loading is `loadAndMergeImports`
+ * from `stagebook/validate`, used by `loader.ts`.
  *
  * Examples without `imports:` round-trip the original YAML
  * unchanged, so this is a no-op for the existing catalog.
