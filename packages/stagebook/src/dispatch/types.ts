@@ -157,11 +157,10 @@ export interface UrnDispatcherConfig {
   decrements?: LabeledMatrix | FileReference;
 }
 
-/** Softmax-sampled, payoff-with-knockdown dispatcher (#452). Replaces
- *  the v0.14 `local-penalization` placeholder with an in-stagebook
- *  implementation that simplifies the deliberation-lab original (no
- *  recursive DFS, no closure-mutated state, explicit softmax over the
- *  payoff vector instead of pure greedy).
+/** Softmax-sampled, payoff-with-knockdown dispatcher (#452). The
+ *  algorithm simplifies the original batched-BO implementation that
+ *  inspired it: no recursive DFS, no closure-mutated state, explicit
+ *  softmax over the payoff vector instead of pure greedy.
  *
  *  Stateful in the same sense `urn` is: callers thread
  *  `newState.payoffs` back into the next call's `payoffs` to carry the
