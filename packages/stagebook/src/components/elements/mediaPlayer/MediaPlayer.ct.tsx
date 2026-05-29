@@ -633,10 +633,18 @@ test("onComplete called when submitOnComplete is true and video ends", async ({
     .locator('[data-testid="mediaPlayer-video"]')
     .evaluate((el) => el.dispatchEvent(new Event("ended")));
 
-  const completed = await component
-    .locator('[data-testid="completed"]')
-    .textContent();
-  expect(completed).toBe("true");
+  // Poll the textContent rather than reading once: the synthetic
+  // `ended` event triggers a React handler that updates state, but
+  // the state hasn't necessarily flushed to the DOM by the time the
+  // textContent read returns. Other tests in this file dodge this
+  // by reading state that's already "false" (the initial value);
+  // this test asserts state changed to "true", so we need to wait.
+  // Same shape as the createRangeViaDrag race fix from #457. (#457)
+  await expect
+    .poll(async () =>
+      component.locator('[data-testid="completed"]').textContent(),
+    )
+    .toBe("true");
 });
 
 // -- startAt / stopAt scrub bounds --
@@ -744,10 +752,12 @@ test("onComplete called when submitOnComplete is true and stopAt is reached", as
       el.dispatchEvent(new Event("timeupdate"));
     });
 
-  const completed = await component
-    .locator('[data-testid="completed"]')
-    .textContent();
-  expect(completed).toBe("true");
+  // Poll-after-dispatch — same race pattern as the "ended" test above.
+  await expect
+    .poll(async () =>
+      component.locator('[data-testid="completed"]').textContent(),
+    )
+    .toBe("true");
 });
 
 // -- captions overlay --
