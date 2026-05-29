@@ -77,3 +77,172 @@ Three options, in increasing order of effort:
 ### Diagnostics
 
 The host (deliberation-lab in our deployment) gets the assignments back after every dispatch tick and can compute realized rates directly. If you're partway through a batch and the realized rate looks off relative to your target weights, the most likely cause is one of the two feasibility issues above. Check what fraction of your participants satisfy the constrained treatment's conditions; that fraction is roughly the ceiling on its realized rate.
+
+## `urn` in detail
+
+Reach for `urn` when you need an **exact count** of each treatment rather than a target rate. The algorithm draws from a metaphorical urn of "balls" labeled with treatment names — each successful assignment removes one (or more, see [decrements](#building-decrements)) of the picked treatment's balls. When a treatment's balls are gone, it stops being picked.
+
+The minimal config:
+
+```yaml
+dispatcher:
+  type: urn
+  counts: [10, 10, 10]
+```
+
+That delivers exactly 10 assignments to each treatment over the batch, then stops.
+
+### How draws are picked
+
+Each round, the dispatcher samples one treatment from the size-feasible pool with probability **proportional to its remaining count**. Early in the batch when all counts are equal, the draws look uniform. As one treatment fills up, its count shrinks and it's picked less often; once a count hits zero the treatment drops out of the pool entirely. The arithmetic guarantees that, over the whole batch, each treatment is used exactly its target count of times — there's no slack to converge over a long run, because the urn enforces the target deterministically.
+
+This is the central difference from `weighted-random`: that dispatcher hits target *rates* in expectation given infinite recruitment; `urn` hits target *counts* exactly given enough eligible participants.
+
+### Building `counts`
+
+`counts` is a non-negative integer array with one entry per treatment, in the same order as `treatments` in your batch config. Most studies fall into one of two patterns.
+
+**Balanced allocation.** All treatments get the same target N:
+
+```yaml
+treatments: [control, exposure_A, exposure_B]
+dispatcher:
+  type: urn
+  counts: [30, 30, 30]   # 90 total assignments, 30 each
+```
+
+**Asymmetric Ns.** When some conditions need bigger samples than others — e.g., a control plus two main exposures plus two underpowered pilot conditions:
+
+```yaml
+treatments: [control, main_A, main_B, pilot_C, pilot_D]
+dispatcher:
+  type: urn
+  counts: [40, 40, 40, 10, 10]
+```
+
+The pilot conditions stop drawing once their 10 balls are gone; the main conditions and control keep filling. If your batch over-recruits past 140 total participants, the extra arrivals can't be assigned to anything — see [Exhaustion](#exhaustion) below.
+
+### Building `decrements`
+
+`decrements` is an **optional** square matrix that controls how many balls get removed from each bucket after a successful assignment. The shape is `decrements[i][j]` = "how many balls to remove from treatment `j` when treatment `i` is picked." Rows are the *picked* treatment; columns are the *affected* buckets.
+
+When omitted, the default is the **identity matrix** — picking treatment `i` removes exactly one ball from treatment `i` and leaves all others alone. That's what most studies want, and it's why `decrements` is optional.
+
+The non-default cases are all about *coupling*: when picking one treatment should also decrement another, because they share something.
+
+#### Pattern 1: Identity (the default)
+
+For three treatments, the implicit matrix is:
+
+```json
+[[1, 0, 0],
+ [0, 1, 0],
+ [0, 0, 1]]
+```
+
+Each draw consumes exactly one ball from its own bucket. Equivalent to omitting `decrements` entirely; shown here only so the rest of the patterns have a baseline to differ from.
+
+#### Pattern 2: Coupled draws (shared resource)
+
+Suppose `moderated_A` and `moderated_B` both consume the same hard-to-recruit pool — both require participants who self-report as professional moderators, and your overall recruitment ceiling on moderators is 30 people. A naive `counts: [30, 30, 60]` would imply *60* moderator assignments, more than your pipeline can supply. Use off-diagonal decrements to encode the shared resource:
+
+```yaml
+treatments: [moderated_A, moderated_B, unmoderated]
+dispatcher:
+  type: urn
+  counts: [30, 30, 60]
+  decrements:
+    - [1, 1, 0]   # picking moderated_A removes 1 ball from A *and* 1 from B
+    - [1, 1, 0]   # picking moderated_B removes 1 ball from A *and* 1 from B
+    - [0, 0, 1]   # picking unmoderated only removes 1 from its own bucket
+```
+
+Now `moderated_A` and `moderated_B` deplete together: across the two combined, only 30 moderator assignments are made, matching the actual ceiling. Within those 30, the split between A and B is roughly even because both buckets decrement at the same rate.
+
+The trick generalizes: any off-diagonal entry encodes "this draw also depletes that other bucket."
+
+#### Pattern 3: Spatial / kernel matrices
+
+If your treatments are arranged in a continuous space — for example, 20 prompt phrasings on a one-dimensional sentiment scale, or a 2D grid of (issue × framing) — you may want to spread assignments across the space rather than allow concentration in any one spot. The decrements matrix can encode spatial proximity: drawing one treatment depletes its near-neighbors' buckets too, so the dispatcher naturally avoids clustering.
+
+A common construction is a Gaussian kernel over a pairwise distance, computed offline:
+
+```python
+import numpy as np
+
+# 1D embedding of treatment positions (could equally be 2D, etc.)
+positions = np.linspace(0, 1, 20)
+distances = np.abs(positions[:, None] - positions[None, :])
+
+# Gaussian kernel; sigma controls the "neighborhood radius"
+sigma = 0.1
+kernel = np.exp(-(distances ** 2) / (2 * sigma ** 2))
+
+# Scale + round to integers — the schema requires non-negative ints.
+# Tuning target: the diagonal stays 1 (self-decrement); a treatment's
+# immediate neighbors round to 1 (coupled); far treatments round to 0.
+scale = 1.0
+decrements = np.maximum(0, np.round(kernel * scale)).astype(int).tolist()
+```
+
+The resulting matrix is mostly identity-like along the diagonal with small positive off-diagonals between near-neighbors. This is the load-bearing case for studies with hundreds of treatments arranged in a continuous space.
+
+A few caveats specific to kernel constructions:
+
+1. **Integer arithmetic.** The schema requires non-negative integers, so rounding a continuous kernel will introduce small distortions. For typical research scales the broad-coverage property is robust; if you need higher fidelity, scale `counts` and `decrements` by a common integer factor before rounding.
+2. **Watch the row sums.** `decrements.sum(axis=1)` for each row tells you how many balls each pick removes in total across all buckets. If you intended each pick to remove approximately one ball net, every row sum should be near 1. Off-diagonals that are too large can deplete your urn far faster than your `counts` total suggests.
+3. **Underflow is silently clamped.** If a draw would push some `counts[j]` below zero — possible with coupled draws — the dispatcher clamps to zero rather than throwing. You can detect this by comparing the input `counts` to the output `remainingCounts` and looking for picks where the net change was less than what `decrements` should have removed.
+
+### Using file references for large matrices
+
+Both `counts` and `decrements` can be supplied inline (as in the examples above) or as a reference to a JSON file in your assets repo:
+
+```yaml
+dispatcher:
+  type: urn
+  counts:     { file: "study1/counts.json" }
+  decrements: { file: "study1/decrements.json" }
+```
+
+Reach for file references when:
+
+- The matrix is computed by an offline solver (Python notebook, R script, etc.) and you want the computation tracked as an artifact in your assets repo
+- The matrix is large enough that inlining clutters the batch config (anything past ~5–10 treatments tends to feel that way)
+- You want to version the matrix separately from the batch config
+
+The file shape is just a JSON array (for `counts`) or array-of-arrays (for `decrements`):
+
+**`counts.json`:**
+
+```json
+[30, 30, 30, 10, 10]
+```
+
+**`decrements.json`** (the coupled-resource example from Pattern 2):
+
+```json
+[[1, 1, 0],
+ [1, 1, 0],
+ [0, 0, 1]]
+```
+
+File references are resolved by the host (deliberation-lab in our deployment), not by stagebook itself — stagebook's algorithm runs on already-resolved arrays. The host enforces these path constraints: must be relative (no leading `/`), must not contain `..` segments, must not begin with a URL scheme (`https:`, `file:`, etc.), and is capped at 512 characters. The path is resolved against the same `assetBaseUrl` your treatment file is served from. The file is fetched at batch creation time and validated; a missing or malformed file fails batch creation rather than a later dispatch tick.
+
+A typical workflow:
+
+1. Compute the matrix in your analysis repo (offline solver — Python, R, etc.)
+2. Write the result to `counts.json` / `decrements.json`
+3. Commit them to your assets repo, alongside your treatment YAML
+4. Reference from the batch config via `{ file: "<path>" }`
+
+This keeps the offline computation auditable and the batch config readable.
+
+### Exhaustion
+
+Once every bucket in the urn hits zero, no further assignments can be made. New arrivals to the lobby will sit until they hit the existing `lobbyTimeout`. A dedicated host-side admission gate — including a distinct `lobbyClosed` exit code — is proposed in deliberation-lab/deliberation-lab#269 but isn't shipped yet. For now: size your `counts` so the total matches or exceeds your recruitment target, plan for some over-recruitment slack to handle eligibility-tight conditions, and accept that any excess arrivals beyond `sum(counts)` will time out rather than be assigned.
+
+### Realized vs. target Ns under eligibility constraints
+
+The same feasibility caveat applies to `urn` as it does to `weighted-random` (see [above](#realized-vs-target-rates-under-eligibility-constraints)), with one important difference: `urn` *doesn't renormalize away* from a constrained treatment. If treatment T0 has 30 balls and a tight eligibility condition that only 20% of recruits satisfy, the urn keeps T0 in the pool — and draws T0 every time the tick happens to include enough eligible players. The other treatments still fill in parallel, and T0 keeps holding out for qualifying arrivals.
+
+That's the point. The tradeoff is that the batch can't complete until T0's count is drained or no more eligible participants arrive — so either over-recruit by enough margin to satisfy your tightest condition, or accept that the batch may stall on T0 with un-assignable participants accumulating in the lobby.
