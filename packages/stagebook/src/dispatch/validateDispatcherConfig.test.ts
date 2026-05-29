@@ -351,13 +351,217 @@ describe("validateDispatcherConfig", () => {
     });
   });
 
-  describe("local-penalization", () => {
-    test("is recognized but not deeply validated by stagebook", () => {
+  describe("weighted-knockdown", () => {
+    test('accepts "equal" payoffs + "none" knockdowns (simplest valid config)', () => {
       const r = validateDispatcherConfig(
-        { type: "local-penalization", payoffs: "equal", knockdowns: "none" },
-        T2,
+        {
+          type: "weighted-knockdown",
+          payoffs: "equal",
+          knockdowns: "none",
+        },
+        T3,
       );
       expect(r.ok).toBe(true);
+    });
+
+    test("accepts labeled-scalars payoffs + scalar knockdown", () => {
+      const r = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: { t0: 1.5, t1: 0.8, t2: 2 },
+          knockdowns: 0.5,
+        },
+        T3,
+      );
+      expect(r.ok).toBe(true);
+    });
+
+    test("accepts labeled-scalars knockdowns (per-treatment self-decay)", () => {
+      const r = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: "equal",
+          knockdowns: { t0: 0.5, t1: 0.7, t2: 0.9 },
+        },
+        T3,
+      );
+      expect(r.ok).toBe(true);
+    });
+
+    test("accepts labeled-matrix knockdowns (cross-treatment decay)", () => {
+      const r = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: "equal",
+          knockdowns: {
+            t0: { t0: 0.5, t1: 0.9, t2: 1 },
+            t1: { t0: 0.9, t1: 0.5, t2: 1 },
+            t2: { t2: 0.5 }, // missing columns default to 1
+          },
+        },
+        T3,
+      );
+      expect(r.ok).toBe(true);
+    });
+
+    test("accepts optional temperature", () => {
+      const r = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: "equal",
+          knockdowns: "none",
+          temperature: 1,
+        },
+        T3,
+      );
+      expect(r.ok).toBe(true);
+    });
+
+    test("rejects positional-array payoffs (would mislead — no positional form supported)", () => {
+      const r = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: [1, 2, 3],
+          knockdowns: "none",
+        },
+        T3,
+      );
+      expect(r.ok).toBe(false);
+      const messages = r.diagnostics.map((d) => d.message).join("\n");
+      expect(messages).toMatch(/map keyed by treatment name/);
+    });
+
+    test("rejects unresolved file references", () => {
+      const a = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: { from: "./p.json" },
+          knockdowns: "none",
+        },
+        T3,
+      );
+      expect(a.ok).toBe(false);
+      const b = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: "equal",
+          knockdowns: { from: "./k.json" },
+        },
+        T3,
+      );
+      expect(b.ok).toBe(false);
+    });
+
+    test("rejects payoffs with mismatched labels", () => {
+      const r = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: { t0: 1 }, // missing t1, t2
+          knockdowns: "none",
+        },
+        T3,
+      );
+      expect(r.ok).toBe(false);
+      const messages = r.diagnostics.map((d) => d.message).join("\n");
+      expect(messages).toMatch(/missing/);
+    });
+
+    test("rejects scalar knockdown outside [0, 1]", () => {
+      const a = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: "equal",
+          knockdowns: 1.5,
+        },
+        T3,
+      );
+      expect(a.ok).toBe(false);
+      const b = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: "equal",
+          knockdowns: -0.1,
+        },
+        T3,
+      );
+      expect(b.ok).toBe(false);
+    });
+
+    test("rejects labeled-matrix with missing rows (strict-literal rule)", () => {
+      const r = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: "equal",
+          knockdowns: {
+            t0: { t0: 0.5, t1: 0.9, t2: 1 },
+            // t1 and t2 rows missing
+          },
+        },
+        T3,
+      );
+      expect(r.ok).toBe(false);
+      const messages = r.diagnostics.map((d) => d.message).join("\n");
+      expect(messages).toMatch(/missing a row/);
+    });
+
+    test("rejects unknown row labels in labeled-matrix", () => {
+      const r = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: "equal",
+          knockdowns: {
+            t0: { t0: 0.5 },
+            t1: { t1: 0.5 },
+            t2: { t2: 0.5 },
+            tX: { tX: 0.5 },
+          },
+        },
+        T3,
+      );
+      expect(r.ok).toBe(false);
+      const messages = r.diagnostics.map((d) => d.message).join("\n");
+      expect(messages).toMatch(/unknown.*tX/);
+    });
+
+    test("rejects unknown column labels in labeled-matrix", () => {
+      const r = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: "equal",
+          knockdowns: {
+            t0: { t0: 0.5, tX: 0.5 },
+            t1: { t1: 0.5 },
+            t2: { t2: 0.5 },
+          },
+        },
+        T3,
+      );
+      expect(r.ok).toBe(false);
+      const messages = r.diagnostics.map((d) => d.message).join("\n");
+      expect(messages).toMatch(/tX.*does not match/);
+    });
+
+    test("rejects negative / non-finite temperature", () => {
+      const a = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: "equal",
+          knockdowns: "none",
+          temperature: -1,
+        },
+        T3,
+      );
+      expect(a.ok).toBe(false);
+      const b = validateDispatcherConfig(
+        {
+          type: "weighted-knockdown",
+          payoffs: "equal",
+          knockdowns: "none",
+          temperature: Infinity,
+        },
+        T3,
+      );
+      expect(b.ok).toBe(false);
     });
   });
 });

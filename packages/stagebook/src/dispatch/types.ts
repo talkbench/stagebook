@@ -151,18 +151,58 @@ export interface UrnDispatcherConfig {
   decrements?: LabeledMatrix | FileReference;
 }
 
-/** Placeholder for the `local-penalization` dispatcher that stays in
- *  deliberation-lab. Stagebook only carries the *config shape* so the
- *  union in `DispatcherConfig` is closed; the implementation lives at
- *  the call site. */
-export interface LocalPenalizationDispatcherConfig {
-  type: "local-penalization";
+/** Softmax-sampled, payoff-with-knockdown dispatcher (#452). Replaces
+ *  the v0.14 `local-penalization` placeholder with an in-stagebook
+ *  implementation that simplifies the deliberation-lab original (no
+ *  recursive DFS, no closure-mutated state, explicit softmax over the
+ *  payoff vector instead of pure greedy).
+ *
+ *  Stateful in the same sense `urn` is: callers thread
+ *  `newState.payoffs` back into the next call's `payoffs` to carry the
+ *  within-batch attenuation forward. The implementation itself is
+ *  pure — no closure mutation — so every dispatch tick takes explicit
+ *  state in and gives explicit state out. That enables host-side
+ *  mirroring of dispatcher state and post-hoc replay.
+ *
+ *  Selection rule:
+ *    - `temperature = 0` (default) — argmax over the size-feasible
+ *      pool with random tiebreak. Recovers greedy. The tiebreak is
+ *      uniform over indices at the argmax value, sampled via `rng`.
+ *    - `temperature > 0` — softmax sampling `p[i] ∝ exp(payoff[i] / T)`
+ *      with max-subtract for numerical stability. As `T → ∞` this
+ *      degenerates to uniform sampling over the feasible pool.
+ *
+ *  Knockdown shapes (applied multiplicatively after a successful pick
+ *  of treatment T):
+ *    - `"none"` — no change to any payoff.
+ *    - scalar `k ∈ [0, 1]` — `payoffs[T] *= k`; other payoffs unchanged.
+ *      `k = 0` is allowed and produces a hard "once each" rule: a single
+ *      pick zeros that treatment's payoff for the rest of the batch.
+ *    - `LabeledScalars` — per-treatment self-decay; when treatment T is
+ *      picked, `payoffs[T] *= knockdowns[T]`. Label set must equal the
+ *      treatment name set.
+ *    - `LabeledMatrix` — pairwise; when treatment T is picked,
+ *      `payoffs[U] *= knockdowns[T][U]` for every U. Strict-literal
+ *      rule mirrors urn: row labels must equal the treatment name set,
+ *      missing column entries within a present row default to 1
+ *      (multiplicative identity, no decay on that column). */
+export interface WeightedKnockdownDispatcherConfig {
+  type: "weighted-knockdown";
+  /** Per-treatment payoffs, keyed by name. `"equal"` is sugar for
+   *  `{T_a: 1, T_b: 1, ...}` over the full treatment set; useful for
+   *  batches with no informative prior. Label set (when given as an
+   *  object) must equal the treatment name set. */
   payoffs: LabeledScalars | "equal" | FileReference;
+  /** Multiplicative knockdown factors — see the interface docstring
+   *  above for the four supported shapes. */
   knockdowns: number | LabeledScalars | LabeledMatrix | "none" | FileReference;
+  /** Softmax temperature ≥ 0. `0` (the default) selects with argmax +
+   *  random tiebreak; `> 0` selects via softmax over `payoffs / T`. */
+  temperature?: number;
 }
 
 export type DispatcherConfig =
   | UniformRandomDispatcherConfig
   | WeightedRandomDispatcherConfig
   | UrnDispatcherConfig
-  | LocalPenalizationDispatcherConfig;
+  | WeightedKnockdownDispatcherConfig;

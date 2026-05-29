@@ -730,3 +730,352 @@ describe("urnRandomization: randomization properties (α=1e-4)", () => {
     }
   });
 });
+
+// ─── Weighted-knockdown suite ──────────────────────────────────────
+
+import { weightedKnockdown } from "./weightedKnockdown.js";
+
+describe("weightedKnockdown: randomization properties (α=1e-4)", () => {
+  // Properties that hold for any softmax + knockdown algorithm at any
+  // parameterization. Algorithm-specific claims (knockdown decay
+  // shape, softmax distribution at specific T) are pinned by the unit
+  // tests; here we just verify the broad randomization receipts.
+
+  const T_ONE: Treatment[] = [{ name: "T", playerCount: 2 }];
+
+  function runOneWK(
+    players: { id: string }[],
+    seed: number,
+    treatments = T_ONE,
+    payoffs: Parameters<typeof weightedKnockdown>[0]["payoffs"] = "equal",
+    knockdowns: Parameters<typeof weightedKnockdown>[0]["knockdowns"] = "none",
+    temperature = 0,
+  ): DispatchResult {
+    const playerIds = players.map((p) => p.id);
+    const eligibility = emptyEligibility(playerIds, treatments);
+    const { assignments } = weightedKnockdown({
+      playerIds,
+      treatments,
+      payoffs,
+      knockdowns,
+      temperature,
+      eligibility,
+      rng: mulberry32(seed),
+    });
+    return { assignments };
+  }
+
+  test("1. seeded determinism: identical seed + inputs ⇒ identical assignments", () => {
+    const makePlayers = () =>
+      Array.from({ length: 4 }, (_, i) => ({ id: `p_${i}` }));
+    const a = runOneWK(makePlayers(), 42);
+    const b = runOneWK(makePlayers(), 42);
+    const c = runOneWK(makePlayers(), 43);
+    expect(a.assignments).toEqual(b.assignments);
+    expect(a.assignments).not.toEqual(c.assignments);
+  });
+
+  test("2. position uniformity at T=0 with single treatment: pos-0 distribution uniform (χ²)", () => {
+    // Single treatment → no selection involved. Position assignment
+    // is delegated to tryFillTreatment, same as the other dispatchers.
+    // Mirrors the urn position-uniformity test.
+    const N = 4;
+    const M = 20000;
+    const posCounts: Record<string, { 0: number; 1: number }> = {};
+    for (let i = 0; i < N; i += 1) posCounts[`p_${i}`] = { 0: 0, 1: 0 };
+
+    for (let m = 0; m < M; m += 1) {
+      const players = Array.from({ length: N }, (_, i) => ({ id: `p_${i}` }));
+      const { assignments } = runOneWK(players, 1000 + m);
+      for (const a of assignments) {
+        for (const pa of a.positionAssignments) {
+          posCounts[pa.playerId][pa.position as 0 | 1] += 1;
+        }
+      }
+    }
+    const pos0 = Array.from({ length: N }, (_, i) => posCounts[`p_${i}`][0]);
+    const chi2 = pos0.reduce((s, x) => s + (x - M / 2) ** 2 / (M / 4), 0);
+    expect(chi2).toBeLessThan(CHI2_CRITICAL_ALPHA_1E4[N]);
+  });
+
+  test("3. equal-opportunity within eligibility class: leftover-rate uniform (χ²)", () => {
+    // 5 players, single 2-slot treatment, no knockdown → 2 picks per
+    // tick, 1 leftover. Each player should be leftover at rate 1/5.
+    const N = 5;
+    const M = 2000;
+    const leftoverCount: Record<string, number> = {};
+    for (let i = 0; i < N; i += 1) leftoverCount[`p_${i}`] = 0;
+
+    for (let m = 0; m < M; m += 1) {
+      const players = Array.from({ length: N }, (_, i) => ({ id: `p_${i}` }));
+      const { assignments } = runOneWK(players, 2000 + m);
+      const assigned = new Set(
+        assignments.flatMap((a) =>
+          a.positionAssignments.map((pa) => pa.playerId),
+        ),
+      );
+      for (let i = 0; i < N; i += 1) {
+        if (!assigned.has(`p_${i}`)) leftoverCount[`p_${i}`] += 1;
+      }
+    }
+    const counts = Array.from({ length: N }, (_, i) => leftoverCount[`p_${i}`]);
+    const chi2 = chiSquareUniform(counts);
+    expect(chi2).toBeLessThan(CHI2_CRITICAL_ALPHA_1E4[N - 1]);
+  });
+
+  test("4. arrival-order independence: forward vs reverse give same aggregate (binomial)", () => {
+    const M = 10000;
+    function simulate(playerIds: string[], seedOffset: number) {
+      const counts: Record<string, number> = {};
+      playerIds.forEach((pid) => {
+        counts[pid] = 0;
+      });
+      for (let m = 0; m < M; m += 1) {
+        const players = playerIds.map((id) => ({ id }));
+        const { assignments } = runOneWK(players, seedOffset + m);
+        for (const a of assignments) {
+          for (const pa of a.positionAssignments) {
+            if (pa.position === 0) counts[pa.playerId] += 1;
+          }
+        }
+      }
+      return counts;
+    }
+    const forward = simulate(["p_0", "p_1", "p_2", "p_3"], 4000);
+    const reverse = simulate(["p_3", "p_2", "p_1", "p_0"], 4000);
+    const seDiff = Math.sqrt(M / 2);
+    const ids = ["p_0", "p_1", "p_2", "p_3"];
+    const maxAbsZ = Math.max(
+      ...ids.map((pid) => Math.abs((forward[pid] - reverse[pid]) / seDiff)),
+    );
+    expect(maxAbsZ).toBeLessThan(4.21);
+  });
+
+  test("5. irrelevant-attribute independence: tag does not predict leftover (binomial)", () => {
+    const M = 10000;
+    let bAsLeftover = 0;
+    for (let m = 0; m < M; m += 1) {
+      const players = [
+        { id: "p_0" },
+        { id: "p_1" },
+        { id: "p_2" },
+        { id: "p_3" },
+        { id: "p_4" },
+      ];
+      const tag = ["A", "A", "A", "B", "B"] as const;
+      const { assignments } = runOneWK(players, 3000 + m);
+      const assigned = new Set(
+        assignments.flatMap((a) =>
+          a.positionAssignments.map((pa) => pa.playerId),
+        ),
+      );
+      const leftoverIdx = players.findIndex((p) => !assigned.has(p.id));
+      if (leftoverIdx >= 0 && tag[leftoverIdx] === "B") bAsLeftover += 1;
+    }
+    const p0 = 2 / 5;
+    const expected = M * p0;
+    const se = Math.sqrt(M * p0 * (1 - p0));
+    const z = (bAsLeftover - expected) / se;
+    expect(Math.abs(z)).toBeLessThan(Z_CRITICAL_ALPHA_1E4);
+  });
+
+  test("6. softmax marginal rate: T=1 with payoffs {1, 1+ln(3)} matches 1:3 ratio (χ²)", () => {
+    // The central algorithm-specific receipt: at T=1 with payoffs
+    // differing by ln(3), the softmax sampler picks the higher-payoff
+    // treatment 3× as often as the lower-payoff treatment. Pinned at
+    // α=1e-4 over M=2000 ticks (1 group per tick).
+    const treatments: Treatment[] = [
+      { name: "T0", playerCount: 2 },
+      { name: "T1", playerCount: 2 },
+    ];
+    const payoffs = { T0: 1, T1: 1 + Math.log(3) };
+    const totalWeight = 1 + 3; // exp(1-(1+ln(3)))/T=1 + exp(0) → 1/3 + 1
+    const targets = { T0: 1 / totalWeight, T1: 3 / totalWeight };
+    const M = 2000;
+    const counts: Record<string, number> = { T0: 0, T1: 0 };
+    for (let m = 0; m < M; m += 1) {
+      const playerIds = [`p_${m}_0`, `p_${m}_1`];
+      const eligibility = emptyEligibility(playerIds, treatments);
+      const { assignments } = weightedKnockdown({
+        playerIds,
+        treatments,
+        payoffs,
+        knockdowns: "none",
+        temperature: 1,
+        eligibility,
+        rng: mulberry32(6000 + m),
+      });
+      for (const a of assignments) counts[a.treatment.name] += 1;
+    }
+    const total = counts.T0 + counts.T1;
+    const chi2 = treatments.reduce((s, t) => {
+      const expected = total * targets[t.name as "T0" | "T1"];
+      return s + (counts[t.name] - expected) ** 2 / expected;
+    }, 0);
+    // df = K-1 = 1 → critical 15.14
+    expect(chi2).toBeLessThan(CHI2_CRITICAL_ALPHA_1E4[1]);
+  });
+
+  test("7. knockdown trajectory: scalar k=0.5 decays the picked payoff exactly (deterministic)", () => {
+    // Algorithm receipt for the knockdown rule. With T=0 + payoffs
+    // {t0: 100, t1: 1} (clear winner) and scalar knockdown 0.5,
+    // every successful pick is t0 and t0's payoff halves each time.
+    // After K picks, payoffs[t0] = 100 * 0.5^K and payoffs[t1] = 1
+    // until t0 falls below t1.
+    const treatments: Treatment[] = [
+      { name: "t0", playerCount: 2 },
+      { name: "t1", playerCount: 2 },
+    ];
+    const playerIds = Array.from({ length: 14 }, (_, i) => `p${i}`); // 7 groups
+    const eligibility = emptyEligibility(playerIds, treatments);
+    const { assignments, newState } = weightedKnockdown({
+      playerIds,
+      treatments,
+      payoffs: { t0: 100, t1: 1 },
+      knockdowns: 0.5,
+      temperature: 0,
+      eligibility,
+      rng: mulberry32(42),
+    });
+    // 100 * 0.5^7 = 0.78125; t0 stays above t1=1 for the first 7 picks
+    // (100 * 0.5^6 = 1.5625 > 1; then 0.78125 < 1, switch to t1).
+    // So we should see 7 picks of t0 and then t1 takes over. With 14
+    // players (7 groups), all picks should be t0 still (1.5625 > 1).
+    const t0Picks = assignments.filter((a) => a.treatment.name === "t0");
+    expect(t0Picks).toHaveLength(7);
+    expect(newState.payoffs.t0).toBeCloseTo(100 * Math.pow(0.5, 7), 6);
+    expect(newState.payoffs.t1).toBe(1);
+  });
+
+  test("8. softmax marginal rate K=3: matches the 3-way Boltzmann distribution (χ²)", () => {
+    // Three treatments, payoffs {ln(1), ln(2), ln(4)} at T=1 →
+    // softmax weights {1, 2, 4}, expected shares {1/7, 2/7, 4/7}.
+    // Pinned at α=1e-4 over M=2000 ticks.
+    const treatments: Treatment[] = [
+      { name: "T0", playerCount: 2 },
+      { name: "T1", playerCount: 2 },
+      { name: "T2", playerCount: 2 },
+    ];
+    const payoffs = { T0: Math.log(1), T1: Math.log(2), T2: Math.log(4) };
+    // log(0) → -Inf, which the dispatcher would treat as exhausted.
+    // Shift by 1 to keep payoffs positive without changing the ratio:
+    // softmax weights end up exp(1)/exp(1+ln(2))/exp(1+ln(4)) → e, 2e, 4e → ratio 1:2:4.
+    const shifted = {
+      T0: 1 + payoffs.T0,
+      T1: 1 + payoffs.T1,
+      T2: 1 + payoffs.T2,
+    };
+    const targets = { T0: 1 / 7, T1: 2 / 7, T2: 4 / 7 };
+    const M = 2000;
+    const counts: Record<string, number> = { T0: 0, T1: 0, T2: 0 };
+    for (let m = 0; m < M; m += 1) {
+      const playerIds = [`p_${m}_0`, `p_${m}_1`];
+      const eligibility = emptyEligibility(playerIds, treatments);
+      const { assignments } = weightedKnockdown({
+        playerIds,
+        treatments,
+        payoffs: shifted,
+        knockdowns: "none",
+        temperature: 1,
+        eligibility,
+        rng: mulberry32(8000 + m),
+      });
+      for (const a of assignments) counts[a.treatment.name] += 1;
+    }
+    const total = counts.T0 + counts.T1 + counts.T2;
+    const chi2 = treatments.reduce((s, t) => {
+      const expected = total * targets[t.name as "T0" | "T1" | "T2"];
+      return s + (counts[t.name] - expected) ** 2 / expected;
+    }, 0);
+    // df = K-1 = 2 → critical 18.42
+    expect(chi2).toBeLessThan(CHI2_CRITICAL_ALPHA_1E4[2]);
+  });
+
+  test("9. joint trajectory: T=1 + matrix knockdown over many ticks (χ² + state-shape)", () => {
+    // The production case the unit tests don't cover: softmax
+    // sampling AND knockdowns active together over a multi-tick batch.
+    // With three treatments and a fully-coupled matrix at factor 0.9,
+    // every pick decays every payoff by 0.9 — so the relative payoff
+    // ratios are preserved across ticks. Realized rate should still
+    // match the softmax distribution from the *initial* payoff
+    // ratios. Pins that the knockdown rule doesn't shift the within-
+    // batch marginal of softmax sampling when it acts uniformly.
+    const treatments: Treatment[] = [
+      { name: "T0", playerCount: 2 },
+      { name: "T1", playerCount: 2 },
+      { name: "T2", playerCount: 2 },
+    ];
+    const payoffs = { T0: 1, T1: 1 + Math.log(2), T2: 1 + Math.log(4) };
+    // Same target shape as test 8: weights {1, 2, 4}, shares {1/7, 2/7, 4/7}.
+    const targets = { T0: 1 / 7, T1: 2 / 7, T2: 4 / 7 };
+    const knockdowns = {
+      T0: { T0: 0.9, T1: 0.9, T2: 0.9 },
+      T1: { T0: 0.9, T1: 0.9, T2: 0.9 },
+      T2: { T0: 0.9, T1: 0.9, T2: 0.9 },
+    };
+    const M = 2000;
+    const counts: Record<string, number> = { T0: 0, T1: 0, T2: 0 };
+    // Each tick gets a fresh payoff state — verify the within-tick
+    // softmax + uniform-knockdown is the test claim. Across ticks
+    // the host would normally thread state; here we reset per tick
+    // to isolate the within-tick distribution claim from the
+    // host-driven trajectory.
+    for (let m = 0; m < M; m += 1) {
+      const playerIds = [`p_${m}_0`, `p_${m}_1`];
+      const eligibility = emptyEligibility(playerIds, treatments);
+      const { assignments } = weightedKnockdown({
+        playerIds,
+        treatments,
+        payoffs,
+        knockdowns,
+        temperature: 1,
+        eligibility,
+        rng: mulberry32(9000 + m),
+      });
+      for (const a of assignments) counts[a.treatment.name] += 1;
+    }
+    const total = counts.T0 + counts.T1 + counts.T2;
+    const chi2 = treatments.reduce((s, t) => {
+      const expected = total * targets[t.name as "T0" | "T1" | "T2"];
+      return s + (counts[t.name] - expected) ** 2 / expected;
+    }, 0);
+    expect(chi2).toBeLessThan(CHI2_CRITICAL_ALPHA_1E4[2]);
+  });
+
+  test("10. state-shape round-trip across many ticks: newState.payoffs preserves labels", () => {
+    // Pin that threading `newState.payoffs` back into the next call
+    // works across many ticks without label drift. A regression that
+    // mutates the label set (e.g. by accidentally writing positional
+    // keys) would surface here as a runtime throw from the dispatcher's
+    // own label-set check on tick 2+.
+    const treatments: Treatment[] = [
+      { name: "T0", playerCount: 2 },
+      { name: "T1", playerCount: 2 },
+      { name: "T2", playerCount: 2 },
+    ];
+    let payoffs: Record<string, number> = { T0: 5, T1: 3, T2: 2 };
+    for (let tick = 0; tick < 20; tick += 1) {
+      const playerIds = Array.from({ length: 6 }, (_, i) => `p_${tick}_${i}`);
+      const eligibility = emptyEligibility(playerIds, treatments);
+      const r = weightedKnockdown({
+        playerIds,
+        treatments,
+        payoffs,
+        knockdowns: 0.7,
+        temperature: 1,
+        eligibility,
+        rng: mulberry32(10_000 + tick),
+      });
+      expect(Object.keys(r.newState.payoffs).sort()).toEqual([
+        "T0",
+        "T1",
+        "T2",
+      ]);
+      payoffs = r.newState.payoffs;
+    }
+    // After 20 ticks of decay, payoffs are tiny but still positive
+    // for at least one treatment (otherwise the dispatcher would have
+    // stopped sampling).
+    expect(payoffs.T0 + payoffs.T1 + payoffs.T2).toBeGreaterThan(0);
+  });
+});

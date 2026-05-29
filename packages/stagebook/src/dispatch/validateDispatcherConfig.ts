@@ -2,6 +2,7 @@ import type {
   DispatcherConfig,
   UniformRandomDispatcherConfig,
   UrnDispatcherConfig,
+  WeightedKnockdownDispatcherConfig,
   WeightedRandomDispatcherConfig,
 } from "./types.js";
 
@@ -79,15 +80,15 @@ export function validateDispatcherConfig(
       );
     case "urn":
       return validateUrn(config as UrnDispatcherConfig, treatmentNames);
-    case "local-penalization":
-      // Implementation lives in deliberation-lab; stagebook only checks
-      // that the discriminator is recognized. The host validator there
-      // will catch payoffs/knockdowns shape issues.
-      return { ok: true, diagnostics: [] };
+    case "weighted-knockdown":
+      return validateWeightedKnockdown(
+        config as WeightedKnockdownDispatcherConfig,
+        treatmentNames,
+      );
     default:
       push(
         "type",
-        `unknown dispatcher type "${c.type}" — expected one of: uniform-random, weighted-random, urn, local-penalization`,
+        `unknown dispatcher type "${c.type}" — expected one of: uniform-random, weighted-random, urn, weighted-knockdown`,
       );
       return { ok: false, diagnostics };
   }
@@ -357,6 +358,202 @@ function validateLabeledScalarSet(
         path: `${field}.${name}`,
         message: `${field}["${name}"] must be a ${valueShape}, got ${formatValue(v)}`,
       });
+    }
+  }
+}
+
+function validateWeightedKnockdown(
+  config: WeightedKnockdownDispatcherConfig,
+  treatmentNames: string[],
+): DispatcherConfigValidationResult {
+  const diagnostics: DispatcherConfigDiagnostic[] = [];
+  const push = (path: string, message: string) =>
+    diagnostics.push({ path, message });
+  const nameSet = new Set(treatmentNames);
+
+  // ─── payoffs ───────────────────────────────────────────────────────
+  if (!("payoffs" in config)) {
+    push(
+      "payoffs",
+      '`weighted-knockdown` dispatcher requires a `payoffs` field — `"equal"`, a map keyed by treatment name, or a file reference',
+    );
+    return { ok: false, diagnostics };
+  }
+  if (isFileReference(config.payoffs)) {
+    push(
+      "payoffs",
+      "`payoffs` is still a file reference — the host must resolve `{from: ...}` before calling the validator",
+    );
+    return { ok: false, diagnostics };
+  }
+  if (config.payoffs === "equal") {
+    // No additional check; the dispatcher expands this to uniform 1s.
+  } else if (Array.isArray(config.payoffs)) {
+    push(
+      "payoffs",
+      '`payoffs` must be a map keyed by treatment name (or the literal `"equal"`), e.g. `{T_a: 1.2, T_b: 0.8}`. The positional array form was never supported on this dispatcher.',
+    );
+    return { ok: false, diagnostics };
+  } else if (typeof config.payoffs !== "object" || config.payoffs === null) {
+    push(
+      "payoffs",
+      '`payoffs` must be `"equal"` or a map keyed by treatment name',
+    );
+    return { ok: false, diagnostics };
+  } else {
+    validateLabeledScalarSet(
+      "payoffs",
+      config.payoffs as Record<string, unknown>,
+      treatmentNames,
+      diagnostics,
+      isNonNegativeFiniteNumber,
+      "non-negative finite number",
+    );
+  }
+
+  // ─── knockdowns ────────────────────────────────────────────────────
+  if (!("knockdowns" in config)) {
+    push(
+      "knockdowns",
+      '`weighted-knockdown` dispatcher requires a `knockdowns` field — `"none"`, a scalar in (0, 1], a labeled scalars map, or a labeled matrix',
+    );
+    return { ok: false, diagnostics };
+  }
+  if (isFileReference(config.knockdowns)) {
+    push(
+      "knockdowns",
+      "`knockdowns` is still a file reference — the host must resolve `{from: ...}` before calling the validator",
+    );
+    return { ok: false, diagnostics };
+  }
+  if (config.knockdowns === "none") {
+    // OK.
+  } else if (typeof config.knockdowns === "number") {
+    if (
+      !Number.isFinite(config.knockdowns) ||
+      config.knockdowns < 0 ||
+      config.knockdowns > 1
+    ) {
+      push(
+        "knockdowns",
+        `scalar knockdown must be a finite number in [0, 1], got ${formatValue(config.knockdowns)}`,
+      );
+    }
+  } else if (Array.isArray(config.knockdowns)) {
+    push(
+      "knockdowns",
+      "`knockdowns` must be a map keyed by treatment name (labeled scalars or labeled matrix), not an array",
+    );
+    return { ok: false, diagnostics };
+  } else if (
+    typeof config.knockdowns !== "object" ||
+    config.knockdowns === null
+  ) {
+    push(
+      "knockdowns",
+      '`knockdowns` must be `"none"`, a scalar, a labeled scalars map, or a labeled matrix',
+    );
+    return { ok: false, diagnostics };
+  } else {
+    // Discriminate labeled scalars vs labeled matrix by the first
+    // value's type. Mixed-type objects are rejected (would be
+    // ambiguous and almost certainly a typo).
+    const knockdowns = config.knockdowns as Record<string, unknown>;
+    const firstKey = Object.keys(knockdowns)[0];
+    if (firstKey === undefined) {
+      push(
+        "knockdowns",
+        "`knockdowns` object is empty — expected labels matching the treatment name set",
+      );
+    } else {
+      const firstValue = knockdowns[firstKey];
+      const isMatrix =
+        typeof firstValue === "object" &&
+        firstValue !== null &&
+        !Array.isArray(firstValue);
+      if (isMatrix) {
+        validateKnockdownMatrix(knockdowns, treatmentNames, nameSet, push);
+      } else {
+        // Labeled scalars: per-treatment self-decay.
+        validateLabeledScalarSet(
+          "knockdowns",
+          knockdowns,
+          treatmentNames,
+          diagnostics,
+          (v) =>
+            typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1,
+          "finite number in [0, 1]",
+        );
+      }
+    }
+  }
+
+  // ─── temperature ───────────────────────────────────────────────────
+  if (config.temperature !== undefined) {
+    if (
+      typeof config.temperature !== "number" ||
+      !Number.isFinite(config.temperature) ||
+      config.temperature < 0
+    ) {
+      push(
+        "temperature",
+        `\`temperature\` must be a finite number >= 0, got ${formatValue(config.temperature)}`,
+      );
+    }
+  }
+
+  return { ok: isOk(diagnostics), diagnostics };
+}
+
+/** Validate a labeled-matrix knockdown. Rules mirror urn's decrements:
+ *  row labels must equal the treatment name set (strict literal);
+ *  column labels within each row must be a subset of treatment names;
+ *  missing column entries default to 1 (multiplicative identity) at
+ *  the dispatcher boundary. */
+function validateKnockdownMatrix(
+  matrix: Record<string, unknown>,
+  treatmentNames: string[],
+  nameSet: Set<string>,
+  push: (path: string, message: string) => void,
+): void {
+  const rowKeys = Object.keys(matrix);
+  const missingRows = treatmentNames.filter((n) => !rowKeys.includes(n));
+  const extraRows = rowKeys.filter((n) => !nameSet.has(n));
+  if (missingRows.length > 0) {
+    push(
+      "knockdowns",
+      `\`knockdowns\` matrix is missing a row for ${missingRows.length === 1 ? "treatment" : "treatments"}: ${missingRows.join(", ")}. When you specify a matrix, every treatment must have a row.`,
+    );
+  }
+  if (extraRows.length > 0) {
+    push(
+      "knockdowns",
+      `\`knockdowns\` matrix has ${extraRows.length === 1 ? "a row" : "rows"} for unknown ${extraRows.length === 1 ? "treatment" : "treatments"}: ${extraRows.join(", ")}. Expected one of: ${treatmentNames.join(", ")}.`,
+    );
+  }
+  for (const [rowName, row] of Object.entries(matrix)) {
+    if (!nameSet.has(rowName)) continue; // already reported as extra
+    if (typeof row !== "object" || row === null || Array.isArray(row)) {
+      push(
+        `knockdowns.${rowName}`,
+        `knockdowns row "${rowName}" must be an object keyed by treatment name`,
+      );
+      continue;
+    }
+    for (const [colName, v] of Object.entries(row as Record<string, unknown>)) {
+      if (!nameSet.has(colName)) {
+        push(
+          `knockdowns.${rowName}.${colName}`,
+          `knockdowns column label "${colName}" in row "${rowName}" does not match any treatment name. Expected one of: ${treatmentNames.join(", ")}.`,
+        );
+        continue;
+      }
+      if (typeof v !== "number" || !Number.isFinite(v) || v < 0 || v > 1) {
+        push(
+          `knockdowns.${rowName}.${colName}`,
+          `knockdowns["${rowName}"]["${colName}"] must be a finite number in [0, 1], got ${formatValue(v)}`,
+        );
+      }
     }
   }
 }

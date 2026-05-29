@@ -7,11 +7,13 @@ A **dispatcher** is the algorithm that decides which treatment each group of par
 | `uniform-random`     | nothing                                                   | Each group's treatment is an independent uniform draw                 | Quick prototypes; you have no balance claim to make in a methods section                               |
 | `weighted-random`    | one weight per treatment                                  | Each group's treatment is an independent draw with `P(T) ∝ weight(T)` | You want unequal long-run rates (e.g. 80/10/10) but don't need exact-N targets                         |
 | `urn`                | target counts per treatment (+ optional decrement matrix) | Each treatment is used exactly its target count over the batch        | You want exact target Ns or cross-treatment locality (e.g. "don't pick the same label twice in a row") |
-| `local-penalization` | acquisition values + penalization matrix                  | One batch step of an iterated Bayesian-optimization loop              | You're running a researcher-managed BO surrogate between batches                                       |
+| `weighted-knockdown` | payoffs + knockdowns + optional temperature               | Each pick is softmax-sampled over the running payoffs; picked treatments' payoffs decay per the knockdown rule | You're running a researcher-managed Bayesian-optimization surrogate between batches; want softmax-based exploration within the batch |
 
 The first three are stateless or carry only a small piece of state (urn's remaining counts). All four pre-compute eligibility from each participant's data; the algorithm itself sees only IDs, treatment structure, and a boolean eligibility lookup — never the underlying responses.
 
 > **Stagebook 0.14 breaking change.** `weighted-random`'s `weights` and `urn`'s `counts` and `decrements` are now **labeled objects** keyed by treatment name. The previous positional-array form (`counts: [10, 10, 10]`, `decrements: [[1,0,0], ...]`) was removed because it silently mis-mapped when treatments were renamed or reordered. The validator now rejects old positional configs with a migration hint pointing to this document; see [Why labels?](#why-labels) for the rationale.
+
+> **Stagebook 0.15 breaking change.** The `local-penalization` dispatcher (config-shape placeholder; implementation lived in deliberation-lab) is replaced by `weighted-knockdown` — a simpler, in-stagebook implementation with explicit state-in/state-out and softmax-based exploration. Existing batch configs using `type: "local-penalization"` need to be updated to `type: "weighted-knockdown"` and the optional `temperature` field added. See [`weighted-knockdown` in detail](#weighted-knockdown-in-detail) below for the new shape.
 
 ## `weighted-random` in detail
 
@@ -314,3 +316,149 @@ Once every bucket in the urn hits zero, no further assignments can be made. New 
 The same feasibility caveat applies to `urn` as it does to `weighted-random` (see [above](#realized-vs-target-rates-under-eligibility-constraints)), with one important difference: `urn` _doesn't renormalize away_ from a constrained treatment. If `T_moderated` has 30 balls and a tight eligibility condition that only 20% of recruits satisfy, the urn keeps `T_moderated` in the pool — and draws it every time the tick happens to include enough eligible players. The other treatments still fill in parallel, and `T_moderated` keeps holding out for qualifying arrivals.
 
 That's the point. The tradeoff is that the batch can't complete until `T_moderated`'s count is drained or no more eligible participants arrive — so either over-recruit by enough margin to satisfy your tightest condition, or accept that the batch may stall on `T_moderated` with un-assignable participants accumulating in the lobby.
+
+## `weighted-knockdown` in detail
+
+Reach for `weighted-knockdown` when you're running a **researcher-managed Bayesian-optimization surrogate** between batches: you have an external model that produces a payoff vector (your current estimate of treatment utility), you ship it to the batch, and you want the dispatcher to sample-with-exploration within the batch while down-weighting treatments you've already assigned to. Between batches, you update your surrogate offline (from collected outcome data) and ship a new payoff vector to the next batch.
+
+This is conceptually [Gonzalez et al. 2016](https://arxiv.org/abs/1505.08052)'s "Batch BO via Local Penalization" with the within-batch acquisition function held static (= the static payoff vector) and the local penalization expressed as a knockdown rule. Stagebook ships the algorithm; your offline solver supplies the payoffs.
+
+The minimal config:
+
+```yaml
+dispatcher:
+  type: weighted-knockdown
+  payoffs:
+    T_control: 1
+    T_exposure_A: 1.5
+    T_exposure_B: 0.8
+  knockdowns: 0.5 # scalar self-decay; picking T_x halves its payoff
+  temperature: 1 # softmax temperature; 0 = argmax + random tiebreak
+```
+
+Each round, the dispatcher samples a treatment by softmax over the running payoff vector, fills it, then multiplies the payoffs by the knockdown rule before the next round. State (the attenuated payoffs) is returned at the end of each tick so the host can persist it across the batch.
+
+### Picking the selection rule
+
+| `temperature` value | Selection rule | Use when |
+| --- | --- | --- |
+| `0` (default) | Argmax with uniform random tiebreak | You want greedy "always pick the current best"; the surrogate already does the exploration |
+| `> 0` (finite) | Softmax: `P(T) ∝ exp(payoff(T) / temperature)` | You want intrinsic exploration; higher `T` flattens the distribution toward uniform |
+| Very large (e.g. `1e6`) | Effectively uniform over feasible pool | You're verifying the algorithm's mass-action limit; not generally useful in production |
+
+At `T=0`, ties at the argmax are broken uniformly at random — so a batch with all-equal payoffs and no knockdowns gives a uniform random sampler. As `T` increases, the softmax flattens; in the limit, you get the same uniform behavior.
+
+> **Exhausted treatments are filtered out at every `T`.** Treatments whose payoff has dropped to zero (or below) are excluded from the feasible pool — they can't be argmax-picked at `T=0` and aren't softmax-sampled at `T>0` either, regardless of how large `T` is. This matches the local-penalization convention: payoff `= 0` is the "fully decayed" sentinel, not "low probability." If you want a treatment to remain at a nonzero baseline probability across the batch, keep its payoff strictly above 0; the knockdowns shouldn't drive it to 0 unless you intend for it to drop out of the pool.
+
+### Picking the knockdown rule
+
+Four shapes, in increasing order of expressivity:
+
+| `knockdowns` shape | Effect on picking treatment `T` | When to use |
+| --- | --- | --- |
+| `"none"` | No change to any payoff | Pure exploitation; your surrogate handles all the spread |
+| scalar `k ∈ [0, 1]` | `payoffs[T] *= k` | Uniform self-decay; the simplest "encourage spread" rule |
+| labeled scalars `{T_a: k_a, ...}` | `payoffs[T] *= k[T]` | Per-treatment self-decay rate; some treatments decay faster than others |
+| labeled matrix `{T_a: {T_a: k_aa, T_b: k_ab, ...}, ...}` | `payoffs[U] *= matrix[T][U]` for every `U` | Pairwise / spatial decay (the load-bearing case for spatially-arranged treatments) |
+
+The matrix form mirrors `urn`'s `decrements` matrix conceptually but multiplicatively rather than subtractively. Strict-literal rule: when you specify a matrix, every treatment must have a row; missing column entries within a row default to `1` (multiplicative identity, no decay on that column).
+
+#### Pattern: cross-treatment spillover
+
+If picking `T_arm_a` should also discourage `T_arm_b` (e.g. because they share an underlying intervention), encode it in the matrix:
+
+```yaml
+dispatcher:
+  type: weighted-knockdown
+  payoffs:
+    T_arm_a: 1
+    T_arm_b: 1
+    T_control: 1
+  knockdowns:
+    T_arm_a:
+      T_arm_a: 0.3 # heavy self-decay
+      T_arm_b: 0.7 # picking A also discourages B
+    T_arm_b:
+      T_arm_a: 0.7 # symmetric
+      T_arm_b: 0.3
+    T_control:
+      T_control: 0.5 # control decays at its own rate, no spillover
+```
+
+#### Pattern: spatial kernel (the load-bearing case)
+
+For studies with many treatments arranged in a continuous space, generate the matrix offline (Python solver) and reference it via a file path:
+
+```yaml
+dispatcher:
+  type: weighted-knockdown
+  payoffs: { from: "study1/payoffs.json" }
+  knockdowns: { from: "study1/knockdowns.json" }
+  temperature: 0.5
+```
+
+```python
+# Sketch — adapt to your treatment layout
+import json
+import numpy as np
+
+names = [f"prompt_{i:02d}" for i in range(20)]
+positions = np.linspace(0, 1, len(names))
+distances = np.abs(positions[:, None] - positions[None, :])
+
+# Gaussian kernel of decay strength; closer neighbors decay more
+sigma = 0.1
+attenuation = np.exp(-(distances ** 2) / (2 * sigma ** 2))
+# Map attenuation strength to knockdown factor — diagonal heavy, off-diagonal light
+# Knockdown values must be in [0, 1] (the validator rejects values
+# outside that range). Diagonal heavier (more decay), off-diagonal
+# lighter — bumping the 0.6 multiplier toward 1 would push some cells
+# below 0 and trip validation.
+factors = 1.0 - 0.6 * attenuation  # diagonal: 0.4; very-far: 1.0
+
+knockdowns = {
+    row: {col: float(factors[i, j]) for j, col in enumerate(names)}
+    for i, row in enumerate(names)
+}
+with open("knockdowns.json", "w") as f:
+    json.dump(knockdowns, f, indent=2)
+```
+
+The resulting matrix concentrates assignments away from spots you've already covered, naturally spreading exploration.
+
+### State-in / state-out
+
+Like `urn`, the dispatcher is pure: it takes the current payoff vector in, returns the updated payoff vector out. The host persists `newState.payoffs` across dispatch ticks and threads it back in:
+
+```ts
+// The first call accepts either the literal "equal" sugar or a
+// labeled payoff object; `newState.payoffs` is always returned as
+// the expanded labeled form, so subsequent calls keep the same shape.
+let payoffs: LabeledScalars | "equal" = "equal";
+// (Or, for a non-uniform prior:)
+//   let payoffs: LabeledScalars = { T_a: 1.5, T_b: 0.8, T_control: 1.0 };
+
+for (const tick of batch) {
+  const result = weightedKnockdown({
+    playerIds: tick.playerIds,
+    treatments,
+    payoffs, // ← carries the within-batch attenuation forward
+    knockdowns,
+    temperature,
+    eligibility,
+    rng,
+  });
+  emit(result.assignments);
+  payoffs = result.newState.payoffs; // ← persist for next tick
+}
+```
+
+Between batches, the host re-initializes `payoffs` from the offline surrogate's next output. Within-batch attenuation is local; cross-batch exploration is the surrogate's job.
+
+### Exhaustion
+
+A treatment whose payoff hits zero is filtered out of the feasible pool — at `T=0`, argmax can't pick it; at `T>0`, the per-round filter excludes non-positive payoffs explicitly to match the LP convention. If you set `knockdowns: 0` (allowed), a single pick zeros that treatment's payoff for the rest of the batch — useful when you want a hard "once each" rule layered on top of softmax sampling.
+
+### Realized vs. target rates
+
+The same feasibility caveats apply as for `weighted-random` and `urn` — if eligibility is tight, the realized rate diverges from the implied softmax distribution. The dispatcher honors the math at every feasible round; the design constraints are what bite.

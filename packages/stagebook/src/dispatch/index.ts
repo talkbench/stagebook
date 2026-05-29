@@ -15,6 +15,11 @@ export {
   type UrnRandomizationResult,
 } from "./urnRandomization.js";
 export {
+  weightedKnockdown,
+  type WeightedKnockdownArgs,
+  type WeightedKnockdownResult,
+} from "./weightedKnockdown.js";
+export {
   validateDispatcherConfig,
   type DispatcherConfigDiagnostic,
   type DispatcherConfigValidationResult,

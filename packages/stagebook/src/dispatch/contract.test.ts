@@ -7,6 +7,7 @@ import { buildEligibilityForScenario, runContractSuite } from "./contract.js";
 import { uniformRandom } from "./uniformRandom.js";
 import { weightedRandom } from "./weightedRandom.js";
 import { urnRandomization } from "./urnRandomization.js";
+import { weightedKnockdown } from "./weightedKnockdown.js";
 import type { LabeledMatrix, LabeledScalars } from "./types.js";
 
 runContractSuite("uniform-random", ({ scenario, rng }) => {
@@ -83,6 +84,61 @@ runContractSuite("urn", ({ scenario, rng }) => {
         treatments: scenario.treatments,
         counts,
         decrements,
+        eligibility,
+        rng,
+      }),
+  };
+});
+
+runContractSuite("weighted-knockdown", ({ scenario, rng }) => {
+  const eligibility = buildEligibilityForScenario(scenario);
+  // Random per-scenario payoffs and knockdowns. Mix:
+  //   - 30% all-equal payoffs (the "no prior" base case)
+  //   - 70% labeled-scalars payoffs in [0.5, 5.0]
+  // Knockdowns:
+  //   - 33% "none"
+  //   - 33% scalar in (0, 1]
+  //   - 33% labeled-matrix with diagonal-leaning structure
+  // Temperature:
+  //   - 50% T=0 (argmax + tiebreak)
+  //   - 50% T in [0.1, 5.0]
+  let payoffs: LabeledScalars | "equal";
+  if (rng() < 0.3) {
+    payoffs = "equal";
+  } else {
+    const obj: LabeledScalars = {};
+    for (const t of scenario.treatments) obj[t.name] = 0.5 + rng() * 4.5;
+    payoffs = obj;
+  }
+  const knockdownChoice = rng();
+  let knockdowns: number | "none" | LabeledMatrix;
+  if (knockdownChoice < 0.33) {
+    knockdowns = "none";
+  } else if (knockdownChoice < 0.66) {
+    knockdowns = 0.3 + rng() * 0.7; // scalar in [0.3, 1.0]
+  } else {
+    const m: LabeledMatrix = {};
+    for (const ti of scenario.treatments) {
+      const row: Record<string, number> = {};
+      for (const tj of scenario.treatments) {
+        // Diagonal heavier, off-diagonal lighter — common LP shape
+        row[tj.name] =
+          ti.name === tj.name ? 0.3 + rng() * 0.5 : 0.8 + rng() * 0.2;
+      }
+      m[ti.name] = row;
+    }
+    knockdowns = m;
+  }
+  const temperature = rng() < 0.5 ? 0 : 0.1 + rng() * 4.9;
+  return {
+    params: { payoffs, knockdowns, temperature },
+    dispatch: () =>
+      weightedKnockdown({
+        playerIds: scenario.players.map((p) => p.id),
+        treatments: scenario.treatments,
+        payoffs,
+        knockdowns,
+        temperature,
         eligibility,
         rng,
       }),
