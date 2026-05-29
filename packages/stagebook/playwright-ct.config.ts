@@ -21,6 +21,15 @@ export default defineConfig({
     {
       name: "webkit",
       use: { ...devices["Desktop Safari"] },
+      // webkit's `browserContext.newPage()` is intermittently slow on
+      // CI runners — see #457. Failures consistently shape as
+      // `Test timeout of 10000ms exceeded while setting up "page"`,
+      // not as test-body errors. Bumping the per-test timeout for
+      // this project only (chromium and firefox stay at the 10s
+      // default) masks the symptom while a real bootstrap-latency
+      // investigation happens. If webkit suddenly gets healthy on
+      // CI, this can drop back to the default.
+      timeout: 30_000,
     },
     {
       name: "firefox",
