@@ -120,21 +120,35 @@ jobs:
       - run: npm test -w stagebook-vscode
 
   test-ct:
-    name: Component Tests (${{ matrix.browser }})
+    name: Component Tests (${{ matrix.browser }} ${{ matrix.shard }}/4)
     needs: changes
     if: needs.changes.outputs.ct == 'true'
     runs-on: ubuntu-latest
-    # Playwright runs are noisy — chromium p50 ~1.5min with the cache
-    # hit; webkit + firefox a touch slower. 10 leaves headroom over
-    # the worst observed; tighter trips false alarms on cold runners.
+    # Each shard runs ~1/4 of the suite at `--workers=1`, so per-shard
+    # wall clock should be ~1-2 min over the ~30s setup baseline. 10
+    # leaves comfortable headroom over the worst observed.
     timeout-minutes: 10
     strategy:
-      # Run all browsers even when one fails so the PR shows which
-      # engine(s) broke at a glance, instead of failing fast on the
-      # first one.
+      # Run every (browser, shard) combination even when one fails so
+      # the PR shows which engine(s) and which shard(s) broke at a
+      # glance instead of failing fast on the first one.
       fail-fast: false
       matrix:
         browser: [chromium, webkit, firefox]
+        # Sharding strategy (#457): the webkit-on-Linux failures look
+        # like a pointer-event scheduling race that surfaces when
+        # Playwright's microtasks compete with parallel-worker CPU
+        # contention on the 2-core GitHub runner. Locally on Mac the
+        # same tests pass 448/448. The fix is twofold:
+        #   1. `--workers=1` per job removes intra-job contention
+        #      (the actual flake mitigation)
+        #   2. `--shard=K/N` recovers parallelism across jobs (each
+        #      shard gets its own runner, so total wall clock stays
+        #      around max(shard time) rather than sum)
+        # 4 shards per browser × 3 browsers = 12 jobs. Public repos on
+        # standard ubuntu runners have no minute cap, so the extra
+        # billable minutes are free.
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -183,7 +197,7 @@ jobs:
       - name: Install Playwright system deps (cache hit)
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps ${{ matrix.browser }}
-      - run: npx playwright test --config playwright-ct.config.ts --project=${{ matrix.browser }}
+      - run: npx playwright test --config playwright-ct.config.ts --project=${{ matrix.browser }} --workers=1 --shard=${{ matrix.shard }}/4
         working-directory: packages/stagebook
 
   build:
