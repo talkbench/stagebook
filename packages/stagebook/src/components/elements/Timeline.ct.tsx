@@ -1761,6 +1761,16 @@ async function createRangeViaDrag(
   const overlay = component.locator('[data-testid="selection-overlay"]');
   const box = await overlay.boundingBox();
   if (!box) throw new Error("overlay not found");
+  // Snapshot the save log before the drag so we can wait for *this*
+  // drag's save to land before returning. Without the wait, callers
+  // that synchronously `readSaveLog` after the helper race the React
+  // state flush: on fast machines (and webkit specifically, where the
+  // dispatchEvent → state-update timing differs from chromium), the
+  // read can return the pre-drag log even though the drag has
+  // "logically" completed. Other helpers in this file work around the
+  // race per-callsite via `expect.poll`; pushing the wait inside the
+  // helper makes synchronous-read patterns safe by construction. (#457)
+  const baselineSaves = await readSaveLog(component);
   await overlay.dispatchEvent("pointerdown", {
     clientX: box.x + box.width * startPct,
     clientY: box.y + box.height * 0.5,
@@ -1785,6 +1795,9 @@ async function createRangeViaDrag(
     pointerId: 1,
     isPrimary: true,
   });
+  await expect
+    .poll(async () => (await readSaveLog(component)).length)
+    .toBeGreaterThan(baselineSaves.length);
 }
 
 test("ArrowRight extends end handle by 1s and seeks", async ({ mount }) => {
@@ -2560,23 +2573,7 @@ test("debounced save: rapid arrow keypresses produce a single save", async ({
 
 test("dragging a range handle produces a single save (not one per move)", async ({
   mount,
-  browserName,
 }) => {
-  // webkit-on-Linux fails this test deterministically (passes on every
-  // other browser × platform combination including webkit on macOS).
-  // The handle-drag pointer sequence (`dispatchEvent` pointerdown on
-  // the handle → pointermove on the overlay → pointerup on the overlay)
-  // appears to lose either the pointer-capture handoff or the
-  // intermediate moves on webkit-Linux specifically. Tracked in #457
-  // with the narrow diagnosis; passes 448/448 on macOS webkit locally
-  // so the assertion is correct, just not reachable on Linux webkit
-  // until we either rewrite the drag helper to use Playwright's
-  // higher-level `mouse.move` API or root-cause the webkit-Linux
-  // pointer-capture behavior.
-  test.skip(
-    browserName === "webkit" && process.platform === "linux",
-    "webkit-Linux drag race (#457) — passes on macOS webkit, fails on CI Linux runners",
-  );
   const component = await mount(
     <MockTimeline
       source="player"
@@ -2638,16 +2635,7 @@ test("dragging a range handle produces a single save (not one per move)", async 
 
 test("undo after a drag restores the pre-drag state in one step", async ({
   mount,
-  browserName,
 }) => {
-  // Same webkit-Linux drag-race as the test above — the synthetic
-  // pointer sequence in `createRangeViaDrag` produces no save on
-  // Linux webkit, so `savesBeforeDrag` is empty and the test reads
-  // `undefined[0]`. Tracked in #457.
-  test.skip(
-    browserName === "webkit" && process.platform === "linux",
-    "webkit-Linux drag race (#457) — passes on macOS webkit, fails on CI Linux runners",
-  );
   const component = await mount(
     <MockTimeline
       source="player"
