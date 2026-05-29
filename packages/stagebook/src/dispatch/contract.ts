@@ -2,12 +2,12 @@
 
 // Generic dispatcher contract harness (#448).
 //
-// Every dispatcher implementation — current and future, stagebook's
-// own (`uniform-random`, `urn`) and external (`local-penalization` in
-// deliberation-lab) — MUST satisfy the structural invariants pinned
-// here. The harness is parameterized over a *factory* so registering a
-// new algorithm is a matter of supplying its scenario-to-dispatcher
-// adapter and re-running the gauntlet.
+// Every dispatcher implementation — `uniform-random`, `weighted-random`,
+// `urn`, `softmax-knockdown`, and any future additions — MUST satisfy
+// the structural invariants pinned here. The harness is parameterized
+// over a *factory* so registering a new algorithm is a matter of
+// supplying its scenario-to-dispatcher adapter and re-running the
+// gauntlet.
 //
 // Scope: structural invariants only. Algorithm-specific statistical
 // claims (marginal target rate, irrelevant-attribute independence, …)
@@ -15,11 +15,12 @@
 // different randomization claim worth a paper-defensible receipt.
 //
 // History: this harness is the generalization of
-// `dispatch.contract.test.js` in deliberation-lab (was tightly coupled
-// to payoffs+knockdowns shape). The scenario was shrunk to just
-// `{ players, treatments }`; algorithm-specific params come from the
-// registered factory (which can also generate them from the seeded
-// rng so the gauntlet's full input space remains deterministic).
+// `dispatch.contract.test.js` from deliberation-lab, which was tightly
+// coupled to a single algorithm's parameter shape. The scenario was
+// shrunk to just `{ players, treatments }`; algorithm-specific params
+// come from the registered factory (which can also generate them from
+// the seeded rng so the gauntlet's full input space remains
+// deterministic).
 
 import { describe, test, expect } from "vitest";
 import type { DispatchResult, Treatment } from "./types.js";

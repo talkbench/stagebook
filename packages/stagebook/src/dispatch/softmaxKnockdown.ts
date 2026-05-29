@@ -34,12 +34,11 @@ export interface SoftmaxKnockdownResult {
 }
 
 /**
- * Softmax-sampled, payoff-with-knockdown dispatcher (#452). Replaces
- * the v0.14 `local-penalization` placeholder. The algorithm in one
- * line: each round, pick a size-feasible treatment by softmax over
- * the current payoffs (or argmax + random tiebreak at `T=0`), try to
- * fill it, and on success multiply the payoffs by the configured
- * knockdowns before the next round.
+ * Softmax-sampled, payoff-with-knockdown dispatcher (#452). The
+ * algorithm in one line: each round, pick a size-feasible treatment
+ * by softmax over the current payoffs (or argmax + random tiebreak
+ * at `T=0`), try to fill it, and on success multiply the payoffs by
+ * the configured knockdowns before the next round.
  *
  * State-in / state-out: callers thread `newState.payoffs` into the
  * next call's `payoffs`. The dispatcher itself is pure — no closure

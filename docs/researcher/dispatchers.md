@@ -352,7 +352,7 @@ Each round, the dispatcher samples a treatment by softmax over the running payof
 
 At `T=0`, ties at the argmax are broken uniformly at random — so a batch with all-equal payoffs and no knockdowns gives a uniform random sampler. As `T` increases, the softmax flattens; in the limit, you get the same uniform behavior.
 
-> **Exhausted treatments are filtered out at every `T`.** Treatments whose payoff has dropped to zero (or below) are excluded from the feasible pool — they can't be argmax-picked at `T=0` and aren't softmax-sampled at `T>0` either, regardless of how large `T` is. This matches the local-penalization convention: payoff `= 0` is the "fully decayed" sentinel, not "low probability." If you want a treatment to remain at a nonzero baseline probability across the batch, keep its payoff strictly above 0; the knockdowns shouldn't drive it to 0 unless you intend for it to drop out of the pool.
+> **Exhausted treatments are filtered out at every `T`.** Treatments whose payoff has dropped to zero (or below) are excluded from the feasible pool — they can't be argmax-picked at `T=0` and aren't softmax-sampled at `T>0` either, regardless of how large `T` is. Payoff `= 0` is the "fully decayed" sentinel, not "low probability." If you want a treatment to remain at a nonzero baseline probability across the batch, keep its payoff strictly above 0; the knockdowns shouldn't drive it to 0 unless you intend for it to drop out of the pool.
 
 ### Picking the knockdown rule
 
