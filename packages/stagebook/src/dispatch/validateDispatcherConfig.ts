@@ -29,7 +29,7 @@ export interface DispatcherConfigValidationResult {
 
 /**
  * Validate a dispatcher config that the host has already resolved
- * (file-reference `{from: "./counts.json"}` shapes substituted with
+ * (file-reference `{file: "./counts.json"}` shapes substituted with
  * concrete labeled objects).
  *
  * Per-dispatcher rules:
@@ -132,7 +132,7 @@ function validateWeightedRandom(
   if (isFileReference(config.weights)) {
     push(
       "weights",
-      "`weights` is still a file reference — the host must resolve `{from: ...}` before calling the validator",
+      "`weights` is still a file reference — the host must resolve `{file: ...}` before calling the validator",
     );
     return { ok: false, diagnostics };
   }
@@ -193,7 +193,7 @@ function validateUrn(
   if (isFileReference(config.counts)) {
     push(
       "counts",
-      "`counts` is still a file reference — the host must resolve `{from: ...}` before calling the validator",
+      "`counts` is still a file reference — the host must resolve `{file: ...}` before calling the validator",
     );
     return { ok: false, diagnostics };
   }
@@ -223,7 +223,7 @@ function validateUrn(
     if (isFileReference(config.decrements)) {
       push(
         "decrements",
-        "`decrements` is still a file reference — the host must resolve `{from: ...}` before calling the validator",
+        "`decrements` is still a file reference — the host must resolve `{file: ...}` before calling the validator",
       );
       return { ok: isOk(diagnostics), diagnostics };
     }
@@ -386,7 +386,7 @@ function validateSoftmaxKnockdown(
   if (isFileReference(config.payoffs)) {
     push(
       "payoffs",
-      "`payoffs` is still a file reference — the host must resolve `{from: ...}` before calling the validator",
+      "`payoffs` is still a file reference — the host must resolve `{file: ...}` before calling the validator",
     );
     return { ok: false, diagnostics };
   }
@@ -426,7 +426,7 @@ function validateSoftmaxKnockdown(
   if (isFileReference(config.knockdowns)) {
     push(
       "knockdowns",
-      "`knockdowns` is still a file reference — the host must resolve `{from: ...}` before calling the validator",
+      "`knockdowns` is still a file reference — the host must resolve `{file: ...}` before calling the validator",
     );
     return { ok: false, diagnostics };
   }
@@ -574,13 +574,16 @@ function isNonNegativeFiniteNumber(v: unknown): boolean {
   return typeof v === "number" && Number.isFinite(v) && v >= 0;
 }
 
-function isFileReference(v: unknown): v is { from: string } {
-  return (
-    typeof v === "object" &&
-    v !== null &&
-    "from" in v &&
-    typeof (v as { from: unknown }).from === "string"
-  );
+/** Detect a host-side file reference that hasn't been resolved yet.
+ *  Accepts both `{ file: "..." }` (the canonical 0.17 shape, matches
+ *  manager + deliberation-lab) and `{ from: "..." }` (the deprecated
+ *  shape, removed in 0.18). The validator's job is just to recognize
+ *  the shape so it can emit a clear "host must resolve before calling"
+ *  error rather than mis-parsing the object as inline data. (#466) */
+function isFileReference(v: unknown): v is { file: string } | { from: string } {
+  if (typeof v !== "object" || v === null) return false;
+  const obj = v as Record<string, unknown>;
+  return typeof obj.file === "string" || typeof obj.from === "string";
 }
 
 function formatValue(v: unknown): string {

@@ -19,20 +19,22 @@ export function validateLabelSet(
   treatmentNames: string[],
 ): void {
   // Defensive guard for the most common "obvious mistake" case: the
-  // host forgot to resolve a `{from: "./x.json"}` file reference
-  // before calling the dispatcher. Without this, the generic
-  // missing/extra reporter would say something like "missing: [t0,
-  // t1, t2]; extra: [from]" — true but obscure. The validator catches
-  // this at config-time with a clear message; we mirror its wording
-  // here for callers that bypass the validator.
+  // host forgot to resolve a `{file: "./x.json"}` (or the deprecated
+  // `{from: "..."}`) file reference before calling the dispatcher.
+  // Without this, the generic missing/extra reporter would say
+  // something like "missing: [t0, t1, t2]; extra: [file]" — true but
+  // obscure. The validator catches this at config-time with a clear
+  // message; we mirror its wording here for callers that bypass the
+  // validator. Accepts both shapes during the 0.17 → 0.18 transition.
   const labelKeys = Object.keys(labels);
-  if (
+  const labelsRec = labels as Record<string, unknown>;
+  const isUnresolvedFileRef =
     labelKeys.length === 1 &&
-    labelKeys[0] === "from" &&
-    typeof (labels as Record<string, unknown>).from === "string"
-  ) {
+    (labelKeys[0] === "file" || labelKeys[0] === "from") &&
+    typeof labelsRec[labelKeys[0]] === "string";
+  if (isUnresolvedFileRef) {
     throw new Error(
-      `${dispatcherName}: ${field} is still a file reference ({from: "..."}). The host must resolve file references into labeled objects before calling the dispatcher.`,
+      `${dispatcherName}: ${field} is still a file reference ({file: "..."}). The host must resolve file references into labeled objects before calling the dispatcher.`,
     );
   }
   const expected = new Set(treatmentNames);

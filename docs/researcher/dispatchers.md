@@ -16,6 +16,8 @@ The first three are stateless or carry only a small piece of state (urn's remain
 > **Stagebook 0.15 breaking change.** The `local-penalization` dispatcher (config-shape placeholder; implementation lived in deliberation-lab) was replaced by a simpler in-stagebook implementation with explicit state-in/state-out and softmax-based exploration. Batch configs using `type: "local-penalization"` need to be migrated; see [`softmax-knockdown` in detail](#softmax-knockdown-in-detail) below for the new shape.
 >
 > **Stagebook 0.16 breaking change.** The dispatcher introduced in 0.15 was renamed from `weighted-knockdown` to `softmax-knockdown`. The original name was ambiguous — it could be read as "weighted-random with knockdowns" when the actual selection rule is softmax. The new name names the selection mechanism explicitly. Algorithm and config shape are unchanged; the only migration needed is `type: "weighted-knockdown"` → `type: "softmax-knockdown"`. Exported symbols follow the same rename: `weightedKnockdown` → `softmaxKnockdown`, `WeightedKnockdownDispatcherConfig` → `SoftmaxKnockdownDispatcherConfig`.
+>
+> **Stagebook 0.17 breaking change.** The file-reference key was renamed from `{ from: "..." }` to `{ file: "..." }` to match the manager + deliberation-lab convention. New shape: `counts: { file: "study1/counts.json" }`. The runtime check accepts both shapes during a one-release deprecation window; `{ from }` is removed in 0.18. (#466)
 
 ## `weighted-random` in detail
 
@@ -260,8 +262,8 @@ Both `counts` and `decrements` can be supplied inline (as in the examples above)
 ```yaml
 dispatcher:
   type: urn
-  counts: { from: "study1/counts.json" }
-  decrements: { from: "study1/decrements.json" }
+  counts: { file: "study1/counts.json" }
+  decrements: { file: "study1/decrements.json" }
 ```
 
 Reach for file references when:
@@ -305,7 +307,7 @@ A typical workflow:
 1. Compute the matrix in your analysis repo (offline solver — Python, R, etc.)
 2. Write the result to `counts.json` / `decrements.json` in labeled form
 3. Commit them to your assets repo, alongside your treatment YAML
-4. Reference from the batch config via `{ from: "<path>" }`
+4. Reference from the batch config via `{ file: "<path>" }`
 
 This keeps the offline computation auditable and the batch config readable.
 
@@ -394,8 +396,8 @@ For studies with many treatments arranged in a continuous space, generate the ma
 ```yaml
 dispatcher:
   type: softmax-knockdown
-  payoffs: { from: "study1/payoffs.json" }
-  knockdowns: { from: "study1/knockdowns.json" }
+  payoffs: { file: "study1/payoffs.json" }
+  knockdowns: { file: "study1/knockdowns.json" }
   temperature: 0.5
 ```
 

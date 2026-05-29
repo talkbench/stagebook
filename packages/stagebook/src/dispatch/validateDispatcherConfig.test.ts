@@ -70,7 +70,7 @@ describe("validateDispatcherConfig", () => {
 
     test("rejects unresolved file references on `weights`", () => {
       const r = validateDispatcherConfig(
-        { type: "weighted-random", weights: { from: "./weights.json" } },
+        { type: "weighted-random", weights: { file: "./weights.json" } },
         T3,
       );
       expect(r.ok).toBe(false);
@@ -158,11 +158,28 @@ describe("validateDispatcherConfig", () => {
 
     test("rejects unresolved file references on `counts`", () => {
       const r = validateDispatcherConfig(
-        { type: "urn", counts: { from: "./counts.json" } },
+        { type: "urn", counts: { file: "./counts.json" } },
         T3,
       );
       expect(r.ok).toBe(false);
       expect(r.diagnostics[0].path).toBe("counts");
+    });
+
+    test("also recognizes the deprecated `{ from }` file-ref shape (0.17 compat shim)", () => {
+      // The key renamed from `from` to `file` in 0.17 to match the
+      // manager + deliberation-lab convention (#466). The runtime
+      // accepts both shapes for one release so existing configs keep
+      // working; `{ from }` is removed in 0.18.
+      const r = validateDispatcherConfig(
+        { type: "urn", counts: { from: "./counts.json" } },
+        T3,
+      );
+      // Still rejected (file refs must be resolved by the host), but
+      // the rejection reason is "file reference not resolved", not
+      // "missing labels for treatments t0/t1/t2".
+      expect(r.ok).toBe(false);
+      expect(r.diagnostics[0].path).toBe("counts");
+      expect(r.diagnostics[0].message).toMatch(/file reference/);
     });
 
     test("flags missing labels", () => {
@@ -435,7 +452,7 @@ describe("validateDispatcherConfig", () => {
       const a = validateDispatcherConfig(
         {
           type: "softmax-knockdown",
-          payoffs: { from: "./p.json" },
+          payoffs: { file: "./p.json" },
           knockdowns: "none",
         },
         T3,
@@ -445,7 +462,7 @@ describe("validateDispatcherConfig", () => {
         {
           type: "softmax-knockdown",
           payoffs: "equal",
-          knockdowns: { from: "./k.json" },
+          knockdowns: { file: "./k.json" },
         },
         T3,
       );

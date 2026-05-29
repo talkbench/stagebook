@@ -98,9 +98,15 @@ export type PlayerDataSnapshot = Record<string, Record<string, unknown>>;
  *  The host resolves the reference and substitutes the literal value at
  *  config-load time; the dispatcher itself only ever sees the resolved
  *  numbers. The type lives here so `validateDispatcherConfig` can accept
- *  either form at the boundary. */
+ *  either form at the boundary.
+ *
+ *  Key renamed from `from` to `file` in stagebook 0.17 to match the
+ *  manager + deliberation-lab convention that had already converged on
+ *  `{ file }` (deliberation-lab#273, manager#305). The runtime check
+ *  in `validateDispatcherConfig` accepts both shapes for one release
+ *  as a compat shim; `{ from }` will be removed in 0.18. (#466) */
 export interface FileReference {
-  from: string;
+  file: string;
 }
 
 export interface UniformRandomDispatcherConfig {
