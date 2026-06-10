@@ -1,14 +1,26 @@
 import { useState } from "react";
+import type { PostFillIssue } from "../lib/previewResolution";
 
 interface FieldFormProps {
   unresolvedFields: string[];
   onSubmit: (values: Record<string, string>) => void;
+  /** Pre-populate inputs, e.g. with previously-submitted values when
+   * the form re-shows after a post-fill validation failure (#474). */
+  initialValues?: Record<string, string>;
+  /** Post-fill validation errors to display in a summary panel. */
+  errors?: PostFillIssue[];
 }
 
-export function FieldForm({ unresolvedFields, onSubmit }: FieldFormProps) {
-  const [values, setValues] = useState<Record<string, string>>(
-    Object.fromEntries(unresolvedFields.map((f) => [f, ""])),
-  );
+export function FieldForm({
+  unresolvedFields,
+  onSubmit,
+  initialValues,
+  errors,
+}: FieldFormProps) {
+  const [values, setValues] = useState<Record<string, string>>({
+    ...Object.fromEntries(unresolvedFields.map((f) => [f, ""])),
+    ...initialValues,
+  });
 
   const allFilled = unresolvedFields.every((f) => values[f]?.trim());
 
@@ -25,6 +37,24 @@ export function FieldForm({ unresolvedFields, onSubmit }: FieldFormProps) {
           These template fields weren't resolved during expansion. Provide
           values to continue.
         </p>
+
+        {errors && errors.length > 0 && (
+          <div style={errorPanelStyle} role="alert">
+            <strong style={errorTitleStyle}>Post-fill validation failed</strong>
+            <p style={errorSubtitleStyle}>
+              The values below expanded successfully, but the filled treatment
+              contains issues that would surface to participants. Adjust the
+              values and resubmit.
+            </p>
+            <ul style={errorListStyle}>
+              {errors.map((issue) => (
+                <li key={`${issue.path}:${issue.message}`}>
+                  <code>{issue.path}</code>: {issue.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} style={formStyle}>
           {unresolvedFields.map((field) => (
@@ -84,6 +114,29 @@ const subtitleStyle: React.CSSProperties = {
   color: "#6b7280",
   marginTop: "0.5rem",
   fontSize: "0.875rem",
+};
+
+const errorPanelStyle: React.CSSProperties = {
+  marginTop: "1rem",
+  padding: "0.75rem 1rem",
+  borderRadius: "0.375rem",
+  border: "1px solid #fecaca",
+  backgroundColor: "#fef2f2",
+  fontSize: "0.875rem",
+  color: "#991b1b",
+};
+
+const errorTitleStyle: React.CSSProperties = {
+  fontWeight: 600,
+};
+
+const errorSubtitleStyle: React.CSSProperties = {
+  margin: "0.25rem 0 0",
+};
+
+const errorListStyle: React.CSSProperties = {
+  margin: "0.5rem 0 0",
+  paddingLeft: "1.25rem",
 };
 
 const formStyle: React.CSSProperties = {
