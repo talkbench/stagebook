@@ -197,6 +197,52 @@ test.describe("Element router dispatch", () => {
     expect(src).toContain("answer=yes");
   });
 
+  // Regression guard (#473): Element must source the standard Qualtrics
+  // identifiers from the current participant's `attributes` — the anonymized
+  // `stableParticipantId` and `sampleId` URL params — NOT the internal
+  // `playerId`. Like the urlParams guard above, this exercises the Element
+  // wrapper, not the leaf Qualtrics component.
+  test("type: qualtrics sources stableParticipantId + sampleId from attributes", async ({
+    mount,
+  }) => {
+    const component = await mount(
+      <MockStageRenderer
+        stage={singleElementStage({
+          type: "qualtrics",
+          url: "https://upenn.qualtrics.com/jfe/form/SV_test",
+        })}
+        stateValues={{
+          "self.attributes.stableParticipantId": "stable-xyz",
+          "self.attributes.sampleId": "row-9",
+        }}
+      />,
+    );
+    const src = await component.locator("iframe").getAttribute("src");
+    expect(src).toContain("stableParticipantId=stable-xyz");
+    expect(src).toContain("sampleId=row-9");
+    // The internal playerId ("test-player-1") must never leak into the URL.
+    expect(src).not.toContain("test-player-1");
+  });
+
+  test("type: qualtrics omits sampleId param when sampleId is unset (pre-game)", async ({
+    mount,
+  }) => {
+    const component = await mount(
+      <MockStageRenderer
+        stage={singleElementStage({
+          type: "qualtrics",
+          url: "https://upenn.qualtrics.com/jfe/form/SV_test",
+        })}
+        stateValues={{
+          "self.attributes.stableParticipantId": "stable-xyz",
+        }}
+      />,
+    );
+    const src = await component.locator("iframe").getAttribute("src");
+    expect(src).toContain("stableParticipantId=stable-xyz");
+    expect(src).not.toContain("sampleId=");
+  });
+
   test("type: mediaPlayer renders a video element", async ({ mount }) => {
     const component = await mount(
       <MockStageRenderer

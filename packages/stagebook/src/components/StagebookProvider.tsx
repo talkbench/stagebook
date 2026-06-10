@@ -143,6 +143,25 @@ export interface StagebookContext {
     error: Error;
     errorInfo: React.ErrorInfo;
   }) => void;
+
+  /**
+   * Optional telemetry hook for host-contract violations (#473) — currently
+   * the one case is a missing `attributes.stableParticipantId` at the point
+   * stagebook needs it: the Qualtrics `stableParticipantId` URL-param
+   * injection, where an empty id silently orphans the survey response. It is
+   * **not** checked
+   * eagerly at mount (most studies never use the id). This is a notification
+   * only — Stagebook still renders (`console.error` fires regardless). Real
+   * violations are meant to be caught earlier — in the host's CI integration
+   * test (against `hasStableParticipantId`/`attributesSchema`) and at batch
+   * start — and the connect/sync race by the host's readiness gate. Use this
+   * to surface a slipped-through violation to telemetry (e.g. Sentry). The
+   * payload never includes participant values.
+   */
+  onContractViolation?: (info: {
+    kind: "missingStableParticipantId";
+    message: string;
+  }) => void;
 }
 
 // --------------- Internal context ---------------
@@ -208,6 +227,16 @@ export function StagebookProvider({
     () => ({ ...value, resolve }),
     [value, resolve],
   );
+
+  // Note (#473): the required `attributes.stableParticipantId` is NOT checked
+  // here. Most studies never use it (no Qualtrics, no explicit reference, and
+  // the export linkage is joined host-side), so an eager mount check would
+  // complain about a value that's never touched. Instead the contract is
+  // checked lazily at the one place stagebook itself consumes the id — the
+  // Qualtrics `stableParticipantId` URL-param injection (see `Qualtrics`) — and enforced
+  // upstream by the host (CI integration test against `hasStableParticipantId`,
+  // batch-start preflight, readiness gate). The `onContractViolation` hook is
+  // fired from that use site, not from here.
 
   return (
     <StagebookReactContext.Provider value={internal}>

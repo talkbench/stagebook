@@ -4,7 +4,7 @@
  * A reference identifies a value somewhere in the study state. There are two
  * kinds: **named** sources (`prompt`, `survey`, …) whose data is keyed by
  * a researcher-chosen `name`, and **external** sources (`entryUrl`,
- * `participantInfo`, …) supplied by the host as a singleton.
+ * `attributes`) supplied by the host as a singleton.
  *
  * Per #298, every reference begins with an explicit **position selector** —
  * `<integer>`, `self`, `shared`, or `all`. The position selector is part of
@@ -49,9 +49,17 @@ export const externalSourceEnum = z.enum([
   // so it doesn't collide with the unrelated `urlParams:` element field
   // (outgoing params on trackedLink / qualtrics).
   "entryUrl",
-  "connectionInfo",
-  "browserInfo",
-  "participantInfo",
+  // `attributes.<field>` is the single host-supplied bag of everything
+  // the participant arrives with — identity, onboarding, connection,
+  // and browser metadata, addressed flat (#473). It replaces the three
+  // legacy bags `connectionInfo` / `browserInfo` / `participantInfo`,
+  // which were merged on the premise that they're all "host-maintained
+  // attributes of the current participant" with no meaningful split.
+  // Two identity fields are special: `stableParticipantId` (anonymized,
+  // stable across sessions, the release-safe id — required) and
+  // `sampleId` (per-assignment data-row id — available only from the
+  // game phase onward).
+  "attributes",
 ]);
 export type ExternalSource = z.infer<typeof externalSourceEnum>;
 

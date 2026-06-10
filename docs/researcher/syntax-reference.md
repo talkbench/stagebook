@@ -49,33 +49,34 @@ Un-prefixed references like `prompt.topicVote` are rejected at parse time. The e
 
 **String shorthand (the common form):**
 
-| Pattern                                | Example                                |
-| -------------------------------------- | -------------------------------------- |
-| `<position>.prompt.<name>`             | `self.prompt.topicVote`                |
-| `<position>.survey.<name>.<path...>`   | `self.survey.TIPI.responses.q1`        |
-| `<position>.submitButton.<name>.<path>`| `self.submitButton.confirm.time`       |
-| `<position>.qualtrics.<name>.<path>`   | `self.qualtrics.exit.sessionId`        |
-| `<position>.trackedLink.<name>.<path>` | `self.trackedLink.signup.events`       |
-| `<position>.timeline.<name>(.<path>)`  | `self.timeline.story.0.start`          |
-| `<position>.discussion.<name>(.<path>)`| `shared.discussion.lobby.messageCount` |
-| `<position>.entryUrl.params.<key>`     | `self.entryUrl.params.PROLIFIC_PID`    |
-| `<position>.connectionInfo.<key>`      | `self.connectionInfo.country`          |
-| `<position>.browserInfo.<key>`         | `self.browserInfo.language`            |
-| `<position>.participantInfo.<field>`   | `self.participantInfo.name`            |
+| Pattern                                 | Example                                |
+| --------------------------------------- | -------------------------------------- |
+| `<position>.prompt.<name>`              | `self.prompt.topicVote`                |
+| `<position>.survey.<name>.<path...>`    | `self.survey.TIPI.responses.q1`        |
+| `<position>.submitButton.<name>.<path>` | `self.submitButton.confirm.time`       |
+| `<position>.qualtrics.<name>.<path>`    | `self.qualtrics.exit.sessionId`        |
+| `<position>.trackedLink.<name>.<path>`  | `self.trackedLink.signup.events`       |
+| `<position>.timeline.<name>(.<path>)`   | `self.timeline.story.0.start`          |
+| `<position>.discussion.<name>(.<path>)` | `shared.discussion.lobby.messageCount` |
+| `<position>.entryUrl.params.<key>`      | `self.entryUrl.params.PROLIFIC_PID`    |
+| `<position>.attributes.<field>`         | `self.attributes.stableParticipantId`  |
 
 **Structured form** (#240 — preferred in new code):
 
 ```yaml
 reference:
-  source: prompt | survey | submitButton | qualtrics | timeline | trackedLink | discussion |
-          entryUrl | connectionInfo | browserInfo | participantInfo
-  name: <element name>      # required for named sources, forbidden for external sources
-  path: [<segments>...]     # optional for named sources, required for external sources
+  source:
+    prompt | survey | submitButton | qualtrics | timeline | trackedLink | discussion |
+    entryUrl | attributes
+  name: <element name> # required for named sources, forbidden for external sources
+  path: [<segments>...] # optional for named sources, required for external sources
 ```
 
 For named sources, `prompt` references default to `path: [value]` when omitted (the participant's saved answer). Other named sources read the whole stored record by default. The structured form lets you override the implicit default — e.g. `path: [debugMessages]` to address other fields on a prompt's saved record.
 
 For external sources, `path` is required. Additionally, `entryUrl` references must currently start the path with `params` (e.g. `path: [params, condition]` — equivalent to the dotted `entryUrl.params.condition`). The `entryUrl.*` namespace is reserved so future additions like `entryUrl.path` / `entryUrl.host` / `entryUrl.href` can land non-breakingly.
+
+`attributes.*` is the host-supplied bag of participant metadata (#473), replacing the former `connectionInfo` / `browserInfo` / `participantInfo` sources — references to those are now rejected. Common fields: `stableParticipantId` (the anonymized id used to link exported data — always available), `sampleId` (the per-assignment data-row id — only from the game phase onward), `name`, `country`, `timezone`, `language`, `screenWidth`. The recruitment-platform id is intentionally not exposed here.
 
 ## 5. Conditions
 
@@ -95,20 +96,20 @@ conditions:
 
 All elements accept: `name?`, `notes?`, `displayTime?`, `hideTime?`, `showToPositions?`, `hideFromPositions?`, `conditions?`, `tags?`. (`file?` is per-type — only `prompt`, `audio`, `image`, `mediaPlayer` accept it; see #249.)
 
-| Type            | Key Fields                                                                                                                                                                                                                                     |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `prompt`        | `file` (required), `shared?`                                                                                                                                                                                                                   |
-| `display`       | `reference` (required), `position?` (default: `player`)                                                                                                                                                                                        |
-| `submitButton`  | `buttonText?` (default: "Next")                                                                                                                                                                                                                |
-| `timer`         | `startTime?`, `endTime?`, `warnTimeRemaining?`                                                                                                                                                                                                 |
-| `separator`     | `style?` (`thin`, `regular`, `thick`)                                                                                                                                                                                                          |
-| `audio`         | `file` (required)                                                                                                                                                                                                                              |
-| `image`         | `file` (required), `width?`                                                                                                                                                                                                                    |
-| `mediaPlayer`   | `file` (required), `name`, `controls?`, `syncToStageTime?`, `submitOnComplete?`, `startAt?`, `stopAt?`, `stepDuration?`, `playVideo?`, `playAudio?`, `captionsFile?`, `allowScrubOutsideBounds?`                                              |
-| `timeline`      | `source` (required, name of a sibling `mediaPlayer`), `name` (required), `selectionType` (required, `range` or `point`), `selectionScope?` (default `all`), `multiSelect?` (default `false`), `showWaveform?` (default `true`), `trackLabels?` |
-| `survey`        | `surveyName` (required) — _deprecated; pending removal once a module-reuse pattern lands. Prefer prompt-based patterns._                                                                                                                       |
-| `qualtrics`     | `url` (required), `urlParams?`                                                                                                                                                                                                                 |
-| `trackedLink`   | `name` (required), `url` (required), `displayText` (required), `helperText?`, `urlParams?`                                                                                                                                                     |
+| Type           | Key Fields                                                                                                                                                                                                                                     |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prompt`       | `file` (required), `shared?`                                                                                                                                                                                                                   |
+| `display`      | `reference` (required), `position?` (default: `player`)                                                                                                                                                                                        |
+| `submitButton` | `buttonText?` (default: "Next")                                                                                                                                                                                                                |
+| `timer`        | `startTime?`, `endTime?`, `warnTimeRemaining?`                                                                                                                                                                                                 |
+| `separator`    | `style?` (`thin`, `regular`, `thick`)                                                                                                                                                                                                          |
+| `audio`        | `file` (required)                                                                                                                                                                                                                              |
+| `image`        | `file` (required), `width?`                                                                                                                                                                                                                    |
+| `mediaPlayer`  | `file` (required), `name`, `controls?`, `syncToStageTime?`, `submitOnComplete?`, `startAt?`, `stopAt?`, `stepDuration?`, `playVideo?`, `playAudio?`, `captionsFile?`, `allowScrubOutsideBounds?`                                               |
+| `timeline`     | `source` (required, name of a sibling `mediaPlayer`), `name` (required), `selectionType` (required, `range` or `point`), `selectionScope?` (default `all`), `multiSelect?` (default `false`), `showWaveform?` (default `true`), `trackLabels?` |
+| `survey`       | `surveyName` (required) — _deprecated; pending removal once a module-reuse pattern lands. Prefer prompt-based patterns._                                                                                                                       |
+| `qualtrics`    | `url` (required), `urlParams?`                                                                                                                                                                                                                 |
+| `trackedLink`  | `name` (required), `url` (required), `displayText` (required), `helperText?`, `urlParams?`                                                                                                                                                     |
 
 ### Media hosting requirements
 

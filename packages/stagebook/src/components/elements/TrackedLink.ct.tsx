@@ -250,11 +250,11 @@ test("urlParam with empty value is rendered as `&key=` (not dropped)", async ({
   );
 });
 
-test("participantInfo-style values are URL-encoded into the href", async ({
+test("attributes-style values are URL-encoded into the href", async ({
   mount,
 }) => {
   // Cypress 01 line 800 asserted href contains a URL-encoded
-  // `participantInfo.name` value. The ref is resolved by the host before
+  // `attributes.name` value. The ref is resolved by the host before
   // it ever reaches TrackedLink — the contract here is that whatever
   // string the host hands us gets encoded correctly into the href.
   const nicknameRaw = "nickname_user with space&danger=1";

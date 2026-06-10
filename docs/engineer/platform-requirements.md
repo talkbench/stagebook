@@ -66,30 +66,30 @@ State must survive page refreshes. If a participant disconnects and reconnects, 
 
 Some reference namespaces require the platform to collect and store data that Stagebook components don't produce. If your treatment files use conditions or displays referencing these namespaces, the platform must populate them in player state during onboarding:
 
-**`connectionInfo.*`** — Network metadata collected during consent/onboarding:
+**`attributes.*`** — everything the participant arrives with, stored under a single key `attributes` as one flat nested object (#473). The platform populates it during consent/onboarding and keeps it current (values may change mid-study, e.g. screen width on resize). Internally, Stagebook's `resolve("self.attributes.country")` calls `get("attributes")` and traverses `.country`.
 
-- `connectionInfo.country` — ISO country code (e.g., from IP geolocation)
-- `connectionInfo.timezone` — IP-based timezone
-- `connectionInfo.isKnownVpn` — whether the IP is on a known VPN list
+This single bag replaces the former `connectionInfo`, `browserInfo`, and `participantInfo` keys. References to those legacy sources are now rejected by validation — migrate them to `attributes.*`.
 
-The platform stores this under the key `connectionInfo` in player state. Internally, Stagebook's `resolve("connectionInfo.country")` calls `get("connectionInfo")` and traverses `.country`.
+Identity fields (special):
 
-**`browserInfo.*`** — Client-side browser information:
+- **`attributes.stableParticipantId`** — anonymized, stable across sessions, the release-safe id used to link the participant's exported data. **Required for studies that use it.** Stagebook never blocks on it and does not check it eagerly at mount (most studies never touch it). It's checked lazily at the one place stagebook consumes it — the Qualtrics `stableParticipantId` URL-param injection (the survey's participant-linkage field; replaces the legacy `deliberationId` param) — where a missing id would silently orphan the survey response; there it surfaces the violation loudly (`console.error` + the optional `onContractViolation` callback) and renders anyway. Enforce presence upstream: a host CI integration test (assert `hasStableParticipantId(get("attributes","player")[0])`), a batch-start preflight, and a readiness gate that doesn't mount Stagebook until identity is available. (Do **not** put the recruitment-platform id here — keeping recruitment PII out of the referenceable surface is the privacy guarantee.)
+- `attributes.sampleId` — the per-assignment data-row id. Optional; it does not exist until the game phase (assigned at game-stage start), so it's absent during intro/groupComposition, and validation flags pre-game reads.
 
-- `browserInfo.screenWidth`, `browserInfo.screenHeight` — screen resolution
-- `browserInfo.language` — browser language (e.g., `en-US`)
-- `browserInfo.userAgent` — raw user-agent string
+Onboarding / connection / browser fields (all optional):
 
-The platform stores this under the key `browserInfo` in player state.
+- `attributes.name` — nickname entered during onboarding
+- `attributes.country` — ISO country code (e.g., from IP geolocation)
+- `attributes.timezone` — IP-based timezone
+- `attributes.isKnownVpn` — whether the IP is on a known VPN list
+- `attributes.screenWidth`, `attributes.screenHeight` — screen resolution
+- `attributes.language` — browser language (e.g., `en-US`)
+- `attributes.userAgent` — raw user-agent string
 
-**`participantInfo.*`** — Participant attributes:
+Example stored object: `{ stableParticipantId: "d3f1…", name: "alice", country: "US", screenWidth: 1280 }`. The bag is open — the platform may add further fields a treatment references; the exported `attributesSchema` (zod) is the authoritative shape.
 
-- `participantInfo.name` — nickname entered during onboarding
-- `participantInfo.sampleId` — identifier from recruiting platform
+If a field is not populated, references to it resolve to `undefined` and conditions return "can't determine yet" (not a hard failure) — this is true for every `attributes` field, including `stableParticipantId` when a study doesn't use it. The only loud signal is at the Qualtrics use site described above.
 
-The platform stores this under the key `participantInfo` in player state as a nested object (e.g., `{ name: "alice", sampleId: "P123" }`). Internally, Stagebook's `resolve("participantInfo.name")` calls `get("participantInfo")` and traverses `.name`.
-
-If these namespaces are not populated, conditions referencing them will evaluate to `undefined`, which causes the condition to return "can't determine yet" (not a hard failure).
+**Privacy boundary — `entryUrl.params`.** Keeping recruitment PII out of the referenceable surface is the reason `attributes` deliberately omits the recruitment-platform id. That guarantee covers `attributes` only — `entryUrl.params.<key>` still exposes whatever the host put in the participant's landing URL (e.g. a Prolific PID), and a treatment can route any such value into an outgoing Qualtrics/`trackedLink` `urlParams`. So a host that wants the guarantee to hold end-to-end must not place participant PII in the entry URL (and reviewers should watch for treatments that forward `entryUrl.params.*` PII into external links). Stagebook can't enforce this — it's a host responsibility.
 
 ### Browser Compatibility
 

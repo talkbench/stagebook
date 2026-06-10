@@ -8,7 +8,6 @@ test.describe("Qualtrics", () => {
       const component = await mount(
         <Qualtrics
           url="https://upenn.qualtrics.com/jfe/form/SV_test123"
-          progressLabel="game_0_survey"
           save={() => {}}
           onComplete={() => {}}
         />,
@@ -27,7 +26,6 @@ test.describe("Qualtrics", () => {
             { key: "condition", value: "topicA" },
             { key: "prolificId", value: "P123" },
           ]}
-          progressLabel="game_0_survey"
           save={() => {}}
           onComplete={() => {}}
         />,
@@ -37,32 +35,32 @@ test.describe("Qualtrics", () => {
       expect(src).toContain("prolificId=P123");
     });
 
-    test("appends participantId as deliberationId", async ({ mount }) => {
+    test("appends stableParticipantId as a URL param (#473)", async ({
+      mount,
+    }) => {
       const component = await mount(
         <Qualtrics
           url="https://upenn.qualtrics.com/jfe/form/SV_test123"
-          participantId="player-abc"
-          progressLabel="game_0_survey"
+          stableParticipantId="stable-abc"
           save={() => {}}
           onComplete={() => {}}
         />,
       );
       const src = await component.locator("iframe").getAttribute("src");
-      expect(src).toContain("deliberationId=player-abc");
+      expect(src).toContain("stableParticipantId=stable-abc");
     });
 
-    test("appends groupId as sampleId", async ({ mount }) => {
+    test("appends sampleId (#473)", async ({ mount }) => {
       const component = await mount(
         <Qualtrics
           url="https://upenn.qualtrics.com/jfe/form/SV_test123"
-          groupId="game-xyz"
-          progressLabel="game_0_survey"
+          sampleId="row-xyz"
           save={() => {}}
           onComplete={() => {}}
         />,
       );
       const src = await component.locator("iframe").getAttribute("src");
-      expect(src).toContain("sampleId=game-xyz");
+      expect(src).toContain("sampleId=row-xyz");
     });
   });
 

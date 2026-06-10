@@ -107,12 +107,12 @@ For OR logic on a single reference (across positions, comparators, etc.), `any:`
 References point to data collected earlier in the experiment. The dotted form is always `<position>.<source>.<...>`, where the position selector (`self`, `shared`, `all`, or a numeric slot index — see the note at the top) is required as the first segment and the rest depends on the source:
 
 - **Named sources** (`prompt`, `survey`, `submitButton`, `qualtrics`, `timeline`, `trackedLink`, `discussion`): `<position>.<source>.<name>(.<path>...)` — `name` is required, `path` is optional.
-- **External sources** (`entryUrl`, `connectionInfo`, `browserInfo`, `participantInfo`): `<position>.<source>.<path>...` — no `name`, `path` is required. `entryUrl` references must currently use the `params` subpath (see [URL Parameters](#url-parameters) below).
+- **External sources** (`entryUrl`, `attributes`): `<position>.<source>.<path>...` — no `name`, `path` is required. `entryUrl` references must currently use the `params` subpath (see [URL Parameters](#url-parameters) below).
 
 ```yaml
-- reference: self.prompt.familiarity         # named: position.source.name
-- reference: self.survey.TIPI.responses.q1   # named: position.source.name.path...
-- reference: self.entryUrl.params.condition  # external: position.source.path...
+- reference: self.prompt.familiarity # named: position.source.name
+- reference: self.survey.TIPI.responses.q1 # named: position.source.name.path...
+- reference: self.entryUrl.params.condition # external: position.source.path...
 ```
 
 After #240, references can also be written in **structured form** — preferred in new code, especially when you need to override the implicit defaults the dotted form bakes in (e.g. addressing the `debugMessages` field on a prompt's saved record instead of the default `value`):
@@ -121,12 +121,12 @@ After #240, references can also be written in **structured form** — preferred 
 - reference:
     source: prompt
     name: familiarity
-    path: [value]                 # explicit; same as the dotted `prompt.familiarity`
+    path: [value] # explicit; same as the dotted `prompt.familiarity`
 
 - reference:
     source: prompt
     name: familiarity
-    path: [debugMessages]         # newly possible — addresses other saved fields
+    path: [debugMessages] # newly possible — addresses other saved fields
 
 - reference:
     source: entryUrl
@@ -173,34 +173,31 @@ Returns elapsed seconds when the button was clicked.
 
 Query parameters from the participant's landing URL (e.g., `?role=confederate`). The `params` subpath is required — the `entryUrl.*` namespace is reserved so future additions like `entryUrl.path`, `entryUrl.host`, `entryUrl.href` can land non-breakingly.
 
-Renamed from the legacy `urlParams.<key>` source in #246 to disambiguate from the unrelated `urlParams:` element field on `trackedLink` / `qualtrics`, which sets *outgoing* query parameters (i.e. params appended to the element's own URL). The element field is unchanged.
+Renamed from the legacy `urlParams.<key>` source in #246 to disambiguate from the unrelated `urlParams:` element field on `trackedLink` / `qualtrics`, which sets _outgoing_ query parameters (i.e. params appended to the element's own URL). The element field is unchanged.
 
-### Connection Info
+### Attributes
 
-```
-connectionInfo.country
-connectionInfo.isKnownVpn
-connectionInfo.timezone
-```
-
-Network metadata captured during consent.
-
-### Browser Info
+Everything the participant arrives with — identity, onboarding, connection,
+and browser metadata — in one flat host-supplied bag (#473). Replaces the
+former `connectionInfo` / `browserInfo` / `participantInfo` sources, which are
+no longer valid.
 
 ```
-browserInfo.screenWidth
-browserInfo.language
-browserInfo.userAgent
+<position>.attributes.stableParticipantId  # anonymized id; links exported data (always available)
+<position>.attributes.sampleId             # per-assignment data-row id (game phase onward only)
+<position>.attributes.name                 # nickname entered during onboarding
+<position>.attributes.country              # ISO country code
+<position>.attributes.timezone             # IP-based timezone
+<position>.attributes.isKnownVpn           # known-VPN flag
+<position>.attributes.screenWidth          # screen resolution
+<position>.attributes.screenHeight
+<position>.attributes.language             # browser language
+<position>.attributes.userAgent
 ```
 
-Client-side browser information from onboarding.
-
-### Participant Info
-
-```
-<position>.participantInfo.name           # nickname
-<position>.participantInfo.sampleId       # recruiting platform ID
-```
+The recruitment-platform id is intentionally not exposed here (privacy). Note
+`sampleId` is assigned at game-stage start, so reads from intro /
+groupComposition are rejected by validation.
 
 ### Timeline Selections
 
@@ -471,7 +468,7 @@ A reference must point at data produced by an earlier or the current stage in th
 introSteps → gameStages → exitSequence
 ```
 
-Referencing a stage that hasn't run yet is rejected. External references (`entryUrl.params.*`, `participantInfo.*`, `connectionInfo.*`, `browserInfo.*`) are always valid — they come from the platform, not a stage.
+Referencing a stage that hasn't run yet is rejected. External references (`entryUrl.params.*`, `attributes.*`) are always valid — they come from the platform, not a stage. The one exception is `attributes.sampleId`, which is assigned at game-stage start: reading it during intro / groupComposition is rejected like a forward reference.
 
 `groupComposition` is stricter: it runs before the game starts, so its conditions can only reference intro-phase or external data. Referencing game or exit data from `groupComposition` is rejected.
 

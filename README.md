@@ -134,7 +134,7 @@ getReferenceKeyAndPath("self.prompt.myQuestion");
 
 Un-prefixed strings (`"survey.bigFive.result.score"`) throw at parse time with an error suggesting the migration.
 
-Supported namespaces: `survey`, `submitButton`, `qualtrics`, `prompt`, `trackedLink`, `timeline`, `discussion`, `entryUrl`, `connectionInfo`, `browserInfo`, `participantInfo`. (`urlParams` was renamed to `entryUrl` in #246.) `entryUrl` references must use the `params` subpath, e.g. `getReferenceKeyAndPath("self.entryUrl.params.foo")`.
+Supported namespaces: `survey`, `submitButton`, `qualtrics`, `prompt`, `trackedLink`, `timeline`, `discussion`, `entryUrl`, `attributes`. (`urlParams` was renamed to `entryUrl` in #246; `connectionInfo` / `browserInfo` / `participantInfo` were merged into a single flat `attributes` source in #473.) `entryUrl` references must use the `params` subpath, e.g. `getReferenceKeyAndPath("self.entryUrl.params.foo")`.
 
 ### Expanding templates
 

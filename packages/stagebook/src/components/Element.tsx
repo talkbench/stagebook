@@ -111,8 +111,8 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
     renderSharedNotepad,
     renderDiscussion,
     renderSurvey,
-    playerId,
     setAllowIdle,
+    onContractViolation,
   } = ctx;
 
   // Wrap save to add consistent metadata to every element's saved data
@@ -396,11 +396,23 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
 
     case "qualtrics": {
       const qualtricsParams = resolveParams(element.urlParams, resolve);
+      // Source the standard Qualtrics identifiers from the current
+      // participant's attributes (#473) — the anonymized, release-safe
+      // `stableParticipantId` (NOT the internal `playerId`) and, once the
+      // game phase has assigned it, the per-row `sampleId`. `resolve`
+      // returns one value per matched position; for `self.*` that's a
+      // single value (or none, when sampleId isn't assigned yet).
+      const asString = (ref: string): string => {
+        const picked = resolve(ref).find((v) => v !== undefined);
+        return picked == null ? "" : String(picked as string | number);
+      };
       return (
         <Qualtrics
           url={element.url ?? ""}
           resolvedParams={qualtricsParams}
-          participantId={playerId}
+          stableParticipantId={asString("self.attributes.stableParticipantId")}
+          sampleId={asString("self.attributes.sampleId")}
+          onContractViolation={onContractViolation}
           save={wrappedSave}
           onComplete={onSubmit}
         />

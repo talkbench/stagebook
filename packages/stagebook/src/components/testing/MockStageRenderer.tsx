@@ -53,6 +53,10 @@ function wrapAtPath(value: unknown, path: string[]): unknown {
   return result;
 }
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
 /** Convert DSL-reference-keyed stateValues to flat-key → raw-record map. */
 function buildFlatValues(
   stateValues: Record<string, unknown>,
@@ -60,7 +64,18 @@ function buildFlatValues(
   const flat = new Map<string, unknown>();
   for (const [ref, val] of Object.entries(stateValues)) {
     const { referenceKey, path } = getReferenceKeyAndPath(ref);
-    flat.set(referenceKey, wrapAtPath(val, path));
+    const wrapped = wrapAtPath(val, path);
+    const existing = flat.get(referenceKey);
+    // Merge multiple references that share a storage key (e.g. several
+    // `attributes.*` fields) into one record instead of overwriting, so a
+    // test can seed `self.attributes.stableParticipantId` AND
+    // `self.attributes.sampleId` together.
+    flat.set(
+      referenceKey,
+      isPlainObject(existing) && isPlainObject(wrapped)
+        ? { ...existing, ...wrapped }
+        : wrapped,
+    );
   }
   return flat;
 }
@@ -81,6 +96,16 @@ export function MockStageRenderer({
   const mockContext: StagebookContext = {
     get: (key: string) => {
       const val = flatValues.get(key);
+      // A Qualtrics element reports a contract violation (console.error +
+      // onContractViolation) when `attributes.stableParticipantId` is missing
+      // at its use site (#473). Seed a default so CT harnesses that mount a
+      // qualtrics element without setting identity render without that noise;
+      // merge it under any attributes fields a test did seed (a test can still
+      // override the id explicitly).
+      if (key === "attributes") {
+        const base = { stableParticipantId: "test-stable-1" };
+        return [isPlainObject(val) ? { ...base, ...val } : base];
+      }
       return val !== undefined ? [val] : [];
     },
     save: () => {},

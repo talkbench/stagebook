@@ -8,15 +8,15 @@ import { Qualtrics } from "../elements/Qualtrics.js";
 export interface MockQualtricsProps {
   url: string;
   resolvedParams?: Array<{ key: string; value: string }>;
-  participantId?: string;
-  groupId?: string;
+  stableParticipantId?: string;
+  sampleId?: string;
 }
 
 export function MockQualtrics({
   url,
   resolvedParams = [],
-  participantId,
-  groupId,
+  stableParticipantId,
+  sampleId,
 }: MockQualtricsProps) {
   const [savedData, setSavedData] = useState<{
     key: string;
@@ -56,9 +56,8 @@ export function MockQualtrics({
       <Qualtrics
         url={url}
         resolvedParams={resolvedParams}
-        participantId={participantId}
-        groupId={groupId}
-        progressLabel="game_0_qualtrics"
+        stableParticipantId={stableParticipantId}
+        sampleId={sampleId}
         save={(key, value) => setSavedData({ key, value })}
         onComplete={() => setCompleted(true)}
       />
