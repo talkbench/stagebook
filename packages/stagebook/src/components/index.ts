@@ -8,10 +8,24 @@ export {
   useResolve,
   useSave,
   useElapsedTime,
+  useMessages,
+  useIsRTL,
   useTextContent,
   type StagebookContext,
   type TextContentResult,
 } from "./StagebookProvider.js";
+
+// Chrome message catalog (i18n)
+export {
+  defaultMessages,
+  resolveCatalog,
+  isRTLLocale,
+  REGISTERED_LOCALES,
+  RTL_LOCALES,
+  type StagebookMessages,
+  type RegisteredLocale,
+  type DeepPartial,
+} from "../messages/index.js";
 
 // Stage and element rendering (requires StagebookProvider)
 export { Stage, type StageConfig, type StageProps } from "./Stage.js";

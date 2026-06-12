@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useId, useMemo } from "react";
+import { useMessages } from "../StagebookProvider.js";
 
 export interface SliderProps {
   min?: number;
@@ -39,6 +40,7 @@ export function Slider({
   onChange,
   showValue = false,
 }: SliderProps) {
+  const messages = useMessages();
   const [localValue, setLocalValue] = useState<number | undefined>(value);
 
   useEffect(() => {
@@ -378,7 +380,7 @@ export function Slider({
                   margin: 0,
                   padding: 0,
                 }}
-                aria-label="Slider"
+                aria-label={messages.sliderLabel}
                 aria-valuemin={min}
                 aria-valuemax={max}
                 aria-valuenow={localValue}

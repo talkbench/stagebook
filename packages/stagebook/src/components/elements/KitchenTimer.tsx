@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useId } from "react";
+import { useMessages } from "../StagebookProvider.js";
 
 export interface KitchenTimerProps {
   startTime: number;
@@ -13,6 +14,7 @@ export function KitchenTimer({
   warnTimeRemaining = 10,
   getElapsedTime,
 }: KitchenTimerProps) {
+  const messages = useMessages();
   // Re-render periodically to update the timer display
   const [, setTick] = useState(false);
 
@@ -85,8 +87,8 @@ export function KitchenTimer({
       aria-valuemin={0}
       aria-valuemax={timerDuration}
       aria-valuenow={Math.max(timerRemaining, 0)}
-      aria-valuetext={`${displayRemaining} remaining`}
-      aria-label="Stage timer"
+      aria-valuetext={messages.timerRemaining(displayRemaining)}
+      aria-label={messages.stageTimerLabel}
     >
       <style>{`
         /* Reduced-motion: snap the bar instead of animating. Without
