@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useId } from "react";
-import { useMessages } from "../StagebookProvider.js";
+import { useMessages, useIsRTL } from "../StagebookProvider.js";
 
 export interface KitchenTimerProps {
   startTime: number;
@@ -15,6 +15,7 @@ export function KitchenTimer({
   getElapsedTime,
 }: KitchenTimerProps) {
   const messages = useMessages();
+  const isRTL = useIsRTL();
   // Re-render periodically to update the timer display
   const [, setTick] = useState(false);
 
@@ -82,6 +83,7 @@ export function KitchenTimer({
         gap: "0.75rem",
       }}
       data-testid="kitchen-timer"
+      dir={isRTL ? "rtl" : "ltr"}
       data-state={isWarning ? "warning" : "normal"}
       role="progressbar"
       aria-valuemin={0}
@@ -140,7 +142,7 @@ export function KitchenTimer({
           fontVariantNumeric: "tabular-nums",
           whiteSpace: "nowrap",
           minWidth: "3rem",
-          textAlign: "right",
+          textAlign: "end",
         }}
       >
         {displayRemaining}

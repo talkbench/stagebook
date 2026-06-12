@@ -836,6 +836,10 @@ export function Timeline({
     <div
       ref={containerRef}
       data-testid="timeline"
+      // Time flows left-to-right in every locale (Material
+      // bidirectionality: time-based controls don't mirror) — lock LTR
+      // independent of study locale and host <html dir>.
+      dir="ltr"
       data-source={source}
       data-name={name}
       data-selection-type={selectionType}

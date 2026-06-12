@@ -11,6 +11,7 @@ import type { StagebookMessages } from "./types.js";
 export const en: StagebookMessages = {
   submitButtonDefault: "Next",
   sliderLabel: "Slider",
+  sliderInstruction: "Click the bar to select a value, then drag to adjust.",
   loadingLabel: "Loading",
   charCount: (n, min, max) => {
     if (min !== undefined && max !== undefined) {

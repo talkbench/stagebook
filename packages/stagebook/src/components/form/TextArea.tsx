@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useId } from "react";
 import { computeIntervalQuantiles } from "./typingQuantiles.js";
-import { useMessages } from "../StagebookProvider.js";
+import { useMessages, useIsRTL } from "../StagebookProvider.js";
 
 export interface TypingStats {
   type: "typingStats";
@@ -72,6 +72,7 @@ export function TextArea({
   id,
 }: TextAreaProps) {
   const messages = useMessages();
+  const isRTL = useIsRTL();
   const generatedId = useId();
   const textAreaId = id || generatedId;
   // `useId` returns an opaque string the React docs call "not a valid
@@ -348,10 +349,10 @@ export function TextArea({
         data-testid="char-counter"
         data-state={overflowState}
         style={{
-          textAlign: "right",
+          textAlign: "end",
           fontSize: "0.75rem",
           marginTop: "0.25rem",
-          paddingRight: "0.75rem",
+          paddingInlineEnd: "0.75rem",
           color: countColor,
           boxSizing: "border-box",
           width: "100%",
@@ -365,6 +366,7 @@ export function TextArea({
 
   return (
     <div
+      dir={isRTL ? "rtl" : "ltr"}
       style={{ position: "relative", width: "100%", boxSizing: "border-box" }}
     >
       <textarea

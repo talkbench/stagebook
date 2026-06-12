@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useId, useMemo } from "react";
-import { useMessages } from "../StagebookProvider.js";
+import { useMessages, useIsRTL } from "../StagebookProvider.js";
 
 export interface SliderProps {
   min?: number;
@@ -41,6 +41,14 @@ export function Slider({
   showValue = false,
 }: SliderProps) {
   const messages = useMessages();
+  // Mirror under RTL locales (Material bidirectionality: value/quantity
+  // sliders mirror; time-based controls don't). The native <input
+  // type=range> auto-reverses under dir=rtl; the custom thumb / ticks /
+  // labels follow it via insetInlineStart + direction-aware transforms,
+  // and click-to-jump math flips. Value semantics are unchanged — min
+  // still records as min, wherever it's painted.
+  const isRTL = useIsRTL();
+  const dir = isRTL ? "rtl" : "ltr";
   const [localValue, setLocalValue] = useState<number | undefined>(value);
 
   useEffect(() => {
@@ -79,7 +87,10 @@ export function Slider({
     const trackEl = e.currentTarget.querySelector(`.${trackClass}`);
     const rect = (trackEl ?? e.currentTarget).getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const percentage = Math.max(0, Math.min(1, x / rect.width));
+    let percentage = Math.max(0, Math.min(1, x / rect.width));
+    // Under RTL the visual axis is mirrored: a click near the left edge
+    // means max, not min.
+    if (isRTL) percentage = 1 - percentage;
     const rawValue = min + percentage * (max - min);
     const newValue = Math.round(rawValue / interval) * interval;
     const clampedValue = Math.max(min, Math.min(max, newValue));
@@ -170,6 +181,7 @@ export function Slider({
       `}</style>
 
       <div
+        dir={dir}
         style={{
           position: "relative",
           width: "100%",
@@ -231,10 +243,10 @@ export function Slider({
               data-testid="slider-value-badge"
               style={{
                 position: "absolute",
-                left: `${getPosition(localValue)}%`,
+                insetInlineStart: `${getPosition(localValue)}%`,
                 bottom: "100%",
                 marginBottom: "0.25rem",
-                transform: "translateX(-50%)",
+                transform: `translateX(${isRTL ? "50%" : "-50%"})`,
                 fontSize: "0.75rem",
                 fontWeight: 500,
                 lineHeight: 1,
@@ -260,10 +272,10 @@ export function Slider({
             <div
               style={{
                 position: "absolute",
-                left: "50%",
+                insetInlineStart: "50%",
                 bottom: "100%",
                 marginBottom: "0.25rem",
-                transform: "translateX(-50%)",
+                transform: `translateX(${isRTL ? "50%" : "-50%"})`,
                 fontSize: "0.75rem",
                 lineHeight: 1,
                 color: "var(--stagebook-text-muted, #6b7280)",
@@ -271,7 +283,7 @@ export function Slider({
                 pointerEvents: "none",
               }}
             >
-              Click the bar to select a value, then drag to adjust.
+              {messages.sliderInstruction}
             </div>
           )}
           {/* Visible track. Centered in the click-target wrapper. */}
@@ -306,9 +318,9 @@ export function Slider({
                   data-testid="slider-snap-tick"
                   style={{
                     position: "absolute",
-                    left: `${getPosition(pt)}%`,
+                    insetInlineStart: `${getPosition(pt)}%`,
                     top: "50%",
-                    transform: "translate(-50%, -50%)",
+                    transform: `translate(${isRTL ? "50%" : "-50%"}, -50%)`,
                     width: "2px",
                     height: `${TRACK_HEIGHT - 2}px`,
                     backgroundColor: "var(--stagebook-text-faint, #9ca3af)",
@@ -328,9 +340,9 @@ export function Slider({
                 data-testid="slider-label-tick"
                 style={{
                   position: "absolute",
-                  left: `${getPosition(pt)}%`,
+                  insetInlineStart: `${getPosition(pt)}%`,
                   top: "50%",
-                  transform: "translate(-50%, -50%)",
+                  transform: `translate(${isRTL ? "50%" : "-50%"}, -50%)`,
                   width: "2px",
                   height: `${TRACK_HEIGHT + 6}px`,
                   backgroundColor: "var(--stagebook-text-muted, #6b7280)",
@@ -363,7 +375,7 @@ export function Slider({
                 style={{
                   position: "absolute",
                   top: "50%",
-                  left: 0,
+                  insetInlineStart: 0,
                   width: "100%",
                   height: `${TRACK_HEIGHT}px`,
                   transform: "translateY(-50%)",
@@ -398,9 +410,9 @@ export function Slider({
                 data-testid="slider-thumb"
                 style={{
                   position: "absolute",
-                  left: `${getPosition(localValue)}%`,
+                  insetInlineStart: `${getPosition(localValue)}%`,
                   top: "50%",
-                  transform: "translate(-50%, -50%)",
+                  transform: `translate(${isRTL ? "50%" : "-50%"}, -50%)`,
                   boxSizing: "border-box",
                   width: THUMB_SIZE,
                   height: THUMB_SIZE,
@@ -448,8 +460,8 @@ export function Slider({
                   key={`label-${pt}`}
                   style={{
                     position: "absolute",
-                    left: `${pos}%`,
-                    transform: "translateX(-50%)",
+                    insetInlineStart: `${pos}%`,
+                    transform: `translateX(${isRTL ? "50%" : "-50%"})`,
                     textAlign: "center",
                     maxWidth: "8rem",
                     // 0.875rem reads as helper text without the

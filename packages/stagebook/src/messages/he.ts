@@ -11,6 +11,7 @@ import type { StagebookMessages } from "./types.js";
 export const he: StagebookMessages = {
   submitButtonDefault: "הבא",
   sliderLabel: "מחוון",
+  sliderInstruction: "לחצו על הפס לבחירת ערך, ואז גררו לכוונון.",
   loadingLabel: "טוען",
   charCount: (n, min, max) => {
     if (min !== undefined && max !== undefined) {

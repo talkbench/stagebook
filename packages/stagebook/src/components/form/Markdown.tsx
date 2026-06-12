@@ -1,4 +1,5 @@
 import React, { useId } from "react";
+import { useIsRTL } from "../StagebookProvider.js";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { encodeAssetPath } from "../../utils/encodeAssetPath.js";
@@ -235,9 +236,9 @@ const blockquoteStyle: React.CSSProperties = {
   wordBreak: "break-word",
   padding: "0.75rem 1rem",
   margin: "1rem 0",
-  borderLeftWidth: "0.25rem",
-  borderLeftStyle: "solid",
-  borderLeftColor: "var(--stagebook-blockquote-border, #9ca3af)",
+  borderInlineStartWidth: "0.25rem",
+  borderInlineStartStyle: "solid",
+  borderInlineStartColor: "var(--stagebook-blockquote-border, #9ca3af)",
   background: "var(--stagebook-blockquote-bg, #f9fafb)",
   color: "var(--stagebook-text-muted, #6b7280)",
 };
@@ -270,7 +271,7 @@ const tableStyle: React.CSSProperties = {
 const tableCellBase: React.CSSProperties = {
   border: "1px solid var(--stagebook-border, #d1d5db)",
   padding: "0.5rem 0.75rem",
-  textAlign: "left",
+  textAlign: "start",
   fontSize: "0.875rem",
   color: "var(--stagebook-table-text, #4a5568)",
 };
@@ -302,7 +303,9 @@ const taskListCheckboxBaseStyle: React.CSSProperties = {
   backgroundPosition: "center",
   backgroundRepeat: "no-repeat",
   verticalAlign: "middle",
-  margin: "0 0.25rem 0 0",
+  marginBlock: 0,
+  marginInlineStart: 0,
+  marginInlineEnd: "0.25rem",
 };
 
 const TASKLIST_CHECK_SVG =
@@ -315,6 +318,7 @@ const taskListCheckboxCheckedStyle: React.CSSProperties = {
 };
 
 export function Markdown({ text, resolveURL }: MarkdownProps) {
+  const isRTL = useIsRTL();
   let displayText = text;
 
   // Rewrite relative image paths if a resolver is provided
@@ -410,6 +414,7 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
       `}</style>
       <div
         className={rootClass}
+        dir={isRTL ? "rtl" : "ltr"}
         style={{
           maxWidth: "var(--stagebook-prompt-max-width, 36rem)",
           fontSize: "var(--stagebook-prompt-text-size, 1rem)",

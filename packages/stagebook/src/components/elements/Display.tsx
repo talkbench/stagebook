@@ -1,4 +1,5 @@
 import React from "react";
+import { useIsRTL } from "../StagebookProvider.js";
 
 export interface DisplayProps {
   /** Dotted-string representation of the reference, rendered into
@@ -35,16 +36,21 @@ const blockquoteStyle: React.CSSProperties = {
   wordBreak: "break-word",
   padding: "0.75rem 1rem",
   margin: "1rem 0",
-  borderLeftWidth: "0.25rem",
-  borderLeftStyle: "solid",
-  borderLeftColor: "var(--stagebook-blockquote-border, #9ca3af)",
+  borderInlineStartWidth: "0.25rem",
+  borderInlineStartStyle: "solid",
+  borderInlineStartColor: "var(--stagebook-blockquote-border, #9ca3af)",
   background: "var(--stagebook-blockquote-bg, #f9fafb)",
   color: "var(--stagebook-text-muted, #6b7280)",
 };
 
 export function Display({ reference, values }: DisplayProps) {
+  const isRTL = useIsRTL();
   return (
-    <blockquote style={blockquoteStyle} data-reference={reference}>
+    <blockquote
+      dir={isRTL ? "rtl" : "ltr"}
+      style={blockquoteStyle}
+      data-reference={reference}
+    >
       {values
         .map((v) => (typeof v === "string" ? v : JSON.stringify(v)))
         .join("\n")}

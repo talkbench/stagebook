@@ -1087,6 +1087,10 @@ export function MediaPlayer({
         ref={containerRef}
         className={containerClass}
         data-testid="mediaPlayer"
+        // Time-based controls never mirror (Material bidirectionality):
+        // lock LTR so neither a host <html dir> nor an RTL study locale
+        // flips the transport/scrub axis.
+        dir="ltr"
         role="region"
         aria-label={messages.mediaPlayerLabel}
         tabIndex={0}
@@ -1216,6 +1220,8 @@ export function MediaPlayer({
       ref={containerRef}
       className={containerClass}
       data-testid="mediaPlayer"
+      // Time-based controls never mirror — see the video variant's note.
+      dir="ltr"
       role="region"
       aria-label={messages.mediaPlayerLabel}
       tabIndex={0}

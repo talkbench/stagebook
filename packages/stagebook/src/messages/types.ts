@@ -30,6 +30,8 @@ export interface StagebookMessages {
   submitButtonDefault: string;
   /** Accessible name for the unanchored slider input. */
   sliderLabel: string;
+  /** Instruction shown above the slider before the first click. */
+  sliderInstruction: string;
   /** Accessible name for the loading spinner. */
   loadingLabel: string;
   /**

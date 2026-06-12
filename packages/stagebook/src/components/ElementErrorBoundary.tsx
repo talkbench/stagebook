@@ -1,5 +1,9 @@
 import React from "react";
-import { useStagebookContext, useMessages } from "./StagebookProvider.js";
+import {
+  useStagebookContext,
+  useMessages,
+  useIsRTL,
+} from "./StagebookProvider.js";
 
 export interface ElementErrorInfo {
   elementType: string;
@@ -15,6 +19,7 @@ interface ElementErrorBoundaryInnerProps {
   // Resolved from the active locale's catalog by the functional wrapper (a
   // class component can't use the useMessages hook).
   fallbackText: string;
+  fallbackDir: "rtl" | "ltr";
   children: React.ReactNode;
 }
 
@@ -73,6 +78,7 @@ class ElementErrorBoundaryInner extends React.Component<
       return (
         <div
           role="alert"
+          dir={this.props.fallbackDir}
           data-testid="element-error-fallback"
           style={{
             padding: "0.75rem 1rem",
@@ -106,12 +112,14 @@ export function ElementErrorBoundary({
 }: ElementErrorBoundaryProps) {
   const { onElementError } = useStagebookContext();
   const messages = useMessages();
+  const isRTL = useIsRTL();
   return (
     <ElementErrorBoundaryInner
       elementType={elementType}
       elementName={elementName}
       onElementError={onElementError}
       fallbackText={messages.elementErrorFallback}
+      fallbackDir={isRTL ? "rtl" : "ltr"}
     >
       {children}
     </ElementErrorBoundaryInner>
