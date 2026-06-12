@@ -18,10 +18,14 @@ export function HelpPopover({
   // Whole-table catalog entries (timelineShortcutRowsRange/Point) so a locale
   // translates the table wholesale, including instruction-style "keys" like
   // "Click and drag".
-  const shortcuts =
+  const rawShortcuts =
     selectionType === "range"
       ? messages.timelineShortcutRowsRange()
       : messages.timelineShortcutRowsPoint();
+  // Robustness (not a security boundary — `messages` is trusted host input):
+  // a malformed host override returning a non-array would otherwise crash the
+  // whole popover at .map(); degrade to an empty table instead.
+  const shortcuts = Array.isArray(rawShortcuts) ? rawShortcuts : [];
 
   // Track button position for fixed positioning
   const [position, setPosition] = useState<{ top: number; right: number }>({
