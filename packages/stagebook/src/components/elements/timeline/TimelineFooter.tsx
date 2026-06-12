@@ -1,5 +1,7 @@
 import React, { useId } from "react";
 import { formatTime } from "../../../utils/formatTime.js";
+import { useMessages } from "../../StagebookProvider.js";
+import type { StagebookMessages } from "../../../messages/index.js";
 import type { TimelineValue } from "./selections.js";
 
 export interface TimelineFooterProps {
@@ -25,6 +27,7 @@ function summary(
   selectionType: "range" | "point",
   selections: TimelineValue,
   activeIndex: number | null,
+  messages: StagebookMessages,
 ): string {
   const count = selections.length;
   // Active selection time readout takes precedence
@@ -40,14 +43,12 @@ function summary(
       }
     }
   }
-  if (selectionType === "range") {
-    if (count === 0) return "0 ranges selected";
-    if (count === 1) return "1 range selected";
-    return `${String(count)} ranges selected`;
-  }
-  if (count === 0) return "0 points marked";
-  if (count === 1) return "1 point marked";
-  return `${String(count)} points marked`;
+  // Count-neutral by construction: the catalog phrasing ("Ranges selected: N")
+  // never inflects a noun on the count, so the same string works for 0/1/N and
+  // across locales without a plural framework.
+  return selectionType === "range"
+    ? messages.rangesSelected(count)
+    : messages.pointsMarked(count);
 }
 
 const buttonStyle: React.CSSProperties = {
@@ -75,6 +76,7 @@ export function TimelineFooter({
   helpButtonRef,
   singleSelectFull = false,
 }: TimelineFooterProps) {
+  const messages = useMessages();
   // Scoped class for the help button's `:focus-visible` ring + hover
   // (#382 polish). Same useId pattern as Button / Slider / ListSorter.
   const reactId = useId();
@@ -105,7 +107,7 @@ export function TimelineFooter({
       `}</style>
       {/* Left: selection summary */}
       <div data-testid="timeline-selection-summary">
-        {summary(selectionType, selections, activeIndex)}
+        {summary(selectionType, selections, activeIndex, messages)}
       </div>
 
       {/* Right: single-select hint + help button */}
@@ -115,7 +117,7 @@ export function TimelineFooter({
             data-testid="timeline-single-select-hint"
             style={{ fontStyle: "italic" }}
           >
-            Max 1 range — delete to replace
+            {messages.singleRangeHint}
           </span>
         )}
         <button

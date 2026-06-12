@@ -1,5 +1,6 @@
 import React from "react";
 import { Loading } from "../form/Loading.js";
+import { useMessages } from "../StagebookProvider.js";
 
 export interface SubmissionConditionalRenderProps {
   isSubmitted: boolean;
@@ -12,6 +13,7 @@ export function SubmissionConditionalRender({
   playerCount,
   children,
 }: SubmissionConditionalRenderProps) {
+  const messages = useMessages();
   if (isSubmitted) {
     if (!playerCount || playerCount <= 1) {
       return (
@@ -30,7 +32,7 @@ export function SubmissionConditionalRender({
         data-state="waiting"
         style={{ textAlign: "center", color: "#9ca3af", pointerEvents: "none" }}
       >
-        Please wait for other participant(s) to finish this stage.
+        {messages.submissionWaiting}
       </div>
     );
   }

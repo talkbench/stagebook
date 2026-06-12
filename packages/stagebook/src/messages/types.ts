@@ -64,6 +64,8 @@ export interface StagebookMessages {
   rangesSelected: (n: number) => string;
   /** Count-neutral selection summary, e.g. "Points marked: 3". */
   pointsMarked: (n: number) => string;
+  /** Hint shown in single-select range mode when a range already exists. */
+  singleRangeHint: string;
 }
 
 /** Recursive partial — host overrides supply any subset of the catalog. The

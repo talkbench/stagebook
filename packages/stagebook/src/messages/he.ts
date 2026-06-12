@@ -36,4 +36,5 @@ export const he: StagebookMessages = {
 
   rangesSelected: (n) => `טווחים שנבחרו: ${n}`,
   pointsMarked: (n) => `נקודות שסומנו: ${n}`,
+  singleRangeHint: "טווח אחד לכל היותר — מחקו כדי להחליף",
 };

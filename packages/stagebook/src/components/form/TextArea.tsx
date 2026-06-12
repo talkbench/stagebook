@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useId } from "react";
 import { computeIntervalQuantiles } from "./typingQuantiles.js";
+import { useMessages } from "../StagebookProvider.js";
 
 export interface TypingStats {
   type: "typingStats";
@@ -70,6 +71,7 @@ export function TextArea({
   debounceDelay = 500,
   id,
 }: TextAreaProps) {
+  const messages = useMessages();
   const generatedId = useId();
   const textAreaId = id || generatedId;
   // `useId` returns an opaque string the React docs call "not a valid
@@ -306,7 +308,7 @@ export function TextArea({
     const currentLength = localValue.length;
 
     if (minLength && maxLength) {
-      countText = `(${currentLength} / ${minLength}-${maxLength} characters)`;
+      countText = messages.charCount(currentLength, minLength, maxLength);
       // The valid range is [minLength, maxLength] inclusive on both ends.
       // Hitting maxLength is "you're at the upper limit" — a fact, not an
       // error. Attempts to type past it pulse red via isOverflowing (#333).
@@ -315,15 +317,15 @@ export function TextArea({
         countState = "valid";
       }
     } else if (minLength) {
-      countText = `(${currentLength} / ${minLength}+ characters required)`;
+      countText = messages.charCount(currentLength, minLength);
       if (currentLength >= minLength) {
         countColor = "var(--stagebook-success, #16a34a)";
         countState = "valid";
       }
     } else if (maxLength) {
-      countText = `(${currentLength} / ${maxLength} characters max)`;
+      countText = messages.charCount(currentLength, undefined, maxLength);
     } else {
-      countText = `(${currentLength} characters)`;
+      countText = messages.charCount(currentLength);
     }
 
     // Pulse animation takes priority over the steady-state color — when the

@@ -373,7 +373,7 @@ test("shows waiting message when submitted in multiplayer", async ({
       playerCount={3}
     />,
   );
-  await expect(component).toContainText("Please wait");
+  await expect(component).toContainText("Waiting for other participants");
   // Elements should be hidden
   await expect(component.locator("button")).toHaveCount(0);
 });

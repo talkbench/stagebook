@@ -1,5 +1,5 @@
 import React from "react";
-import { useStagebookContext } from "./StagebookProvider.js";
+import { useStagebookContext, useMessages } from "./StagebookProvider.js";
 
 export interface ElementErrorInfo {
   elementType: string;
@@ -12,6 +12,9 @@ interface ElementErrorBoundaryInnerProps {
   elementType: string;
   elementName?: string;
   onElementError?: (info: ElementErrorInfo) => void;
+  // Resolved from the active locale's catalog by the functional wrapper (a
+  // class component can't use the useMessages hook).
+  fallbackText: string;
   children: React.ReactNode;
 }
 
@@ -80,7 +83,7 @@ class ElementErrorBoundaryInner extends React.Component<
             fontSize: "0.875rem",
           }}
         >
-          Part of this page couldn&apos;t load. The rest is still usable.
+          {this.props.fallbackText}
         </div>
       );
     }
@@ -102,11 +105,13 @@ export function ElementErrorBoundary({
   children,
 }: ElementErrorBoundaryProps) {
   const { onElementError } = useStagebookContext();
+  const messages = useMessages();
   return (
     <ElementErrorBoundaryInner
       elementType={elementType}
       elementName={elementName}
       onElementError={onElementError}
+      fallbackText={messages.elementErrorFallback}
     >
       {children}
     </ElementErrorBoundaryInner>

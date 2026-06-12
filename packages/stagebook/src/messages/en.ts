@@ -37,4 +37,5 @@ export const en: StagebookMessages = {
 
   rangesSelected: (n) => `Ranges selected: ${n}`,
   pointsMarked: (n) => `Points marked: ${n}`,
+  singleRangeHint: "Max 1 range — delete to replace",
 };

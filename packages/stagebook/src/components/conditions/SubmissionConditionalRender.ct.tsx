@@ -19,7 +19,7 @@ test("shows waiting message when submitted in multiplayer", async ({
     </SubmissionConditionalRender>,
   );
   await expect(component).not.toContainText("Form content");
-  await expect(component).toContainText("Please wait");
+  await expect(component).toContainText("Waiting for other participants");
 });
 
 test("shows loading when submitted in single player", async ({ mount }) => {
