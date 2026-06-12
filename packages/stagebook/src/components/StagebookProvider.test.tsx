@@ -15,6 +15,7 @@ import {
 import { defaultMessages, type StagebookMessages } from "../messages/index.js";
 import { SubmitButton } from "./elements/SubmitButton.js";
 import { Loading } from "./form/Loading.js";
+import { HelpPopover } from "./elements/timeline/HelpPopover.js";
 
 // We test the provider/hooks via a simple test component pattern
 // that captures hook return values into a ref we can assert on.
@@ -599,6 +600,35 @@ describe("component localization wiring", () => {
     const { container, unmount } = renderNode(<Loading />);
     expect(container.querySelector("svg")?.getAttribute("aria-label")).toBe(
       "Loading",
+    );
+    unmount();
+  });
+
+  test("Timeline chrome (HelpPopover) reads the catalog under a he provider", () => {
+    // HelpPopover portals into document.body; assert there. This is the one
+    // test proving Timeline-family chrome actually flows through the catalog
+    // (the Timeline CT suite mounts provider-less, exercising only the en
+    // fallback).
+    const buttonRef = { current: null };
+    const { unmount } = renderNode(
+      <HelpPopover
+        selectionType="range"
+        onClose={() => {}}
+        buttonRef={buttonRef}
+      />,
+      createMockContext({ locale: "he" }),
+    );
+    const popover = document.body.querySelector(
+      '[data-testid="timeline-help-popover"]',
+    );
+    expect(popover?.getAttribute("aria-label")).toBe(
+      defaultMessages.he.timelineShortcutsLabel,
+    );
+    expect(popover?.textContent).toContain(
+      defaultMessages.he.timelineShortcutsTitle,
+    );
+    expect(popover?.querySelectorAll("tr")).toHaveLength(
+      defaultMessages.he.timelineShortcutRowsRange().length,
     );
     unmount();
   });

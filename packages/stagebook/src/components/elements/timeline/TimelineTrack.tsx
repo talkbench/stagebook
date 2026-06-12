@@ -3,7 +3,7 @@ import { WaveformRenderer } from "./WaveformRenderer.js";
 import { useMessages } from "../../StagebookProvider.js";
 
 export interface TimelineTrackProps {
-  /** Label shown in the gutter (from trackLabels or "Position N"). */
+  /** Label shown in the gutter (from trackLabels or the "Track N" fallback). */
   label: string;
   /** Interleaved min/max peaks for this channel. */
   peaks: Float32Array | null;

@@ -133,4 +133,45 @@ describe("catalog completeness", () => {
       expect(Object.keys(defaultMessages[locale]).sort()).toEqual(enKeys);
     }
   });
+
+  it("shortcut tables are shape-stable across locales", () => {
+    // TS pins the row TYPE but not the row COUNT — a locale silently
+    // dropping a shortcut row would pass compilation and the key-set check.
+    const enRange = defaultMessages.en.timelineShortcutRowsRange();
+    const enPoint = defaultMessages.en.timelineShortcutRowsPoint();
+    for (const locale of REGISTERED_LOCALES) {
+      const range = defaultMessages[locale].timelineShortcutRowsRange();
+      const point = defaultMessages[locale].timelineShortcutRowsPoint();
+      expect(range).toHaveLength(enRange.length);
+      expect(point).toHaveLength(enPoint.length);
+      for (const row of [...range, ...point]) {
+        expect(row.keys.length).toBeGreaterThan(0);
+        expect(row.description.length).toBeGreaterThan(0);
+      }
+      // React keys the rows by `keys` — duplicates within a table would
+      // break list rendering.
+      expect(new Set(range.map((r) => r.keys)).size).toBe(range.length);
+      expect(new Set(point.map((r) => r.keys)).size).toBe(point.length);
+    }
+  });
+
+  it("function keys interpolate their arguments in every locale", () => {
+    for (const locale of REGISTERED_LOCALES) {
+      const c = defaultMessages[locale];
+      expect(c.mediaErrorCode(3)).toContain("3");
+      expect(c.mediaStepBack(5)).toContain("5");
+      expect(c.mediaStepBackTitle(5)).toContain("5");
+      expect(c.mediaStepForward(5)).toContain("5");
+      expect(c.mediaStepForwardTitle(5)).toContain("5");
+      expect(c.timelineMuteTrack("voiceA")).toContain("voiceA");
+      expect(c.timelineUnmuteTrack("voiceA")).toContain("voiceA");
+      expect(c.timelineLabel("speech")).toContain("speech");
+      expect(c.timelineTrackFallback(2)).toContain("2");
+      expect(c.timerRemaining("0:42")).toContain("0:42");
+      expect(c.rangesSelected(7)).toContain("7");
+      expect(c.pointsMarked(7)).toContain("7");
+      expect(c.charCount(12)).toContain("12");
+      expect(c.charCount(12, 5, 20)).toContain("12");
+    }
+  });
 });
