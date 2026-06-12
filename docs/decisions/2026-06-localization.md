@@ -341,7 +341,11 @@ This is both the development aid and the manual RTL/translation test artifact.
 ## Consumer wiring & breaking changes
 
 **No breaking changes at runtime.** `locale`/`messages` are optional and default
-to `en`; existing apps render byte-identically. The treatment `locale` field and
+to `en`; existing apps render byte-identically. (One theoretical exception: a
+host that sets `<html dir="rtl">` and embeds stagebook at default `en` — text
+inside components previously inherited the host's rtl flow and is now pinned
+ltr per the deterministic-direction design. No known consumer does this; all
+current shells are LTR.) The treatment `locale` field and
 prompt frontmatter `locale` are optional/back-compatible. Additive type surface
 (`StagebookMessages`, `defaultMessages`, helpers).
 

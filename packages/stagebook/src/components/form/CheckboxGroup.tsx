@@ -122,7 +122,11 @@ export function CheckboxGroup({
   };
 
   return (
-    <div data-testid={testId} style={{ marginTop: "1rem" }}>
+    <div
+      data-testid={testId}
+      dir={isRTL ? "rtl" : "ltr"}
+      style={{ marginTop: "1rem" }}
+    >
       <style>{`
         .${rowClass}:hover {
           background-color: var(--stagebook-hover-bg, #f3f4f6);
@@ -153,7 +157,6 @@ export function CheckboxGroup({
         </label>
       )}
       <div
-        dir={isRTL ? "rtl" : "ltr"}
         // ARIA — `role="group"` (not "checkboxgroup", which isn't a
         // real ARIA role) so a screen reader announces the
         // collection of checkboxes as a labelled group rather than

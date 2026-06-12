@@ -69,6 +69,25 @@ export function Slider({
     onChange?.(newValue);
   };
 
+  // Under RTL, normalize horizontal arrow keys ourselves. Chromium and
+  // Firefox reverse the native range input's arrow mapping under dir=rtl
+  // (ArrowLeft increments, matching the mirrored visual axis); WebKit does
+  // not — pressing ArrowLeft there would decrement and move the visible
+  // thumb RIGHT. Intercepting both keys and applying the mirrored mapping
+  // uniformly keeps the recorded value identical across engines (the
+  // measurement-instrument property) and the visual response coherent.
+  // Up/Down/Home/End/Page keys are direction-independent and stay native.
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isRTL) return;
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const delta = e.key === "ArrowLeft" ? interval : -interval;
+    const next = Math.max(min, Math.min(max, (localValue ?? min) + delta));
+    if (next === localValue) return;
+    setLocalValue(next);
+    onChange?.(next);
+  };
+
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Click-to-jump for the click-target padding (above / below the
     // 10px track) and for the unanchored state (when the native
@@ -189,7 +208,7 @@ export function Slider({
           paddingBottom: "1.75rem",
           // Horizontal padding reserves room for endpoint labels to
           // center on their tick without overflowing the slider's
-          // box. Labels are uniformly centered (translateX(-50%)),
+          // box. Labels are uniformly centered (direction-aware translateX),
           // including at min/max ticks, so each endpoint label needs
           // ~half its width of space past the track edge. 2.5rem
           // fits the typical short endpoint label ("Strongly
@@ -367,6 +386,7 @@ export function Slider({
                 step={interval}
                 value={localValue}
                 onChange={handleChange}
+                onKeyDown={handleKeyDown}
                 // Safari excludes <input type=range> from the default
                 // tab order unless macOS keyboard-nav is on; explicit
                 // tabIndex overrides that so Safari participants can
@@ -433,7 +453,7 @@ export function Slider({
         </div>
 
         {/* Labels — positioned below the click target, centered on
-            their labeled tick (every label uses translateX(-50%),
+            their labeled tick (every label uses a direction-aware translateX,
             including endpoints). This is the dominant pattern in
             Material 3, MUI, Mantine, Radix-community-recipes, and
             macOS AppKit; survey-design literature is silent on

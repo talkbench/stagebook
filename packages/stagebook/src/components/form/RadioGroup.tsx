@@ -122,7 +122,11 @@ export function RadioGroup({
   const testId = dataTestId ?? "radioGroup";
 
   return (
-    <div data-testid={testId} style={{ marginTop: "1rem" }}>
+    <div
+      data-testid={testId}
+      dir={isRTL ? "rtl" : "ltr"}
+      style={{ marginTop: "1rem" }}
+    >
       <style>{`
         .${rowClass}:hover {
           background-color: var(--stagebook-hover-bg, #f3f4f6);
@@ -153,7 +157,6 @@ export function RadioGroup({
         </label>
       )}
       <div
-        dir={isRTL ? "rtl" : "ltr"}
         role="radiogroup"
         aria-labelledby={label ? labelId : undefined}
         style={{

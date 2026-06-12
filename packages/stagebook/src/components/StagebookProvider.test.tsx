@@ -16,6 +16,12 @@ import { defaultMessages, type StagebookMessages } from "../messages/index.js";
 import { SubmitButton } from "./elements/SubmitButton.js";
 import { Loading } from "./form/Loading.js";
 import { HelpPopover } from "./elements/timeline/HelpPopover.js";
+import { TextArea } from "./form/TextArea.js";
+import { RadioGroup } from "./form/RadioGroup.js";
+import { CheckboxGroup } from "./form/CheckboxGroup.js";
+import { Markdown } from "./form/Markdown.js";
+import { Display } from "./elements/Display.js";
+import { SubmissionConditionalRender } from "./conditions/SubmissionConditionalRender.js";
 
 // We test the provider/hooks via a simple test component pattern
 // that captures hook return values into a ref we can assert on.
@@ -602,6 +608,47 @@ describe("component localization wiring", () => {
       "Loading",
     );
     unmount();
+  });
+
+  test("mirrored components pin dir from the locale (rtl under he, ltr under en)", () => {
+    // The RTL CT suite pins the Slider/KitchenTimer geometry; this sweep
+    // protects the remaining mirrored components from a silent dir revert.
+    const cases: [string, React.ReactNode][] = [
+      ["textarea-wrap", <TextArea key="t" />],
+      ["radio", <RadioGroup key="r" options={[{ key: "a", value: "A" }]} />],
+      [
+        "checkbox",
+        <CheckboxGroup
+          key="c"
+          options={[{ key: "a", value: "A" }]}
+          value={[]}
+        />,
+      ],
+      ["markdown", <Markdown key="m" text="hello" />],
+      ["display", <Display key="d" reference="self.prompt.x" values={["v"]} />],
+      [
+        "submission",
+        <SubmissionConditionalRender key="s" isSubmitted={true} playerCount={3}>
+          <p>x</p>
+        </SubmissionConditionalRender>,
+      ],
+    ];
+    for (const [label, node] of cases) {
+      for (const [locale, expected] of [
+        ["he", "rtl"],
+        ["en", "ltr"],
+      ] as const) {
+        const { container, unmount } = renderNode(
+          node,
+          createMockContext({ locale }),
+        );
+        const el = container.querySelector("[dir]");
+        expect(el?.getAttribute("dir"), `${label} under ${locale}`).toBe(
+          expected,
+        );
+        unmount();
+      }
+    }
   });
 
   test("Timeline chrome (HelpPopover) reads the catalog under a he provider", () => {

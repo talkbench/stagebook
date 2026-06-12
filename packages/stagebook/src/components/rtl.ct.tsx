@@ -3,6 +3,7 @@ import { LocaleProvider } from "./testing/LocaleProvider.js";
 import { Slider } from "./form/Slider.js";
 import { MockKitchenTimer } from "./testing/MockKitchenTimer.js";
 import { MockTimeline } from "./testing/MockTimeline.js";
+import { MockMediaPlayer } from "./testing/MockMediaPlayer.js";
 
 // RTL layer (ADR 2026-06-localization decision #10): value/quantity
 // components mirror under an RTL locale; time-based components stay LTR.
@@ -139,4 +140,54 @@ test("Timeline stays LTR regardless of locale (time axis never mirrors)", async 
     "dir",
     "ltr",
   );
+});
+
+test("Slider under he: arrow keys record the right VALUE (measurement semantics)", async ({
+  mount,
+  page,
+}) => {
+  // The recorded value is the measurement product. Under dir=rtl the
+  // native input reverses its visual axis AND its arrow mapping
+  // (ArrowLeft increases); whatever the visual mapping, pressing the
+  // increment key from 5 must record 6, not 4.
+  const values: number[] = [];
+  const component = await mount(
+    <LocaleProvider locale="he">
+      <Slider
+        min={0}
+        max={10}
+        interval={1}
+        value={5}
+        onChange={(v: number) => values.push(v)}
+      />
+    </LocaleProvider>,
+  );
+  const input = component.locator('input[type="range"]');
+  await input.focus();
+  await page.keyboard.press("ArrowLeft");
+  expect(values.length).toBeGreaterThan(0);
+  const afterLeft = values[values.length - 1]!;
+  await page.keyboard.press("ArrowRight");
+  const afterRight = values[values.length - 1]!;
+  // Under dir=rtl: ArrowLeft increments, ArrowRight decrements (native).
+  // The two presses must be symmetric and land back on the start value.
+  expect(afterLeft).toBe(6);
+  expect(afterRight).toBe(5);
+});
+
+test("MediaPlayer stays LTR regardless of locale (transport axis never mirrors)", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <LocaleProvider locale="he">
+      <MockMediaPlayer
+        name="m1"
+        url="https://example.com/clip.mp4"
+        controls={{ playPause: true, seek: true }}
+      />
+    </LocaleProvider>,
+  );
+  await expect(
+    component.locator('[data-testid="mediaPlayer"]'),
+  ).toHaveAttribute("dir", "ltr");
 });
