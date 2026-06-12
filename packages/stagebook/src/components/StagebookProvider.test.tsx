@@ -7,9 +7,14 @@ import {
   type StagebookContext,
   StagebookProvider,
   useResolve,
+  useMessages,
+  useIsRTL,
   useTextContent,
   type TextContentResult,
 } from "./StagebookProvider.js";
+import { defaultMessages, type StagebookMessages } from "../messages/index.js";
+import { SubmitButton } from "./elements/SubmitButton.js";
+import { Loading } from "./form/Loading.js";
 
 // We test the provider/hooks via a simple test component pattern
 // that captures hook return values into a ref we can assert on.
@@ -460,5 +465,141 @@ describe("useTextContent", () => {
     expect(result.current.data).toBe("# Updated");
 
     act(() => root.unmount());
+  });
+});
+
+// --------------- Localization (i18n) ---------------
+
+// Capture useMessages()/useIsRTL() return values. When `ctx` is omitted the
+// harness renders WITHOUT a provider, exercising the graceful-fallback path.
+function renderMessages(ctx?: StagebookContext): {
+  messages: { current: StagebookMessages };
+  isRTL: { current: boolean };
+  unmount: () => void;
+} {
+  const messages = { current: defaultMessages.en };
+  const isRTL = { current: false };
+  const container = document.createElement("div");
+  let root: Root;
+
+  function Harness(): ReactNode {
+    messages.current = useMessages();
+    isRTL.current = useIsRTL();
+    return null;
+  }
+
+  act(() => {
+    root = createRoot(container);
+    root.render(
+      ctx ? (
+        <StagebookProvider value={ctx}>
+          <Harness />
+        </StagebookProvider>
+      ) : (
+        <Harness />
+      ),
+    );
+  });
+
+  return { messages, isRTL, unmount: () => act(() => root.unmount()) };
+}
+
+// Render a component subtree, optionally inside a provider, and return the
+// container for DOM assertions.
+function renderNode(
+  node: ReactNode,
+  ctx?: StagebookContext,
+): { container: HTMLElement; unmount: () => void } {
+  const container = document.createElement("div");
+  let root: Root;
+  act(() => {
+    root = createRoot(container);
+    root.render(
+      ctx ? <StagebookProvider value={ctx}>{node}</StagebookProvider> : node,
+    );
+  });
+  return { container, unmount: () => act(() => root.unmount()) };
+}
+
+describe("useMessages / useIsRTL", () => {
+  test("localizes the catalog inside a provider with a non-en locale", () => {
+    const { messages, isRTL, unmount } = renderMessages(
+      createMockContext({ locale: "he" }),
+    );
+    expect(messages.current.submitButtonDefault).toBe("הבא");
+    expect(messages.current.loadingLabel).toBe("טוען");
+    expect(isRTL.current).toBe(true);
+    unmount();
+  });
+
+  test("applies host messages overrides on top of the locale catalog", () => {
+    const { messages, unmount } = renderMessages(
+      createMockContext({ locale: "he", messages: { loadingLabel: "…" } }),
+    );
+    expect(messages.current.loadingLabel).toBe("…"); // override wins
+    expect(messages.current.submitButtonDefault).toBe("הבא"); // he base intact
+    unmount();
+  });
+
+  test("defaults to the en catalog (LTR) inside a provider with no locale", () => {
+    const { messages, isRTL, unmount } = renderMessages(createMockContext());
+    expect(messages.current.submitButtonDefault).toBe("Next");
+    expect(isRTL.current).toBe(false);
+    unmount();
+  });
+
+  test("falls back to en / LTR when rendered WITHOUT a provider", () => {
+    // Standalone-component contract: the hooks must not throw outside a
+    // provider (unlike useStagebookContext), so form components stay usable.
+    const { messages, isRTL, unmount } = renderMessages();
+    expect(messages.current.submitButtonDefault).toBe("Next");
+    expect(isRTL.current).toBe(false);
+    unmount();
+  });
+});
+
+describe("component localization wiring", () => {
+  test("SubmitButton uses the active locale's default when no buttonText", () => {
+    const { container, unmount } = renderNode(
+      <SubmitButton onSubmit={() => {}} name="s" save={() => {}} />,
+      createMockContext({ locale: "he" }),
+    );
+    const btn = container.querySelector('[data-testid="submitButton"]');
+    expect(btn?.textContent).toBe("הבא"); // not "Next"
+    unmount();
+  });
+
+  test("SubmitButton: researcher buttonText still wins under a non-en locale", () => {
+    const { container, unmount } = renderNode(
+      <SubmitButton
+        onSubmit={() => {}}
+        name="s"
+        save={() => {}}
+        buttonText="Continue"
+      />,
+      createMockContext({ locale: "he" }),
+    );
+    const btn = container.querySelector('[data-testid="submitButton"]');
+    expect(btn?.textContent).toBe("Continue");
+    unmount();
+  });
+
+  test("Loading aria-label localizes from the catalog", () => {
+    const { container, unmount } = renderNode(
+      <Loading />,
+      createMockContext({ locale: "he" }),
+    );
+    expect(container.querySelector("svg")?.getAttribute("aria-label")).toBe(
+      "טוען",
+    );
+    unmount();
+  });
+
+  test("standalone components fall back to en with no provider", () => {
+    const { container, unmount } = renderNode(<Loading />);
+    expect(container.querySelector("svg")?.getAttribute("aria-label")).toBe(
+      "Loading",
+    );
+    unmount();
   });
 });

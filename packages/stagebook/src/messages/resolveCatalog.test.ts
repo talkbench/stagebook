@@ -77,6 +77,40 @@ describe("resolveCatalog — host overrides", () => {
     resolveCatalog("en", { submitButtonDefault: "Continue" });
     expect(defaultMessages.en.submitButtonDefault).toBe("Next");
   });
+
+  it("skips prototype-polluting override keys without polluting anything", () => {
+    // JSON.parse exposes `__proto__` as an own-enumerable key (a literal
+    // `{__proto__: …}` would not). The merge must skip it.
+    const malicious = JSON.parse(
+      '{"__proto__":{"polluted":true},"constructor":{"polluted":true}}',
+    ) as Record<string, unknown>;
+    const c = resolveCatalog("en", malicious);
+    expect((c as Record<string, unknown>).polluted).toBeUndefined();
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(
+      (Object.prototype as Record<string, unknown>).polluted,
+    ).toBeUndefined();
+    // The real catalog still resolves normally.
+    expect(c.submitButtonDefault).toBe("Next");
+  });
+});
+
+describe("charCount — count-neutral interpolation branches", () => {
+  it("formats all four bound combinations (en)", () => {
+    const { charCount } = resolveCatalog("en");
+    expect(charCount(5)).toBe("(5 characters)");
+    expect(charCount(5, 10, 20)).toBe("(5 / 10-20 characters)");
+    expect(charCount(5, 10)).toBe("(5 / 10+ characters required)");
+    expect(charCount(5, undefined, 20)).toBe("(5 / 20 characters max)");
+  });
+
+  it("formats all four bound combinations (he)", () => {
+    const { charCount } = resolveCatalog("he");
+    expect(charCount(5)).toBe("(5 תווים)");
+    expect(charCount(5, 10, 20)).toBe("(5 / 10-20 תווים)");
+    expect(charCount(5, 10)).toBe("(5 / 10+ תווים נדרשים)");
+    expect(charCount(5, undefined, 20)).toBe("(5 / 20 תווים לכל היותר)");
+  });
 });
 
 describe("isRTLLocale", () => {

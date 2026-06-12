@@ -79,6 +79,18 @@ export function resolveCatalog(
 
   const merged: StagebookMessages = { ...base };
   for (const key of Object.keys(overrides) as (keyof StagebookMessages)[]) {
+    // Defense-in-depth: never let an override key reach a prototype. Today the
+    // flat string/function catalog + the `typeof` guard below make this
+    // unreachable, but an explicit skip keeps it safe if a future catalog key
+    // is ever object-valued (which would make the `typeof` guard permissive).
+    const keyName = key as string;
+    if (
+      keyName === "__proto__" ||
+      keyName === "constructor" ||
+      keyName === "prototype"
+    ) {
+      continue;
+    }
     const overrideValue = overrides[key];
     if (overrideValue === undefined) continue;
     // Malformed-override guard: the override must match the bundled entry's
