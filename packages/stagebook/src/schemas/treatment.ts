@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { collectStorageKeyCollisions } from "./storageKeyCollisions.js";
 import { validateTreatmentFileReferences } from "./validateReferences.js";
-import { nameSchema, type NameType } from "./primitives.js";
+import { nameSchema, localeSchema, type NameType } from "./primitives.js";
 import {
   namedSourceEnum,
   externalSourceEnum,
@@ -19,7 +19,7 @@ import {
 
 // Re-exports so consumers' existing imports from `./treatment.js` keep
 // working after the reference machinery moved to its own module (#240).
-export { nameSchema, type NameType };
+export { nameSchema, localeSchema, type NameType };
 export {
   namedSourceEnum,
   externalSourceEnum,
@@ -175,6 +175,24 @@ export const fileSchema = z
     {
       message:
         "File path must be a relative path (e.g. prompts/foo.prompt.md), an asset:// URI, or an http(s):// URL with a non-empty host.",
+    },
+  )
+  .refine(
+    (value) => {
+      // Reject parent-directory traversal in relative paths. A `..` segment
+      // lets a (researcher-authored or `${field}`-substituted, e.g.
+      // `prompts/${locale}/…`) file path escape the treatment's asset root.
+      // URLs (http(s)://, asset://) carry a scheme and are normalized by URL
+      // parsing, so only scheme-less relative paths are constrained here. This
+      // also runs post-fill on the substituted value, so a crafted `${locale}`
+      // resolving to `../../x` is rejected. No legitimate prompt/media path
+      // needs `..`.
+      if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return true;
+      return !value.split("/").includes("..");
+    },
+    {
+      message:
+        "File path must not contain `..` path segments (parent-directory traversal is not allowed).",
     },
   );
 export type FileType = z.infer<typeof fileSchema>;
@@ -1901,6 +1919,14 @@ export const baseTreatmentSchema = z
     name: nameSchema,
     notes: z.string().optional(),
     playerCount: z.number(),
+    // Participant-facing language for this treatment (BCP-47, e.g. `he`).
+    // Drives stagebook's chrome catalog + RTL when the host wires it onto the
+    // provider. Optional — absent means English (the runtime resolves an
+    // absent/unknown locale to `en`). Accepts a `${field}` placeholder so one
+    // `contentType: treatment` template can fan out per-locale arms, threading
+    // the same field into both `locale:` and `prompts/${locale}/…` paths; the
+    // concrete value is enum-shape-checked post-fill by `resolvedTreatmentSchema`.
+    locale: localeSchema.or(fieldPlaceholderSchema).optional(),
     // `${field}` placeholder accepted (#284) — substituted with a literal
     // array at fillTemplates time. Lets a single `treatment` template power
     // studies that vary group structure per condition (e.g. dyads vs.

@@ -40,3 +40,15 @@ export const referenceNameSchema = z
   .min(1, "Name is required")
   .max(256)
   .regex(NAME_REGEX, { message: NAME_REGEX_MESSAGE });
+
+// BCP-47-ish language tag: a 2-3 letter primary subtag plus optional
+// `-`-separated subtags (`en`, `he`, `he-IL`, `zh-Hant`). This validates the
+// tag's SHAPE, not membership in stagebook's shipped-catalog set — a study may
+// declare a locale a host supplies via `messages` overrides, and the runtime
+// resolves any unshipped locale to `en` (with a warning). The syntactic check
+// still catches gross typos like `hebrew`.
+const LOCALE_REGEX = /^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]+)*$/;
+export const localeSchema = z.string().regex(LOCALE_REGEX, {
+  message:
+    "`locale` must be a BCP-47 language tag — a 2-3 letter primary subtag with optional `-`-separated subtags (e.g. `en`, `he`, `he-IL`).",
+});
