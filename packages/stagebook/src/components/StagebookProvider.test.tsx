@@ -679,4 +679,32 @@ describe("component localization wiring", () => {
     );
     unmount();
   });
+
+  test("HelpPopover degrades to an empty table on a malformed shortcut override", () => {
+    // `resolveCatalog`'s typeof-guard accepts any FUNCTION for this key, so a
+    // host override returning a non-array slips through to HelpPopover's
+    // `.map()`. HelpPopover's `Array.isArray` guard must keep it from
+    // crashing the render (it's the second defense layer; see #479).
+    const buttonRef = { current: null };
+    const { unmount } = renderNode(
+      <HelpPopover
+        selectionType="range"
+        onClose={() => {}}
+        buttonRef={buttonRef}
+      />,
+      createMockContext({
+        messages: {
+          timelineShortcutRowsRange: () =>
+            "oops" as unknown as { keys: string; description: string }[],
+        },
+      }),
+    );
+    const popover = document.body.querySelector(
+      '[data-testid="timeline-help-popover"]',
+    );
+    // Rendered (didn't throw), with no shortcut rows.
+    expect(popover).not.toBeNull();
+    expect(popover?.querySelectorAll("tr")).toHaveLength(0);
+    unmount();
+  });
 });

@@ -17,9 +17,10 @@
  * load (URLs, missing files) are skipped: missing-file and invalid-prompt
  * problems are different error classes with their own reporting.
  *
- * Scope: `treatments[].gameStages` and `treatments[].exitSequence`.
- * `introSequences` have no `locale` field (nothing to compare against) and are
- * deliberately out of scope until they grow one.
+ * Scope: `treatments[].gameStages` + `treatments[].exitSequence` (checked
+ * against the TREATMENT's locale) and `introSequences[].introSteps` (checked
+ * against the INTRO SEQUENCE's own locale — intro runs before treatment
+ * assignment, so it can't inherit a treatment).
  *
  * Comparison is by BCP-47 primary subtag (`he-IL` ≡ `he`) — the same unit the
  * chrome catalog resolves on, so a region-tagged treatment doesn't spuriously

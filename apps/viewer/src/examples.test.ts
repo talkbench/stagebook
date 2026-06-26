@@ -32,6 +32,10 @@ const EXAMPLES: Example[] = [
     name: "imports-walkthrough",
     treatmentFile: "imports-walkthrough/imports-walkthrough.stagebook.yaml",
   },
+  {
+    name: "i18n-gallery",
+    treatmentFile: "i18n-gallery/i18n-gallery.stagebook.yaml",
+  },
 ];
 
 /**
