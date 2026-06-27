@@ -20,7 +20,7 @@ import {
   allBuffersSilent,
 } from "./mediaPlayer/waveformCapture.js";
 import { setChannelGain } from "./mediaPlayer/muteChannels.js";
-import { useMessages } from "../StagebookProvider.js";
+import { useMessages, useIsRTL } from "../StagebookProvider.js";
 
 export interface VideoEvent {
   type: "play" | "pause" | "ended" | "seek" | "speed" | "stopAt";
@@ -112,6 +112,9 @@ export function MediaPlayer({
   controls,
 }: MediaPlayerProps) {
   const messages = useMessages();
+  // Text chrome (captions, error overlays, play-once) follows the locale
+  // direction; the transport/scrub axis stays LTR via the component root.
+  const localeDir = useIsRTL() ? "rtl" : "ltr";
   const youtubeVideoId = isYouTubeURL(url);
   const saveKey = `mediaPlayer_${name}`;
 
@@ -1302,6 +1305,7 @@ export function MediaPlayer({
             <div
               data-testid="mediaPlayer-error"
               role="alert"
+              dir={localeDir}
               style={{
                 width: "100%",
                 aspectRatio: "16/9",
@@ -1345,6 +1349,7 @@ export function MediaPlayer({
           {captionText !== null && (
             <div
               data-testid="mediaPlayer-caption"
+              dir={localeDir}
               style={{
                 textAlign: "center",
                 padding: "0.5rem",
@@ -1430,6 +1435,7 @@ export function MediaPlayer({
           type="button"
           data-testid="mediaPlayer-playOnce"
           aria-label={messages.mediaPlayAudio}
+          dir={localeDir}
           tabIndex={0}
           onClick={() => {
             setShowPlayOnce(false);
@@ -1453,7 +1459,7 @@ export function MediaPlayer({
             fontWeight: 500,
           }}
         >
-          Play
+          {messages.mediaPlay}
         </button>
       )}
 
@@ -1479,6 +1485,7 @@ export function MediaPlayer({
         <div
           data-testid="mediaPlayer-error"
           role="alert"
+          dir={localeDir}
           style={{
             background: "#1c1c1e",
             color: "#fff",

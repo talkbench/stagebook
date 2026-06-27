@@ -1,6 +1,6 @@
 import React, { useId } from "react";
 import { WaveformRenderer } from "./WaveformRenderer.js";
-import { useMessages } from "../../StagebookProvider.js";
+import { useMessages, useIsRTL } from "../../StagebookProvider.js";
 
 export interface TimelineTrackProps {
   /** Label shown in the gutter (from trackLabels or the "Track N" fallback). */
@@ -45,6 +45,7 @@ export function TimelineTrack({
   onToggleMute,
 }: TimelineTrackProps) {
   const messages = useMessages();
+  const isRTL = useIsRTL();
   // Scoped class for the mute button's `:focus-visible` ring + hover
   // (#382 polish). Same useId pattern as Button / Slider / ListSorter.
   const reactId = useId();
@@ -125,6 +126,7 @@ export function TimelineTrack({
         />
         <span
           data-testid="track-label"
+          dir={isRTL ? "rtl" : "ltr"}
           style={{
             position: "absolute",
             top: "4px",

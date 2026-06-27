@@ -671,6 +671,9 @@ describe("component localization wiring", () => {
     expect(popover?.getAttribute("aria-label")).toBe(
       defaultMessages.he.timelineShortcutsLabel,
     );
+    // The popover portals to <body>, escaping the Stage's dir context — it
+    // must set its own direction from the locale (#482 review).
+    expect(popover?.getAttribute("dir")).toBe("rtl");
     expect(popover?.textContent).toContain(
       defaultMessages.he.timelineShortcutsTitle,
     );

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useMessages } from "../../StagebookProvider.js";
+import { useMessages, useIsRTL } from "../../StagebookProvider.js";
 
 export interface HelpPopoverProps {
   selectionType: "range" | "point";
@@ -14,6 +14,7 @@ export function HelpPopover({
   buttonRef,
 }: HelpPopoverProps) {
   const messages = useMessages();
+  const isRTL = useIsRTL();
   const popoverRef = useRef<HTMLDivElement>(null);
   // Whole-table catalog entries (timelineShortcutRowsRange/Point) so a locale
   // translates the table wholesale, including instruction-style "keys" like
@@ -119,6 +120,7 @@ export function HelpPopover({
       ref={popoverRef}
       data-testid="timeline-help-popover"
       role="dialog"
+      dir={isRTL ? "rtl" : "ltr"}
       aria-label={messages.timelineShortcutsLabel}
       style={{
         position: "fixed",

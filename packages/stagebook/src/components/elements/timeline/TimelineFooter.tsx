@@ -1,6 +1,6 @@
 import React, { useId } from "react";
 import { formatTime } from "../../../utils/formatTime.js";
-import { useMessages } from "../../StagebookProvider.js";
+import { useMessages, useIsRTL } from "../../StagebookProvider.js";
 import type { StagebookMessages } from "../../../messages/index.js";
 import type { TimelineValue } from "./selections.js";
 
@@ -77,6 +77,7 @@ export function TimelineFooter({
   singleSelectFull = false,
 }: TimelineFooterProps) {
   const messages = useMessages();
+  const isRTL = useIsRTL();
   // Scoped class for the help button's `:focus-visible` ring + hover
   // (#382 polish). Same useId pattern as Button / Slider / ListSorter.
   const reactId = useId();
@@ -85,6 +86,7 @@ export function TimelineFooter({
   return (
     <div
       data-testid="timeline-footer"
+      dir={isRTL ? "rtl" : "ltr"}
       style={{
         display: "flex",
         alignItems: "center",

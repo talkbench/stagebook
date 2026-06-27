@@ -16,6 +16,7 @@ import {
   Stage,
   ScrollIndicator,
   useScrollAwareness,
+  isRTLLocale,
 } from "stagebook/components";
 import { flattenSteps, localeForPhase } from "../lib/steps";
 import { ViewerStateStore } from "../lib/store";
@@ -314,7 +315,11 @@ export function Viewer({
         </aside>
 
         {/* Main content */}
-        <main ref={mainScrollRef} style={mainStyle}>
+        <main
+          ref={mainScrollRef}
+          dir={isRTLLocale(locale) ? "rtl" : "ltr"}
+          style={mainStyle}
+        >
           {isSubmitted ? (
             <div style={submittedOverlayStyle}>
               <p style={submittedTextStyle}>
