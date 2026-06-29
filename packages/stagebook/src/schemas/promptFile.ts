@@ -241,15 +241,22 @@ function parseNumericResponseLine(
 
 /**
  * Inspect a response-line content (already stripped of `- ` prefix) to see
- * if it begins with a finite number followed by EOL, colon, or whitespace.
- * Used by multipleChoice mode detection — if every option starts with a
- * number, the prompt is in numeric mode (#282).
+ * if it is an explicit numeric option: `<number>: <label>` with a finite
+ * number before the first colon.
+ *
+ * The colon is the numeric-mode signal (#289). A bare `- 1` is NOT numeric —
+ * it's shorthand for `- 1: 1` (text label "1"). This keeps comprehension
+ * checks / quizzes whose labels happen to be small integers (`1 / 2 / 3 /
+ * It Varies`) in text mode instead of false-positiving into a numeric scale.
+ * To get numeric semantics (responsePoints) an author must opt in by labeling
+ * every option `<number>: <label>` — used by multipleChoice mode detection:
+ * if every option is an explicit numeric option, the prompt is numeric (#282).
  */
 function isNumericResponseLine(raw: string): boolean {
   const trimmed = raw.trim();
-  if (trimmed.length === 0) return false;
   const colonIdx = trimmed.indexOf(":");
-  const pointStr = colonIdx < 0 ? trimmed : trimmed.slice(0, colonIdx).trim();
+  if (colonIdx < 0) return false;
+  const pointStr = trimmed.slice(0, colonIdx).trim();
   if (pointStr.length === 0) return false;
   return Number.isFinite(Number(pointStr));
 }
@@ -284,8 +291,9 @@ export interface ParsedPromptFile {
   /**
    * Numeric per-option values, parsed from the body section. Populated for:
    *   - slider — every line is numeric
-   *   - multipleChoice in numeric mode (#282) — every option has a numeric
-   *     prefix (`- 1: Strongly disagree`, or bare `- 1`)
+   *   - multipleChoice in numeric mode (#282) — every option uses the
+   *     explicit `- <number>: <label>` colon form (#289). A bare `- 1` is
+   *     text, not a scale point, so it does NOT populate this array.
    * Empty for text-only multipleChoice, listSorter, openResponse, noResponse.
    * `responsePoints[i]` corresponds to `responseItems[i]`.
    */
@@ -518,10 +526,14 @@ export const promptFileSchema: z.ZodType<
       responsePoints = points;
       responseItems = labels;
     } else if (parsedMetadata.type === "multipleChoice") {
-      // #282: multipleChoice options can be all-numeric (`- 1: Strongly disagree`)
-      // or all-text (`- Strongly disagree`). Mixed = validation error.
-      // Numeric mode is restricted to single-select (radio); multi-select
-      // numeric mode has no clean averaging semantics and is out of scope for v1.
+      // #282/#289: multipleChoice options are all-numeric or all-text. The
+      // explicit `<number>: <label>` colon form is the numeric signal — a
+      // bare `- 1` is text (label "1"), so `1 / 2 / 3 / It Varies`
+      // comprehension checks stay text instead of erroring. All explicit
+      // numeric → numeric mode; mixing explicit-numeric with anything else =
+      // validation error. Numeric mode is restricted to single-select (radio);
+      // multi-select numeric mode has no clean averaging semantics and is out
+      // of scope for v1.
       const stripped: string[] = [];
       for (const line of responseLines) {
         if (!(line.startsWith("- ") || line === "-")) continue;

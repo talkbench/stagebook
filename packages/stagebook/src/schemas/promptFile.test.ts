@@ -722,7 +722,10 @@ How much do you agree?
       }
     });
 
-    test("bare numbers are accepted; label defaults to stringified number", () => {
+    test("bare numbers are text mode; numeric mode requires an explicit colon (#289)", () => {
+      // The colon is the numeric-mode signal. A bare `- 1` is shorthand for
+      // `- 1: 1` (text label "1"), never a numeric scale point. Authors who
+      // want numeric semantics (responsePoints) must write `- 1: <label>`.
       const markdown = `---
 name: scale
 type: multipleChoice
@@ -737,8 +740,67 @@ Rate it
       const result = promptFileSchema.safeParse(markdown);
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.responsePoints).toEqual([1, 2, 3, 4, 5]);
+        expect(result.data.responsePoints).toEqual([]);
         expect(result.data.responseItems).toEqual(["1", "2", "3", "4", "5"]);
+      }
+    });
+
+    test("comprehension check: numeric-looking labels with a text foil are text mode, not a mixing error (#289)", () => {
+      // Real research pattern: an MCQ gate on a discrete fact whose options
+      // happen to be small integers plus a non-numeric foil. These are
+      // identifiers, not scale points, so the whole prompt is text mode and
+      // `value: "2"` conditions keep working against the bare labels.
+      const markdown = `---
+name: num_speakers
+type: multipleChoice
+---
+How many different people will tell you a story?
+---
+- 1
+- 2
+- 3
+- 4
+- It Varies`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.responsePoints).toEqual([]);
+        expect(result.data.responseItems).toEqual([
+          "1",
+          "2",
+          "3",
+          "4",
+          "It Varies",
+        ]);
+      }
+    });
+
+    test("endpoints-only Likert opts into numeric mode with trailing colons (#289)", () => {
+      // The migration path for a numeric scale that only labels its endpoints:
+      // give every middle point a trailing colon so it reads as `<number>:`
+      // (empty label falls back to the stringified number).
+      const markdown = `---
+name: agreement
+type: multipleChoice
+---
+How much do you agree?
+---
+- 1: Strongly disagree
+- 2:
+- 3:
+- 4:
+- 5: Strongly agree`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.responsePoints).toEqual([1, 2, 3, 4, 5]);
+        expect(result.data.responseItems).toEqual([
+          "Strongly disagree",
+          "2",
+          "3",
+          "4",
+          "Strongly agree",
+        ]);
       }
     });
 
@@ -799,6 +861,81 @@ Pick one
             i.message.includes("mixes numeric and text"),
           ),
         ).toBe(true);
+      }
+    });
+
+    test("a text label that contains a colon stays text, not numeric (#289)", () => {
+      // The colon-as-numeric-signal rule must not trip on text labels that
+      // happen to contain a colon — only a *number* before the first colon
+      // counts. "Maybe" isn't finite, so this is plain text mode and the
+      // label is preserved verbatim, colon and all.
+      const markdown = `---
+name: certainty
+type: multipleChoice
+---
+Pick one
+---
+- Maybe: not sure
+- Yes
+- No`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.responsePoints).toEqual([]);
+        expect(result.data.responseItems).toEqual([
+          "Maybe: not sure",
+          "Yes",
+          "No",
+        ]);
+      }
+    });
+
+    test("a single bare numeric option is text mode (#289)", () => {
+      const markdown = `---
+name: lone
+type: multipleChoice
+---
+Pick one
+---
+- 1`;
+      const result = promptFileSchema.safeParse(markdown);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.responsePoints).toEqual([]);
+        expect(result.data.responseItems).toEqual(["1"]);
+      }
+    });
+
+    test("explicit-numeric mixed with a bare number is an error, both orderings (#289)", () => {
+      // The mixing rule is order-independent: a bare number (now text) next
+      // to an explicit `- <number>: <label>` option errors regardless of
+      // which comes first.
+      const numericFirst = `---
+name: mix_a
+type: multipleChoice
+---
+Pick one
+---
+- 1: One
+- 2`;
+      const bareFirst = `---
+name: mix_b
+type: multipleChoice
+---
+Pick one
+---
+- 1
+- 2: Two`;
+      for (const markdown of [numericFirst, bareFirst]) {
+        const result = promptFileSchema.safeParse(markdown);
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(
+            result.error.issues.some((i) =>
+              i.message.includes("mixes numeric and text"),
+            ),
+          ).toBe(true);
+        }
       }
     });
 

@@ -102,6 +102,32 @@ Each option on its own line, prefixed with `- `:
 - Option C
 ```
 
+The saved value is the chosen option's text.
+
+**Numeric scales (#282).** To attach numeric scale points (averaged downstream), label every option in the explicit `- <number>: <label>` form. The colon is what turns the prompt numeric — it's an opt-in:
+
+```markdown
+- 1: Strongly disagree
+- 2: Disagree
+- 3: Neutral
+- 4: Agree
+- 5: Strongly agree
+```
+
+Each numeric value must be unique, and numeric mode is single-select only.
+
+A **bare** option that happens to look like a number (`- 2`, no colon) is **text**, with the number as its label — never a scale point (#289). So a comprehension check or quiz whose options are small integers plus a non-numeric foil stays in text mode, and `value:` conditions match the bare label:
+
+```markdown
+- 1
+- 2
+- 3
+- 4
+- It Varies
+```
+
+Mixing explicit `- <number>: <label>` options with bare/text options in the same prompt is a preflight error — make every option numeric (add a trailing colon to label-less points, e.g. `- 2:`) or none.
+
 ### Open Response
 
 Placeholder text prefixed with `> `:
