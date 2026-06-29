@@ -35,6 +35,7 @@ beforeAll(() => {
 
 function render(node: ReactNode): {
   container: HTMLElement;
+  rerender: (next: ReactNode) => void;
   unmount: () => void;
 } {
   const container = document.createElement("div");
@@ -46,12 +47,28 @@ function render(node: ReactNode): {
   });
   return {
     container,
+    rerender: (next: ReactNode) =>
+      act(() => {
+        root.render(next);
+      }),
     unmount: () =>
       act(() => {
         root.unmount();
         container.remove();
       }),
   };
+}
+
+/** Switch the "part to preview" picker to the given unit key. */
+function selectUnit(container: HTMLElement, key: string): void {
+  const picker = container.querySelector(
+    'select[aria-label="Part to preview"]',
+  ) as HTMLSelectElement | null;
+  if (!picker) throw new Error("part picker not found");
+  act(() => {
+    picker.value = key;
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+  });
 }
 
 const noop = () => {};
@@ -91,6 +108,30 @@ function introOnlyFile(): TreatmentFileType {
 /** An empty file: neither intro sequences nor treatments. */
 function emptyFile(): TreatmentFileType {
   return {} as unknown as TreatmentFileType;
+}
+
+/** An intro (with a submit button) plus a treatment of `playerCount` players,
+ *  to exercise unit-switch state hygiene (submitted flags, position). */
+function introPlusTreatmentFile(playerCount = 3): TreatmentFileType {
+  return {
+    introSequences: [
+      {
+        name: "intro1",
+        locale: "en",
+        introSteps: [{ name: "consent", elements: [{ type: "submitButton" }] }],
+      },
+    ],
+    treatments: [
+      {
+        name: "study1",
+        locale: "en",
+        playerCount,
+        gameStages: [
+          { name: "s1", duration: 60, elements: [{ type: "submitButton" }] },
+        ],
+      },
+    ],
+  } as unknown as TreatmentFileType;
 }
 
 /** he intro sequence + en treatment, to exercise per-phase locale. */
@@ -215,6 +256,124 @@ describe("empty file renders a placeholder (no intro, no treatment)", () => {
     expect(
       container.querySelector('[data-testid="viewer-empty"]'),
     ).not.toBeNull();
+    unmount();
+  });
+
+  it("keeps the back + refresh controls so the user isn't stranded", () => {
+    // In VS Code you refresh the empty preview after adding the first part;
+    // in the standalone app you need a way back to the landing page.
+    const { container, unmount } = render(
+      <Viewer
+        treatmentFile={emptyFile()}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+        onBack={noop}
+        onRefresh={noop}
+      />,
+    );
+    expect(container.querySelector('[aria-label="Back"]')).not.toBeNull();
+    expect(
+      container.querySelector('[aria-label="Refresh preview"]'),
+    ).not.toBeNull();
+    unmount();
+  });
+});
+
+describe("unit-switch state hygiene", () => {
+  it("does not carry a submitted intro step into the treatment's first stage", () => {
+    const { container, unmount } = render(
+      <Viewer
+        treatmentFile={introPlusTreatmentFile()}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+      />,
+    );
+    const main = () => container.querySelector("main")!;
+
+    // Switch to the intro unit and submit its only step → waiting overlay.
+    selectUnit(container, "intro:0");
+    const submit = main().querySelector(
+      '[data-testid="submitButton"]',
+    ) as HTMLButtonElement | null;
+    expect(submit).not.toBeNull();
+    act(() => {
+      submit!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(main().textContent).toContain("Waiting for other participants");
+
+    // Switch to the treatment: its first stage must render fresh, NOT inherit
+    // the intro's submitted[0] (which would show the waiting overlay).
+    selectUnit(container, "treatment:0");
+    expect(main().textContent).not.toContain("Waiting for other participants");
+    expect(main().querySelector('[data-testid="submitButton"]')).not.toBeNull();
+    unmount();
+  });
+
+  it("clamps the participant position when switching to a 1-player unit", () => {
+    const { container, unmount } = render(
+      <Viewer
+        treatmentFile={introPlusTreatmentFile(3)}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+      />,
+    );
+    const positionSelect = () =>
+      container.querySelector("#position-select") as HTMLSelectElement;
+
+    // On the 3-player treatment, pick participant 2.
+    expect(positionSelect().options).toHaveLength(3);
+    act(() => {
+      positionSelect().value = "2";
+      positionSelect().dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(positionSelect().value).toBe("2");
+
+    // Switch to the intro (always 1 player): the select must collapse to a
+    // single in-range option, not keep an impossible index.
+    selectUnit(container, "intro:0");
+    expect(positionSelect().options).toHaveLength(1);
+    expect(positionSelect().value).toBe("0");
+    unmount();
+  });
+});
+
+describe("selection survives an in-place refresh", () => {
+  it("stays on the chosen intro when the file is re-supplied (VS Code save)", () => {
+    const { container, rerender, unmount } = render(
+      <Viewer
+        treatmentFile={introHeTreatmentEnFile()}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+      />,
+    );
+    const badge = () =>
+      container.querySelector('[data-testid="viewer-locale-badge"]')
+        ?.textContent;
+
+    // Choose the intro unit (he).
+    selectUnit(container, "intro:0");
+    expect(badge()).toBe("he");
+
+    // A refresh hands us a fresh-but-equal treatmentFile object. The viewer
+    // must keep the intro the user was on, not snap back to the treatment.
+    rerender(
+      <Viewer
+        treatmentFile={introHeTreatmentEnFile()}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+      />,
+    );
+    expect(badge()).toBe("he");
     unmount();
   });
 });

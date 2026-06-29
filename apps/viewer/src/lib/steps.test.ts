@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { flattenSteps, localeForPhase, buildUnits } from "./steps";
+import {
+  flattenSteps,
+  localeForPhase,
+  buildUnits,
+  initialUnitKey,
+} from "./steps";
 
 describe("flattenSteps", () => {
   const introSequence = {
@@ -281,5 +286,80 @@ describe("buildUnits", () => {
     });
     expect(units).toHaveLength(1);
     expect(units[0].kind).toBe("intro");
+  });
+
+  it("transition copy only points at the picker when 2+ units exist", () => {
+    // Single treatment → no picker, so no 'picker above' instruction.
+    const solo = buildUnits({ treatments: [treatment] });
+    const soloCopy = solo[0].steps.at(-1)!.transitionCopy!;
+    expect(soloCopy).toContain(treatment.name);
+    expect(soloCopy).not.toMatch(/picker above/i);
+
+    // Two treatments → picker exists, so the treatment transition points to it.
+    const multi = buildUnits({
+      treatments: [treatment, { ...treatment, name: "treatment2" }],
+    });
+    expect(multi[0].steps.at(-1)!.transitionCopy).toMatch(
+      /picker above to preview another part/i,
+    );
+  });
+
+  it("intro transition mentions previewing a treatment only when one exists", () => {
+    // Intro + treatment → intro transition invites previewing the treatment.
+    const withT = buildUnits({
+      introSequences: [
+        { name: "i", introSteps: [{ name: "s", elements: [] }] },
+      ],
+      treatments: [treatment],
+    });
+    expect(withT[0].steps.at(-1)!.transitionCopy).toMatch(
+      /picker above to preview a treatment/i,
+    );
+
+    // Intro-only (single) → no picker, no treatment to point at.
+    const introOnly = buildUnits({
+      introSequences: [
+        { name: "i", introSteps: [{ name: "s", elements: [] }] },
+      ],
+    });
+    const copy = introOnly[0].steps.at(-1)!.transitionCopy!;
+    expect(copy).not.toMatch(/picker above/i);
+    expect(copy).not.toMatch(/preview a treatment/i);
+  });
+});
+
+describe("initialUnitKey", () => {
+  const treatment = {
+    name: "treatment1",
+    playerCount: 2,
+    gameStages: [{ name: "round1", duration: 60, elements: [] }],
+  };
+  const file = {
+    introSequences: [
+      { name: "i0", introSteps: [{ name: "s", elements: [] }] },
+      { name: "i1", introSteps: [{ name: "s", elements: [] }] },
+    ],
+    treatments: [treatment, { ...treatment, name: "t1" }],
+  };
+
+  it("prefers the selected treatment when it exists", () => {
+    const units = buildUnits(file);
+    expect(initialUnitKey(units, 1, 1)).toBe("treatment:1");
+  });
+
+  it("falls back to the selected intro when no treatment matches (intro-only)", () => {
+    const units = buildUnits({ introSequences: file.introSequences });
+    // No treatment unit, so the chosen intro (#1) is honored rather than
+    // silently opening the first intro.
+    expect(initialUnitKey(units, 1, 0)).toBe("intro:1");
+  });
+
+  it("falls back to the first unit when neither index matches", () => {
+    const units = buildUnits({ treatments: [treatment] });
+    expect(initialUnitKey(units, 5, 9)).toBe("treatment:0");
+  });
+
+  it("returns a treatment key as last resort when there are no units", () => {
+    expect(initialUnitKey([], 0, 3)).toBe("treatment:3");
   });
 });

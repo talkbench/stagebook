@@ -108,7 +108,13 @@ function App() {
           const desired = isFirstLoad
             ? ((msg.treatmentIndex as number | undefined) ?? prev)
             : prev;
-          return Math.min(desired, Math.max(0, incoming.treatments.length - 1));
+          // `treatments` is optional in the schema (an intro-only file is a
+          // valid mid-development state) — guard the bound so a refresh of
+          // such a file doesn't crash (#476).
+          return Math.min(
+            desired,
+            Math.max(0, (incoming.treatments?.length ?? 1) - 1),
+          );
         });
         setIntroIndex((prev) => {
           const desired = isFirstLoad

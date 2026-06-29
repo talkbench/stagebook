@@ -14,7 +14,7 @@ import {
   useScrollAwareness,
   isRTLLocale,
 } from "stagebook/components";
-import { buildUnits, type ViewerUnit } from "../lib/steps";
+import { buildUnits, initialUnitKey, type ViewerUnit } from "../lib/steps";
 import { ViewerStateStore } from "../lib/store";
 import { createViewerContext } from "../lib/context";
 import { StageNav } from "./StageNav";
@@ -57,11 +57,12 @@ export interface ViewerProps {
    */
   onTreatmentIndexChange?: (index: number) => void;
   /**
-   * Accepted for back-compat with the host's landing flow, but no longer
-   * drives a separate dropdown: intro sequences are now selected through the
-   * unified "part to preview" picker alongside treatments. `selectedIntroIndex`
-   * is likewise accepted but ignored (the viewer defaults to the treatment the
-   * landing picked and lets the part picker switch to an intro).
+   * Setter for the host's intro-sequence index. Intro sequences no longer have
+   * a separate dropdown — they're selected through the unified "part to
+   * preview" picker — but the viewer still calls this when an intro is picked
+   * so the host's persisted selection (and thus the post-refresh restore in the
+   * VS Code preview) tracks the active unit. `selectedIntroIndex` seeds the
+   * initial unit when no treatment is selectable (e.g. an intro-only file).
    */
   onIntroIndexChange?: (index: number) => void;
 }
@@ -70,11 +71,13 @@ export function Viewer({
   treatmentFile,
   getTextContent,
   getAssetURL,
+  selectedIntroIndex,
   selectedTreatmentIndex,
   onBack,
   onRefresh,
   contentVersion,
   onTreatmentIndexChange,
+  onIntroIndexChange,
 }: ViewerProps) {
   // The viewer walks ONE selectable unit at a time — an intro sequence OR a
   // treatment — rather than pairing an intro with a treatment. A single
@@ -83,8 +86,8 @@ export function Viewer({
   const units = useMemo(() => buildUnits(treatmentFile), [treatmentFile]);
   const introUnits = units.filter((u) => u.kind === "intro");
   const treatmentUnits = units.filter((u) => u.kind === "treatment");
-  const [selectedUnitKey, setSelectedUnitKey] = useState(
-    `treatment:${selectedTreatmentIndex}`,
+  const [selectedUnitKey, setSelectedUnitKey] = useState(() =>
+    initialUnitKey(units, selectedIntroIndex, selectedTreatmentIndex),
   );
   const unit: ViewerUnit | undefined =
     units.find((u) => u.key === selectedUnitKey) ?? units[0];
@@ -100,10 +103,18 @@ export function Viewer({
   const handleResetStage = useCallback(() => {
     setStageResetVersion((v) => v + 1);
   }, []);
-  // Reset the selected unit when the whole file is swapped (different study).
+  // When the file changes, keep the current selection if it still exists —
+  // an in-place refresh (VS Code save, same study) must NOT yank the user off
+  // the intro they were previewing back to a treatment (#485 review). Only when
+  // the selected unit is gone (study swapped, or the researcher deleted it) do
+  // we fall back to the host's landing selection.
   useEffect(() => {
-    setSelectedUnitKey(`treatment:${selectedTreatmentIndex}`);
-  }, [treatmentFile, selectedTreatmentIndex]);
+    setSelectedUnitKey((prev) =>
+      units.some((u) => u.key === prev)
+        ? prev
+        : initialUnitKey(units, selectedIntroIndex, selectedTreatmentIndex),
+    );
+  }, [treatmentFile, units, selectedIntroIndex, selectedTreatmentIndex]);
   const [position, setPosition] = useState(0);
   const [store] = useState(() => new ViewerStateStore());
   const stageContainerRef = useRef<HTMLDivElement | null>(null);
@@ -124,10 +135,18 @@ export function Viewer({
     }
   }, [steps.length, stageIndex]);
 
-  // Restart at the first step whenever the selected unit changes.
+  // Restart at the first step whenever the selected unit changes, and give the
+  // new unit a clean slate: submitted flags + elapsed time are keyed by numeric
+  // stageIndex, so without clearing them an intro's submitted[0] would make the
+  // treatment's first stage read as already-submitted (waiting overlay), and a
+  // stale participant `position` could exceed the new unit's playerCount
+  // (#485 review). The store wipe only fires on an actual unit switch — an
+  // in-place refresh keeps the same key, so saved responses persist as before.
   useEffect(() => {
     setStageIndex(0);
-  }, [selectedUnitKey]);
+    setPosition(0);
+    store.clearAll();
+  }, [selectedUnitKey, store]);
 
   // Subscribe to store changes so the UI re-renders.
   // The version is included in ctx memo deps below so that
@@ -143,6 +162,14 @@ export function Viewer({
   // Each unit declares its own locale (intro sequences run before treatment
   // assignment, so they carry their own); shown in the header so it's explicit.
   const locale = unit?.locale ?? "en";
+
+  // Switching to a smaller unit (an intro is always 1 player; a treatment may
+  // have fewer) can leave `position` past the new range for the render before
+  // the unit-switch effect resets it. Clamp here so the position <select> never
+  // shows a value with no matching option and the context never reports an
+  // impossible participant index (#485 review).
+  const playerCount = unit?.playerCount ?? 1;
+  const clampedPosition = Math.min(position, Math.max(0, playerCount - 1));
 
   const handleSubmit = useCallback(() => {
     store.setSubmitted(stageIndex, true);
@@ -163,9 +190,9 @@ export function Viewer({
     () =>
       createViewerContext({
         store,
-        position,
+        position: clampedPosition,
         stageIndex,
-        playerCount: unit?.playerCount ?? 1,
+        playerCount,
         locale,
         onSubmit: handleSubmit,
         getTextContent,
@@ -177,9 +204,9 @@ export function Viewer({
     [
       store,
       storeVersion,
-      position,
+      clampedPosition,
       stageIndex,
-      unit?.playerCount,
+      playerCount,
       locale,
       handleSubmit,
       getTextContent,
@@ -188,16 +215,46 @@ export function Viewer({
     ],
   );
 
+  // Host-owned navigation affordances (back to landing, refresh the preview).
+  // Shared between the normal header and the empty-state header so neither
+  // strands the user without a way back / a refresh after adding content.
+  const hostControls = (
+    <>
+      {onBack && (
+        <button aria-label="Back" onClick={onBack} style={backButtonStyle}>
+          &larr;
+        </button>
+      )}
+      {onRefresh && (
+        <button
+          aria-label="Refresh preview"
+          title="Refresh preview"
+          onClick={onRefresh}
+          style={refreshButtonStyle}
+        >
+          &#x21bb;
+        </button>
+      )}
+    </>
+  );
+
   // Nothing to walk: a file with neither intro sequences nor treatments.
   // That's a valid empty-canvas / just-started state, not an error — so we
-  // show a friendly placeholder rather than a blank screen or a crash.
+  // show a friendly placeholder rather than a blank screen or a crash. Keep
+  // the header so back/refresh stay available — in VS Code you refresh here
+  // after adding the first intro sequence or treatment (#485 review).
   if (units.length === 0) {
     return (
-      <div style={transitionPanelStyle}>
-        <p data-testid="viewer-empty" style={transitionTextStyle}>
-          Nothing to preview yet. Add an intro sequence or a treatment to this
-          file and the walkthrough will appear here.
-        </p>
+      <div style={layoutStyle}>
+        <header style={headerStyle}>
+          <div style={headerLeftStyle}>{hostControls}</div>
+        </header>
+        <div style={transitionPanelStyle}>
+          <p data-testid="viewer-empty" style={transitionTextStyle}>
+            Nothing to preview yet. Add an intro sequence or a treatment to this
+            file and the walkthrough will appear here.
+          </p>
+        </div>
       </div>
     );
   }
@@ -217,21 +274,7 @@ export function Viewer({
       {/* Header */}
       <header style={headerStyle}>
         <div style={headerLeftStyle}>
-          {onBack && (
-            <button aria-label="Back" onClick={onBack} style={backButtonStyle}>
-              &larr;
-            </button>
-          )}
-          {onRefresh && (
-            <button
-              aria-label="Refresh preview"
-              title="Refresh preview"
-              onClick={onRefresh}
-              style={refreshButtonStyle}
-            >
-              &#x21bb;
-            </button>
-          )}
+          {hostControls}
           {units.length > 1 ? (
             <select
               aria-label="Part to preview"
@@ -240,11 +283,15 @@ export function Viewer({
               onChange={(e) => {
                 const key = e.target.value;
                 setSelectedUnitKey(key);
-                // Keep the host's treatment index in sync for back/refresh.
+                // Keep the host's persisted selection in sync so the VS Code
+                // preview restores this unit (not the previous treatment) after
+                // a refresh (#485 review).
                 if (key.startsWith("treatment:")) {
                   onTreatmentIndexChange?.(
                     Number(key.slice("treatment:".length)),
                   );
+                } else if (key.startsWith("intro:")) {
+                  onIntroIndexChange?.(Number(key.slice("intro:".length)));
                 }
               }}
               style={treatmentSelectStyle}
@@ -296,11 +343,11 @@ export function Viewer({
           </label>
           <select
             id="position-select"
-            value={position}
+            value={clampedPosition}
             onChange={(e) => setPosition(Number(e.target.value))}
             style={positionSelectStyle}
           >
-            {Array.from({ length: unit.playerCount }, (_, i) => (
+            {Array.from({ length: playerCount }, (_, i) => (
               <option key={i} value={i}>
                 {i}
               </option>
@@ -315,8 +362,8 @@ export function Viewer({
             store={store}
             currentStep={currentStep}
             stageIndex={stageIndex}
-            position={position}
-            playerCount={unit.playerCount}
+            position={clampedPosition}
+            playerCount={playerCount}
             onResetStage={handleResetStage}
           />
         </aside>

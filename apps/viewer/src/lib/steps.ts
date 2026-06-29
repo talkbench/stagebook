@@ -152,19 +152,29 @@ function transitionStep(
   index: number,
   kind: "intro" | "treatment",
   name: string,
+  opts: { hasPicker: boolean; hasTreatmentToPreview: boolean },
 ): ViewerStep {
   // Narrate the platform's between-phase behavior the preview can't simulate.
-  const copy =
+  // Only point at "the picker above" when one actually exists (2+ units) and,
+  // for an intro, only mention previewing a treatment when one exists — a
+  // single-unit or intro-only preview has no such control/target (#485 review).
+  const base =
     kind === "intro"
-      ? `End of the intro sequence “${name}”. In a real study, participants are now assigned to a condition and matched into a group. Use the picker above to preview a treatment.`
-      : `End of “${name}”. In a real study, participants would now finish the session (and complete any debrief). Use the picker above to preview another part.`;
+      ? `End of the intro sequence “${name}”. In a real study, participants are now assigned to a condition and matched into a group.`
+      : `End of “${name}”. In a real study, participants would now finish the session (and complete any debrief).`;
+  let hint = "";
+  if (kind === "intro" && opts.hasPicker && opts.hasTreatmentToPreview) {
+    hint = " Use the picker above to preview a treatment.";
+  } else if (kind === "treatment" && opts.hasPicker) {
+    hint = " Use the picker above to preview another part.";
+  }
   return {
     index,
     phase: kind === "intro" ? "intro" : "exit",
     name: "→ transition",
     elements: [],
     isTransition: true,
-    transitionCopy: copy,
+    transitionCopy: base + hint,
   };
 }
 
@@ -176,8 +186,13 @@ function transitionStep(
  */
 export function buildUnits(treatmentFile: TreatmentFileShape): ViewerUnit[] {
   const units: ViewerUnit[] = [];
+  const introSequences = treatmentFile.introSequences ?? [];
+  const treatments = treatmentFile.treatments ?? [];
+  // A picker only renders when there's more than one unit to switch between.
+  const hasPicker = introSequences.length + treatments.length > 1;
+  const hasTreatmentToPreview = treatments.length > 0;
 
-  (treatmentFile.introSequences ?? []).forEach((seq, i) => {
+  introSequences.forEach((seq, i) => {
     let index = 0;
     const steps: ViewerStep[] = (seq.introSteps ?? []).map((step) => ({
       index: index++,
@@ -187,7 +202,12 @@ export function buildUnits(treatmentFile: TreatmentFileShape): ViewerUnit[] {
       notes: step.notes,
       conditions: step.conditions,
     }));
-    steps.push(transitionStep(index, "intro", seq.name));
+    steps.push(
+      transitionStep(index, "intro", seq.name, {
+        hasPicker,
+        hasTreatmentToPreview,
+      }),
+    );
     units.push({
       key: `intro:${i}`,
       kind: "intro",
@@ -198,9 +218,14 @@ export function buildUnits(treatmentFile: TreatmentFileShape): ViewerUnit[] {
     });
   });
 
-  (treatmentFile.treatments ?? []).forEach((t, i) => {
+  treatments.forEach((t, i) => {
     const steps = flattenSteps(undefined, t);
-    steps.push(transitionStep(steps.length, "treatment", t.name));
+    steps.push(
+      transitionStep(steps.length, "treatment", t.name, {
+        hasPicker,
+        hasTreatmentToPreview,
+      }),
+    );
     units.push({
       key: `treatment:${i}`,
       kind: "treatment",
@@ -212,4 +237,23 @@ export function buildUnits(treatmentFile: TreatmentFileShape): ViewerUnit[] {
   });
 
   return units;
+}
+
+/**
+ * The unit the viewer should open on, given the host's landing selection.
+ * Prefers the selected treatment (the walk-one-unit default — intros are
+ * reachable via the picker); falls back to the selected intro when no matching
+ * treatment exists (e.g. an intro-only file, or a multi-intro file where the
+ * overview picked the second intro — #485 review); finally to the first unit.
+ */
+export function initialUnitKey(
+  units: ViewerUnit[],
+  introIndex: number,
+  treatmentIndex: number,
+): string {
+  const wantTreatment = `treatment:${treatmentIndex}`;
+  if (units.some((u) => u.key === wantTreatment)) return wantTreatment;
+  const wantIntro = `intro:${introIndex}`;
+  if (units.some((u) => u.key === wantIntro)) return wantIntro;
+  return units[0]?.key ?? wantTreatment;
 }
