@@ -20,17 +20,25 @@ translated **study** (researcher prompt content, not chrome), see the
 
 ## TL;DR
 
-Four edits, all under [`packages/stagebook/src/messages/`](../../packages/stagebook/src/messages),
+Three edits (four for an RTL language), all under
+[`packages/stagebook/src/messages/`](../../packages/stagebook/src/messages),
 using French (`fr`) as the example:
 
-1. Add `"fr"` to the `RegisteredLocale` union (`types.ts`).
+1. Add `"fr"` to the `RegisteredLocale` union (`types.ts`). Use the **BCP-47
+   primary subtag** (`fr`, `pt`, `zh` — not `pt-BR` / `zh-Hant`; see Step 1).
 2. Create `fr.ts` implementing `StagebookMessages` (copy `en.ts`, translate).
-3. Register it in `index.ts` (`defaultMessages`, `REGISTERED_LOCALES`, and
-   `RTL_LOCALES` **iff** it's right-to-left).
-4. Get a native-speaker review, then `npm test` + `npm run build`.
+3. Add `fr` to `defaultMessages` in `index.ts`.
+4. _RTL languages only:_ add it to `RTL_LOCALES` in `index.ts`.
 
-The moment you do step 1, the build fails until steps 2–3 are complete — that
-failure list _is_ your checklist.
+Then get a native-speaker review and run `npm test` + `npm run build`.
+
+The compiler does the bookkeeping: steps 1+3 are what `defaultMessages`'
+`Record<RegisteredLocale, …>` type forces, so the build stays red until the
+catalog is complete — that failure list _is_ your checklist. `REGISTERED_LOCALES`
+is **derived** from `defaultMessages`, not a second list to maintain, so there's
+no way to add a catalog yet leave the locale "unregistered". The **one** thing
+the compiler can't check for you is `RTL_LOCALES` (step 4) — forget it and an
+RTL language renders left-to-right.
 
 ## Step 1 — extend the closed union
 
@@ -42,7 +50,15 @@ export type RegisteredLocale = "en" | "he" | "fr";
 
 `defaultMessages` is typed `Record<RegisteredLocale, StagebookMessages>`, so
 this single line turns "missing French catalog" into a **compile error**. That's
-the completeness guarantee — there's no way to half-add a locale.
+the catalog-completeness guarantee — there's no way to half-add a catalog.
+
+**Use the BCP-47 primary subtag as the ID.** `resolveCatalog()` normalizes an
+incoming locale to its primary subtag (`"fr-CA"` → `"fr"`) before matching, so a
+catalog keyed by a region/script tag like `pt-BR` or `zh-Hant` would **never be
+selected** — `resolveCatalog("pt-BR")` looks up `pt` and, finding none, falls
+back to English. Register `pt` / `zh`. Region- or script-specific catalogs
+(distinguishing `pt-BR` from `pt-PT`) aren't supported without changing the
+resolver's normalization, which is out of scope for this runbook.
 
 ## Step 2 — write the catalog
 
@@ -67,7 +83,8 @@ catalog, so every key in `StagebookMessages` must be present.
 
 ## Step 3 — register the catalog
 
-In [`messages/index.ts`](../../packages/stagebook/src/messages/index.ts):
+In [`messages/index.ts`](../../packages/stagebook/src/messages/index.ts), add the
+catalog to `defaultMessages`:
 
 ```ts
 import { fr } from "./fr.js";
@@ -77,14 +94,21 @@ export const defaultMessages: Record<RegisteredLocale, StagebookMessages> = {
   he,
   fr, // ← add
 };
+```
 
-export const REGISTERED_LOCALES: readonly RegisteredLocale[] = [
-  "en",
-  "he",
-  "fr",
-]; // ← add
+That's it for a left-to-right language. `REGISTERED_LOCALES` is **derived** from
+`defaultMessages` (`Object.keys(defaultMessages)`), so adding the catalog here
+registers the locale automatically — there's no parallel array to forget.
+`resolveCatalog()`, `isRTLLocale()`, the unknown → `en` fallback, and the
+host-override merge all flow from `defaultMessages` and these derived exports.
 
-// Only if the script is right-to-left (French is not):
+### Step 4 (RTL languages only) — mark it right-to-left
+
+This is the one registration the compiler **cannot** check — `RTL_LOCALES` is a
+hand-listed set, because right-to-left-ness isn't encoded in the catalog. Add the
+locale if its script reads right-to-left (French does not):
+
+```ts
 export const RTL_LOCALES: ReadonlySet<RegisteredLocale> =
   new Set<RegisteredLocale>([
     "he",
@@ -92,13 +116,7 @@ export const RTL_LOCALES: ReadonlySet<RegisteredLocale> =
   ]);
 ```
 
-That's the entire registration. `resolveCatalog()`, `isRTLLocale()`, the unknown
-→ `en` fallback, and the host-override merge all read from these three exports —
-nothing else to wire.
-
-### If the new locale is right-to-left
-
-Add it to `RTL_LOCALES` (step 3) and the RTL layer takes over automatically:
+Once it's in `RTL_LOCALES`, the RTL layer takes over automatically:
 value/quantity components mirror (the slider paints min on the right, the char
 counter and timer label swap sides, option rows flip), driven by `isRTLLocale`
 and the `isRTL` flag on the provider context. Time-axis controls (the media
@@ -107,7 +125,7 @@ chrome follows the locale. You shouldn't need new component code; if a specific
 string or layout looks wrong under the new script, fix it where `he` already
 exercises that path. See the ADR's "Right-to-left" section.
 
-## Step 4 — review and verify
+## Step 5 — review and verify
 
 - **Native-speaker review.** Machine/first-draft translations are a starting
   point, not the deliverable (the same caveat stands for the seed Hebrew

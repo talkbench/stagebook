@@ -22,8 +22,16 @@ export const defaultMessages: Record<RegisteredLocale, StagebookMessages> = {
   he,
 };
 
-/** Locales stagebook ships a catalog for. */
-export const REGISTERED_LOCALES: readonly RegisteredLocale[] = ["en", "he"];
+/** Locales stagebook ships a catalog for — **derived** from `defaultMessages`,
+ *  not a hand-maintained list. `defaultMessages` is already forced complete by
+ *  its `Record<RegisteredLocale, …>` type, so deriving the registered set from
+ *  it means a locale can never be in the catalog but missing from the resolver's
+ *  known set (which would make `resolveCatalog` silently fall back to `en`).
+ *  `Object.keys` on an object literal is safe — own enumerable string keys
+ *  only — and its values are exactly the `RegisteredLocale` union members. */
+export const REGISTERED_LOCALES: readonly RegisteredLocale[] = Object.keys(
+  defaultMessages,
+) as RegisteredLocale[];
 
 /** Subset of registered locales that render right-to-left. */
 export const RTL_LOCALES: ReadonlySet<RegisteredLocale> =

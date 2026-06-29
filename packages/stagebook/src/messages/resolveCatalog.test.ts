@@ -126,6 +126,28 @@ describe("isRTLLocale", () => {
   });
 });
 
+describe("registration is derived, not hand-maintained", () => {
+  it("REGISTERED_LOCALES is exactly the catalog's keys", () => {
+    // Derived from defaultMessages, so a registered catalog can't be left
+    // unlisted (which would make resolveCatalog fall back to en for it).
+    expect([...REGISTERED_LOCALES].sort()).toEqual(
+      Object.keys(defaultMessages).sort(),
+    );
+  });
+
+  it("every catalog'd locale resolves to its own catalog, never the en fallback", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (const locale of Object.keys(defaultMessages) as Array<
+      keyof typeof defaultMessages
+    >) {
+      // Referentially the same object → it was selected, not en-substituted.
+      expect(resolveCatalog(locale)).toBe(defaultMessages[locale]);
+    }
+    // No "unknown locale" warning for any registered locale.
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
 describe("catalog completeness", () => {
   it("every registered locale implements the same key set", () => {
     const enKeys = Object.keys(defaultMessages.en).sort();
