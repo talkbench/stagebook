@@ -207,6 +207,61 @@ All schemas export corresponding TypeScript types (e.g., `TreatmentType`, `Stage
 - [API Reference](docs/engineer/api-reference.md) — all exports, types, and component props
 - [Architecture](docs/engineer/architecture.md) — StagebookProvider design, three-layer component model, render slots, CSS theming
 
+## Styling and fonts
+
+Stagebook components ship their visual styling as inline styles backed by CSS
+custom properties, so they render correctly on any host. Importing the optional
+stylesheet adds the `--stagebook-*` variable defaults at `:root` and registers
+the **Inter** webfont:
+
+```ts
+import "stagebook/styles";
+```
+
+Inter is **bundled inside the package** (OFL-1.1) rather than fetched from a
+CDN, so every participant gets the same font regardless of network conditions —
+the measurement-instrument guarantee. When you import `stagebook/styles` through
+a bundler (Vite, webpack, esbuild), the font's relative `url()` is resolved
+automatically; no consumer action is needed.
+
+If your host **serves the stylesheet statically** (a raw `<link>` to the file,
+or a copy step into a `public/` dir) the relative `url()` won't resolve, because
+nothing rewrites it. For that case — or if you maintain your own typography and
+don't import our CSS at all — resolve the bundled file from the stable subpath
+export, copy it into your own static assets, and point your `@font-face` at
+**your** path:
+
+```ts
+// In a build/copy step: resolve the bundled file and copy it into, e.g.,
+// public/fonts/InterVariable.woff2
+new URL("stagebook/assets/InterVariable.woff2", import.meta.url);
+// or, CommonJS: require.resolve("stagebook/assets/InterVariable.woff2");
+```
+
+```css
+/* @font-face pointing at the copy you placed in your own static dir. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/InterVariable.woff2") format("woff2");
+}
+```
+
+A bare package specifier inside a CSS `url()` — `url("stagebook/assets/…")` —
+is **not** a portable shortcut: browsers and raw `<link>` serving don't resolve
+it, and only some bundlers (Vite, webpack) rewrite specifiers in `url()` while
+others (esbuild) don't. Resolve the path in JS as above and serve your own copy.
+
+To override the font entirely, set `--stagebook-font` on any parent element (or
+`:root`) — the components fall back through `"Inter", ui-sans-serif, system-ui,
+sans-serif`.
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
+
+The bundled **Inter** font (`packages/stagebook/src/assets/InterVariable.woff2`)
+is © The Inter Project Authors and licensed under the SIL Open Font License 1.1;
+see [Inter-OFL.txt](packages/stagebook/src/assets/Inter-OFL.txt).

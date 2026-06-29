@@ -19,6 +19,7 @@
     },
     "./styles": "./src/styles.css",
     "./host-typography": "./src/host-typography.css",
+    "./assets/InterVariable.woff2": "./src/assets/InterVariable.woff2",
     "./components": {
       "import": {
         "types": "./dist/components/index.d.ts",
@@ -64,7 +65,10 @@
     "dist",
     "bin",
     "src/styles.css",
-    "src/host-typography.css"
+    "src/host-typography.css",
+    "src/assets/InterVariable.woff2",
+    "src/assets/Inter-OFL.txt",
+    "src/assets/PROVENANCE.md"
   ],
   "bin": {
     "stagebook": "./bin/stagebook.js"
