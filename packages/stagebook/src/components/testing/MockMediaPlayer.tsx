@@ -38,3 +38,36 @@ export function MockMediaPlayer({
     </div>
   );
 }
+
+/**
+ * Harness for the invalid→valid URL transition (#484). Holds the URL in
+ * component state and swaps it on button click, so the underlying
+ * MediaPlayer instance re-renders *in place* (rather than remounting). This
+ * is what surfaces a rules-of-hooks violation if the unsafe-URL guard sits
+ * ahead of the hooks.
+ */
+export interface UrlTransitionMediaPlayerProps {
+  initialUrl: string;
+  nextUrl: string;
+  name: string;
+}
+
+export function UrlTransitionMediaPlayer({
+  initialUrl,
+  nextUrl,
+  name,
+}: UrlTransitionMediaPlayerProps) {
+  const [url, setUrl] = useState(initialUrl);
+  return (
+    <div>
+      <button
+        type="button"
+        data-testid="swap-url"
+        onClick={() => setUrl(nextUrl)}
+      >
+        swap
+      </button>
+      <MockMediaPlayer url={url} name={name} />
+    </div>
+  );
+}

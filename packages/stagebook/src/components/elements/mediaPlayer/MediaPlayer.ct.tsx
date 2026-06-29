@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/experimental-ct-react";
-import { MockMediaPlayer } from "../../testing/MockMediaPlayer.js";
+import {
+  MockMediaPlayer,
+  UrlTransitionMediaPlayer,
+} from "../../testing/MockMediaPlayer.js";
 
 // -- Rendering structure --
 
@@ -2426,4 +2429,100 @@ test("focus is left alone when activeElement is somewhere else entirely", async 
 
   // Focus should stay on the other input, not get stolen.
   await expect(other).toBeFocused();
+});
+
+// -- Unsafe / invalid URL handling (#484) --
+
+test("renders an invalid-URL alert for a dangerous protocol", async ({
+  mount,
+}) => {
+  // Defense-in-depth: a javascript:/data:/etc. scheme must never reach a
+  // <video src>. Instead we render an accessible alert.
+  const component = await mount(
+    <MockMediaPlayer url="javascript:alert(1)" name="test" />,
+  );
+  const player = component.locator('[data-testid="mediaPlayer"]');
+  await expect(player).toHaveAttribute("role", "alert");
+  await expect(player).toContainText("Invalid media URL");
+  // No <video> element is rendered for an unsafe URL.
+  await expect(
+    component.locator('[data-testid="mediaPlayer-video"]'),
+  ).not.toBeAttached();
+});
+
+test("survives an invalid→valid URL transition in place (#484)", async ({
+  mount,
+  page,
+}) => {
+  // A single mounted instance editing its URL from unsafe to safe (e.g.
+  // refreshing a treatment in the viewer preview) must keep working through
+  // an in-place re-render. The hook-count invariant itself is enforced by
+  // MediaPlayer.hooks.test.tsx under jsdom (dev React throws there); this CT
+  // bundle is production React, so here we assert the real-browser outcome —
+  // the player recovers to a working <video> — plus a defensive guard that
+  // no rules-of-hooks error ever reached window.onerror.
+  const pageErrors: string[] = [];
+  page.on("pageerror", (err) => pageErrors.push(err.message));
+
+  const component = await mount(
+    <UrlTransitionMediaPlayer
+      initialUrl="javascript:alert(1)"
+      nextUrl="/sample-video.mp4"
+      name="test"
+    />,
+  );
+  await expect(
+    component.locator('[data-testid="mediaPlayer"]'),
+  ).toHaveAttribute("role", "alert");
+
+  // Flip the URL on the same MediaPlayer instance (in-place re-render).
+  await component.locator('[data-testid="swap-url"]').click();
+
+  // The player now renders normally — a <video> appears and the role flips
+  // back to "region".
+  await expect(
+    component.locator('[data-testid="mediaPlayer-video"]'),
+  ).toBeAttached();
+  await expect(
+    component.locator('[data-testid="mediaPlayer"]'),
+  ).toHaveAttribute("role", "region");
+
+  // And no rules-of-hooks crash reached window.onerror.
+  expect(
+    pageErrors.filter((m) =>
+      /Rendered more hooks|Rendered fewer hooks/.test(m),
+    ),
+  ).toEqual([]);
+});
+
+test("survives a valid→invalid URL transition in place (#484)", async ({
+  mount,
+  page,
+}) => {
+  // The reverse direction (more hooks → fewer) trips a different React
+  // invariant ("Rendered fewer hooks than expected"); guard against it too.
+  const pageErrors: string[] = [];
+  page.on("pageerror", (err) => pageErrors.push(err.message));
+
+  const component = await mount(
+    <UrlTransitionMediaPlayer
+      initialUrl="/sample-video.mp4"
+      nextUrl="javascript:alert(1)"
+      name="test"
+    />,
+  );
+  await expect(
+    component.locator('[data-testid="mediaPlayer-video"]'),
+  ).toBeAttached();
+
+  await component.locator('[data-testid="swap-url"]').click();
+
+  await expect(
+    component.locator('[data-testid="mediaPlayer"]'),
+  ).toHaveAttribute("role", "alert");
+  expect(
+    pageErrors.filter((m) =>
+      /Rendered more hooks|Rendered fewer hooks/.test(m),
+    ),
+  ).toEqual([]);
 });

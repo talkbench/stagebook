@@ -130,13 +130,13 @@ export function MediaPlayer({
   // Defense-in-depth: reject dangerous URL protocols. Element.tsx already
   // resolves relative paths via getAssetURL(), so this guards against
   // javascript:, data:, and other non-HTTP schemes reaching a <video> src.
-  if (!youtubeVideoId && !isSafeURL(url)) {
-    return (
-      <div data-testid="mediaPlayer" role="alert">
-        {messages.mediaInvalidUrl}
-      </div>
-    );
-  }
+  // The actual early return for this is deferred until *after* all hooks
+  // (just above the render branches) so the hook count stays constant when a
+  // single instance transitions unsafe→safe in place — otherwise React's
+  // rules of hooks are violated and the component throws (#484). The
+  // URL-fetching effects below already guard on isSafeURL, so deferring the
+  // return never lets an unsafe URL be fetched.
+  const urlIsUnsafe = !youtubeVideoId && !isSafeURL(url);
 
   const eventsRef = useRef<VideoEvent[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -1072,6 +1072,18 @@ export function MediaPlayer({
     onScrubMove,
     onScrubEnd,
   };
+
+  // ---------------------------------------------------------------------------
+  // Unsafe-URL guard (deferred past all hooks — see urlIsUnsafe above, #484)
+  // ---------------------------------------------------------------------------
+
+  if (urlIsUnsafe) {
+    return (
+      <div data-testid="mediaPlayer" role="alert">
+        {messages.mediaInvalidUrl}
+      </div>
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // YouTube branch
