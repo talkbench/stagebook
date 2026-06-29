@@ -482,8 +482,12 @@ export function MediaPlayer({
     }),
     [channelCount, startWaveformCapture], // re-create when channelCount changes so consumers see the update
   );
-  // Use the YouTube handle when available, fall back to the HTML5 handle
-  useRegisterPlayback(name, ytHandle ?? handle);
+  // Use the YouTube handle when available, fall back to the HTML5 handle.
+  // Register nothing while the URL is unsafe: no <video> is mounted, so the
+  // handle would be inert (null videoRef), and registering it would let a
+  // sibling Timeline latch onto a dead handle whose identity never changes —
+  // so it would never retry waveform capture once the URL recovers (#487).
+  useRegisterPlayback(name, urlIsUnsafe ? null : (ytHandle ?? handle));
 
   // Hold-to-scrub state
   const arrowRepeatCountRef = useRef(0);
@@ -493,6 +497,10 @@ export function MediaPlayer({
   // Fetch and parse captions when captionsURL changes
   useEffect(() => {
     if (!captionsURL) return;
+    // Don't fetch captions for media we're rejecting — the component only
+    // renders the invalid-URL alert. Re-runs when urlIsUnsafe flips false so
+    // captions still load once the media URL recovers (#487).
+    if (urlIsUnsafe) return;
     if (!isSafeURL(captionsURL)) {
       console.warn(
         `[MediaPlayer] Rejected unsafe captions URL: ${captionsURL}`,
@@ -511,9 +519,13 @@ export function MediaPlayer({
     return () => {
       cancelled = true;
     };
-  }, [captionsURL]);
+  }, [captionsURL, urlIsUnsafe]);
 
-  // Seek to startAt on mount (or to elapsedTime+startAt when syncToStageTime)
+  // Seek to startAt on mount (or to elapsedTime+startAt when syncToStageTime).
+  // Re-runs when urlIsUnsafe flips false so the offset is (re)applied to the
+  // <video> that first mounts on an invalid→valid recovery — on the initial
+  // unsafe render videoRef is null, the effect no-ops, and without this dep it
+  // would never run again, leaving the recovered clip at time 0 (#487).
   useEffect(() => {
     if (!videoRef.current) return;
     if (syncToStageTime) {
@@ -522,7 +534,9 @@ export function MediaPlayer({
     } else if (startAt !== undefined) {
       videoRef.current.currentTime = startAt;
     }
-  }, []); // mount-only: reads initial values of getElapsedTime/startAt
+    // reads current startAt/getElapsedTime when it (re)runs; deliberately not
+    // re-applied on every startAt change — only on first mount and recovery.
+  }, [urlIsUnsafe]);
 
   // Autoplay for "once" mode: attempt .play() once metadata is loaded.
   // If the browser blocks it (no prior user interaction), show a fallback button.

@@ -121,3 +121,51 @@ describe("PlaybackProvider register/unregister render loop (#103)", () => {
     act(() => root.unmount());
   });
 });
+
+describe("useRegisterPlayback null handle (#487)", () => {
+  test("a null handle registers nothing; switching null→handle registers it", () => {
+    const container = document.createElement("div");
+    let root: Root;
+    const seen: string[] = [];
+
+    function Registrar({ live }: { live: boolean }): ReactNode {
+      // A would-be handle, only registered once `live`. Mirrors MediaPlayer
+      // passing null while the URL is unsafe, then the real handle on recovery.
+      const handle = useMemo(() => makeHandle({ getCurrentTime: () => 7 }), []);
+      useRegisterPlayback("vid", live ? handle : null);
+      return null;
+    }
+
+    function Consumer(): ReactNode {
+      const handle = usePlayback("vid");
+      seen.push(handle ? "found" : "not-found");
+      return null;
+    }
+
+    act(() => {
+      root = createRoot(container);
+      root.render(
+        <PlaybackProvider>
+          <Registrar live={false} />
+          <Consumer />
+        </PlaybackProvider>,
+      );
+    });
+    // No handle registered while null.
+    expect(seen.at(-1)).toBe("not-found");
+
+    // Flip to a real handle — the consumer now sees it (undefined→handle),
+    // which is exactly the transition a Timeline keys its waveform retry on.
+    act(() => {
+      root.render(
+        <PlaybackProvider>
+          <Registrar live={true} />
+          <Consumer />
+        </PlaybackProvider>,
+      );
+    });
+    expect(seen.at(-1)).toBe("found");
+
+    act(() => root.unmount());
+  });
+});

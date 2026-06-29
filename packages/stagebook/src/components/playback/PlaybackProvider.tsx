@@ -64,10 +64,16 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
 /**
  * Register a PlaybackHandle under `name` for the duration of the component's
  * life. Safe to call without a PlaybackProvider — silently no-ops.
+ *
+ * Pass `null` to register nothing (e.g. while a media URL is invalid). When
+ * the handle later becomes non-null, the dependency change re-runs the effect
+ * and registers it — and because `usePlayback` then transitions from
+ * `undefined` to a handle, sibling consumers (Timeline waveform capture) that
+ * key off handle identity re-run their own effects (#487 / #484 recovery).
  */
 export function useRegisterPlayback(
   name: string,
-  handle: PlaybackHandle,
+  handle: PlaybackHandle | null,
 ): void {
   const ctx = useContext(PlaybackContext);
   // Extract the stable callbacks so the effect depends on them directly
@@ -78,7 +84,7 @@ export function useRegisterPlayback(
   const unregister = ctx?.unregister;
 
   useEffect(() => {
-    if (!register || !unregister) return; // no PlaybackProvider — no-op
+    if (!register || !unregister || !handle) return; // no provider / no handle
     register(name, handle);
     return () => unregister(name);
   }, [name, handle, register, unregister]);

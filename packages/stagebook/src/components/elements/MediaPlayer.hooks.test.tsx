@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import React, { act } from "react";
+import React, { act, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MediaPlayer } from "./MediaPlayer.js";
+import { MediaPlayer, type MediaPlayerProps } from "./MediaPlayer.js";
+import { PlaybackProvider, usePlayback } from "../playback/PlaybackProvider.js";
 
 // A rules-of-hooks violation is reported by React's dev build through
 // console.error (and can leave the fiber corrupted), not as a thrown error
@@ -102,5 +103,127 @@ describe("MediaPlayer hook stability across URL validity changes (#484)", () => 
         ?.getAttribute("role"),
     ).toBe("region");
     expect(container.querySelector("video")).not.toBeNull();
+  });
+});
+
+// The guard moved below the effects (#484), so each URL-touching effect now
+// has to gate itself on the unsafe URL — and recover when the URL becomes
+// valid. These cover the side-effects Codex flagged on PR #487.
+describe("MediaPlayer effects are gated on URL validity (#487)", () => {
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
+
+  afterEach(() => {
+    if (root) act(() => root!.unmount());
+    container?.remove();
+    root = null;
+    container = null;
+    vi.restoreAllMocks();
+  });
+
+  function mount(node: ReactNode) {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => root!.render(node));
+    return container;
+  }
+
+  // Holds the URL in state and exposes a setter, so the same MediaPlayer
+  // instance re-renders in place when the URL changes.
+  let setUrlExternally: ((url: string) => void) | null = null;
+  function Harness(
+    props: Omit<MediaPlayerProps, "url"> & { initialUrl: string },
+  ) {
+    const { initialUrl, ...rest } = props;
+    const [url, setUrl] = useState(initialUrl);
+    setUrlExternally = setUrl;
+    return <MediaPlayer {...rest} url={url} />;
+  }
+
+  it("does not fetch captions while the media URL is unsafe, then fetches on recovery (P3)", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n", {
+        status: 200,
+      }),
+    );
+    const captionsURL = "https://example.com/captions.vtt";
+    const fetchedCaptions = () =>
+      fetchSpy.mock.calls.some((c) => c[0] === captionsURL);
+
+    mount(
+      <Harness
+        name="t"
+        save={() => {}}
+        getElapsedTime={() => 0}
+        initialUrl={UNSAFE_URL}
+        captionsURL={captionsURL}
+      />,
+    );
+    // Rejected media → no caption fetch.
+    expect(fetchedCaptions()).toBe(false);
+
+    // Recover to a valid media URL → captions load.
+    act(() => setUrlExternally!(SAFE_URL));
+    expect(fetchedCaptions()).toBe(true);
+  });
+
+  it("registers no playback handle while unsafe, then registers on recovery (P2)", () => {
+    const seen: string[] = [];
+    function Probe() {
+      seen.push(usePlayback("vid") ? "found" : "not-found");
+      return null;
+    }
+    mount(
+      <PlaybackProvider>
+        <Harness
+          name="vid"
+          save={() => {}}
+          getElapsedTime={() => 0}
+          initialUrl={UNSAFE_URL}
+        />
+        <Probe />
+      </PlaybackProvider>,
+    );
+    // No <video> is mounted for an unsafe URL, so nothing is registered.
+    expect(seen.at(-1)).toBe("not-found");
+
+    act(() => setUrlExternally!(SAFE_URL));
+    // The recovered player registers its handle (undefined→handle), which is
+    // the transition a sibling Timeline keys its waveform retry on.
+    expect(seen.at(-1)).toBe("found");
+  });
+
+  it("reapplies startAt to the <video> that mounts on recovery (P2)", () => {
+    // Intercept currentTime assignments at the prototype level — robust to
+    // jsdom not persisting media element state.
+    const sets: number[] = [];
+    const proto = window.HTMLMediaElement.prototype;
+    const original = Object.getOwnPropertyDescriptor(proto, "currentTime");
+    Object.defineProperty(proto, "currentTime", {
+      configurable: true,
+      get: () => sets.at(-1) ?? 0,
+      set: (v: number) => sets.push(v),
+    });
+
+    try {
+      mount(
+        <Harness
+          name="t"
+          save={() => {}}
+          getElapsedTime={() => 0}
+          initialUrl={UNSAFE_URL}
+          startAt={12}
+        />,
+      );
+      // No video while unsafe → no seek applied.
+      expect(sets).toEqual([]);
+
+      act(() => setUrlExternally!(SAFE_URL));
+      // The recovered <video> is seeked to startAt rather than left at 0.
+      expect(sets).toContain(12);
+    } finally {
+      if (original) Object.defineProperty(proto, "currentTime", original);
+    }
   });
 });
