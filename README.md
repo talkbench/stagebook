@@ -221,8 +221,13 @@ import "stagebook/styles";
 Inter is **bundled inside the package** (OFL-1.1) rather than fetched from a
 CDN, so every participant gets the same font regardless of network conditions —
 the measurement-instrument guarantee. When you import `stagebook/styles` through
-a bundler (Vite, webpack, esbuild), the font's relative `url()` is resolved
-automatically; no consumer action is needed.
+a bundler with built-in asset handling (Vite, webpack), the font's relative
+`url()` is resolved automatically; no consumer action is needed.
+
+> **esbuild:** esbuild has no preconfigured loader for `.woff2`, so an app that
+> bundles `stagebook/styles` with plain esbuild fails on the font url until you
+> add a font loader, e.g. `--loader:.woff2=file` (or `dataurl`/`copy`). This is
+> the one bundler that needs a one-line config to consume the bundled font.
 
 If your host **serves the stylesheet statically** (a raw `<link>` to the file,
 or a copy step into a `public/` dir) the relative `url()` won't resolve, because
@@ -232,11 +237,21 @@ export, copy it into your own static assets, and point your `@font-face` at
 **your** path:
 
 ```ts
-// In a build/copy step: resolve the bundled file and copy it into, e.g.,
-// public/fonts/InterVariable.woff2
-new URL("stagebook/assets/InterVariable.woff2", import.meta.url);
-// or, CommonJS: require.resolve("stagebook/assets/InterVariable.woff2");
+// In a build/copy step: resolve the bundled file through package exports,
+// then copy it into, e.g., public/fonts/InterVariable.woff2.
+// ESM — import.meta.resolve() consults the package "exports" map:
+import.meta.resolve("stagebook/assets/InterVariable.woff2");
+// ESM without import.meta.resolve (older runtimes):
+import { createRequire } from "node:module";
+createRequire(import.meta.url).resolve("stagebook/assets/InterVariable.woff2");
+// CommonJS:
+require.resolve("stagebook/assets/InterVariable.woff2");
 ```
+
+> Note: `new URL("stagebook/assets/…", import.meta.url)` does **not** work here —
+> `new URL` does plain URL resolution and treats the bare specifier as a path
+> relative to the current module, ignoring package `exports`. Use a real
+> resolver (`import.meta.resolve` / `require.resolve`) as above.
 
 ```css
 /* @font-face pointing at the copy you placed in your own static dir. */
