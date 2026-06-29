@@ -48,31 +48,34 @@ describe("getReferenceKeyAndPath", () => {
     );
   });
 
-  test("connectionInfo reference", () => {
-    const result = getReferenceKeyAndPath("self.connectionInfo.country");
-    expect(result.referenceKey).toBe("connectionInfo");
+  test("attributes reference (connectionInfo+browserInfo+participantInfo merged flat in #473)", () => {
+    // The three legacy host-supplied bags are unified under one flat
+    // `attributes` source; the field is addressed via the nested path.
+    const result = getReferenceKeyAndPath("self.attributes.country");
+    expect(result.referenceKey).toBe("attributes");
     expect(result.path).toEqual(["country"]);
   });
 
-  test("browserInfo reference", () => {
-    const result = getReferenceKeyAndPath("self.browserInfo.name");
-    expect(result.referenceKey).toBe("browserInfo");
-    expect(result.path).toEqual(["name"]);
+  test("attributes identity reference: stableParticipantId", () => {
+    const result = getReferenceKeyAndPath(
+      "self.attributes.stableParticipantId",
+    );
+    expect(result.referenceKey).toBe("attributes");
+    expect(result.path).toEqual(["stableParticipantId"]);
   });
 
-  test("participantInfo reference", () => {
-    // participantInfo uses the same flat-namespace pattern as connectionInfo
-    // and browserInfo — stored under a single `participantInfo` key with
-    // the field addressed via the nested path.
-    const result = getReferenceKeyAndPath("self.participantInfo.name");
-    expect(result.referenceKey).toBe("participantInfo");
-    expect(result.path).toEqual(["name"]);
-  });
-
-  test("participantInfo reference with deep path", () => {
-    const result = getReferenceKeyAndPath("self.participantInfo.sampleId.raw");
-    expect(result.referenceKey).toBe("participantInfo");
+  test("attributes reference with deep path", () => {
+    const result = getReferenceKeyAndPath("self.attributes.sampleId.raw");
+    expect(result.referenceKey).toBe("attributes");
     expect(result.path).toEqual(["sampleId", "raw"]);
+  });
+
+  test("legacy bag sources are rejected after the #473 consolidation", () => {
+    for (const legacy of ["connectionInfo", "browserInfo", "participantInfo"]) {
+      expect(() => getReferenceKeyAndPath(`self.${legacy}.country`)).toThrow(
+        /Invalid reference source/,
+      );
+    }
   });
 
   test("timeline reference", () => {
@@ -99,13 +102,7 @@ describe("getReferenceKeyAndPath", () => {
 
   test("throws on missing path segment for external sources", () => {
     // External-source references require at least one path segment.
-    expect(() => getReferenceKeyAndPath("self.participantInfo")).toThrow(
-      "A path must be provided",
-    );
-    expect(() => getReferenceKeyAndPath("self.connectionInfo")).toThrow(
-      "A path must be provided",
-    );
-    expect(() => getReferenceKeyAndPath("self.browserInfo")).toThrow(
+    expect(() => getReferenceKeyAndPath("self.attributes")).toThrow(
       "A path must be provided",
     );
     expect(() => getReferenceKeyAndPath("self.entryUrl")).toThrow(

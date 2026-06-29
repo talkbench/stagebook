@@ -134,4 +134,40 @@ describe("createViewerContext", () => {
       expect(ctx.getElapsedTime()).toBe(30);
     });
   });
+
+  // The provider reports a contract violation without
+  // `attributes.stableParticipantId` (#473). The viewer synthesizes a
+  // per-position default so previews stay clean.
+  describe("attributes default (#473)", () => {
+    it("synthesizes a per-position stableParticipantId when nothing is stored", () => {
+      const { ctx } = makeContext({ position: 2 });
+      expect(ctx.get("attributes", "player")).toEqual([
+        { stableParticipantId: "viewer-p2" },
+      ]);
+    });
+
+    it("lets a seeded non-empty stableParticipantId override the default", () => {
+      const { store, ctx } = makeContext({ position: 0 });
+      store.set(0, "attributes", { stableParticipantId: "seeded-id" }, 0);
+      expect(ctx.get("attributes", "player")).toEqual([
+        { stableParticipantId: "seeded-id" },
+      ]);
+    });
+
+    it("merges the default id under other seeded attribute fields", () => {
+      const { store, ctx } = makeContext({ position: 0 });
+      store.set(0, "attributes", { country: "US" }, 0);
+      expect(ctx.get("attributes", "player")).toEqual([
+        { country: "US", stableParticipantId: "viewer-p0" },
+      ]);
+    });
+
+    it("does NOT let a stored empty-string id clobber the default (would trigger a contract violation)", () => {
+      const { store, ctx } = makeContext({ position: 1 });
+      store.set(1, "attributes", { stableParticipantId: "" }, 0);
+      expect(ctx.get("attributes", "player")).toEqual([
+        { stableParticipantId: "viewer-p1" },
+      ]);
+    });
+  });
 });

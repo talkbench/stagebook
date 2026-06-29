@@ -49,12 +49,21 @@ export function createViewerContext(
       // trackedLink/qualtrics urlParams), and stagebook normalizes
       // `display.position: "any"` to `"all"` before reaching this
       // callback so we only need to handle one aggregator scope.
-      if (typeof mapped === "number" || mapped === "shared") {
-        return store.lookup(key, mapped);
+      const raw =
+        typeof mapped === "number" || mapped === "shared"
+          ? store.lookup(key, mapped)
+          : // `"all"` (or any unrecognized scope, defensively) reads
+            // every participant's value for this key.
+            store.lookup(key);
+      // Synthesize a per-position default `stableParticipantId` (#473) so
+      // previews work out of the box and a qualtrics element doesn't report a
+      // (preview-only) contract violation; any value seeded via the
+      // StateInspector overrides it.
+      if (key === "attributes") {
+        const posForId = typeof mapped === "number" ? mapped : position;
+        return withDefaultAttributes(raw, posForId);
       }
-      // `"all"` (or any unrecognized scope, defensively) reads
-      // every participant's value for this key.
-      return store.lookup(key);
+      return raw;
     },
 
     save(key: string, value: unknown, scope?: "player" | "shared"): void {
@@ -96,6 +105,33 @@ export function createViewerContext(
 
     ...renderers,
   };
+}
+
+/**
+ * Ensure every `attributes` value carries a non-empty `stableParticipantId`
+ * (#473). A seeded/inspector value wins only when it's a non-empty string;
+ * otherwise the synthesized `viewer-p<n>` default fills the gap so a
+ * freshly-loaded study previews without the host having to seed identity.
+ * (A stored empty-string id must NOT clobber the default — that would make
+ * the provider report a contract violation during preview.)
+ */
+function withDefaultAttributes(
+  values: unknown[],
+  positionForId: number,
+): unknown[] {
+  const fallbackId = `viewer-p${String(positionForId)}`;
+  if (values.length === 0) return [{ stableParticipantId: fallbackId }];
+  return values.map((v) => {
+    const bag: Record<string, unknown> =
+      v !== null && typeof v === "object" && !Array.isArray(v)
+        ? { ...(v as Record<string, unknown>) }
+        : {};
+    const id = bag.stableParticipantId;
+    if (typeof id !== "string" || id.trim().length === 0) {
+      bag.stableParticipantId = fallbackId;
+    }
+    return bag;
+  });
 }
 
 function mapPosition(

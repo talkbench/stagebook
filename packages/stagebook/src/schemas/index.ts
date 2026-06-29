@@ -95,6 +95,12 @@ export {
 } from "./treatment.js";
 
 export {
+  attributesSchema,
+  hasStableParticipantId,
+  type AttributesType,
+} from "./attributes.js";
+
+export {
   safeParseTreatmentFile,
   type UnrecognizedKeyIssueParams,
 } from "./safeParseTreatmentFile.js";

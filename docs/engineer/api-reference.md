@@ -6,30 +6,30 @@ All schemas are [Zod](https://zod.dev/) objects. Use `.safeParse(data)` for vali
 
 ### Treatment File
 
-| Export | Description |
-|--------|-------------|
-| `treatmentFileSchema` | Top-level schema for `.stagebook.yaml` files |
-| `treatmentSchema` | Single treatment (name, playerCount, gameStages, exitSequence) |
-| `stageSchema` | Game stage (name, duration, elements, discussion) |
-| `elementSchema` | Any element type (discriminated union on `type`) |
-| `promptSchema` | Prompt element specifically |
-| `discussionSchema` | Discussion configuration |
-| `conditionSchema` | Single condition (reference, comparator, value, position) |
-| `conditionsSchema` | Array of conditions |
-| `referenceSchema` | Reference string validator (parses and validates `type.name.path`) |
-| `introSequenceSchema` | Intro sequence with named steps |
-| `introExitStepSchema` | Single intro or exit step |
-| `templateSchema` | Template definition (name, contentType, content) |
-| `templateContextSchema` | Template usage (template, fields, broadcast) |
+| Export                  | Description                                                        |
+| ----------------------- | ------------------------------------------------------------------ |
+| `treatmentFileSchema`   | Top-level schema for `.stagebook.yaml` files                       |
+| `treatmentSchema`       | Single treatment (name, playerCount, gameStages, exitSequence)     |
+| `stageSchema`           | Game stage (name, duration, elements, discussion)                  |
+| `elementSchema`         | Any element type (discriminated union on `type`)                   |
+| `promptSchema`          | Prompt element specifically                                        |
+| `discussionSchema`      | Discussion configuration                                           |
+| `conditionSchema`       | Single condition (reference, comparator, value, position)          |
+| `conditionsSchema`      | Array of conditions                                                |
+| `referenceSchema`       | Reference string validator (parses and validates `type.name.path`) |
+| `introSequenceSchema`   | Intro sequence with named steps                                    |
+| `introExitStepSchema`   | Single intro or exit step                                          |
+| `templateSchema`        | Template definition (name, contentType, content)                   |
+| `templateContextSchema` | Template usage (template, fields, broadcast)                       |
 
 ### Prompt File
 
-| Export | Description |
-|--------|-------------|
-| `promptFileSchema` | Parses raw markdown → `{ metadata, body, responseItems, sliderPoints }` with full validation |
-| `promptMetadataSchema` | Discriminated-union schema for the YAML frontmatter (one strict branch per `type:`) |
-| `metadataTypeSchema` / `metadataRefineSchema` / `metadataLogicalSchema` | Back-compat aliases for `promptMetadataSchema` (#243 — the parallel pre-refine pair was unified into one schema) |
-| `validateSliderLabels(metadata, items)` | No-op shim retained for back-compat — slider points and labels share the same body lines after #243, so this check is structurally impossible to fail |
+| Export                                                                  | Description                                                                                                                                           |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `promptFileSchema`                                                      | Parses raw markdown → `{ metadata, body, responseItems, sliderPoints }` with full validation                                                          |
+| `promptMetadataSchema`                                                  | Discriminated-union schema for the YAML frontmatter (one strict branch per `type:`)                                                                   |
+| `metadataTypeSchema` / `metadataRefineSchema` / `metadataLogicalSchema` | Back-compat aliases for `promptMetadataSchema` (#243 — the parallel pre-refine pair was unified into one schema)                                      |
+| `validateSliderLabels(metadata, items)`                                 | No-op shim retained for back-compat — slider points and labels share the same body lines after #243, so this check is structurally impossible to fail |
 
 ### Types
 
@@ -57,10 +57,10 @@ Evaluate a condition comparator.
 ```typescript
 import { compare, type Comparator } from "stagebook";
 
-compare(5, "isAbove", 3);              // true
+compare(5, "isAbove", 3); // true
 compare(undefined, "doesNotEqual", "x"); // true (undefined != anything)
-compare(undefined, "equals", "x");      // undefined (can't determine yet)
-compare("hello", "matches", "\\d+");    // false
+compare(undefined, "equals", "x"); // undefined (can't determine yet)
+compare("hello", "matches", "\\d+"); // false
 ```
 
 **Returns:** `true`, `false`, or `undefined` (when comparison can't be made yet, e.g., undefined lhs).
@@ -89,7 +89,7 @@ getReferenceKeyAndPath("self.entryUrl.params.condition");
 // { referenceKey: "entryUrl", path: ["params", "condition"] }
 ```
 
-Supported namespaces: `survey`, `submitButton`, `qualtrics`, `prompt`, `trackedLink`, `timeline`, `discussion`, `entryUrl`, `connectionInfo`, `browserInfo`, `participantInfo`. (`urlParams` was renamed to `entryUrl` in #246.) `entryUrl` references must use the `params` subpath, e.g. `self.entryUrl.params.condition` — bare `entryUrl.<key>` is rejected.
+Supported namespaces: `survey`, `submitButton`, `qualtrics`, `prompt`, `trackedLink`, `timeline`, `discussion`, `entryUrl`, `attributes`. (`urlParams` was renamed to `entryUrl` in #246; the `connectionInfo` / `browserInfo` / `participantInfo` bags were merged into a single flat `attributes` source in #473.) `entryUrl` references must use the `params` subpath, e.g. `self.entryUrl.params.condition` — bare `entryUrl.<key>` is rejected.
 
 ### `getNestedValueByPath(obj, path?)`
 
@@ -99,8 +99,8 @@ Traverse a nested object by path array.
 import { getNestedValueByPath } from "stagebook";
 
 getNestedValueByPath({ a: { b: { c: 42 } } }, ["a", "b", "c"]); // 42
-getNestedValueByPath({ a: 1 }, ["x"]);                           // undefined
-getNestedValueByPath({ a: 1 });                                   // { a: 1 }
+getNestedValueByPath({ a: 1 }, ["x"]); // undefined
+getNestedValueByPath({ a: 1 }); // { a: 1 }
 ```
 
 ### `fillTemplates({ obj, templates })`
@@ -127,31 +127,25 @@ Also exported: `expandTemplate`, `substituteFields`, `recursivelyFillTemplates` 
 ```tsx
 import { StagebookProvider, type StagebookContext } from "stagebook/components";
 
-<StagebookProvider value={context}>
-  {children}
-</StagebookProvider>
+<StagebookProvider value={context}>{children}</StagebookProvider>;
 ```
 
 ### Hooks
 
-| Hook | Returns | Requires Provider |
-|------|---------|-------------------|
-| `useStagebookContext()` | Full `StagebookContext` object | yes |
-| `useResolve(reference, position?)` | `unknown[]` | yes |
-| `useSave()` | `save` function | yes |
-| `useElapsedTime()` | `number` (seconds) | yes |
-| `useTextContent(path)` | `{ data, isLoading, error }` | yes |
+| Hook                               | Returns                        | Requires Provider |
+| ---------------------------------- | ------------------------------ | ----------------- |
+| `useStagebookContext()`            | Full `StagebookContext` object | yes               |
+| `useResolve(reference, position?)` | `unknown[]`                    | yes               |
+| `useSave()`                        | `save` function                | yes               |
+| `useElapsedTime()`                 | `number` (seconds)             | yes               |
+| `useTextContent(path)`             | `{ data, isLoading, error }`   | yes               |
 
 ### Stage
 
 ```tsx
 import { Stage, type StageConfig } from "stagebook/components";
 
-<Stage
-  stage={stageConfig}
-  onSubmit={handleSubmit}
-  scrollMode="host"
-/>
+<Stage stage={stageConfig} onSubmit={handleSubmit} scrollMode="host" />;
 ```
 
 Requires StagebookProvider. Renders a complete stage: lays out elements with conditional rendering (time, position, conditions), handles two-column layout when a discussion is present, and shows a waiting message after submission. **This is the primary rendering API** — prefer `Stage` over manually rendering `Element` components.
@@ -163,10 +157,7 @@ Requires StagebookProvider. Renders a complete stage: lays out elements with con
 ### Scroll Awareness
 
 ```tsx
-import {
-  useScrollAwareness,
-  ScrollIndicator,
-} from "stagebook/components";
+import { useScrollAwareness, ScrollIndicator } from "stagebook/components";
 
 const scrollRef = useRef<HTMLElement>(null);
 const { showIndicator, dismissIndicator } = useScrollAwareness(scrollRef);
@@ -190,52 +181,52 @@ These are the primitives Stage's `internal` mode uses internally; in `host` mode
 ```tsx
 import { Element, type ElementConfig } from "stagebook/components";
 
-<Element element={elementConfig} onSubmit={handleSubmit} stageDuration={300} />
+<Element element={elementConfig} onSubmit={handleSubmit} stageDuration={300} />;
 ```
 
 Requires StagebookProvider. Dispatches to the appropriate element component based on `element.type`. Use this for lower-level control when `Stage` doesn't fit your needs.
 
 ### Form Components (standalone)
 
-| Component | Key Props |
-|-----------|-----------|
-| `Button` | `onClick`, `children`, `primary?`, `disabled?` |
-| `Separator` | `style?` (`"thin"`, `"regular"`, `"thick"`) |
-| `RadioGroup` | `options`, `value`, `onChange`, `label?` |
-| `CheckboxGroup` | `options`, `value`, `onChange`, `label?` |
-| `Select` | `options`, `value`, `onChange`, `label?`, `placeholder?` |
-| `TextArea` | `value`, `onChange`, `rows?`, `minLength?`, `maxLength?`, `showCharacterCount?`, `onDebugMessage?` |
-| `Slider` | `min`, `max`, `interval`, `value?`, `onChange`, `labelPts?` (parallel to `labels?`, sourced from `promptFileSchema.parse(...).sliderPoints` after #243), `labels?` |
-| `ListSorter` | `items`, `onChange` |
-| `Markdown` | `text`, `resolveURL?` |
+| Component       | Key Props                                                                                                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Button`        | `onClick`, `children`, `primary?`, `disabled?`                                                                                                                     |
+| `Separator`     | `style?` (`"thin"`, `"regular"`, `"thick"`)                                                                                                                        |
+| `RadioGroup`    | `options`, `value`, `onChange`, `label?`                                                                                                                           |
+| `CheckboxGroup` | `options`, `value`, `onChange`, `label?`                                                                                                                           |
+| `Select`        | `options`, `value`, `onChange`, `label?`, `placeholder?`                                                                                                           |
+| `TextArea`      | `value`, `onChange`, `rows?`, `minLength?`, `maxLength?`, `showCharacterCount?`, `onDebugMessage?`                                                                 |
+| `Slider`        | `min`, `max`, `interval`, `value?`, `onChange`, `labelPts?` (parallel to `labels?`, sourced from `promptFileSchema.parse(...).sliderPoints` after #243), `labels?` |
+| `ListSorter`    | `items`, `onChange`                                                                                                                                                |
+| `Markdown`      | `text`, `resolveURL?`                                                                                                                                              |
 
 ### Element Components (pure props)
 
-| Component | Key Props |
-|-----------|-----------|
-| `Prompt` | `metadata`, `body`, `responseItems`, `name`, `save`, `getElapsedTime`, `value`, `progressLabel` |
-| `Display` | `reference`, `values`, `position?` |
-| `SubmitButton` | `onSubmit`, `name`, `save`, `getElapsedTime`, `buttonText?` |
-| `AudioElement` | `src` |
-| `ImageElement` | `src`, `width?` |
-| `KitchenTimer` | `startTime`, `endTime`, `getElapsedTime`, `warnTimeRemaining?` |
-| `TrackedLink` | `name`, `url`, `displayText`, `save`, `getElapsedTime`, `progressLabel`, `resolvedParams?` |
-| `TrainingVideo` | `url`, `getElapsedTime`, `onComplete` |
-| `Qualtrics` | `url`, `resolvedParams?`, `participantId?`, `groupId?`, `progressLabel`, `save`, `onComplete` |
+| Component       | Key Props                                                                                                   |
+| --------------- | ----------------------------------------------------------------------------------------------------------- |
+| `Prompt`        | `metadata`, `body`, `responseItems`, `name`, `save`, `getElapsedTime`, `value`, `progressLabel`             |
+| `Display`       | `reference`, `values`, `position?`                                                                          |
+| `SubmitButton`  | `onSubmit`, `name`, `save`, `getElapsedTime`, `buttonText?`                                                 |
+| `AudioElement`  | `src`                                                                                                       |
+| `ImageElement`  | `src`, `width?`                                                                                             |
+| `KitchenTimer`  | `startTime`, `endTime`, `getElapsedTime`, `warnTimeRemaining?`                                              |
+| `TrackedLink`   | `name`, `url`, `displayText`, `save`, `getElapsedTime`, `progressLabel`, `resolvedParams?`                  |
+| `TrainingVideo` | `url`, `getElapsedTime`, `onComplete`                                                                       |
+| `Qualtrics`     | `url`, `resolvedParams?`, `stableParticipantId?`, `sampleId?`, `onContractViolation?`, `save`, `onComplete` |
 
 ### Render Slots (platform-provided)
 
-| Slot | Config | When Used |
-|------|--------|-----------|
-| `renderSurvey` | `{ surveyName, onComplete }` | `type: "survey"` element (deprecated — pending removal once a module-reuse pattern lands) |
-| `renderDiscussion` | Full `DiscussionType` config | Stage with `discussion` block |
-| `renderSharedNotepad` | `{ padName }` | `shared: true` open-response prompt |
+| Slot                  | Config                       | When Used                                                                                 |
+| --------------------- | ---------------------------- | ----------------------------------------------------------------------------------------- |
+| `renderSurvey`        | `{ surveyName, onComplete }` | `type: "survey"` element (deprecated — pending removal once a module-reuse pattern lands) |
+| `renderDiscussion`    | Full `DiscussionType` config | Stage with `discussion` block                                                             |
+| `renderSharedNotepad` | `{ padName }`                | `shared: true` open-response prompt                                                       |
 
 ### Conditional Components
 
-| Component | Key Props |
-|-----------|-----------|
-| `TimeConditionalRender` | `displayTime?`, `hideTime?`, `getElapsedTime`, `children` |
-| `PositionConditionalRender` | `showToPositions?`, `hideFromPositions?`, `position`, `children` |
-| `ConditionsConditionalRender` | `conditions`, `resolve`, `children`, `fallback?` |
-| `SubmissionConditionalRender` | `isSubmitted`, `playerCount`, `children` |
+| Component                     | Key Props                                                        |
+| ----------------------------- | ---------------------------------------------------------------- |
+| `TimeConditionalRender`       | `displayTime?`, `hideTime?`, `getElapsedTime`, `children`        |
+| `PositionConditionalRender`   | `showToPositions?`, `hideFromPositions?`, `position`, `children` |
+| `ConditionsConditionalRender` | `conditions`, `resolve`, `children`, `fallback?`                 |
+| `SubmissionConditionalRender` | `isSubmitted`, `playerCount`, `children`                         |

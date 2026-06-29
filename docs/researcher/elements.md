@@ -6,11 +6,11 @@ Elements are the building blocks of every stage. The `elements` array is rendere
 
 A few element types look superficially redundant but encode distinct intents — they answer different authoring questions, so they stay distinct.
 
-| Type          | Intent                                                                                              |
-| ------------- | --------------------------------------------------------------------------------------------------- |
+| Type          | Intent                                                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `audio`       | Non-interactive audio (chimes, alerts, ambient sound). One-shot; no participant controls expected. `audio` ≠ `mediaPlayer with playVideo: false`. |
-| `image`       | Non-interactive image display. Static picture; conceptually parallel to `audio`, not `display`. `image` ≠ `display`. |
-| `mediaPlayer` | Interactive audio/video with playback controls (play, pause, scrub, speed). Participant interacts with the clip. |
+| `image`       | Non-interactive image display. Static picture; conceptually parallel to `audio`, not `display`. `image` ≠ `display`.                              |
+| `mediaPlayer` | Interactive audio/video with playback controls (play, pause, scrub, speed). Participant interacts with the clip.                                  |
 | `display`     | Shows a value looked up by reference from elsewhere in the study (e.g., `prompt.foo`'s response). Reactive to stored data, not a static resource. |
 
 Use `audio` for a chime, `mediaPlayer` for a video, `image` for a picture, `display` to show a stored value. The four types are intentionally separate — a sequence of `if (playVideo) ... else ...` configuration on a single type would conflate "fire-and-forget asset" with "controllable surface" and "live data view."
@@ -488,7 +488,7 @@ An instrumented external link that records click/blur/focus events and time spen
   displayText: Complete the bonus signup form
   urlParams:
     - key: participant
-      reference: self.participantInfo.sampleId
+      reference: self.attributes.stableParticipantId
     - key: source
       value: deliberation_lab
 ```
@@ -530,7 +530,6 @@ Where `prompts/group_notes.prompt.md` is a minimal openResponse file:
 ---
 type: openResponse
 ---
-
 # Group notes
 
 (Optional framing for the notepad goes in the body.)

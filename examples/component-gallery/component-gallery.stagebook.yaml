@@ -85,6 +85,17 @@ treatments:
           - type: prompt
             name: checkbox_demo
             file: prompts/checkbox_demo.prompt.md
+          - type: prompt
+            file: prompts/checkbox_conditional_demo.prompt.md
+            notes: |
+              Conditional gate on a multi-select (#470). `includes` does
+              element membership when the referenced value is the array
+              of checked labels, so this block renders only while
+              "Sliders" is checked above.
+            conditions:
+              - reference: self.prompt.checkbox_demo
+                comparator: includes
+                value: Sliders
           - type: submitButton
 
       - name: checkbox_group_horizontal

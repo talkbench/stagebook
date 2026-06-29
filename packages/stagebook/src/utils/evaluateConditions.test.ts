@@ -167,6 +167,91 @@ describe("evaluateCondition", () => {
         ),
       ).toBe(true);
     });
+
+    // Multi-select membership (#470). The host resolves a `select:
+    // multiple` prompt to a single value that is itself the selected-
+    // labels array, so the leaf sees `[["Likert scales","Sliders"]]` —
+    // one element, which is the array. `includes` then does element
+    // membership.
+    test("includes matches a checked option in a multi-select", () => {
+      expect(
+        evaluateCondition(
+          {
+            reference: "self.prompt.tools_used",
+            comparator: "includes",
+            value: "Sliders",
+          },
+          [["Likert scales", "Sliders"]],
+        ),
+      ).toBe(true);
+    });
+
+    test("includes fails when the option was not checked", () => {
+      expect(
+        evaluateCondition(
+          {
+            reference: "self.prompt.tools_used",
+            comparator: "includes",
+            value: "Drag-to-rank",
+          },
+          [["Likert scales", "Sliders"]],
+        ),
+      ).toBe(false);
+    });
+
+    test("includes against an emptied selection is false", () => {
+      expect(
+        evaluateCondition(
+          {
+            reference: "self.prompt.tools_used",
+            comparator: "includes",
+            value: "Sliders",
+          },
+          [[]],
+        ),
+      ).toBe(false);
+    });
+
+    test("hasLengthAtLeast gates on number of checked options", () => {
+      expect(
+        evaluateCondition(
+          {
+            reference: "self.prompt.tools_used",
+            comparator: "hasLengthAtLeast",
+            value: 2,
+          },
+          [["Likert scales", "Sliders"]],
+        ),
+      ).toBe(true);
+    });
+
+    test("cross-player: every player's selection must include the option", () => {
+      // `all.prompt.x` resolves to one array-value per player; the leaf
+      // AND-loop requires each to include the option.
+      expect(
+        evaluateCondition(
+          {
+            reference: "all.prompt.tools_used",
+            comparator: "includes",
+            value: "Sliders",
+          },
+          [
+            ["Likert scales", "Sliders"],
+            ["Sliders", "Discussion"],
+          ],
+        ),
+      ).toBe(true);
+      expect(
+        evaluateCondition(
+          {
+            reference: "all.prompt.tools_used",
+            comparator: "includes",
+            value: "Sliders",
+          },
+          [["Likert scales", "Sliders"], ["Discussion"]],
+        ),
+      ).toBe(false);
+    });
   });
 });
 
@@ -983,5 +1068,191 @@ describe("evaluateConditions — negative comparators vs unset reference (#348)"
         emptyResolve,
       ),
     ).toBe(false);
+  });
+});
+
+// --------------- Multi-select membership through the tree (#470) ---------------
+//
+// The leaf-level tests above (evaluateCondition) pin the array branch of
+// `compare`. These exercise the same array values through the field-level
+// `evaluateConditions` entrypoint and the boolean tree — the only logic
+// not otherwise reached is how a definite array leaf composes inside
+// `none:` (the tri-state-critical operator) and the contrast between a
+// present-but-not-selected array and an absent reference.
+
+describe("evaluateConditions — multi-select membership (#470)", () => {
+  const makeResolve =
+    (data: Record<string, unknown[]>) =>
+    (reference: string): unknown[] =>
+      data[reference] ?? [];
+
+  test("includes through the tree gates on a checked option", () => {
+    const resolve = makeResolve({
+      "self.prompt.tools": [["Likert scales", "Sliders"]],
+    });
+    expect(
+      evaluateConditions(
+        [
+          {
+            reference: "self.prompt.tools",
+            comparator: "includes",
+            value: "Sliders",
+          },
+        ],
+        resolve,
+      ),
+    ).toBe(true);
+    expect(
+      evaluateConditions(
+        [
+          {
+            reference: "self.prompt.tools",
+            comparator: "includes",
+            value: "Discussion / chat",
+          },
+        ],
+        resolve,
+      ),
+    ).toBe(false);
+  });
+
+  test("hasLengthAtMost through the tree gates on number of checked options", () => {
+    const resolve = makeResolve({
+      "self.prompt.tools": [["Likert scales", "Sliders"]],
+    });
+    expect(
+      evaluateConditions(
+        [
+          {
+            reference: "self.prompt.tools",
+            comparator: "hasLengthAtMost",
+            value: 2,
+          },
+        ],
+        resolve,
+      ),
+    ).toBe(true);
+    expect(
+      evaluateConditions(
+        [
+          {
+            reference: "self.prompt.tools",
+            comparator: "hasLengthAtMost",
+            value: 1,
+          },
+        ],
+        resolve,
+      ),
+    ).toBe(false);
+  });
+
+  describe("doesNotInclude: present-but-not-selected vs absent reference", () => {
+    test("present non-empty array, option not selected → true (array branch)", () => {
+      const resolve = makeResolve({
+        "self.prompt.tools": [["Likert scales"]],
+      });
+      expect(
+        evaluateConditions(
+          {
+            reference: "self.prompt.tools",
+            comparator: "doesNotInclude",
+            value: "Sliders",
+          },
+          resolve,
+        ),
+      ).toBe(true);
+    });
+
+    test("present non-empty array, option selected → false (array branch)", () => {
+      const resolve = makeResolve({
+        "self.prompt.tools": [["Likert scales", "Sliders"]],
+      });
+      expect(
+        evaluateConditions(
+          {
+            reference: "self.prompt.tools",
+            comparator: "doesNotInclude",
+            value: "Sliders",
+          },
+          resolve,
+        ),
+      ).toBe(false);
+    });
+
+    test("absent reference → true via the #348 absence policy, not the array branch", () => {
+      // No resolved value: the leaf short-circuits through
+      // compare(undefined, "doesNotInclude", …), which is satisfied by
+      // absence — a different code path that lands on the same answer as
+      // the present-but-not-selected case above.
+      expect(
+        evaluateConditions(
+          {
+            reference: "self.prompt.tools",
+            comparator: "doesNotInclude",
+            value: "Sliders",
+          },
+          makeResolve({}),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe("none: over a multi-select includes leaf (tri-state composition)", () => {
+    test("option selected → includes true → none → false", () => {
+      const resolve = makeResolve({ "self.prompt.tools": [["Sliders"]] });
+      expect(
+        evaluateConditions(
+          {
+            none: [
+              {
+                reference: "self.prompt.tools",
+                comparator: "includes",
+                value: "Sliders",
+              },
+            ],
+          },
+          resolve,
+        ),
+      ).toBe(false);
+    });
+
+    test("option not selected (present array) → includes false → none → true", () => {
+      const resolve = makeResolve({
+        "self.prompt.tools": [["Likert scales"]],
+      });
+      expect(
+        evaluateConditions(
+          {
+            none: [
+              {
+                reference: "self.prompt.tools",
+                comparator: "includes",
+                value: "Sliders",
+              },
+            ],
+          },
+          resolve,
+        ),
+      ).toBe(true);
+    });
+
+    test("absent reference → includes undefined → none → false at boundary (gate stays closed)", () => {
+      // The tri-state guard: an unanswered multi-select must not open a
+      // `none:`-gated fallback before any data exists.
+      expect(
+        evaluateConditions(
+          {
+            none: [
+              {
+                reference: "self.prompt.tools",
+                comparator: "includes",
+                value: "Sliders",
+              },
+            ],
+          },
+          makeResolve({}),
+        ),
+      ).toBe(false);
+    });
   });
 });

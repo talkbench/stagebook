@@ -17,6 +17,9 @@ import {
 function createMockContext(
   overrides?: Partial<StagebookContext>,
 ): StagebookContext {
+  // No attributes shim needed: the provider does not check
+  // `stableParticipantId` at mount (#473) — that's a use-site check in the
+  // Qualtrics element — so a missing attributes bag here is harmless.
   return {
     get: vi.fn(() => []),
     save: vi.fn(),

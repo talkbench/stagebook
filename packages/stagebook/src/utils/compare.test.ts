@@ -198,6 +198,76 @@ describe("array comparisons", () => {
   });
 });
 
+// ----------- Multi-select (array LHS) membership ------------
+//
+// A `select: multiple` checkbox prompt saves its value as a string[]
+// (the selected option labels). When that lands on the LHS of a
+// condition, `includes`/`doesNotInclude` do element membership and the
+// length comparators measure how many options were checked. The
+// condition `value` stays a scalar label — no schema change. (#470)
+
+describe("multi-select (array LHS) membership", () => {
+  test("includes is element membership, not substring", () => {
+    expect(compare(["Likert scales", "Sliders"], "includes", "Sliders")).toBe(
+      true,
+    );
+    expect(compare(["Likert scales", "Sliders"], "includes", "Drag")).toBe(
+      false,
+    );
+    // Substring of a member must NOT match — membership is exact.
+    expect(compare(["Sliders"], "includes", "Slide")).toBe(false);
+  });
+
+  test("includes on an empty selection is false", () => {
+    expect(compare([], "includes", "Sliders")).toBe(false);
+  });
+
+  test("doesNotInclude is the symmetric negation on arrays", () => {
+    expect(compare(["Likert scales"], "doesNotInclude", "Sliders")).toBe(true);
+    expect(compare(["Likert scales"], "doesNotInclude", "Likert scales")).toBe(
+      false,
+    );
+    // Emptied selection includes nothing, so it does-not-include anything.
+    expect(compare([], "doesNotInclude", "Sliders")).toBe(true);
+  });
+
+  test("hasLengthAtLeast counts selected options", () => {
+    expect(compare(["a", "b"], "hasLengthAtLeast", 2)).toBe(true);
+    expect(compare(["a"], "hasLengthAtLeast", 2)).toBe(false);
+    expect(compare([], "hasLengthAtLeast", 1)).toBe(false);
+  });
+
+  test("hasLengthAtMost counts selected options", () => {
+    expect(compare(["a"], "hasLengthAtMost", 2)).toBe(true);
+    expect(compare(["a", "b", "c"], "hasLengthAtMost", 2)).toBe(false);
+    expect(compare([], "hasLengthAtMost", 0)).toBe(true);
+  });
+
+  test("numeric labels compare as strings (no coercion)", () => {
+    // Multi-select labels are always strings; membership is strict.
+    expect(compare(["5", "7"], "includes", "5")).toBe(true);
+    expect(compare(["5", "7"], "includes", 5)).toBe(false);
+  });
+
+  test("comparators with no array semantics are undecidable on an array", () => {
+    // No accidental array-vs-array equality or numeric coercion: these
+    // return undefined so the leaf collapses to false / propagates unknown.
+    expect(compare(["a"], "equals", "a")).toBeUndefined();
+    expect(compare(["a"], "doesNotEqual", "a")).toBeUndefined();
+    expect(compare(["1"], "isAbove", 0)).toBeUndefined();
+    expect(compare(["a"], "isOneOf", ["a", "b"])).toBeUndefined();
+    expect(compare(["a"], "matches", "a")).toBeUndefined();
+  });
+
+  test("exists/doesNotExist still answer presence for arrays", () => {
+    // Handled by the top-of-function presence probe — an emptied
+    // selection is still a value that exists.
+    expect(compare([], "exists")).toBe(true);
+    expect(compare(["a"], "exists")).toBe(true);
+    expect(compare([], "doesNotExist")).toBe(false);
+  });
+});
+
 // ----------- Invalid comparator ------------
 
 describe("invalid comparator", () => {

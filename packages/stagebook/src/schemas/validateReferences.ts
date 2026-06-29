@@ -4,7 +4,7 @@
  * Two rules:
  * 1. **No forward references** — applies to every reference site. A reference
  *    whose target storage key is produced by a *later* stage in the flow is
- *    rejected. External references (entryUrl, participantInfo, …) are
+ *    rejected. External references (entryUrl, attributes, …) are
  *    always valid.
  * 2. **No always-skip-at-load** — stage-level conditions only. A stage-level
  *    condition whose reference points at the *current* stage's data and
@@ -73,7 +73,7 @@ const RANK_INTRO = 0;
 const RANK_GAME_BASE = 1;
 
 /** The types of reference whose target keys are **produced by a stage**. A
- *  reference of any other type (entryUrl, participantInfo, …) is external
+ *  reference of any other type (entryUrl, attributes, …) is external
  *  and always valid regardless of position.
  *
  *  Note: `discussion` references aren't in this set because stagebook
@@ -531,6 +531,32 @@ function applyRules({
   // Determine the source. External sources always validate; stage-produced
   // sources go through the producer check.
   const refType = site.reference.source;
+
+  // `attributes.sampleId` (#473) is the per-assignment data-row id, minted
+  // at game-stage start — it does not exist during groupComposition or
+  // intro. Like a forward reference, a pre-game read is always empty at
+  // runtime, so flag it. The rest of `attributes.*` is host-maintained and
+  // available from connect, so only the `sampleId` subpath is gated. Phase
+  // is read from `phaseLabel`/`allowedProducerRanks` rather than the numeric
+  // rank, because the intro walker reuses `enclosingRank` as a within-
+  // sequence step index, not a phase rank. Exit steps run after the game,
+  // so sampleId is available there.
+  const isPreGame =
+    phaseLabel === "intro step" || allowedProducerRanks !== undefined;
+  if (
+    refType === "attributes" &&
+    "path" in site.reference &&
+    site.reference.path[0] === "sampleId" &&
+    isPreGame
+  ) {
+    const phase = phaseLabel ?? "groupComposition";
+    issues.push({
+      path: site.path,
+      message: `Reference "${refStr}" reads attributes.sampleId, which is assigned at game-stage start and is empty during ${phase}. Move the reference to a game or exit stage.`,
+    });
+    return;
+  }
+
   if (!STAGE_PRODUCED_REF_TYPES.has(refType)) return;
 
   // Look up the producer rank. If the key isn't produced anywhere in the
@@ -606,7 +632,7 @@ function applyRules({
     if (!allowedProducerRanks.has(producerRank)) {
       issues.push({
         path: site.path,
-        message: `groupComposition condition references "${refStr}", which is produced by a game or exit stage. groupComposition is evaluated before any stage runs — it can only reference intro-phase data or external values (entryUrl.params.*, participantInfo.*, …).`,
+        message: `groupComposition condition references "${refStr}", which is produced by a game or exit stage. groupComposition is evaluated before any stage runs — it can only reference intro-phase data or external values (entryUrl.params.*, attributes.*, …).`,
       });
     }
     return;

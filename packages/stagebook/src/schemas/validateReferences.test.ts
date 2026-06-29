@@ -504,7 +504,7 @@ describe("Rule 1 — no forward references", () => {
     expect(hit).toBeDefined();
   });
 
-  test("external references (entryUrl.params.x, participantInfo.x) accepted at every site", () => {
+  test("external references (entryUrl.params.x, attributes.x) accepted at every site", () => {
     const file = baseFile({
       gameStages: [
         {
@@ -520,7 +520,7 @@ describe("Rule 1 — no forward references", () => {
           elements: [
             {
               type: "display",
-              reference: "self.participantInfo.playerId",
+              reference: "self.attributes.stableParticipantId",
             },
             { type: "submitButton" },
           ],
@@ -529,6 +529,99 @@ describe("Rule 1 — no forward references", () => {
     });
     const issues = validateTreatmentFileReferences(file);
     expect(issues.length).toBe(0);
+  });
+
+  const hasSampleIdIssue = (issues: { message: string }[]): boolean =>
+    issues.some((i) => /attributes\.sampleId/.test(i.message));
+
+  test("attributes.sampleId is rejected in an intro step (#473)", () => {
+    // In an intro step it's empty at runtime (assigned at game start).
+    const introFile = baseFile({
+      introSteps: [
+        {
+          name: "i1",
+          elements: [
+            { type: "display", reference: "self.attributes.sampleId" },
+          ],
+        },
+      ],
+    });
+    expect(hasSampleIdIssue(validateTreatmentFileReferences(introFile))).toBe(
+      true,
+    );
+  });
+
+  test("attributes.sampleId is rejected in groupComposition (#473)", () => {
+    // groupComposition runs before any stage — sampleId doesn't exist yet.
+    const gcFile = baseFile({
+      groupComposition: [
+        {
+          position: 0,
+          conditions: [
+            { reference: "self.attributes.sampleId", comparator: "exists" },
+          ],
+        },
+      ],
+    });
+    expect(hasSampleIdIssue(validateTreatmentFileReferences(gcFile))).toBe(
+      true,
+    );
+  });
+
+  test("attributes.sampleId is accepted in a game stage (#473)", () => {
+    const gameFile = baseFile({
+      gameStages: [
+        {
+          name: "s1",
+          duration: 60,
+          elements: [
+            { type: "display", reference: "self.attributes.sampleId" },
+            { type: "submitButton" },
+          ],
+        },
+      ],
+    });
+    expect(hasSampleIdIssue(validateTreatmentFileReferences(gameFile))).toBe(
+      false,
+    );
+  });
+
+  test("attributes.sampleId is accepted in an exit step (#473)", () => {
+    // Exit runs after the game — sampleId has been assigned.
+    const exitFile = baseFile({
+      exitSequence: [
+        {
+          name: "e1",
+          elements: [
+            { type: "display", reference: "self.attributes.sampleId" },
+            { type: "submitButton" },
+          ],
+        },
+      ],
+    });
+    expect(hasSampleIdIssue(validateTreatmentFileReferences(exitFile))).toBe(
+      false,
+    );
+  });
+
+  test("non-sampleId attributes fields are NOT gated pre-game (#473)", () => {
+    // Only the sampleId subpath is phase-restricted; other attributes come
+    // from connect and are valid anywhere, including intro.
+    const introFile = baseFile({
+      introSteps: [
+        {
+          name: "i1",
+          elements: [
+            { type: "display", reference: "self.attributes.country" },
+            {
+              type: "display",
+              reference: "self.attributes.stableParticipantId",
+            },
+          ],
+        },
+      ],
+    });
+    expect(validateTreatmentFileReferences(introFile).length).toBe(0);
   });
 
   test("earlier-stage reference accepted", () => {

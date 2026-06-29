@@ -67,6 +67,33 @@ export function compare(
     return undefined;
   }
 
+  // Multi-select (array LHS) membership (#470). A `select: multiple`
+  // checkbox prompt saves its value as a string[] of the selected
+  // labels; when that array reaches a condition, `includes` /
+  // `doesNotInclude` do exact element membership (mirroring how JS
+  // overloads String vs Array `.includes`), and the length comparators
+  // count how many options were checked. The `value` stays a scalar
+  // label, so no schema change is needed. Handled here — before the
+  // numeric/string/boolean branches — so an array never falls through
+  // to e.g. the `isOneOf` rhs-array branch with the whole selection as
+  // the LHS. Comparators with no sensible array semantics fall to the
+  // `undefined` return below (undecidable → leaf collapses to false /
+  // propagates unknown); `exists` / `doesNotExist` are already answered
+  // by the presence probe at the top of the function.
+  if (Array.isArray(lhs)) {
+    switch (comparator) {
+      case "includes":
+        return lhs.includes(rhs);
+      case "doesNotInclude":
+        return !lhs.includes(rhs);
+      case "hasLengthAtLeast":
+        return lhs.length >= parseFloat(rhs as string);
+      case "hasLengthAtMost":
+        return lhs.length <= parseFloat(rhs as string);
+    }
+    return undefined;
+  }
+
   if (isNumberOrParsableNumber(lhs) && isNumberOrParsableNumber(rhs)) {
     const numLhs = parseFloat(lhs as string);
     const numRhs = parseFloat(rhs as string);
