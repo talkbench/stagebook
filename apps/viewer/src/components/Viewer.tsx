@@ -16,8 +16,9 @@ import {
   Stage,
   ScrollIndicator,
   useScrollAwareness,
+  isRTLLocale,
 } from "stagebook/components";
-import { flattenSteps } from "../lib/steps";
+import { flattenSteps, localeForPhase } from "../lib/steps";
 import { ViewerStateStore } from "../lib/store";
 import { createViewerContext } from "../lib/context";
 import { StageNav } from "./StageNav";
@@ -84,7 +85,7 @@ export function Viewer({
   onIntroIndexChange,
 }: ViewerProps) {
   const treatment = treatmentFile.treatments[selectedTreatmentIndex];
-  const introSequence = treatmentFile.introSequences[selectedIntroIndex];
+  const introSequence = treatmentFile.introSequences?.[selectedIntroIndex];
 
   // Whether to render the treatment/intro selectors as dropdowns.
   // When the host doesn't pass setters the viewer is uncontrolled
@@ -97,7 +98,7 @@ export function Viewer({
   const showTreatmentPicker =
     !!onTreatmentIndexChange && treatmentFile.treatments.length > 1;
   const showIntroPicker =
-    !!onIntroIndexChange && treatmentFile.introSequences.length > 1;
+    !!onIntroIndexChange && (treatmentFile.introSequences?.length ?? 0) > 1;
 
   const steps = useMemo(
     () => flattenSteps(introSequence, treatment),
@@ -145,6 +146,14 @@ export function Viewer({
   const currentStep = steps[stageIndex];
   const isSubmitted = store.getSubmitted(stageIndex);
 
+  // Locale follows the PHASE: intro steps render under the intro sequence's
+  // declared locale (intro runs before treatment assignment, so it carries
+  // its own), game + exit stages under the treatment's. Both default to
+  // English. Which locale a real participant sees is the host's assignment
+  // decision; the viewer just renders what each phase declares — and surfaces
+  // it in the header so it's explicit.
+  const locale = localeForPhase(currentStep?.phase, introSequence, treatment);
+
   const handleSubmit = useCallback(() => {
     store.setSubmitted(stageIndex, true);
   }, [store, stageIndex]);
@@ -167,6 +176,7 @@ export function Viewer({
         position,
         stageIndex,
         playerCount: treatment.playerCount,
+        locale,
         onSubmit: handleSubmit,
         getTextContent,
         getAssetURL,
@@ -180,6 +190,7 @@ export function Viewer({
       position,
       stageIndex,
       treatment.playerCount,
+      locale,
       handleSubmit,
       getTextContent,
       getAssetURL,
@@ -264,6 +275,15 @@ export function Viewer({
           onTimeChange={handleTimeChange}
         />
         <div style={positionSwitcherStyle}>
+          {/* Read-only: the locale is whatever the current phase declares
+              (intro sequence vs treatment) — explicit, never overridden. */}
+          <span
+            data-testid="viewer-locale-badge"
+            title={`Locale declared by the current ${currentStep.phase} phase`}
+            style={localeBadgeStyle}
+          >
+            {locale}
+          </span>
           <label htmlFor="position-select" style={positionLabelStyle}>
             Position
           </label>
@@ -295,7 +315,11 @@ export function Viewer({
         </aside>
 
         {/* Main content */}
-        <main ref={mainScrollRef} style={mainStyle}>
+        <main
+          ref={mainScrollRef}
+          dir={isRTLLocale(locale) ? "rtl" : "ltr"}
+          style={mainStyle}
+        >
           {isSubmitted ? (
             <div style={submittedOverlayStyle}>
               <p style={submittedTextStyle}>
@@ -399,6 +423,19 @@ const treatmentNameStyle: React.CSSProperties = {
   fontWeight: 600,
   fontSize: "0.875rem",
   color: "#1f2937",
+};
+
+const localeBadgeStyle: React.CSSProperties = {
+  fontSize: "0.6875rem",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.03em",
+  color: "#3730a3",
+  background: "#eef2ff",
+  border: "1px solid #c7d2fe",
+  borderRadius: "0.25rem",
+  padding: "0.0625rem 0.375rem",
+  fontVariantNumeric: "tabular-nums",
 };
 
 const treatmentSelectStyle: React.CSSProperties = {

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useMessages, useIsRTL } from "../../StagebookProvider.js";
 
 export interface HelpPopoverProps {
   selectionType: "range" | "point";
@@ -7,45 +8,25 @@ export interface HelpPopoverProps {
   buttonRef: React.RefObject<HTMLButtonElement | null>;
 }
 
-const rangeShortcuts: { keys: string; description: string }[] = [
-  { keys: "Space", description: "Play / Pause" },
-  { keys: "Click empty space", description: "Seek playhead" },
-  { keys: "←  → (no selection)", description: "Scrub playhead ±1s" },
-  { keys: ", . (no selection)", description: "Scrub ±1 frame" },
-  { keys: "Click and drag", description: "Create range" },
-  { keys: "Enter (press and hold)", description: "Mark range while watching" },
-  { keys: "Click range", description: "Select it" },
-  { keys: "Drag handle", description: "Adjust boundary" },
-  { keys: "←  →", description: "Adjust handle ±1s" },
-  { keys: ", .", description: "Adjust ±1 frame" },
-  { keys: "Tab", description: "Switch handle" },
-  { keys: "Delete", description: "Remove range" },
-  { keys: "Ctrl+Z / Cmd+Z", description: "Undo" },
-  { keys: "Escape", description: "Deselect" },
-];
-
-const pointShortcuts: { keys: string; description: string }[] = [
-  { keys: "Space", description: "Play / Pause" },
-  { keys: "Click empty space", description: "Place point" },
-  { keys: "Enter", description: "Place point at playhead" },
-  { keys: "←  → (no selection)", description: "Scrub playhead ±1s" },
-  { keys: ", . (no selection)", description: "Scrub ±1 frame" },
-  { keys: "Click point", description: "Select it" },
-  { keys: "Drag point", description: "Reposition" },
-  { keys: "←  →", description: "Reposition ±1s" },
-  { keys: ", .", description: "Reposition ±1 frame" },
-  { keys: "Delete", description: "Remove point" },
-  { keys: "Ctrl+Z / Cmd+Z", description: "Undo" },
-  { keys: "Escape", description: "Deselect" },
-];
-
 export function HelpPopover({
   selectionType,
   onClose,
   buttonRef,
 }: HelpPopoverProps) {
+  const messages = useMessages();
+  const isRTL = useIsRTL();
   const popoverRef = useRef<HTMLDivElement>(null);
-  const shortcuts = selectionType === "range" ? rangeShortcuts : pointShortcuts;
+  // Whole-table catalog entries (timelineShortcutRowsRange/Point) so a locale
+  // translates the table wholesale, including instruction-style "keys" like
+  // "Click and drag".
+  const rawShortcuts =
+    selectionType === "range"
+      ? messages.timelineShortcutRowsRange()
+      : messages.timelineShortcutRowsPoint();
+  // Robustness (not a security boundary — `messages` is trusted host input):
+  // a malformed host override returning a non-array would otherwise crash the
+  // whole popover at .map(); degrade to an empty table instead.
+  const shortcuts = Array.isArray(rawShortcuts) ? rawShortcuts : [];
 
   // Track button position for fixed positioning
   const [position, setPosition] = useState<{ top: number; right: number }>({
@@ -139,7 +120,8 @@ export function HelpPopover({
       ref={popoverRef}
       data-testid="timeline-help-popover"
       role="dialog"
-      aria-label="Timeline keyboard shortcuts"
+      dir={isRTL ? "rtl" : "ltr"}
+      aria-label={messages.timelineShortcutsLabel}
       style={{
         position: "fixed",
         top: `${String(position.top)}px`,
@@ -161,7 +143,7 @@ export function HelpPopover({
           color: "var(--stagebook-text, #111827)",
         }}
       >
-        Keyboard shortcuts
+        {messages.timelineShortcutsTitle}
       </div>
       <table
         style={{

@@ -1,4 +1,5 @@
 import React from "react";
+import { useMessages } from "../StagebookProvider.js";
 
 export interface LoadingProps {
   size?: "sm" | "md" | "lg";
@@ -12,6 +13,7 @@ const sizeMap = {
 
 export function Loading({ size = "md" }: LoadingProps) {
   const px = sizeMap[size];
+  const messages = useMessages();
 
   return (
     <div
@@ -27,7 +29,7 @@ export function Loading({ size = "md" }: LoadingProps) {
         height={px}
         viewBox="0 0 24 24"
         fill="none"
-        aria-label="Loading"
+        aria-label={messages.loadingLabel}
         style={{
           animation: "stagebook-spin 0.75s linear infinite",
         }}

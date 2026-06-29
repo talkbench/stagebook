@@ -1,6 +1,6 @@
 import { z, ZodIssue } from "zod";
 import { load as loadYaml } from "js-yaml";
-import { nameSchema } from "./primitives.js";
+import { nameSchema, localeSchema } from "./primitives.js";
 
 // ---------------------------------------------------------------------------
 // Prompt file format (#243)
@@ -37,6 +37,13 @@ const baseMetadataFields = {
   // storage key later in the render path (#360).
   name: nameSchema.optional(),
   notes: z.string().optional(),
+  // The language this prompt file is authored in (BCP-47, e.g. `he`). Optional;
+  // absent means English. Used by the post-hydration content rule to verify a
+  // prompt's locale matches the treatment that renders it (so a `locale: he`
+  // treatment can't ship an untranslated/mistagged English prompt). The tag is
+  // not enforced against the shipped-catalog set here — it's a declaration of
+  // what the file contains, checked against the treatment's locale downstream.
+  locale: localeSchema.optional(),
 };
 
 const noResponseMetadataSchema = z

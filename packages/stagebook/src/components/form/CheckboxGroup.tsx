@@ -1,4 +1,5 @@
 import React, { useId } from "react";
+import { useIsRTL } from "../StagebookProvider.js";
 
 export interface CheckboxOption {
   key: string;
@@ -93,6 +94,7 @@ export function CheckboxGroup({
   id,
   "data-testid": dataTestId,
 }: CheckboxGroupProps) {
+  const isRTL = useIsRTL();
   // Stable per-instance id for the group + label association.
   const reactId = useId();
   // `useId` returns an opaque string the React docs explicitly call
@@ -120,7 +122,11 @@ export function CheckboxGroup({
   };
 
   return (
-    <div data-testid={testId} style={{ marginTop: "1rem" }}>
+    <div
+      data-testid={testId}
+      dir={isRTL ? "rtl" : "ltr"}
+      style={{ marginTop: "1rem" }}
+    >
       <style>{`
         .${rowClass}:hover {
           background-color: var(--stagebook-hover-bg, #f3f4f6);
@@ -159,7 +165,7 @@ export function CheckboxGroup({
         role="group"
         aria-labelledby={label ? labelId : undefined}
         style={{
-          marginLeft: "1.25rem",
+          marginInlineStart: "1.25rem",
           display: layout === "horizontal" ? "flex" : "grid",
           gap: layout === "horizontal" ? "1rem" : "0.125rem",
           flexWrap: layout === "horizontal" ? "wrap" : undefined,

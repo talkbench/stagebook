@@ -6,6 +6,7 @@ import {
   type ValidationIssue,
 } from "./lib/treatment";
 import { createUrlContentFns } from "./lib/contentFns";
+import { needsOverviewPicker } from "./lib/selection";
 import {
   exampleCatalog,
   createExampleContentFns,
@@ -60,9 +61,7 @@ export function App() {
       // A newer load started while we were awaiting README — drop this one.
       if (seq !== loadSeqRef.current) return;
 
-      const needsPicker =
-        treatmentFile.introSequences.length > 1 ||
-        treatmentFile.treatments.length > 1;
+      const needsPicker = needsOverviewPicker(treatmentFile);
 
       if (needsPicker || readmeContent !== null) {
         setState({

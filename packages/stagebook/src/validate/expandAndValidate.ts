@@ -9,6 +9,13 @@ import type { Diagnostic } from "./types.js";
 export interface ExpandAndValidateResult {
   /** The expanded YAML as displayed (possibly truncated). "" if expansion failed. */
   yaml: string;
+  /**
+   * The full (untruncated) expanded YAML — what `diagnostics` positions refer
+   * to. Lets callers run additional post-hydration passes (e.g. the prompt
+   * locale-consistency rule) on the same expansion without re-expanding.
+   * "" if expansion failed.
+   */
+  fullYaml: string;
   /** Whether the displayed YAML was truncated for size. */
   truncated: boolean;
   /** Expansion error message (e.g. YAML parse, missing template). null on success. */
@@ -72,6 +79,7 @@ function finishExpandAndValidate(expanded: {
   if (expanded.error) {
     return {
       yaml: expanded.yaml,
+      fullYaml: "",
       truncated: expanded.truncated,
       expandError: expanded.error,
       diagnostics: [],
@@ -80,6 +88,7 @@ function finishExpandAndValidate(expanded: {
   const { diagnostics } = validateTreatmentSource(expanded.fullYaml);
   return {
     yaml: expanded.yaml,
+    fullYaml: expanded.fullYaml,
     truncated: expanded.truncated,
     expandError: null,
     diagnostics,

@@ -12,6 +12,7 @@
  */
 import React from "react";
 import { formatTime } from "../../../utils/formatTime.js";
+import { useMessages } from "../../StagebookProvider.js";
 import {
   PlayIcon,
   PauseIcon,
@@ -113,6 +114,7 @@ export function HTML5Controls({
   onScrubMove,
   onScrubEnd,
 }: HTML5ControlsProps) {
+  const messages = useMessages();
   function posFromEvent(e: React.PointerEvent<HTMLDivElement>): number {
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -133,8 +135,8 @@ export function HTML5Controls({
         {controls?.seek && (
           <button
             data-testid="mediaPlayer-seekBack"
-            aria-label="Back 1s"
-            title="Back 1s (←) · Hold to scrub · J for 10s"
+            aria-label={messages.mediaSeekBack}
+            title={messages.mediaSeekBackTitleFull}
             tabIndex={0}
             style={controlBtnSmall}
             onMouseDown={() => onSeekButtonPress(-1)}
@@ -148,8 +150,8 @@ export function HTML5Controls({
         {controls?.step && (
           <button
             data-testid="mediaPlayer-stepBack"
-            aria-label={`Step back ${String(stepDuration)}s`}
-            title={`Step back ${String(stepDuration)}s (,)`}
+            aria-label={messages.mediaStepBack(stepDuration)}
+            title={messages.mediaStepBackTitle(stepDuration)}
             tabIndex={0}
             style={controlBtnSmall}
             onClick={() => onSeek(-stepDuration)}
@@ -161,8 +163,10 @@ export function HTML5Controls({
         {controls?.playPause && (
           <button
             data-testid="mediaPlayer-playPause"
-            aria-label={isPaused ? "Play" : "Pause"}
-            title={isPaused ? "Play (Space)" : "Pause (Space)"}
+            aria-label={isPaused ? messages.mediaPlay : messages.mediaPause}
+            title={
+              isPaused ? messages.mediaPlayTitle : messages.mediaPauseTitle
+            }
             tabIndex={0}
             style={controlBtnLarge}
             onClick={onPlayPause}
@@ -174,8 +178,8 @@ export function HTML5Controls({
         {controls?.step && (
           <button
             data-testid="mediaPlayer-stepForward"
-            aria-label={`Step forward ${String(stepDuration)}s`}
-            title={`Step forward ${String(stepDuration)}s (.)`}
+            aria-label={messages.mediaStepForward(stepDuration)}
+            title={messages.mediaStepForwardTitle(stepDuration)}
             tabIndex={0}
             style={controlBtnSmall}
             onClick={() => onSeek(stepDuration)}
@@ -187,8 +191,8 @@ export function HTML5Controls({
         {controls?.seek && (
           <button
             data-testid="mediaPlayer-seekForward"
-            aria-label="Forward 1s"
-            title="Forward 1s (→) · Hold to scrub · L for 10s"
+            aria-label={messages.mediaSeekForward}
+            title={messages.mediaSeekForwardTitleFull}
             tabIndex={0}
             style={controlBtnSmall}
             onMouseDown={() => onSeekButtonPress(1)}
@@ -202,8 +206,8 @@ export function HTML5Controls({
         {controls?.speed && (
           <button
             data-testid="mediaPlayer-speed"
-            aria-label="Playback speed"
-            title="Playback speed (< / >)"
+            aria-label={messages.mediaSpeedLabel}
+            title={messages.mediaSpeedTitle}
             tabIndex={0}
             style={{
               ...controlBtnSmall,
@@ -224,7 +228,7 @@ export function HTML5Controls({
           <div
             data-testid="mediaPlayer-scrubBar"
             role="slider"
-            aria-label="Seek"
+            aria-label={messages.mediaSeekSlider}
             aria-valuemin={scrubMin}
             aria-valuemax={scrubMax}
             aria-valuenow={currentTime}
@@ -367,6 +371,7 @@ export function YouTubeControls({
   onScrubMove,
   onScrubEnd,
 }: YouTubeControlsProps) {
+  const messages = useMessages();
   function posFromEvent(e: React.PointerEvent<HTMLDivElement>): number {
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
@@ -387,8 +392,8 @@ export function YouTubeControls({
         {controls?.seek && (
           <button
             data-testid="mediaPlayer-seekBack"
-            aria-label="Back 1s"
-            title="Back 1s · J for 10s"
+            aria-label={messages.mediaSeekBack}
+            title={messages.mediaSeekBackTitleMini}
             tabIndex={0}
             style={controlBtnSmall}
             onClick={onSeekBack}
@@ -400,8 +405,10 @@ export function YouTubeControls({
         {controls?.playPause && (
           <button
             data-testid="mediaPlayer-playPause"
-            aria-label={isPaused ? "Play" : "Pause"}
-            title={isPaused ? "Play (Space)" : "Pause (Space)"}
+            aria-label={isPaused ? messages.mediaPlay : messages.mediaPause}
+            title={
+              isPaused ? messages.mediaPlayTitle : messages.mediaPauseTitle
+            }
             tabIndex={0}
             style={controlBtnLarge}
             onClick={onPlayPause}
@@ -413,8 +420,8 @@ export function YouTubeControls({
         {controls?.seek && (
           <button
             data-testid="mediaPlayer-seekForward"
-            aria-label="Forward 1s"
-            title="Forward 1s · L for 10s"
+            aria-label={messages.mediaSeekForward}
+            title={messages.mediaSeekForwardTitleMini}
             tabIndex={0}
             style={controlBtnSmall}
             onClick={onSeekForward}
@@ -430,7 +437,7 @@ export function YouTubeControls({
           <div
             data-testid="mediaPlayer-scrubBar"
             role="slider"
-            aria-label="Seek"
+            aria-label={messages.mediaSeekSlider}
             aria-valuemin={scrubMin}
             aria-valuemax={scrubMax}
             aria-valuenow={currentTime}

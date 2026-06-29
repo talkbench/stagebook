@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Readable, Writable } from "node:stream";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "./validate.js";
@@ -388,5 +388,310 @@ introSequences:
       expect(expanded.code).toBe(1);
       expect(raw.code).toBe(0);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Locale-consistency rule (ADR 2026-06-localization #6): prompt frontmatter
+// locale must match the treatment's locale, both defaulting to `en`.
+// Self-contained fixture dir so the shared `tmp` block stays untouched.
+// ---------------------------------------------------------------------------
+
+describe("locale-consistency rule", () => {
+  let dir: string;
+
+  function treatmentYaml(locale?: string): string {
+    return [
+      "treatments:",
+      "  - name: t1",
+      ...(locale ? [`    locale: ${locale}`] : []),
+      "    playerCount: 1",
+      "    gameStages:",
+      "      - name: s1",
+      "        duration: 10",
+      "        elements:",
+      "          - type: prompt",
+      "            file: prompts/q.prompt.md",
+      "",
+    ].join("\n");
+  }
+
+  function promptMd(locale?: string): string {
+    return [
+      "---",
+      "type: noResponse",
+      ...(locale ? [`locale: ${locale}`] : []),
+      "---",
+      "# Question body",
+      "",
+    ].join("\n");
+  }
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "stagebook-cli-locale-"));
+    await mkdir(join(dir, "prompts"));
+  });
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("errors when a he treatment references an untagged (en) prompt", async () => {
+    await writeFile(join(dir, "he.stagebook.yaml"), treatmentYaml("he"));
+    await writeFile(join(dir, "prompts", "q.prompt.md"), promptMd());
+    const r = await runCli([join(dir, "he.stagebook.yaml")]);
+    expect(r.code).toBe(1);
+    expect(r.stdout).toContain('authored in locale "en"');
+    expect(r.stdout).toContain('declares locale "he"');
+  });
+
+  it("passes when the prompt is tagged with the treatment's locale", async () => {
+    await writeFile(join(dir, "he.stagebook.yaml"), treatmentYaml("he"));
+    await writeFile(join(dir, "prompts", "q.prompt.md"), promptMd("he"));
+    const r = await runCli([join(dir, "he.stagebook.yaml")]);
+    expect(r.code).toBe(0);
+  });
+
+  it("passes for an untagged treatment + untagged prompt (both default en)", async () => {
+    await writeFile(join(dir, "en.stagebook.yaml"), treatmentYaml());
+    await writeFile(join(dir, "prompts", "q.prompt.md"), promptMd());
+    const r = await runCli([join(dir, "en.stagebook.yaml")]);
+    expect(r.code).toBe(0);
+  });
+
+  it("errors when an en treatment references a he-tagged prompt", async () => {
+    await writeFile(join(dir, "en.stagebook.yaml"), treatmentYaml());
+    await writeFile(join(dir, "prompts", "q.prompt.md"), promptMd("he"));
+    const r = await runCli([join(dir, "en.stagebook.yaml")]);
+    expect(r.code).toBe(1);
+    expect(r.stdout).toContain('authored in locale "he"');
+  });
+
+  it("skips silently when the referenced prompt file does not exist", async () => {
+    await writeFile(join(dir, "he.stagebook.yaml"), treatmentYaml("he"));
+    await rm(join(dir, "prompts", "q.prompt.md"), { force: true });
+    const r = await runCli([join(dir, "he.stagebook.yaml")]);
+    expect(r.code).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Locale rule × template machinery — the ADR's single-source authoring
+// pattern (contentType: treatment, ${locale} threaded into both the
+// top-level locale: and the prompt paths), exercised end-to-end through
+// real expansion. Plus the traversal acceptance condition via template
+// fields, and the CLI contract pins (--no-expand, JSON shape).
+// ---------------------------------------------------------------------------
+
+describe("locale rule through template expansion", () => {
+  let dir: string;
+
+  const SINGLE_SOURCE_TEMPLATE = `templates:
+  - name: study-body
+    contentType: treatment
+    content:
+      name: study-\${locale}
+      locale: \${locale}
+      playerCount: 1
+      gameStages:
+        - name: s1
+          duration: 10
+          elements:
+            - type: prompt
+              file: prompts/\${locale}/q.prompt.md
+treatments:
+  - template: study-body
+    fields:
+      locale: en
+  - template: study-body
+    fields:
+      locale: he
+`;
+
+  function promptMd(locale?: string): string {
+    return [
+      "---",
+      "type: noResponse",
+      ...(locale ? [`locale: ${locale}`] : []),
+      "---",
+      "# Question body",
+      "",
+    ].join("\n");
+  }
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "stagebook-cli-locale-tpl-"));
+    await mkdir(join(dir, "prompts", "en"), { recursive: true });
+    await mkdir(join(dir, "prompts", "he"), { recursive: true });
+    await writeFile(join(dir, "study.stagebook.yaml"), SINGLE_SOURCE_TEMPLATE);
+  });
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("single-source template fan-out passes when each arm's prompts match", async () => {
+    await writeFile(join(dir, "prompts", "en", "q.prompt.md"), promptMd());
+    await writeFile(join(dir, "prompts", "he", "q.prompt.md"), promptMd("he"));
+    const r = await runCli([join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(0);
+  });
+
+  it("flags the expanded arm when its prompt is untagged", async () => {
+    await writeFile(join(dir, "prompts", "en", "q.prompt.md"), promptMd());
+    await writeFile(join(dir, "prompts", "he", "q.prompt.md"), promptMd());
+    const r = await runCli([join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(1);
+    // The mismatch names the EXPANDED treatment (the he arm), not the en arm.
+    expect(r.stdout).toContain('treatment "study-he"');
+    expect(r.stdout).toContain('authored in locale "en"');
+    expect(r.stdout).not.toContain('treatment "study-en"');
+  });
+
+  it("JSON output carries the mismatch with a null range", async () => {
+    await writeFile(join(dir, "prompts", "he", "q.prompt.md"), promptMd());
+    const r = await runCli([
+      "--format=json",
+      join(dir, "study.stagebook.yaml"),
+    ]);
+    expect(r.code).toBe(1);
+    const parsed = JSON.parse(r.stdout) as {
+      files: {
+        diagnostics: { severity: string; message: string; range: unknown }[];
+      }[];
+      summary: { errors: number };
+    };
+    const mismatch = parsed.files[0]?.diagnostics.find((d) =>
+      d.message.includes("authored in locale"),
+    );
+    expect(mismatch).toBeDefined();
+    expect(mismatch?.severity).toBe("error");
+    expect(mismatch?.range).toBeNull();
+    expect(parsed.summary.errors).toBeGreaterThan(0);
+  });
+
+  it("a crafted locale field value is caught by the traversal gate post-fill", async () => {
+    const crafted = SINGLE_SOURCE_TEMPLATE.replace(
+      "      locale: he\n",
+      '      locale: "../.."\n',
+    );
+    await writeFile(join(dir, "crafted.stagebook.yaml"), crafted);
+    const r = await runCli([join(dir, "crafted.stagebook.yaml")]);
+    expect(r.code).toBe(1);
+    // Both the path traversal and the malformed locale are flagged on the
+    // expanded arm.
+    expect(r.stdout).toContain("parent-directory traversal");
+    expect(r.stdout).toContain("BCP-47");
+  });
+
+  it("--no-expand skips the locale rule (post-hydration by design)", async () => {
+    const literalMismatch = [
+      "treatments:",
+      "  - name: t1",
+      "    locale: he",
+      "    playerCount: 1",
+      "    gameStages:",
+      "      - name: s1",
+      "        duration: 10",
+      "        elements:",
+      "          - type: prompt",
+      "            file: prompts/en/q.prompt.md",
+      "",
+    ].join("\n");
+    await writeFile(join(dir, "mismatch.stagebook.yaml"), literalMismatch);
+    await writeFile(join(dir, "prompts", "en", "q.prompt.md"), promptMd());
+    const expanded = await runCli([join(dir, "mismatch.stagebook.yaml")]);
+    const raw = await runCli([
+      "--no-expand",
+      join(dir, "mismatch.stagebook.yaml"),
+    ]);
+    expect(expanded.code).toBe(1);
+    expect(raw.code).toBe(0);
+  });
+
+  it("an absolute prompt path is never read by the locale rule", async () => {
+    const absTreatment = [
+      "treatments:",
+      "  - name: t1",
+      "    locale: he",
+      "    playerCount: 1",
+      "    gameStages:",
+      "      - name: s1",
+      "        duration: 10",
+      "        elements:",
+      "          - type: prompt",
+      "            file: /etc/hosts.prompt.md",
+      "",
+    ].join("\n");
+    await writeFile(join(dir, "abs.stagebook.yaml"), absTreatment);
+    const r = await runCli([join(dir, "abs.stagebook.yaml")]);
+    // The schema flags the path; the rule must not produce a second
+    // (locale-mismatch) diagnostic for it — gate before the read.
+    expect(r.code).toBe(1);
+    expect(r.stdout).toContain("relative path");
+    expect(r.stdout).not.toContain("authored in locale");
+  });
+});
+
+describe("locale rule — intro sequences", () => {
+  let dir: string;
+
+  function introYaml(locale: string): string {
+    return [
+      "introSequences:",
+      `  - name: intro1`,
+      `    locale: ${locale}`,
+      "    introSteps:",
+      "      - name: consent",
+      "        elements:",
+      "          - type: prompt",
+      "            file: prompts/consent.prompt.md",
+      "          - type: submitButton",
+      "treatments:",
+      "  - name: t1",
+      "    playerCount: 1",
+      "    gameStages:",
+      "      - name: s1",
+      "        duration: 10",
+      "        elements:",
+      "          - type: submitButton",
+      "",
+    ].join("\n");
+  }
+
+  function promptMd(locale?: string): string {
+    return [
+      "---",
+      "type: noResponse",
+      ...(locale ? [`locale: ${locale}`] : []),
+      "---",
+      "# Consent",
+      "",
+    ].join("\n");
+  }
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "stagebook-cli-intro-"));
+    await mkdir(join(dir, "prompts"));
+  });
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("flags an intro prompt that doesn't match the intro sequence's locale", async () => {
+    await writeFile(join(dir, "study.stagebook.yaml"), introYaml("he"));
+    await writeFile(join(dir, "prompts", "consent.prompt.md"), promptMd());
+    const r = await runCli([join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(1);
+    expect(r.stdout).toContain('intro sequence "intro1"');
+    expect(r.stdout).toContain('authored in locale "en"');
+  });
+
+  it("passes when the intro prompt matches the intro sequence's locale", async () => {
+    await writeFile(join(dir, "study.stagebook.yaml"), introYaml("he"));
+    await writeFile(join(dir, "prompts", "consent.prompt.md"), promptMd("he"));
+    const r = await runCli([join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(0);
   });
 });

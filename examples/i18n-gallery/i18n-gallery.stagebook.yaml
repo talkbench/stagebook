@@ -1,0 +1,124 @@
+# i18n gallery — the localization authoring pattern, dogfooded.
+#
+# TWO templates (one `contentType: introSequence`, one
+# `contentType: treatment`) define the structure once; `${locale}`
+# threads into BOTH the top-level `locale:` (driving stagebook's chrome
+# catalog + RTL) and the prompt `file:` paths (selecting per-language
+# content). Each arm supplies the value once, so the declaration and the
+# content can never disagree.
+#
+# Intro sequences run BEFORE treatment assignment, so they carry their
+# OWN locale (they can't inherit a treatment's) — this file shows a
+# localized intro sequence alongside the localized treatment, the exact
+# pattern a real multilingual study uses.
+#
+# Use the viewer's treatment picker to flip between the English and
+# Hebrew arms. The Hebrew arm renders right-to-left: the slider mirrors
+# (min on the right), the timer label and char counter swap sides, the
+# dropdown/list-sorter/chrome all read RTL — while every recorded value
+# stays identical to the English arm.
+#
+# The locale-consistency rule enforces the pairing: a prompt under
+# prompts/he/ must declare `locale: he` in its frontmatter, and it's
+# checked against its CONTAINER's locale (the intro sequence for the
+# welcome step, the treatment for the game stages).
+
+templates:
+  # --- Intro sequence (pre-assignment; declares its own locale) ---
+  - name: gallery-intro
+    contentType: introSequence
+    notes: |
+      Welcome/consent-style intro. Localized independently of the
+      treatment because intro runs before a participant is assigned.
+    content:
+      name: gallery intro ${locale}
+      locale: ${locale}
+      introSteps:
+        - name: welcome
+          elements:
+            - type: prompt
+              file: prompts/${locale}/intro.prompt.md
+            - type: submitButton
+
+  # --- Treatment body (game stages) ---
+  - name: gallery-body
+    contentType: treatment
+    notes: |
+      One structure; ${locale} selects the per-language prompt files
+      and sets the treatment's declared locale.
+    content:
+      name: i18n gallery ${locale}
+      locale: ${locale}
+      playerCount: 1
+      gameStages:
+        - name: choices
+          duration: 600
+          notes: |
+            RadioGroup + CheckboxGroup. Option rows mirror under RTL;
+            the recorded value is the chosen option, identical to en.
+          elements:
+            - type: prompt
+              file: prompts/${locale}/radio.prompt.md
+            - type: separator
+            - type: prompt
+              file: prompts/${locale}/checkbox.prompt.md
+            - type: submitButton
+
+        - name: dropdown
+          duration: 600
+          notes: |
+            Select (dropdown) — the chrome placeholder + options read
+            in the active locale/direction.
+          elements:
+            - type: prompt
+              file: prompts/${locale}/dropdown.prompt.md
+            - type: submitButton
+
+        - name: slider
+          duration: 600
+          notes: |
+            The RTL showcase: under the Hebrew arm the slider mirrors
+            (min paints on the right), matching reading direction,
+            while min still records as min.
+          elements:
+            - type: prompt
+              file: prompts/${locale}/slider.prompt.md
+            - type: submitButton
+
+        - name: ordering
+          duration: 600
+          notes: |
+            ListSorter — drag-to-rank. Items + layout follow the
+            locale direction.
+          elements:
+            - type: prompt
+              file: prompts/${locale}/listsorter.prompt.md
+            - type: submitButton
+
+        - name: writing
+          duration: 90
+          notes: |
+            Open response with a character counter (count-neutral
+            catalog string) plus the stage timer — both localize, and
+            the textarea follows RTL for Hebrew typing.
+          elements:
+            - type: timer
+            - type: prompt
+              file: prompts/${locale}/open.prompt.md
+            - type: submitButton
+
+introSequences:
+  - template: gallery-intro
+    fields:
+      locale: en
+  - template: gallery-intro
+    fields:
+      locale: he
+
+treatments:
+  - template: gallery-body
+    fields:
+      locale: en
+  - template: gallery-body
+    fields:
+      locale: he

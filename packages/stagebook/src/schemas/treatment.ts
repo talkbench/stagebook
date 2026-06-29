@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { collectStorageKeyCollisions } from "./storageKeyCollisions.js";
 import { validateTreatmentFileReferences } from "./validateReferences.js";
-import { nameSchema, type NameType } from "./primitives.js";
+import { nameSchema, localeSchema, type NameType } from "./primitives.js";
 import {
   namedSourceEnum,
   externalSourceEnum,
@@ -19,7 +19,7 @@ import {
 
 // Re-exports so consumers' existing imports from `./treatment.js` keep
 // working after the reference machinery moved to its own module (#240).
-export { nameSchema, type NameType };
+export { nameSchema, localeSchema, type NameType };
 export {
   namedSourceEnum,
   externalSourceEnum,
@@ -175,6 +175,42 @@ export const fileSchema = z
     {
       message:
         "File path must be a relative path (e.g. prompts/foo.prompt.md), an asset:// URI, or an http(s):// URL with a non-empty host.",
+    },
+  )
+  .refine(
+    (value) => {
+      // Reject INTERIOR parent-directory traversal in relative paths. A `..`
+      // segment after a real segment lets a `${field}`-substituted path (e.g.
+      // `prompts/${locale}/…` filled with `../../x`) escape the treatment's
+      // asset root — this also runs post-fill on the substituted value, so
+      // that attack is rejected.
+      //
+      // A LEADING run of `..` segments is permitted: `resolveImports` rewrites
+      // imported templates' `file:` paths relative to the main file, so
+      // `imports: ../shared/x.stagebook.yaml` legitimately produces
+      // `../shared/prompts/q.prompt.md` in the expanded treatment (a
+      // documented, test-pinned layout — see resolveImportPath). Residual
+      // caveat: a path that STARTS with a placeholder (`${x}/q.prompt.md`)
+      // could be filled to a leading-`..` path and pass this gate; host
+      // loaders remain responsible for sandboxing reads to the study root
+      // (see StagebookContext.getTextContent contract).
+      //
+      // URLs (http(s)://, asset://) carry a scheme and are normalized by URL
+      // parsing, so only scheme-less relative paths are constrained here.
+      if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return true;
+      let seenRealSegment = false;
+      for (const segment of value.split("/")) {
+        if (segment === "..") {
+          if (seenRealSegment) return false;
+        } else {
+          seenRealSegment = true;
+        }
+      }
+      return true;
+    },
+    {
+      message:
+        "File path must not contain `..` segments after the start of the path (parent-directory traversal). A leading `../` prefix (e.g. shared templates imported from a parent directory) is allowed.",
     },
   );
 export type FileType = z.infer<typeof fileSchema>;
@@ -1879,6 +1915,15 @@ export const introSequenceSchema = altTemplateContext(
     .object({
       name: nameSchema,
       notes: z.string().optional(),
+      // Participant-facing language for this intro sequence (BCP-47, e.g.
+      // `he`). Intro sequences run BEFORE treatment assignment, so they can't
+      // inherit a treatment's locale — they declare their own. Same semantics
+      // as the treatment field: optional (absent = English), accepts a
+      // `${field}` placeholder for single-source `contentType: introSequence`
+      // templates, concrete value enum-shape-checked post-fill. Which locale
+      // a participant actually sees here is the host's assignment decision
+      // (intro selection is pre-arm); stagebook just renders what's declared.
+      locale: localeSchema.or(fieldPlaceholderSchema).optional(),
       introSteps: introStepsSchema,
     })
     .strict(),
@@ -1901,6 +1946,14 @@ export const baseTreatmentSchema = z
     name: nameSchema,
     notes: z.string().optional(),
     playerCount: z.number(),
+    // Participant-facing language for this treatment (BCP-47, e.g. `he`).
+    // Drives stagebook's chrome catalog + RTL when the host wires it onto the
+    // provider. Optional — absent means English (the runtime resolves an
+    // absent/unknown locale to `en`). Accepts a `${field}` placeholder so one
+    // `contentType: treatment` template can fan out per-locale arms, threading
+    // the same field into both `locale:` and `prompts/${locale}/…` paths; the
+    // concrete value is enum-shape-checked post-fill by `resolvedTreatmentSchema`.
+    locale: localeSchema.or(fieldPlaceholderSchema).optional(),
     // `${field}` placeholder accepted (#284) — substituted with a literal
     // array at fillTemplates time. Lets a single `treatment` template power
     // studies that vary group structure per condition (e.g. dyads vs.

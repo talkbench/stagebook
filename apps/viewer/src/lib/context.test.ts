@@ -8,6 +8,7 @@ function makeContext(overrides?: {
   position?: number;
   stageIndex?: number;
   playerCount?: number;
+  locale?: string;
   onSubmit?: () => void;
 }) {
   const store = new ViewerStateStore();
@@ -16,6 +17,7 @@ function makeContext(overrides?: {
     position: overrides?.position ?? 0,
     stageIndex: overrides?.stageIndex ?? 0,
     playerCount: overrides?.playerCount ?? 2,
+    locale: overrides?.locale,
     onSubmit: overrides?.onSubmit ?? (() => {}),
     getAssetURL: (path: string) => BASE_URL + path,
     getTextContent: (path: string) =>
@@ -169,5 +171,17 @@ describe("createViewerContext", () => {
         { stableParticipantId: "viewer-p1" },
       ]);
     });
+  });
+});
+
+describe("locale threading", () => {
+  it("places the locale option onto the context (drives chrome + RTL)", () => {
+    const { ctx } = makeContext({ locale: "he" });
+    expect(ctx.locale).toBe("he");
+  });
+
+  it("leaves locale undefined when omitted (stagebook defaults to en)", () => {
+    const { ctx } = makeContext();
+    expect(ctx.locale).toBeUndefined();
   });
 });

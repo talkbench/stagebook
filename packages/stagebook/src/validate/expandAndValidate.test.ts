@@ -176,6 +176,18 @@ ${broadcastItems}`;
       expect(result.truncated).toBe(true);
       const errors = result.diagnostics.filter((d) => d.severity === "error");
       expect(errors.length).toBeGreaterThan(0);
+
+      // `fullYaml` is the complete expansion (what diagnostics positions and
+      // post-hydration passes like the locale rule consume); `yaml` is the
+      // truncated display form carrying the marker. A consumer that
+      // "simplifies" to `yaml` would silently skip late content on big
+      // studies — pin the distinction.
+      expect(result.yaml).toContain("# --- Output truncated at 50 lines");
+      expect(result.fullYaml).not.toContain("# --- Output truncated");
+      expect(result.fullYaml.split("\n").length).toBeGreaterThan(
+        result.yaml.split("\n").length,
+      );
+      expect(result.fullYaml).toContain("topic49_stage");
     });
   });
 });

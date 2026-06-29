@@ -6,6 +6,10 @@ export interface ViewerContextOptions {
   position: number;
   stageIndex: number;
   playerCount: number;
+  /** Participant-facing language (BCP-47). Drives stagebook's chrome
+   *  catalog + RTL. The Viewer derives it from the treatment's `locale`
+   *  (with a preview-only header override); absent = English. */
+  locale?: string;
   onSubmit: () => void;
   getTextContent: (path: string) => Promise<string>;
   getAssetURL: (path: string) => string;
@@ -32,6 +36,7 @@ export function createViewerContext(
     position,
     stageIndex,
     playerCount,
+    locale,
     onSubmit,
     getTextContent,
     getAssetURL,
@@ -98,6 +103,7 @@ export function createViewerContext(
     playerId: "viewer",
     position,
     playerCount,
+    locale,
 
     get isSubmitted() {
       return store.getSubmitted(stageIndex);

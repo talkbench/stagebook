@@ -12,6 +12,12 @@ import {
   getReferenceKeyAndPath,
   getNestedValueByPath,
 } from "../utils/reference.js";
+import {
+  resolveCatalog,
+  isRTLLocale,
+  defaultMessages,
+} from "../messages/index.js";
+import type { StagebookMessages, DeepPartial } from "../messages/index.js";
 
 /**
  * Normalise a reference to its structured form so callers can branch on
@@ -105,6 +111,20 @@ export interface StagebookContext {
   playerCount: number | undefined;
   isSubmitted: boolean;
 
+  // Localization (i18n). Both optional — when absent, stagebook renders its
+  // chrome in English, identical to pre-i18n behavior.
+  //
+  // `locale` is the participant's language for this treatment (BCP-47, e.g.
+  // "he" / "he-IL"). The host sets it from the resolved treatment's `locale`;
+  // the browser locale is never consulted. An unknown locale falls back to
+  // English with a warning. Drives both the chrome catalog and RTL direction.
+  locale?: string;
+  // Per-key overrides on top of the bundled catalog for `locale`. Trusted host
+  // input (same tier as `playerCount`) — never researcher- or
+  // participant-supplied. Lets a host retune a single string, or supply a
+  // catalog for a locale stagebook doesn't ship.
+  messages?: DeepPartial<StagebookMessages>;
+
   // Idle state — components call this to signal when the participant
   // should be allowed to appear idle (e.g., watching a video, on an
   // external link). Platform handles detection and UI.
@@ -172,6 +192,11 @@ interface InternalStagebookContext extends StagebookContext {
   // (`{ position: 0, source: "prompt", name: "foo" }`). After #298 the
   // position is part of the reference — the resolver extracts it.
   resolve(reference: string | ReferenceType): unknown[];
+  // Fully-resolved chrome catalog (locale + host overrides applied), and the
+  // derived text direction. Computed once by the provider; components read
+  // them via `useMessages()` / `useIsRTL()`.
+  resolvedMessages: StagebookMessages;
+  isRTL: boolean;
 }
 
 const StagebookReactContext = createContext<InternalStagebookContext | null>(
@@ -223,9 +248,17 @@ export function StagebookProvider({
     [value],
   );
 
+  // Resolve the chrome catalog once per locale/override change (resolving it on
+  // every render would be a hot-path regression).
+  const resolvedMessages = React.useMemo(
+    () => resolveCatalog(value.locale, value.messages),
+    [value.locale, value.messages],
+  );
+  const isRTL = isRTLLocale(value.locale);
+
   const internal: InternalStagebookContext = React.useMemo(
-    () => ({ ...value, resolve }),
-    [value, resolve],
+    () => ({ ...value, resolve, resolvedMessages, isRTL }),
+    [value, resolve, resolvedMessages, isRTL],
   );
 
   // Note (#473): the required `attributes.stableParticipantId` is NOT checked
@@ -261,6 +294,26 @@ export function useStagebookContext(): InternalStagebookContext {
 export function useResolve(reference: string | ReferenceType): unknown[] {
   const { resolve } = useStagebookContext();
   return resolve(reference);
+}
+
+/**
+ * The resolved chrome message catalog for the active locale.
+ *
+ * Unlike `useStagebookContext`, this does **not** throw when used outside a
+ * `<StagebookProvider>` — it falls back to the English catalog. That keeps the
+ * standalone form components (Slider, Loading, TextArea, …) usable without a
+ * provider while still localizing when rendered inside one.
+ */
+export function useMessages(): StagebookMessages {
+  const ctx = useContext(StagebookReactContext);
+  return ctx?.resolvedMessages ?? defaultMessages.en;
+}
+
+/** Whether the active locale renders right-to-left. Falls back to `false`
+ *  (LTR) outside a provider, same rationale as `useMessages`. */
+export function useIsRTL(): boolean {
+  const ctx = useContext(StagebookReactContext);
+  return ctx?.isRTL ?? false;
 }
 
 export function useSave(): StagebookContext["save"] {

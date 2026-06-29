@@ -20,6 +20,7 @@ import {
   allBuffersSilent,
 } from "./mediaPlayer/waveformCapture.js";
 import { setChannelGain } from "./mediaPlayer/muteChannels.js";
+import { useMessages, useIsRTL } from "../StagebookProvider.js";
 
 export interface VideoEvent {
   type: "play" | "pause" | "ended" | "seek" | "speed" | "stopAt";
@@ -110,6 +111,10 @@ export function MediaPlayer({
   playback,
   controls,
 }: MediaPlayerProps) {
+  const messages = useMessages();
+  // Text chrome (captions, error overlays, play-once) follows the locale
+  // direction; the transport/scrub axis stays LTR via the component root.
+  const localeDir = useIsRTL() ? "rtl" : "ltr";
   const youtubeVideoId = isYouTubeURL(url);
   const saveKey = `mediaPlayer_${name}`;
 
@@ -128,7 +133,7 @@ export function MediaPlayer({
   if (!youtubeVideoId && !isSafeURL(url)) {
     return (
       <div data-testid="mediaPlayer" role="alert">
-        Invalid media URL
+        {messages.mediaInvalidUrl}
       </div>
     );
   }
@@ -638,20 +643,20 @@ export function MediaPlayer({
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
       const err = e.currentTarget.error;
       const codeMessages: Record<number, string> = {
-        1: "Loading was aborted",
-        2: "Network error",
-        3: "Failed to decode video",
-        4: "Video format is not supported (or the file could not be loaded)",
+        1: messages.mediaErrorAborted,
+        2: messages.mediaErrorNetwork,
+        3: messages.mediaErrorDecode,
+        4: messages.mediaErrorFormat,
       };
       const friendly = err
-        ? (codeMessages[err.code] ?? `Error code ${String(err.code)}`)
-        : "Unknown error";
+        ? (codeMessages[err.code] ?? messages.mediaErrorCode(err.code))
+        : messages.mediaErrorUnknown;
       console.error(
         `[MediaPlayer] Video error (code ${err?.code}): ${err?.message ?? "unknown"}`,
       );
       setLoadError(friendly);
     },
-    [],
+    [messages],
   );
 
   const handleProgress = useCallback(
@@ -1085,8 +1090,12 @@ export function MediaPlayer({
         ref={containerRef}
         className={containerClass}
         data-testid="mediaPlayer"
+        // Time-based controls never mirror (Material bidirectionality):
+        // lock LTR so neither a host <html dir> nor an RTL study locale
+        // flips the transport/scrub axis.
+        dir="ltr"
         role="region"
-        aria-label="Media player"
+        aria-label={messages.mediaPlayerLabel}
         tabIndex={0}
         onKeyDown={handleKeyDown}
         onKeyUp={handleKeyUp}
@@ -1214,8 +1223,10 @@ export function MediaPlayer({
       ref={containerRef}
       className={containerClass}
       data-testid="mediaPlayer"
+      // Time-based controls never mirror — see the video variant's note.
+      dir="ltr"
       role="region"
-      aria-label="Media player"
+      aria-label={messages.mediaPlayerLabel}
       tabIndex={0}
       onKeyDown={handleKeyDown}
       onKeyUp={handleKeyUp}
@@ -1294,6 +1305,7 @@ export function MediaPlayer({
             <div
               data-testid="mediaPlayer-error"
               role="alert"
+              dir={localeDir}
               style={{
                 width: "100%",
                 aspectRatio: "16/9",
@@ -1325,7 +1337,9 @@ export function MediaPlayer({
                 <line x1="12" y1="8" x2="12" y2="12" />
                 <line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
-              <div style={{ fontWeight: 500 }}>Video unavailable</div>
+              <div style={{ fontWeight: 500 }}>
+                {messages.mediaVideoUnavailable}
+              </div>
               <div style={{ opacity: 0.75, fontSize: "0.75rem" }}>
                 {loadError}
               </div>
@@ -1335,6 +1349,7 @@ export function MediaPlayer({
           {captionText !== null && (
             <div
               data-testid="mediaPlayer-caption"
+              dir={localeDir}
               style={{
                 textAlign: "center",
                 padding: "0.5rem",
@@ -1370,7 +1385,7 @@ export function MediaPlayer({
             <button
               type="button"
               data-testid="mediaPlayer-playOnce"
-              aria-label="Play video"
+              aria-label={messages.mediaPlayVideo}
               tabIndex={0}
               onClick={() => {
                 setShowPlayOnce(false);
@@ -1419,7 +1434,8 @@ export function MediaPlayer({
         <button
           type="button"
           data-testid="mediaPlayer-playOnce"
-          aria-label="Play audio"
+          aria-label={messages.mediaPlayAudio}
+          dir={localeDir}
           tabIndex={0}
           onClick={() => {
             setShowPlayOnce(false);
@@ -1443,7 +1459,7 @@ export function MediaPlayer({
             fontWeight: 500,
           }}
         >
-          Play
+          {messages.mediaPlay}
         </button>
       )}
 
@@ -1469,6 +1485,7 @@ export function MediaPlayer({
         <div
           data-testid="mediaPlayer-error"
           role="alert"
+          dir={localeDir}
           style={{
             background: "#1c1c1e",
             color: "#fff",
@@ -1497,7 +1514,9 @@ export function MediaPlayer({
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
           <div>
-            <div style={{ fontWeight: 500 }}>Audio unavailable</div>
+            <div style={{ fontWeight: 500 }}>
+              {messages.mediaAudioUnavailable}
+            </div>
             <div style={{ opacity: 0.75, fontSize: "0.75rem" }}>
               {loadError}
             </div>

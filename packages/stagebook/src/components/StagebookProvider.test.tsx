@@ -7,9 +7,21 @@ import {
   type StagebookContext,
   StagebookProvider,
   useResolve,
+  useMessages,
+  useIsRTL,
   useTextContent,
   type TextContentResult,
 } from "./StagebookProvider.js";
+import { defaultMessages, type StagebookMessages } from "../messages/index.js";
+import { SubmitButton } from "./elements/SubmitButton.js";
+import { Loading } from "./form/Loading.js";
+import { HelpPopover } from "./elements/timeline/HelpPopover.js";
+import { TextArea } from "./form/TextArea.js";
+import { RadioGroup } from "./form/RadioGroup.js";
+import { CheckboxGroup } from "./form/CheckboxGroup.js";
+import { Markdown } from "./form/Markdown.js";
+import { Display } from "./elements/Display.js";
+import { SubmissionConditionalRender } from "./conditions/SubmissionConditionalRender.js";
 
 // We test the provider/hooks via a simple test component pattern
 // that captures hook return values into a ref we can assert on.
@@ -460,5 +472,242 @@ describe("useTextContent", () => {
     expect(result.current.data).toBe("# Updated");
 
     act(() => root.unmount());
+  });
+});
+
+// --------------- Localization (i18n) ---------------
+
+// Capture useMessages()/useIsRTL() return values. When `ctx` is omitted the
+// harness renders WITHOUT a provider, exercising the graceful-fallback path.
+function renderMessages(ctx?: StagebookContext): {
+  messages: { current: StagebookMessages };
+  isRTL: { current: boolean };
+  unmount: () => void;
+} {
+  const messages = { current: defaultMessages.en };
+  const isRTL = { current: false };
+  const container = document.createElement("div");
+  let root: Root;
+
+  function Harness(): ReactNode {
+    messages.current = useMessages();
+    isRTL.current = useIsRTL();
+    return null;
+  }
+
+  act(() => {
+    root = createRoot(container);
+    root.render(
+      ctx ? (
+        <StagebookProvider value={ctx}>
+          <Harness />
+        </StagebookProvider>
+      ) : (
+        <Harness />
+      ),
+    );
+  });
+
+  return { messages, isRTL, unmount: () => act(() => root.unmount()) };
+}
+
+// Render a component subtree, optionally inside a provider, and return the
+// container for DOM assertions.
+function renderNode(
+  node: ReactNode,
+  ctx?: StagebookContext,
+): { container: HTMLElement; unmount: () => void } {
+  const container = document.createElement("div");
+  let root: Root;
+  act(() => {
+    root = createRoot(container);
+    root.render(
+      ctx ? <StagebookProvider value={ctx}>{node}</StagebookProvider> : node,
+    );
+  });
+  return { container, unmount: () => act(() => root.unmount()) };
+}
+
+describe("useMessages / useIsRTL", () => {
+  test("localizes the catalog inside a provider with a non-en locale", () => {
+    const { messages, isRTL, unmount } = renderMessages(
+      createMockContext({ locale: "he" }),
+    );
+    expect(messages.current.submitButtonDefault).toBe("הבא");
+    expect(messages.current.loadingLabel).toBe("טוען");
+    expect(isRTL.current).toBe(true);
+    unmount();
+  });
+
+  test("applies host messages overrides on top of the locale catalog", () => {
+    const { messages, unmount } = renderMessages(
+      createMockContext({ locale: "he", messages: { loadingLabel: "…" } }),
+    );
+    expect(messages.current.loadingLabel).toBe("…"); // override wins
+    expect(messages.current.submitButtonDefault).toBe("הבא"); // he base intact
+    unmount();
+  });
+
+  test("defaults to the en catalog (LTR) inside a provider with no locale", () => {
+    const { messages, isRTL, unmount } = renderMessages(createMockContext());
+    expect(messages.current.submitButtonDefault).toBe("Next");
+    expect(isRTL.current).toBe(false);
+    unmount();
+  });
+
+  test("falls back to en / LTR when rendered WITHOUT a provider", () => {
+    // Standalone-component contract: the hooks must not throw outside a
+    // provider (unlike useStagebookContext), so form components stay usable.
+    const { messages, isRTL, unmount } = renderMessages();
+    expect(messages.current.submitButtonDefault).toBe("Next");
+    expect(isRTL.current).toBe(false);
+    unmount();
+  });
+});
+
+describe("component localization wiring", () => {
+  test("SubmitButton uses the active locale's default when no buttonText", () => {
+    const { container, unmount } = renderNode(
+      <SubmitButton onSubmit={() => {}} name="s" save={() => {}} />,
+      createMockContext({ locale: "he" }),
+    );
+    const btn = container.querySelector('[data-testid="submitButton"]');
+    expect(btn?.textContent).toBe("הבא"); // not "Next"
+    unmount();
+  });
+
+  test("SubmitButton: researcher buttonText still wins under a non-en locale", () => {
+    const { container, unmount } = renderNode(
+      <SubmitButton
+        onSubmit={() => {}}
+        name="s"
+        save={() => {}}
+        buttonText="Continue"
+      />,
+      createMockContext({ locale: "he" }),
+    );
+    const btn = container.querySelector('[data-testid="submitButton"]');
+    expect(btn?.textContent).toBe("Continue");
+    unmount();
+  });
+
+  test("Loading aria-label localizes from the catalog", () => {
+    const { container, unmount } = renderNode(
+      <Loading />,
+      createMockContext({ locale: "he" }),
+    );
+    expect(container.querySelector("svg")?.getAttribute("aria-label")).toBe(
+      "טוען",
+    );
+    unmount();
+  });
+
+  test("standalone components fall back to en with no provider", () => {
+    const { container, unmount } = renderNode(<Loading />);
+    expect(container.querySelector("svg")?.getAttribute("aria-label")).toBe(
+      "Loading",
+    );
+    unmount();
+  });
+
+  test("mirrored components pin dir from the locale (rtl under he, ltr under en)", () => {
+    // The RTL CT suite pins the Slider/KitchenTimer geometry; this sweep
+    // protects the remaining mirrored components from a silent dir revert.
+    const cases: [string, React.ReactNode][] = [
+      ["textarea-wrap", <TextArea key="t" />],
+      ["radio", <RadioGroup key="r" options={[{ key: "a", value: "A" }]} />],
+      [
+        "checkbox",
+        <CheckboxGroup
+          key="c"
+          options={[{ key: "a", value: "A" }]}
+          value={[]}
+        />,
+      ],
+      ["markdown", <Markdown key="m" text="hello" />],
+      ["display", <Display key="d" reference="self.prompt.x" values={["v"]} />],
+      [
+        "submission",
+        <SubmissionConditionalRender key="s" isSubmitted={true} playerCount={3}>
+          <p>x</p>
+        </SubmissionConditionalRender>,
+      ],
+    ];
+    for (const [label, node] of cases) {
+      for (const [locale, expected] of [
+        ["he", "rtl"],
+        ["en", "ltr"],
+      ] as const) {
+        const { container, unmount } = renderNode(
+          node,
+          createMockContext({ locale }),
+        );
+        const el = container.querySelector("[dir]");
+        expect(el?.getAttribute("dir"), `${label} under ${locale}`).toBe(
+          expected,
+        );
+        unmount();
+      }
+    }
+  });
+
+  test("Timeline chrome (HelpPopover) reads the catalog under a he provider", () => {
+    // HelpPopover portals into document.body; assert there. This is the one
+    // test proving Timeline-family chrome actually flows through the catalog
+    // (the Timeline CT suite mounts provider-less, exercising only the en
+    // fallback).
+    const buttonRef = { current: null };
+    const { unmount } = renderNode(
+      <HelpPopover
+        selectionType="range"
+        onClose={() => {}}
+        buttonRef={buttonRef}
+      />,
+      createMockContext({ locale: "he" }),
+    );
+    const popover = document.body.querySelector(
+      '[data-testid="timeline-help-popover"]',
+    );
+    expect(popover?.getAttribute("aria-label")).toBe(
+      defaultMessages.he.timelineShortcutsLabel,
+    );
+    // The popover portals to <body>, escaping the Stage's dir context — it
+    // must set its own direction from the locale (#482 review).
+    expect(popover?.getAttribute("dir")).toBe("rtl");
+    expect(popover?.textContent).toContain(
+      defaultMessages.he.timelineShortcutsTitle,
+    );
+    expect(popover?.querySelectorAll("tr")).toHaveLength(
+      defaultMessages.he.timelineShortcutRowsRange().length,
+    );
+    unmount();
+  });
+
+  test("HelpPopover degrades to an empty table on a malformed shortcut override", () => {
+    // `resolveCatalog`'s typeof-guard accepts any FUNCTION for this key, so a
+    // host override returning a non-array slips through to HelpPopover's
+    // `.map()`. HelpPopover's `Array.isArray` guard must keep it from
+    // crashing the render (it's the second defense layer; see #479).
+    const buttonRef = { current: null };
+    const { unmount } = renderNode(
+      <HelpPopover
+        selectionType="range"
+        onClose={() => {}}
+        buttonRef={buttonRef}
+      />,
+      createMockContext({
+        messages: {
+          timelineShortcutRowsRange: () =>
+            "oops" as unknown as { keys: string; description: string }[],
+        },
+      }),
+    );
+    const popover = document.body.querySelector(
+      '[data-testid="timeline-help-popover"]',
+    );
+    // Rendered (didn't throw), with no shortcut rows.
+    expect(popover).not.toBeNull();
+    expect(popover?.querySelectorAll("tr")).toHaveLength(0);
+    unmount();
   });
 });

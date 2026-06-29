@@ -7,6 +7,7 @@ import React, {
   useState,
 } from "react";
 import { usePlayback } from "../playback/PlaybackProvider.js";
+import { useMessages } from "../StagebookProvider.js";
 import { TimeRuler, RULER_HEIGHT } from "./timeline/TimeRuler.js";
 import { TimelineTrack, GUTTER_WIDTH } from "./timeline/TimelineTrack.js";
 import { Playhead } from "./timeline/Playhead.js";
@@ -125,6 +126,7 @@ export function Timeline({
   initialSelections,
   save,
 }: TimelineProps) {
+  const messages = useMessages();
   const handle = usePlayback(source);
   const tracksAreaRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -813,7 +815,7 @@ export function Timeline({
   // Build track labels
   const labels: string[] = [];
   for (let i = 0; i < channelCount; i++) {
-    labels.push(trackLabels?.[i] ?? `Track ${String(i)}`);
+    labels.push(trackLabels?.[i] ?? messages.timelineTrackFallback(i));
   }
 
   const tracksHeight = channelCount * TRACK_HEIGHT;
@@ -834,6 +836,10 @@ export function Timeline({
     <div
       ref={containerRef}
       data-testid="timeline"
+      // Time flows left-to-right in every locale (Material
+      // bidirectionality: time-based controls don't mirror) — lock LTR
+      // independent of study locale and host <html dir>.
+      dir="ltr"
       data-source={source}
       data-name={name}
       data-selection-type={selectionType}
@@ -843,7 +849,7 @@ export function Timeline({
       data-zoom-level={zoomLevel}
       data-viewport-start={viewportStart}
       role="region"
-      aria-label={`Timeline: ${name}`}
+      aria-label={messages.timelineLabel(name)}
       tabIndex={0}
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}

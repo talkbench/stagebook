@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef } from "react";
+import { useMessages, useIsRTL } from "../StagebookProvider.js";
 
 function ExternalLinkIcon() {
   return (
@@ -33,9 +34,6 @@ export interface TrackedLinkProps {
   setAllowIdle?: (allow: boolean) => void;
 }
 
-const DEFAULT_HELPER_TEXT =
-  "Link opens in a new tab. Return to this tab to complete the study.";
-
 interface LinkEvent {
   type: string;
   timestamp: number;
@@ -66,7 +64,9 @@ export function TrackedLink({
   progressLabel,
   setAllowIdle,
 }: TrackedLinkProps) {
-  const resolvedHelperText = helperText ?? DEFAULT_HELPER_TEXT;
+  const messages = useMessages();
+  const isRTL = useIsRTL();
+  const resolvedHelperText = helperText ?? messages.trackedLinkHelperDefault;
   const awayTrackerRef = useRef<{ startedAt: number; clickAt: number } | null>(
     null,
   );
@@ -172,7 +172,10 @@ export function TrackedLink({
   const linkClass = `stagebook-trackedlink-${safeId}`;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+    <div
+      dir={isRTL ? "rtl" : "ltr"}
+      style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}
+    >
       <style>{`
         /* Base color + hover color both live in CSS (not inline) so
            the hover rule can actually win — an inline color would

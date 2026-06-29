@@ -2342,7 +2342,9 @@ test("clicking minimap pans viewport", async ({ mount }) => {
     .toBeGreaterThan(beforeBox.x);
 });
 
-test("footer summary: 0 ranges selected by default", async ({ mount }) => {
+test("footer summary: ranges selected count is zero by default", async ({
+  mount,
+}) => {
   const component = await mount(
     <MockTimeline
       source="player"
@@ -2354,10 +2356,10 @@ test("footer summary: 0 ranges selected by default", async ({ mount }) => {
   );
   await expect(
     component.locator('[data-testid="timeline-selection-summary"]'),
-  ).toContainText("0 ranges selected");
+  ).toContainText("Ranges selected: 0");
 });
 
-test("footer summary: 0 points marked by default in point mode", async ({
+test("footer summary: points marked count is zero by default in point mode", async ({
   mount,
 }) => {
   const component = await mount(
@@ -2371,7 +2373,7 @@ test("footer summary: 0 points marked by default in point mode", async ({
   );
   await expect(
     component.locator('[data-testid="timeline-selection-summary"]'),
-  ).toContainText("0 points marked");
+  ).toContainText("Points marked: 0");
 });
 
 test("footer summary: shows time range for active selection", async ({

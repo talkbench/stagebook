@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import React, { useRef } from "react";
-import { useStagebookContext } from "./StagebookProvider.js";
+import { useStagebookContext, useIsRTL } from "./StagebookProvider.js";
 import { Element, type ElementConfig } from "./Element.js";
 import { TimeConditionalRender } from "./conditions/TimeConditionalRender.js";
 import { PositionConditionalRender } from "./conditions/PositionConditionalRender.js";
@@ -218,6 +218,9 @@ export function Stage({
   scrollMode = "internal",
 }: StageProps) {
   const ctx = useStagebookContext();
+  // Element-column direction follows the study locale (host <html dir>
+  // independent); time-axis components inside lock their own LTR.
+  const stageDir = useIsRTL() ? "rtl" : "ltr";
   const { isSubmitted, playerCount, position, resolve, renderDiscussion } = ctx;
 
   const showDiscussion = positionAllowsDiscussion(stage.discussion, position);
@@ -263,6 +266,7 @@ export function Stage({
         <div
           ref={isHostScroll ? null : discussionContentRef}
           data-testid="stageContent"
+          dir={stageDir}
           className="stagebook-discussion-content"
           data-internal-scroll={isHostScroll ? undefined : "true"}
         >
@@ -364,6 +368,7 @@ export function Stage({
                 fallback={
                   <div
                     data-testid="stageContent"
+                    dir={stageDir}
                     style={{
                       ...stageContentBaseStyle,
                       ...(isHostScroll ? {} : stageContentInternalScrollExtras),
@@ -395,6 +400,7 @@ export function Stage({
           <div
             ref={isHostScroll ? null : singleColumnRef}
             data-testid="stageContent"
+            dir={stageDir}
             style={{
               ...stageContentBaseStyle,
               ...(isHostScroll ? {} : stageContentInternalScrollExtras),

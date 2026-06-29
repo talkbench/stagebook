@@ -10,6 +10,7 @@
  * by rendering components that only see hydrated data.
  */
 import { z } from "zod";
+import { localeSchema } from "./primitives.js";
 import {
   nameSchema,
   durationSchema,
@@ -285,6 +286,10 @@ export type ResolvedIntroExitStepType = z.infer<
 export const resolvedTreatmentSchema = z.object({
   name: nameSchema,
   playerCount: z.number(),
+  // Post-fill the locale is a concrete BCP-47 tag — no `${field}` placeholder
+  // (a leaked placeholder fails the syntactic check, surfacing an unbound
+  // locale). Optional; absent means English.
+  locale: localeSchema.optional(),
   groupComposition: z
     .array(
       z.object({
@@ -325,6 +330,9 @@ export type ResolvedTreatmentType = z.infer<typeof resolvedTreatmentSchema>;
 
 const resolvedIntroSequenceSchema = z.object({
   name: nameSchema,
+  // Post-fill: a concrete BCP-47 tag (a leaked `${field}` placeholder fails
+  // the syntactic check). Optional; absent means English.
+  locale: localeSchema.optional(),
   introSteps: z.array(resolvedIntroExitStepSchema).nonempty(),
 });
 

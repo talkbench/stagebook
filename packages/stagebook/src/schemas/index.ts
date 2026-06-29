@@ -11,6 +11,7 @@ export {
 
 export {
   nameSchema,
+  localeSchema,
   fileSchema,
   browserUrlSchema,
   durationSchema,
@@ -109,6 +110,12 @@ export {
   collectStorageKeyCollisions,
   type StorageKeyCollision,
 } from "./storageKeyCollisions.js";
+
+export {
+  collectReferencedPromptFiles,
+  checkPromptLocaleConsistency,
+  type PromptLocaleMismatch,
+} from "./localeConsistency.js";
 
 export {
   collectPreHydrationIssues,

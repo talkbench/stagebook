@@ -1,8 +1,9 @@
 import React, { useId } from "react";
 import { WaveformRenderer } from "./WaveformRenderer.js";
+import { useMessages, useIsRTL } from "../../StagebookProvider.js";
 
 export interface TimelineTrackProps {
-  /** Label shown in the gutter (from trackLabels or "Position N"). */
+  /** Label shown in the gutter (from trackLabels or the "Track N" fallback). */
   label: string;
   /** Interleaved min/max peaks for this channel. */
   peaks: Float32Array | null;
@@ -43,6 +44,8 @@ export function TimelineTrack({
   muted,
   onToggleMute,
 }: TimelineTrackProps) {
+  const messages = useMessages();
+  const isRTL = useIsRTL();
   // Scoped class for the mute button's `:focus-visible` ring + hover
   // (#382 polish). Same useId pattern as Button / Slider / ListSorter.
   const reactId = useId();
@@ -83,7 +86,11 @@ export function TimelineTrack({
           className={muteClass}
           data-testid="track-mute"
           data-muted={muted}
-          aria-label={muted ? `Unmute ${label}` : `Mute ${label}`}
+          aria-label={
+            muted
+              ? messages.timelineUnmuteTrack(label)
+              : messages.timelineMuteTrack(label)
+          }
           aria-pressed={muted}
           onClick={() => onToggleMute(!muted)}
           // Explicit tabIndex for Safari Tab-focus (#415 / #413).
@@ -119,6 +126,7 @@ export function TimelineTrack({
         />
         <span
           data-testid="track-label"
+          dir={isRTL ? "rtl" : "ltr"}
           style={{
             position: "absolute",
             top: "4px",

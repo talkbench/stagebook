@@ -1,4 +1,5 @@
 import React, { useId } from "react";
+import { useIsRTL } from "../StagebookProvider.js";
 
 export interface RadioOption {
   key: string;
@@ -97,6 +98,7 @@ export function RadioGroup({
   id,
   "data-testid": dataTestId,
 }: RadioGroupProps) {
+  const isRTL = useIsRTL();
   // Stable per-instance id for the radiogroup + label association.
   // `useId` guarantees uniqueness even when multiple RadioGroups
   // render on the same page without explicit `id` props — so the
@@ -120,7 +122,11 @@ export function RadioGroup({
   const testId = dataTestId ?? "radioGroup";
 
   return (
-    <div data-testid={testId} style={{ marginTop: "1rem" }}>
+    <div
+      data-testid={testId}
+      dir={isRTL ? "rtl" : "ltr"}
+      style={{ marginTop: "1rem" }}
+    >
       <style>{`
         .${rowClass}:hover {
           background-color: var(--stagebook-hover-bg, #f3f4f6);
@@ -154,7 +160,7 @@ export function RadioGroup({
         role="radiogroup"
         aria-labelledby={label ? labelId : undefined}
         style={{
-          marginLeft: "1.25rem",
+          marginInlineStart: "1.25rem",
           display: layout === "horizontal" ? "flex" : "grid",
           gap: layout === "horizontal" ? "1rem" : "0.125rem",
           flexWrap: layout === "horizontal" ? "wrap" : undefined,

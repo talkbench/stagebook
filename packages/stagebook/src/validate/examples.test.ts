@@ -30,6 +30,7 @@ const examplesRoot = resolve(
 
 const EXAMPLES = [
   "annotated-walkthrough/walkthrough.stagebook.yaml",
+  "i18n-gallery/i18n-gallery.stagebook.yaml",
   "imports-walkthrough/imports-walkthrough.stagebook.yaml",
   "prisoners-dilemma/prisoners-dilemma.stagebook.yaml",
   "survey-experiment/survey-experiment.stagebook.yaml",

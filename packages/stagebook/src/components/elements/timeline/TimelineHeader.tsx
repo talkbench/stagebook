@@ -1,5 +1,6 @@
 import React, { useId } from "react";
 import { MIN_ZOOM, MAX_ZOOM } from "./viewport.js";
+import { useMessages } from "../../StagebookProvider.js";
 
 export interface TimelineHeaderProps {
   zoomLevel: number;
@@ -42,6 +43,7 @@ export function TimelineHeader({
   onZoomOut,
   minimap,
 }: TimelineHeaderProps) {
+  const messages = useMessages();
   // Per-instance class scope for the `:focus-visible` ring on the zoom
   // buttons (#382 polish). Same useId pattern as Button / Slider /
   // ListSorter. State-dependent rules in a scoped <style> so the
@@ -87,7 +89,7 @@ export function TimelineHeader({
           data-testid="timeline-zoom-out"
           onClick={onZoomOut}
           disabled={zoomLevel <= MIN_ZOOM}
-          aria-label="Zoom out"
+          aria-label={messages.timelineZoomOut}
           // Explicit tabIndex so Safari includes the button in the
           // Tab order (default keyboard nav on macOS Safari skips
           // <button>) — see #415 / #413.
@@ -102,7 +104,7 @@ export function TimelineHeader({
           data-testid="timeline-zoom-in"
           onClick={onZoomIn}
           disabled={zoomLevel >= MAX_ZOOM}
-          aria-label="Zoom in"
+          aria-label={messages.timelineZoomIn}
           tabIndex={zoomLevel >= MAX_ZOOM ? -1 : 0}
           style={zoomLevel >= MAX_ZOOM ? disabledStyle : buttonStyle}
         >

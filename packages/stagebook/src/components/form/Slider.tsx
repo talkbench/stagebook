@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useId, useMemo } from "react";
+import { useMessages, useIsRTL } from "../StagebookProvider.js";
 
 export interface SliderProps {
   min?: number;
@@ -39,6 +40,15 @@ export function Slider({
   onChange,
   showValue = false,
 }: SliderProps) {
+  const messages = useMessages();
+  // Mirror under RTL locales (Material bidirectionality: value/quantity
+  // sliders mirror; time-based controls don't). The native <input
+  // type=range> auto-reverses under dir=rtl; the custom thumb / ticks /
+  // labels follow it via insetInlineStart + direction-aware transforms,
+  // and click-to-jump math flips. Value semantics are unchanged — min
+  // still records as min, wherever it's painted.
+  const isRTL = useIsRTL();
+  const dir = isRTL ? "rtl" : "ltr";
   const [localValue, setLocalValue] = useState<number | undefined>(value);
 
   useEffect(() => {
@@ -59,6 +69,25 @@ export function Slider({
     onChange?.(newValue);
   };
 
+  // Under RTL, normalize horizontal arrow keys ourselves. Chromium and
+  // Firefox reverse the native range input's arrow mapping under dir=rtl
+  // (ArrowLeft increments, matching the mirrored visual axis); WebKit does
+  // not — pressing ArrowLeft there would decrement and move the visible
+  // thumb RIGHT. Intercepting both keys and applying the mirrored mapping
+  // uniformly keeps the recorded value identical across engines (the
+  // measurement-instrument property) and the visual response coherent.
+  // Up/Down/Home/End/Page keys are direction-independent and stay native.
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!isRTL) return;
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const delta = e.key === "ArrowLeft" ? interval : -interval;
+    const next = Math.max(min, Math.min(max, (localValue ?? min) + delta));
+    if (next === localValue) return;
+    setLocalValue(next);
+    onChange?.(next);
+  };
+
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     // Click-to-jump for the click-target padding (above / below the
     // 10px track) and for the unanchored state (when the native
@@ -77,7 +106,10 @@ export function Slider({
     const trackEl = e.currentTarget.querySelector(`.${trackClass}`);
     const rect = (trackEl ?? e.currentTarget).getBoundingClientRect();
     const x = e.clientX - rect.left;
-    const percentage = Math.max(0, Math.min(1, x / rect.width));
+    let percentage = Math.max(0, Math.min(1, x / rect.width));
+    // Under RTL the visual axis is mirrored: a click near the left edge
+    // means max, not min.
+    if (isRTL) percentage = 1 - percentage;
     const rawValue = min + percentage * (max - min);
     const newValue = Math.round(rawValue / interval) * interval;
     const clampedValue = Math.max(min, Math.min(max, newValue));
@@ -168,6 +200,7 @@ export function Slider({
       `}</style>
 
       <div
+        dir={dir}
         style={{
           position: "relative",
           width: "100%",
@@ -175,7 +208,7 @@ export function Slider({
           paddingBottom: "1.75rem",
           // Horizontal padding reserves room for endpoint labels to
           // center on their tick without overflowing the slider's
-          // box. Labels are uniformly centered (translateX(-50%)),
+          // box. Labels are uniformly centered (direction-aware translateX),
           // including at min/max ticks, so each endpoint label needs
           // ~half its width of space past the track edge. 2.5rem
           // fits the typical short endpoint label ("Strongly
@@ -229,10 +262,10 @@ export function Slider({
               data-testid="slider-value-badge"
               style={{
                 position: "absolute",
-                left: `${getPosition(localValue)}%`,
+                insetInlineStart: `${getPosition(localValue)}%`,
                 bottom: "100%",
                 marginBottom: "0.25rem",
-                transform: "translateX(-50%)",
+                transform: `translateX(${isRTL ? "50%" : "-50%"})`,
                 fontSize: "0.75rem",
                 fontWeight: 500,
                 lineHeight: 1,
@@ -258,10 +291,10 @@ export function Slider({
             <div
               style={{
                 position: "absolute",
-                left: "50%",
+                insetInlineStart: "50%",
                 bottom: "100%",
                 marginBottom: "0.25rem",
-                transform: "translateX(-50%)",
+                transform: `translateX(${isRTL ? "50%" : "-50%"})`,
                 fontSize: "0.75rem",
                 lineHeight: 1,
                 color: "var(--stagebook-text-muted, #6b7280)",
@@ -269,7 +302,7 @@ export function Slider({
                 pointerEvents: "none",
               }}
             >
-              Click the bar to select a value, then drag to adjust.
+              {messages.sliderInstruction}
             </div>
           )}
           {/* Visible track. Centered in the click-target wrapper. */}
@@ -304,9 +337,9 @@ export function Slider({
                   data-testid="slider-snap-tick"
                   style={{
                     position: "absolute",
-                    left: `${getPosition(pt)}%`,
+                    insetInlineStart: `${getPosition(pt)}%`,
                     top: "50%",
-                    transform: "translate(-50%, -50%)",
+                    transform: `translate(${isRTL ? "50%" : "-50%"}, -50%)`,
                     width: "2px",
                     height: `${TRACK_HEIGHT - 2}px`,
                     backgroundColor: "var(--stagebook-text-faint, #9ca3af)",
@@ -326,9 +359,9 @@ export function Slider({
                 data-testid="slider-label-tick"
                 style={{
                   position: "absolute",
-                  left: `${getPosition(pt)}%`,
+                  insetInlineStart: `${getPosition(pt)}%`,
                   top: "50%",
-                  transform: "translate(-50%, -50%)",
+                  transform: `translate(${isRTL ? "50%" : "-50%"}, -50%)`,
                   width: "2px",
                   height: `${TRACK_HEIGHT + 6}px`,
                   backgroundColor: "var(--stagebook-text-muted, #6b7280)",
@@ -353,6 +386,7 @@ export function Slider({
                 step={interval}
                 value={localValue}
                 onChange={handleChange}
+                onKeyDown={handleKeyDown}
                 // Safari excludes <input type=range> from the default
                 // tab order unless macOS keyboard-nav is on; explicit
                 // tabIndex overrides that so Safari participants can
@@ -361,7 +395,7 @@ export function Slider({
                 style={{
                   position: "absolute",
                   top: "50%",
-                  left: 0,
+                  insetInlineStart: 0,
                   width: "100%",
                   height: `${TRACK_HEIGHT}px`,
                   transform: "translateY(-50%)",
@@ -378,7 +412,7 @@ export function Slider({
                   margin: 0,
                   padding: 0,
                 }}
-                aria-label="Slider"
+                aria-label={messages.sliderLabel}
                 aria-valuemin={min}
                 aria-valuemax={max}
                 aria-valuenow={localValue}
@@ -396,9 +430,9 @@ export function Slider({
                 data-testid="slider-thumb"
                 style={{
                   position: "absolute",
-                  left: `${getPosition(localValue)}%`,
+                  insetInlineStart: `${getPosition(localValue)}%`,
                   top: "50%",
-                  transform: "translate(-50%, -50%)",
+                  transform: `translate(${isRTL ? "50%" : "-50%"}, -50%)`,
                   boxSizing: "border-box",
                   width: THUMB_SIZE,
                   height: THUMB_SIZE,
@@ -419,7 +453,7 @@ export function Slider({
         </div>
 
         {/* Labels — positioned below the click target, centered on
-            their labeled tick (every label uses translateX(-50%),
+            their labeled tick (every label uses a direction-aware translateX,
             including endpoints). This is the dominant pattern in
             Material 3, MUI, Mantine, Radix-community-recipes, and
             macOS AppKit; survey-design literature is silent on
@@ -446,8 +480,8 @@ export function Slider({
                   key={`label-${pt}`}
                   style={{
                     position: "absolute",
-                    left: `${pos}%`,
-                    transform: "translateX(-50%)",
+                    insetInlineStart: `${pos}%`,
+                    transform: `translateX(${isRTL ? "50%" : "-50%"})`,
                     textAlign: "center",
                     maxWidth: "8rem",
                     // 0.875rem reads as helper text without the

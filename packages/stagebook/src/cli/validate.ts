@@ -10,6 +10,13 @@ import {
   validatePromptSource,
   expandAndValidateWithImports,
 } from "../validate/index.js";
+import { load as loadYaml } from "js-yaml";
+import {
+  fileSchema,
+  promptFileSchema,
+  collectReferencedPromptFiles,
+  checkPromptLocaleConsistency,
+} from "../index.js";
 
 export type Format = "text" | "json";
 export type FileType = "treatment" | "prompt";
@@ -239,6 +246,16 @@ export async function run({
           ...result.diagnostics,
         ]
       : result.diagnostics;
+
+    // Post-hydration locale-consistency rule (ADR 2026-06-localization #6):
+    // each referenced prompt's frontmatter `locale` must match its
+    // treatment's `locale` (both default `en`). Cross-file by nature, so it
+    // runs here where the referenced prompt files are readable from disk.
+    if (!result.expandError) {
+      diagnostics.push(
+        ...(await checkLocaleConsistencyDiagnostics(result.fullYaml, dir)),
+      );
+    }
     results.push({ path: displayPath, type: "treatment", diagnostics });
   }
 
@@ -260,6 +277,50 @@ function detectFileType(path: string): FileType | null {
   if (path.endsWith(".stagebook.yaml")) return "treatment";
   if (path.endsWith(".prompt.md")) return "prompt";
   return null;
+}
+
+/**
+ * Build the prompt→locale map by reading each referenced prompt file from
+ * disk, then run `checkPromptLocaleConsistency`. Unreadable or unparseable
+ * prompts are skipped — missing files and invalid prompt syntax are different
+ * error classes, reported when those files are validated directly.
+ */
+async function checkLocaleConsistencyDiagnostics(
+  fullYaml: string,
+  dir: string,
+): Promise<Diagnostic[]> {
+  let fileObj: unknown;
+  try {
+    fileObj = loadYaml(fullYaml);
+  } catch {
+    return []; // YAML errors are already reported by the schema pass
+  }
+
+  const promptLocales = new Map<string, string | undefined>();
+  for (const relPath of collectReferencedPromptFiles(fileObj)) {
+    // Gate before the read (ADR security acceptance condition): never read a
+    // path the schema rejects (absolute, backslash, interior `..`). Those
+    // paths already carry their own error diagnostics from the schema pass —
+    // this just ensures the locale rule can't be used to read them anyway.
+    if (!fileSchema.safeParse(relPath).success) continue;
+    let promptSource: string;
+    try {
+      promptSource = await readFile(resolvePath(dir, relPath), "utf8");
+    } catch {
+      continue;
+    }
+    const parsed = promptFileSchema.safeParse(promptSource);
+    if (!parsed.success) continue;
+    promptLocales.set(relPath, parsed.data.metadata.locale);
+  }
+
+  return checkPromptLocaleConsistency(fileObj, promptLocales).map(
+    (mismatch) => ({
+      severity: "error" as const,
+      message: mismatch.message,
+      range: null,
+    }),
+  );
 }
 
 function hasGlobChars(s: string): boolean {

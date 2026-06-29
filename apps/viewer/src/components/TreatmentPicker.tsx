@@ -9,7 +9,10 @@ export function TreatmentPicker({
   treatmentFile,
   onSelect,
 }: TreatmentPickerProps) {
-  const { introSequences, treatments } = treatmentFile;
+  // `introSequences` is optional in the schema (a treatments-only file is
+  // valid); normalize to [] so the .length/.map below never throw.
+  const introSequences = treatmentFile.introSequences ?? [];
+  const { treatments } = treatmentFile;
   const multipleIntros = introSequences.length > 1;
   const multipleTreatments = treatments.length > 1;
 
