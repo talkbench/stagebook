@@ -306,6 +306,19 @@ export function TextArea({
     let countText = "";
     let countColor = "var(--stagebook-text-muted, #6b7280)";
     let countState = "default";
+    // Count UTF-16 code units (String.length) ON PURPOSE — do NOT "fix" this to
+    // grapheme clusters via Intl.Segmenter. Stagebook is a measurement
+    // instrument: the same version must count the same text identically across
+    // every browser, but Segmenter's grapheme boundaries are ICU-version-
+    // dependent, so it would make participants on different engines see
+    // different lengths and hit the maxLength cap at different points. Code
+    // units are deterministic everywhere. (Common CJK logographs are BMP, so
+    // they already count as 1; only supplementary-plane chars — emoji, rare
+    // ideographs — count as 2, and combining sequences over-count. If that edge
+    // ever matters, move to code points via [...str].length, which is also
+    // deterministic — never to grapheme segmentation.) The maxLength typing cap
+    // in handleChange uses this same measure, so the counter and the limit can
+    // never disagree.
     const currentLength = localValue.length;
 
     if (minLength && maxLength) {
