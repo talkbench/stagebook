@@ -16,6 +16,12 @@ import {
 import { findClosestMatch } from "./lib/levenshtein";
 import { UnrecognizedKeyQuickFixProvider } from "./lib/unrecognizedKeyQuickFix";
 import { isWithinWorkspace, relativizePath } from "./lib/filePaths";
+import { runPool } from "./lib/runPool";
+import {
+  summarizeDiagnostics,
+  formatValidationStatusBar,
+  type DiagnosticSeverityLabel,
+} from "./lib/diagnosticSummary";
 import {
   ASSET_GLOB,
   buildCompletionGlob,
@@ -117,11 +123,23 @@ function toVscodeRange(range: Diagnostic["range"]): vscode.Range {
   );
 }
 
-async function validateTreatmentFile(
-  document: vscode.TextDocument,
+function validateTreatmentFile(document: vscode.TextDocument): Promise<void> {
+  return validateTreatmentSourceAt(document.uri, document.getText());
+}
+
+/**
+ * Validate a treatment from `(uri, source)` without requiring a live
+ * `vscode.TextDocument`. Used both for open editors (via
+ * `validateTreatmentFile`) and for on-disk files swept by the
+ * "Validate Workspace" command. Results land in the shared
+ * `diagnosticCollection` keyed by `uri`, so a later live edit cleanly
+ * overwrites a workspace-run entry for the same file.
+ */
+async function validateTreatmentSourceAt(
+  uri: vscode.Uri,
+  source: string,
 ): Promise<void> {
-  const uriKey = document.uri.toString();
-  const source = document.getText();
+  const uriKey = uri.toString();
 
   // Skip when re-validating an identical source — e.g. tab-focus or
   // doc-open events that fire after the user looked at another file
@@ -132,9 +150,9 @@ async function validateTreatmentFile(
 
   const version = (validationVersions.get(uriKey) ?? 0) + 1;
   validationVersions.set(uriKey, version);
-  const rootDir = vscode.Uri.joinPath(document.uri, "..");
+  const rootDir = vscode.Uri.joinPath(uri, "..");
   const workspaceFolder =
-    vscode.workspace.getWorkspaceFolder(document.uri) ??
+    vscode.workspace.getWorkspaceFolder(uri) ??
     vscode.workspace.workspaceFolders?.[0];
   const decoder = new TextDecoder();
 
@@ -174,7 +192,7 @@ async function validateTreatmentFile(
       vscode.DiagnosticSeverity.Error,
     );
     fallback.source = "stagebook";
-    diagnosticCollection.set(document.uri, [fallback]);
+    diagnosticCollection.set(uri, [fallback]);
     return;
   }
 
@@ -192,7 +210,7 @@ async function validateTreatmentFile(
     return diag;
   });
 
-  diagnosticCollection.set(document.uri, vscodeDiagnostics);
+  diagnosticCollection.set(uri, vscodeDiagnostics);
   // Stamp the cache after the schema/diff pass succeeds. We deliberately
   // stamp BEFORE the async `checkFileReferences` call below — file-existence
   // checks update the diagnostic set in place and don't need to re-trigger
@@ -205,8 +223,8 @@ async function validateTreatmentFile(
     typeof result.parsedObj === "object" &&
     vscode.workspace.workspaceFolders?.length
   ) {
-    checkFileReferences(
-      document,
+    await checkFileReferences(
+      uri,
       result.parsedObj,
       source,
       vscodeDiagnostics,
@@ -221,47 +239,51 @@ async function validateTreatmentFile(
  * type allowlist of file-like fields (prompt.file, image.file, audio.file,
  * mediaPlayer.file, mediaPlayer.captionsFile) and filters out template
  * placeholders and full URLs; we still apply a path-traversal guard here.
+ *
+ * Awaits every `fs.stat` and applies the resulting diagnostics in a single
+ * batched `set`. Callers (`validateTreatmentSourceAt`) await it, so the
+ * "Validate Workspace" summary counts file-existence errors accurately rather
+ * than racing the stats; the live debounced path is fire-and-forget either way.
  */
-function checkFileReferences(
-  document: vscode.TextDocument,
+async function checkFileReferences(
+  uri: vscode.Uri,
   obj: unknown,
   source: string,
   diagnostics: vscode.Diagnostic[],
   version: number,
-): void {
+): Promise<void> {
   const assets = getReferencedAssets(obj);
   if (assets.length === 0) return;
 
-  const treatmentDir = vscode.Uri.joinPath(document.uri, "..");
+  const treatmentDir = vscode.Uri.joinPath(uri, "..");
   const workspaceFolder =
-    vscode.workspace.getWorkspaceFolder(document.uri) ??
+    vscode.workspace.getWorkspaceFolder(uri) ??
     vscode.workspace.workspaceFolders![0];
-  const uriKey = document.uri.toString();
+  const uriKey = uri.toString();
 
-  for (const asset of assets) {
-    const fileUri = vscode.Uri.joinPath(treatmentDir, asset.path);
+  let changed = false;
+  await Promise.all(
+    assets.map(async (asset) => {
+      const fileUri = vscode.Uri.joinPath(treatmentDir, asset.path);
 
-    if (!isWithinWorkspace(fileUri.fsPath, workspaceFolder.uri.fsPath)) {
-      diagnostics.push(
-        makeFileDiagnostic(
-          source,
-          asset.pathInTree,
-          `File path escapes workspace: ${asset.path}`,
-          vscode.DiagnosticSeverity.Error,
-        ),
-      );
-      diagnosticCollection.set(document.uri, diagnostics);
-      continue;
-    }
+      if (!isWithinWorkspace(fileUri.fsPath, workspaceFolder.uri.fsPath)) {
+        diagnostics.push(
+          makeFileDiagnostic(
+            source,
+            asset.pathInTree,
+            `File path escapes workspace: ${asset.path}`,
+            vscode.DiagnosticSeverity.Error,
+          ),
+        );
+        changed = true;
+        return;
+      }
 
-    vscode.workspace.fs.stat(fileUri).then(
-      () => {
+      try {
+        await vscode.workspace.fs.stat(fileUri);
         // File exists — extension validity (e.g. .prompt.md for prompts) is
         // enforced by schema (promptFilePathSchema), so no redundant check.
-      },
-      () => {
-        if (validationVersions.get(uriKey) !== version) return;
-
+      } catch {
         diagnostics.push(
           makeFileDiagnostic(
             source,
@@ -270,10 +292,15 @@ function checkFileReferences(
             vscode.DiagnosticSeverity.Error,
           ),
         );
-        diagnosticCollection.set(document.uri, diagnostics);
-      },
-    );
-  }
+        changed = true;
+      }
+    }),
+  );
+
+  // Stale-version guard: a newer edit may have fired while we awaited the
+  // stats. Discard rather than clobber the newer result.
+  if (validationVersions.get(uriKey) !== version) return;
+  if (changed) diagnosticCollection.set(uri, diagnostics);
 }
 
 function makeFileDiagnostic(
@@ -298,7 +325,15 @@ function makeFileDiagnostic(
 }
 
 function validatePromptFile(document: vscode.TextDocument): void {
-  const source = document.getText();
+  validatePromptSourceAt(document.uri, document.getText());
+}
+
+/**
+ * Validate a prompt from `(uri, source)` without requiring a live
+ * `vscode.TextDocument`. Used both for open editors and for on-disk files
+ * swept by the "Validate Workspace" command.
+ */
+function validatePromptSourceAt(uri: vscode.Uri, source: string): void {
   const result = validatePromptSource(source);
 
   const vscodeDiagnostics = result.diagnostics.map((d) => {
@@ -311,7 +346,107 @@ function validatePromptFile(document: vscode.TextDocument): void {
     return diag;
   });
 
-  diagnosticCollection.set(document.uri, vscodeDiagnostics);
+  diagnosticCollection.set(uri, vscodeDiagnostics);
+}
+
+// --- Validate Workspace command ---
+
+/** Max treatment/prompt validations in flight during a workspace sweep. */
+const WORKSPACE_VALIDATION_CONCURRENCY = 4;
+
+/** Command id for opening the Problems panel (status-bar click-through). */
+const OPEN_PROBLEMS_COMMAND = "workbench.actions.view.problems";
+
+/**
+ * Validate every Stagebook file in the workspace, not just the ones the user
+ * has opened this session (issue #442). Globs `**\/*.stagebook.yaml` and
+ * `**\/*.prompt.md` (honoring `files.exclude` / `search.exclude` via
+ * `findFiles`; `.gitignore` is intentionally NOT applied — see PR), runs the
+ * same validators the live editor flow uses so diagnostics are identical, and
+ * surfaces an aggregate count in the status bar.
+ */
+async function validateWorkspace(
+  statusBar: vscode.StatusBarItem,
+): Promise<void> {
+  if (!vscode.workspace.workspaceFolders?.length) {
+    void vscode.window.showWarningMessage(
+      "Stagebook: open a folder to validate its treatment and prompt files.",
+    );
+    return;
+  }
+
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Window,
+      title: "Stagebook: validating workspace…",
+    },
+    async () => {
+      const [treatments, prompts] = await Promise.all([
+        vscode.workspace.findFiles("**/*.stagebook.yaml", "**/node_modules/**"),
+        vscode.workspace.findFiles("**/*.prompt.md", "**/node_modules/**"),
+      ]);
+
+      // Prefer the live editor buffer when a file is open so workspace results
+      // match exactly what live validation shows (including unsaved edits);
+      // otherwise read committed bytes from disk. Reading bytes — rather than
+      // `openTextDocument` — is deliberate: documents opened-but-never-shown
+      // can be disposed by VS Code, firing `onDidCloseTextDocument`, which
+      // would wipe the diagnostics we just set.
+      const openByUri = new Map(
+        vscode.workspace.textDocuments.map((d) => [d.uri.toString(), d]),
+      );
+      const decoder = new TextDecoder();
+      const readSource = async (uri: vscode.Uri): Promise<string> => {
+        const open = openByUri.get(uri.toString());
+        if (open) return open.getText();
+        return decoder.decode(await vscode.workspace.fs.readFile(uri));
+      };
+
+      const tasks: Array<() => Promise<void>> = [
+        ...treatments.map((uri) => async () => {
+          // The user explicitly asked to re-validate, so bypass the
+          // source-equality short-circuit for this run.
+          lastValidatedSource.delete(uri.toString());
+          await validateTreatmentSourceAt(uri, await readSource(uri));
+        }),
+        ...prompts.map((uri) => async () => {
+          validatePromptSourceAt(uri, await readSource(uri));
+        }),
+      ];
+
+      await runPool(tasks, WORKSPACE_VALIDATION_CONCURRENCY);
+
+      updateWorkspaceStatusBar(statusBar, treatments.length + prompts.length);
+    },
+  );
+}
+
+/**
+ * Aggregate all Stagebook diagnostics currently in the diagnostic collection
+ * and render the status-bar summary. Counts every `source === "stagebook"`
+ * diagnostic across the workspace (not only this run's files), which is the
+ * accurate current picture after a sweep.
+ */
+function updateWorkspaceStatusBar(
+  statusBar: vscode.StatusBarItem,
+  filesValidated: number,
+): void {
+  const perFile: DiagnosticSeverityLabel[][] = [];
+  for (const [, diags] of vscode.languages.getDiagnostics()) {
+    const labels = diags
+      .filter((d) => d.source === "stagebook")
+      .map<DiagnosticSeverityLabel>((d) =>
+        d.severity === vscode.DiagnosticSeverity.Error ? "error" : "warning",
+      );
+    if (labels.length > 0) perFile.push(labels);
+  }
+
+  const summary = summarizeDiagnostics(perFile);
+  const { text, tooltip } = formatValidationStatusBar(summary, filesValidated);
+  statusBar.text = text;
+  statusBar.tooltip = tooltip;
+  statusBar.command = OPEN_PROBLEMS_COMMAND;
+  statusBar.show();
 }
 
 // Standard VS Code semantic token types — every theme colors these
@@ -725,6 +860,19 @@ async function parseTreatmentForPreview(
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(diagnosticCollection);
+
+  // Status bar item for the "Validate Workspace" summary. Hidden until the
+  // command runs (created here so it can be disposed on deactivate).
+  const workspaceStatusBar = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    100,
+  );
+  context.subscriptions.push(workspaceStatusBar);
+  context.subscriptions.push(
+    vscode.commands.registerCommand("stagebook.validateWorkspace", () =>
+      validateWorkspace(workspaceStatusBar),
+    ),
+  );
 
   // Register semantic token provider for treatment files
   context.subscriptions.push(

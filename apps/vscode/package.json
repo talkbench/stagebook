@@ -28,6 +28,10 @@
       {
         "command": "stagebook.previewStage",
         "title": "Stagebook: Preview Treatment"
+      },
+      {
+        "command": "stagebook.validateWorkspace",
+        "title": "Stagebook: Validate Workspace"
       }
     ],
     "menus": {
