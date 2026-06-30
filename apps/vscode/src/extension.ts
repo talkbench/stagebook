@@ -1042,12 +1042,24 @@ export function activate(context: vscode.ExtensionContext): void {
   // common-case win (skipping redundant tab-focus revalidations of the
   // unchanged active doc) while ensuring import edits cause the root to
   // re-validate on its next trigger.
+  //
+  // A treatment's validation result ALSO depends on its referenced
+  // prompts' frontmatter `locale` (the locale-consistency rule). Editing
+  // a `.prompt.md` — e.g. fixing or removing a `locale:` tag — must
+  // likewise invalidate the treatment caches so the stale locale-mismatch
+  // diagnostic clears on the treatment's next trigger. Prompt docs aren't
+  // themselves cache-keyed here (only treatments are), so clear every
+  // entry.
   context.subscriptions.push(
     vscode.workspace.onDidChangeTextDocument((event) => {
       if (isStagebookYaml(event.document)) {
         const changedKey = event.document.uri.toString();
         for (const k of lastValidatedSource.keys()) {
           if (k !== changedKey) lastValidatedSource.delete(k);
+        }
+      } else if (isStagebookPrompt(event.document)) {
+        for (const k of lastValidatedSource.keys()) {
+          lastValidatedSource.delete(k);
         }
       }
       validateDocumentDebounced(event.document);

@@ -9,14 +9,9 @@ import {
   validateTreatmentSource,
   validatePromptSource,
   expandAndValidateWithImports,
+  checkPromptLocaleConsistencyWithLoader,
 } from "../validate/index.js";
 import { load as loadYaml } from "js-yaml";
-import {
-  fileSchema,
-  promptFileSchema,
-  collectReferencedPromptFiles,
-  checkPromptLocaleConsistency,
-} from "../index.js";
 
 export type Format = "text" | "json";
 export type FileType = "treatment" | "prompt";
@@ -280,10 +275,12 @@ function detectFileType(path: string): FileType | null {
 }
 
 /**
- * Build the prompt→locale map by reading each referenced prompt file from
- * disk, then run `checkPromptLocaleConsistency`. Unreadable or unparseable
- * prompts are skipped — missing files and invalid prompt syntax are different
- * error classes, reported when those files are validated directly.
+ * Run the locale-consistency rule over the expanded treatment, reading each
+ * referenced prompt file from disk via the shared
+ * `checkPromptLocaleConsistencyWithLoader` wiring (same loop the extension and
+ * viewer use). Unreadable or unparseable prompts are skipped — missing files
+ * and invalid prompt syntax are different error classes, reported when those
+ * files are validated directly.
  */
 async function checkLocaleConsistencyDiagnostics(
   fullYaml: string,
@@ -296,31 +293,22 @@ async function checkLocaleConsistencyDiagnostics(
     return []; // YAML errors are already reported by the schema pass
   }
 
-  const promptLocales = new Map<string, string | undefined>();
-  for (const relPath of collectReferencedPromptFiles(fileObj)) {
-    // Gate before the read (ADR security acceptance condition): never read a
-    // path the schema rejects (absolute, backslash, interior `..`). Those
-    // paths already carry their own error diagnostics from the schema pass —
-    // this just ensures the locale rule can't be used to read them anyway.
-    if (!fileSchema.safeParse(relPath).success) continue;
-    let promptSource: string;
-    try {
-      promptSource = await readFile(resolvePath(dir, relPath), "utf8");
-    } catch {
-      continue;
-    }
-    const parsed = promptFileSchema.safeParse(promptSource);
-    if (!parsed.success) continue;
-    promptLocales.set(relPath, parsed.data.metadata.locale);
-  }
+  const mismatches = await checkPromptLocaleConsistencyWithLoader({
+    fileObj,
+    loadPrompt: async (relPath) => {
+      try {
+        return await readFile(resolvePath(dir, relPath), "utf8");
+      } catch {
+        return null;
+      }
+    },
+  });
 
-  return checkPromptLocaleConsistency(fileObj, promptLocales).map(
-    (mismatch) => ({
-      severity: "error" as const,
-      message: mismatch.message,
-      range: null,
-    }),
-  );
+  return mismatches.map((mismatch) => ({
+    severity: "error" as const,
+    message: mismatch.message,
+    range: null,
+  }));
 }
 
 function hasGlobChars(s: string): boolean {

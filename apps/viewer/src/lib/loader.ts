@@ -2,7 +2,10 @@ import { parseGitHubUrl } from "./github";
 import { expandTreatmentFile } from "./expandTreatmentFile";
 import { TreatmentValidationError } from "./treatment";
 import { safeParseTreatmentFile, type TreatmentFileType } from "stagebook";
-import { loadAndMergeImports } from "stagebook/validate";
+import {
+  loadAndMergeImports,
+  checkPromptLocaleConsistencyWithLoader,
+} from "stagebook/validate";
 
 export interface LoadResult {
   treatmentFile: TreatmentFileType;
@@ -78,6 +81,32 @@ export async function loadTreatmentFromUrl(
   }
 
   const { result, unresolvedFields } = expandTreatmentFile(parsed.data);
+
+  // Post-hydration locale-consistency rule (ADR 2026-06-localization #6):
+  // every referenced prompt's frontmatter `locale` must match its container's
+  // `locale` (both default `en`). Runs on the hydrated tree, fetching each
+  // prompt's frontmatter from the same repo + branch as the entry-point file.
+  // Surfaced through the same `TreatmentValidationError` path as schema errors
+  // so it shows up in the preview's validation UI. Unreadable / unparseable
+  // prompts return null and are skipped — those failures surface elsewhere.
+  const loadPrompt = async (relPath: string): Promise<string | null> => {
+    const promptResponse = await fetchFn(
+      `${rawBaseUrl}${relPath}?t=${Date.now()}`,
+    );
+    return promptResponse.ok ? promptResponse.text() : null;
+  };
+  const localeMismatches = await checkPromptLocaleConsistencyWithLoader({
+    fileObj: result,
+    loadPrompt,
+  });
+  if (localeMismatches.length > 0) {
+    throw new TreatmentValidationError(
+      localeMismatches.map((mismatch) => ({
+        path: mismatch.promptFile,
+        message: mismatch.message,
+      })),
+    );
+  }
 
   return { treatmentFile: result, unresolvedFields, rawBaseUrl };
 }

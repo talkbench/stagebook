@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { loadTreatmentFromUrl } from "./loader";
+import { TreatmentValidationError } from "./treatment";
 
 const MINIMAL_YAML = `
 introSequences:
@@ -185,6 +186,224 @@ introSequences:
     ).rejects.toThrow(
       /Failed to fetch imported file 'modules\/missing\.stagebook\.yaml'.*HTTP 404.*same repo/s,
     );
+  });
+
+  // -- #483: prompt locale-consistency on load --
+
+  it("rejects when a he treatment references an untagged (en) prompt (#483)", async () => {
+    const rootYaml = `
+treatments:
+  - name: t
+    playerCount: 1
+    locale: he
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: prompt
+            name: q
+            file: prompts/q.prompt.md
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - type: submitButton
+`;
+    const fetch = routedFetch([
+      ["treatment.yaml", rootYaml],
+      ["prompts/q.prompt.md", "---\ntype: noResponse\n---\nhello\n"],
+    ]);
+
+    await expect(
+      loadTreatmentFromUrl(
+        "https://github.com/org/repo/blob/main/treatment.yaml",
+        fetch,
+      ),
+    ).rejects.toThrow(/authored in locale "en".*declares locale "he"/s);
+  });
+
+  it("loads cleanly when the prompt is tagged with the treatment's locale (#483)", async () => {
+    const rootYaml = `
+treatments:
+  - name: t
+    playerCount: 1
+    locale: he
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: prompt
+            name: q
+            file: prompts/q.prompt.md
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - type: submitButton
+`;
+    const fetch = routedFetch([
+      ["treatment.yaml", rootYaml],
+      [
+        "prompts/q.prompt.md",
+        "---\ntype: noResponse\nlocale: he\n---\nhello\n",
+      ],
+    ]);
+
+    const result = await loadTreatmentFromUrl(
+      "https://github.com/org/repo/blob/main/treatment.yaml",
+      fetch,
+    );
+    expect(result.treatmentFile.treatments[0].name).toBe("t");
+  });
+
+  it("does not reject on locale grounds when the prompt can't be fetched (#483)", async () => {
+    // A missing prompt 404s; the locale rule skips it rather than emitting a
+    // spurious mismatch. (Runtime rendering surfaces the missing file.)
+    const rootYaml = `
+treatments:
+  - name: t
+    playerCount: 1
+    locale: he
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: prompt
+            name: q
+            file: prompts/q.prompt.md
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - type: submitButton
+`;
+    const fetch = routedFetch([
+      ["treatment.yaml", rootYaml],
+      // prompts/q.prompt.md not routed → 404
+    ]);
+
+    const result = await loadTreatmentFromUrl(
+      "https://github.com/org/repo/blob/main/treatment.yaml",
+      fetch,
+    );
+    expect(result.treatmentFile.treatments[0].name).toBe("t");
+  });
+
+  it("never fetches a schema-rejected prompt path for the locale check (#483)", async () => {
+    // The live-fetch surface must never turn a gated path (absolute,
+    // traversal) into a network request. An absolute prompt path is rejected
+    // by the treatment schema; the locale rule must not fetch it or emit a
+    // second (locale) diagnostic for it.
+    const rootYaml = `
+treatments:
+  - name: t
+    playerCount: 1
+    locale: he
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: prompt
+            name: q
+            file: /etc/hosts.prompt.md
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - type: submitButton
+`;
+    const fetch = routedFetch([["treatment.yaml", rootYaml]]);
+
+    const err = await loadTreatmentFromUrl(
+      "https://github.com/org/repo/blob/main/treatment.yaml",
+      fetch,
+    ).catch((e: unknown) => e);
+
+    // Rejected on schema grounds (relative-path rule), not locale grounds.
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/relative path/);
+    expect((err as Error).message).not.toMatch(/authored in locale/);
+    // And the gated path was never fetched.
+    const fetchedUrls = (fetch.mock.calls as unknown[][]).map(
+      (args) => args[0] as string,
+    );
+    expect(fetchedUrls.some((u) => u.includes("hosts.prompt.md"))).toBe(false);
+  });
+
+  it("checks intro-step prompts against the intro sequence's own locale (#483)", async () => {
+    const rootYaml = `
+introSequences:
+  - name: i
+    locale: he
+    introSteps:
+      - name: consent
+        elements:
+          - type: prompt
+            name: c
+            file: prompts/consent.prompt.md
+          - type: submitButton
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: submitButton
+`;
+    const fetch = routedFetch([
+      ["treatment.yaml", rootYaml],
+      ["prompts/consent.prompt.md", "---\ntype: noResponse\n---\nhello\n"],
+    ]);
+
+    await expect(
+      loadTreatmentFromUrl(
+        "https://github.com/org/repo/blob/main/treatment.yaml",
+        fetch,
+      ),
+    ).rejects.toThrow(/intro sequence "i".*declares locale "he"/s);
+  });
+
+  it("surfaces every mismatching prompt, not just the first (#483)", async () => {
+    const rootYaml = `
+treatments:
+  - name: t
+    playerCount: 1
+    locale: he
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: prompt
+            name: a
+            file: prompts/a.prompt.md
+          - type: prompt
+            name: b
+            file: prompts/b.prompt.md
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - type: submitButton
+`;
+    const fetch = routedFetch([
+      ["treatment.yaml", rootYaml],
+      ["prompts/a.prompt.md", "---\ntype: noResponse\n---\na\n"],
+      ["prompts/b.prompt.md", "---\ntype: noResponse\n---\nb\n"],
+    ]);
+
+    const err = await loadTreatmentFromUrl(
+      "https://github.com/org/repo/blob/main/treatment.yaml",
+      fetch,
+    ).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(TreatmentValidationError);
+    expect((err as TreatmentValidationError).issues).toHaveLength(2);
   });
 
   it("supports transitive imports (A imports B imports C) (#312)", async () => {

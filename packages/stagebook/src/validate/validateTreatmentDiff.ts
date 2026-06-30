@@ -7,6 +7,7 @@ import {
 } from "../index.js";
 import type { ZodIssue } from "zod";
 import { loadAndMergeImports } from "./loadAndMergeImports.js";
+import { checkPromptLocaleConsistencyWithLoader } from "./localeConsistency.js";
 import { createPositionMapper, extractYamlErrors } from "./yamlPositionMap.js";
 import type { Diagnostic } from "./types.js";
 
@@ -216,6 +217,26 @@ export async function validateTreatmentWithDiff({
         message: `${issue.message} (${formatPath(issue.path)})`,
         severity: "error",
         range: resolveOrWalkUp(mapper, issue.path),
+      });
+    }
+
+    // Post-hydration locale-consistency rule (ADR 2026-06-localization #6):
+    // every referenced prompt's frontmatter `locale` must match its
+    // container's `locale` (both default `en`). Cross-file by nature — it
+    // loads each prompt's frontmatter via the same `loadImport` bridge the
+    // editor uses for `imports:`. Unreadable/unparseable prompts are skipped
+    // (a missing prompt is reported by the file-existence checker instead).
+    // Top-of-file range (null): the rule reports per (container, prompt file),
+    // not a single source token, and the message names both.
+    const localeMismatches = await checkPromptLocaleConsistencyWithLoader({
+      fileObj: diff.hydrated,
+      loadPrompt: loadImport,
+    });
+    for (const mismatch of localeMismatches) {
+      diagnostics.push({
+        message: mismatch.message,
+        severity: "error",
+        range: null,
       });
     }
   }

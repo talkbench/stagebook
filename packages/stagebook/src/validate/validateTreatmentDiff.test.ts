@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { validateTreatmentWithDiff } from "./validateTreatmentDiff.js";
 
 /**
@@ -304,6 +304,124 @@ treatments:
       // should match the position of 's' in 'surveryName'.
       const colInLine = lines[keyLine].indexOf("surveryName");
       expect(unrecognized!.range?.startCol).toBe(colInLine);
+    });
+  });
+
+  describe("prompt locale consistency (ADR 2026-06-localization #6)", () => {
+    const heTreatment = `treatments:
+  - name: t
+    playerCount: 1
+    locale: he
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: prompt
+            file: intro.prompt.md
+`;
+
+    it("flags an untagged (en) prompt referenced by a he treatment", async () => {
+      const result = await validateTreatmentWithDiff({
+        source: heTreatment,
+        loadImport: loaderFromMap({
+          "intro.prompt.md": "---\ntype: noResponse\n---\nhello\n",
+        }),
+      });
+      const localeError = result.diagnostics.find((d) =>
+        d.message.includes("authored in locale"),
+      );
+      expect(localeError).toBeDefined();
+      expect(localeError!.severity).toBe("error");
+    });
+
+    it("passes when the prompt is tagged with the treatment's locale", async () => {
+      const result = await validateTreatmentWithDiff({
+        source: heTreatment,
+        loadImport: loaderFromMap({
+          "intro.prompt.md": "---\ntype: noResponse\nlocale: he\n---\nhello\n",
+        }),
+      });
+      const localeError = result.diagnostics.find((d) =>
+        d.message.includes("authored in locale"),
+      );
+      expect(localeError).toBeUndefined();
+    });
+
+    it("stays silent when the prompt file can't be loaded", async () => {
+      // Missing prompts are the file-existence checker's job, not the
+      // locale rule's — no spurious locale diagnostic here.
+      const result = await validateTreatmentWithDiff({
+        source: heTreatment,
+        loadImport: noImports,
+      });
+      const localeError = result.diagnostics.find((d) =>
+        d.message.includes("authored in locale"),
+      );
+      expect(localeError).toBeUndefined();
+    });
+
+    it("checks intro-step prompts against the intro sequence's locale", async () => {
+      const source = `introSequences:
+  - name: i
+    locale: he
+    introSteps:
+      - name: consent
+        elements:
+          - type: prompt
+            file: consent.prompt.md
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: submitButton
+`;
+      const result = await validateTreatmentWithDiff({
+        source,
+        loadImport: loaderFromMap({
+          "consent.prompt.md": "---\ntype: noResponse\n---\nhello\n",
+        }),
+      });
+      const localeError = result.diagnostics.find((d) =>
+        d.message.includes("authored in locale"),
+      );
+      expect(localeError).toBeDefined();
+      expect(localeError!.message).toContain('intro sequence "i"');
+    });
+
+    it("never reads a schema-rejected prompt path for the locale check", async () => {
+      // An absolute prompt path is flagged by the schema; the locale rule
+      // must gate before the read — no loadImport call, no second
+      // (locale) diagnostic for it.
+      const source = `treatments:
+  - name: t
+    playerCount: 1
+    locale: he
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: prompt
+            file: /etc/hosts.prompt.md
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - type: submitButton
+`;
+      const loadImport = vi.fn(loaderFromMap({}));
+      const result = await validateTreatmentWithDiff({ source, loadImport });
+      const localeError = result.diagnostics.find((d) =>
+        d.message.includes("authored in locale"),
+      );
+      expect(localeError).toBeUndefined();
+      const readAbsPath = loadImport.mock.calls.some((args) =>
+        String(args[0]).includes("hosts.prompt.md"),
+      );
+      expect(readAbsPath).toBe(false);
     });
   });
 
