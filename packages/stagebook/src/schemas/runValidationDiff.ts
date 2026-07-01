@@ -32,7 +32,14 @@ import {
  *                    template's content has `contentType:
  *                    introExitStep` (or similar) and the inner
  *                    refinement fires on its own pre-fill view of
- *                    the elements list.
+ *                    the elements list. NOTE: the usage-site form of
+ *                    this artifact is now dropped from `sourceOnly`
+ *                    when the invocation provably resolves one level
+ *                    deep to an advancement element (see
+ *                    `suppressResolvedAdvancementWarnings`, #347); the
+ *                    instances that remain here are the non-provable
+ *                    ones (parameterized name, deeper nesting) and the
+ *                    prefixed template-content form.
  *
  *                  - real bugs that didn't survive hydration into a
  *                    matched pair. The most common: an unused

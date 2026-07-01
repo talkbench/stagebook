@@ -302,6 +302,159 @@ treatments:
       // Kept as a source-only warning (not provable one level deep).
       expect(result.sourceOnly.some(hasAdvancementMessage)).toBe(true);
     });
+
+    it("suppresses when the resolving template comes from importedTemplates (module reuse — the #347 motivation)", () => {
+      // The template lives in an imported module, not the root file. The
+      // orchestrator merges importedTemplates into the set used for both
+      // passes AND for suppression, so a shared `surveyAndSubmit`-style
+      // module template must be resolvable here too.
+      const source = `introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - template: advanceBtn
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: submitButton
+`;
+      const result = runValidationDiff({
+        source,
+        importedTemplates: [
+          {
+            name: "advanceBtn",
+            contentType: "elements",
+            content: [{ type: "submitButton" }],
+          },
+        ],
+      });
+      expect(result.hydrationError).toBeNull();
+      expect(result.sourceOnly.some(hasAdvancementMessage)).toBe(false);
+    });
+
+    it("suppresses when the template resolves to a survey (auto-submitting) element", () => {
+      const source = `templates:
+  - name: poll
+    contentType: elements
+    content:
+      - type: survey
+        surveyName: TIPI
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - template: poll
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: submitButton
+`;
+      const result = runValidationDiff({ source });
+      expect(result.hydrationError).toBeNull();
+      expect(result.sourceOnly.some(hasAdvancementMessage)).toBe(false);
+    });
+
+    it("suppresses when a singular `element` template resolves to a qualtrics survey", () => {
+      const source = `templates:
+  - name: q
+    contentType: element
+    content:
+      type: qualtrics
+      url: https://example.qualtrics.com/survey
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - template: q
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: submitButton
+`;
+      const result = runValidationDiff({ source });
+      expect(result.hydrationError).toBeNull();
+      expect(result.sourceOnly.some(hasAdvancementMessage)).toBe(false);
+    });
+
+    it("suppresses a mixed step where one element is a non-advancement display and another is a resolving template", () => {
+      const source = `templates:
+  - name: advanceBtn
+    contentType: elements
+    content:
+      - type: submitButton
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - type: display
+            reference: self.prompt.x
+          - template: advanceBtn
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: display
+            reference: self.prompt.x
+          - type: submitButton
+`;
+      const result = runValidationDiff({ source });
+      expect(result.hydrationError).toBeNull();
+      expect(result.sourceOnly.some(hasAdvancementMessage)).toBe(false);
+    });
+
+    it("does NOT silently suppress a parameterized template name — it surfaces as a hydration error", () => {
+      // A `template: ${x}` name can't be resolved pre-fill; fillTemplates
+      // can't expand it either, so hydration fails and the raw source
+      // issue (including the advancement warning) is all callers get. The
+      // point: the author still sees an error, nothing is hidden.
+      const source = `templates:
+  - name: real
+    contentType: elements
+    content:
+      - type: submitButton
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - template: \${which}
+            fields:
+              which: real
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: submitButton
+`;
+      const result = runValidationDiff({ source });
+      expect(result.hydrationError).not.toBeNull();
+      // Buckets are empty on hydration failure; the warning survives in
+      // the raw source record so the caller can still surface something.
+      expect(result.sourceOnly).toEqual([]);
+      expect(result.sourceIssues.some(hasAdvancementMessage)).toBe(true);
+    });
   });
 
   describe("hydrated-only issues — revealed by expansion", () => {
