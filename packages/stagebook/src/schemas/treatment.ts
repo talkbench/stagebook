@@ -1806,7 +1806,18 @@ export const introExitStepsSchema = introExitStepsBaseSchema;
 // intro/exit step: submitButton (explicit), survey/qualtrics (auto-submit on
 // completion), or mediaPlayer with submitOnComplete: true (auto-submits when
 // playback ends).
-function isAdvancementElement(element: ElementType): boolean {
+//
+// Deliberately checks *literal* values (`el.type === "submitButton"`,
+// `el.submitOnComplete === true`). A templated field such as
+// `type: ${kind}` or `submitOnComplete: ${flag}` yields `false` — the
+// element's advancement status can't be proven pre-fill. Callers that
+// suppress the intro/exit warning by looking through templates rely on
+// this: only a lexically-concrete advancement element counts (#347).
+//
+// Exported so the diff orchestrator (`runValidationDiff`) can prove a
+// `template:` invocation in an intro/exit step resolves to an
+// advancement element and suppress the source-only warning.
+export function isAdvancementElement(element: unknown): boolean {
   if (!element || typeof element !== "object") return false;
   const el = element as Record<string, unknown>;
   if (el.type === "submitButton") return true;
@@ -1815,6 +1826,14 @@ function isAdvancementElement(element: ElementType): boolean {
   if (el.type === "mediaPlayer" && el.submitOnComplete === true) return true;
   return false;
 }
+
+// The single canonical message for the intro/exit advancement-element
+// requirement. Shared by `introStepsSchema` and `exitStepsSchema` and
+// matched by `runValidationDiff` when deciding whether a source-only
+// instance is a suppressible templating artifact (#347). Keep the two
+// in lockstep — the diff matches on exact message text.
+export const ADVANCEMENT_ELEMENT_MESSAGE =
+  "Intro/exit step must include at least one advancement element: submitButton, survey, qualtrics, or mediaPlayer with submitOnComplete: true.";
 
 export const introStepsSchema = introExitStepsBaseSchema.superRefine(
   (data, ctx) => {
@@ -1868,8 +1887,7 @@ export const introStepsSchema = introExitStepsBaseSchema.superRefine(
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: [stepIdx, "elements"],
-            message:
-              "Intro/exit step must include at least one advancement element: submitButton, survey, qualtrics, or mediaPlayer with submitOnComplete: true.",
+            message: ADVANCEMENT_ELEMENT_MESSAGE,
           });
         }
       }
@@ -1900,8 +1918,7 @@ export const exitStepsSchema = introExitStepsBaseSchema.superRefine(
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: [stepIdx, "elements"],
-            message:
-              "Intro/exit step must include at least one advancement element: submitButton, survey, qualtrics, or mediaPlayer with submitOnComplete: true.",
+            message: ADVANCEMENT_ELEMENT_MESSAGE,
           });
         }
       }
