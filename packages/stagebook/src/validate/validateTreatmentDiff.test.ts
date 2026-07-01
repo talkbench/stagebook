@@ -103,7 +103,7 @@ treatments:
   });
 
   describe("templating artifacts (sourceOnly → warning)", () => {
-    it("downgrades the intro-step advancement-element refinement to warning when a template provides it", async () => {
+    it("suppresses the intro-step advancement-element warning when a template provably provides it (#347)", async () => {
       const source = `templates:
   - name: advanceBtn
     contentType: elements
@@ -128,15 +128,51 @@ treatments:
         source,
         loadImport: noImports,
       });
-      // The advancement-element rule fires source-only. The orchestrator
-      // classifies it as sourceOnly. We surface as warning (not error).
+      // The template `advanceBtn` lexically resolves to a submitButton, so
+      // the source-pass artifact is proven reducible and produces no
+      // diagnostic at all (neither warning nor error).
+      const advancementDiags = result.diagnostics.filter((d) =>
+        d.message.toLowerCase().includes("advancement element"),
+      );
+      expect(advancementDiags).toEqual([]);
+    });
+
+    it("still surfaces an advancement error when the resolved step genuinely can't advance", async () => {
+      // Same shape, but the invoked template injects only a display — no
+      // advancement element even after expansion. The rule fires in both
+      // passes (matched) and must surface as an error, not be suppressed.
+      const source = `templates:
+  - name: justText
+    contentType: elements
+    content:
+      - type: display
+        reference: self.prompt.foo
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - template: justText
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: display
+            reference: self.prompt.foo
+          - type: submitButton
+`;
+      const result = await validateTreatmentWithDiff({
+        source,
+        loadImport: noImports,
+      });
       const advancementDiags = result.diagnostics.filter((d) =>
         d.message.toLowerCase().includes("advancement element"),
       );
       expect(advancementDiags.length).toBeGreaterThan(0);
-      expect(advancementDiags.every((d) => d.severity === "warning")).toBe(
-        true,
-      );
+      expect(advancementDiags.some((d) => d.severity === "error")).toBe(true);
     });
   });
 

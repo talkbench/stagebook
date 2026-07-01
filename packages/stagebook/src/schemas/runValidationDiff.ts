@@ -2,6 +2,10 @@ import type { ZodIssue } from "zod";
 import { load as loadYaml } from "js-yaml";
 import { fillTemplates } from "../templates/fillTemplates.js";
 import { safeParseTreatmentFile } from "./safeParseTreatmentFile.js";
+import {
+  ADVANCEMENT_ELEMENT_MESSAGE,
+  isAdvancementElement,
+} from "./treatment.js";
 
 /**
  * Diff-based validation orchestrator.
@@ -268,9 +272,124 @@ export function runValidationDiff({
     hydratedIssues,
     hydrated: expanded,
     matched,
-    sourceOnly,
+    sourceOnly: suppressResolvedAdvancementWarnings(
+      sourceOnly,
+      merged,
+      mergedTemplates ?? [],
+    ),
     hydratedOnly,
   };
+}
+
+/**
+ * #347: drop intro/exit "needs advancement element" warnings from the
+ * source-only bucket when the offending step's element list contains a
+ * `template:` invocation that provably resolves — one level deep — to a
+ * lexical advancement element.
+ *
+ * Such warnings reach `sourceOnly` precisely because the hydrated pass
+ * did NOT re-fire them: after expansion the step gained an advancement
+ * element. We still confirm the resolution statically (rather than
+ * trusting bucket membership alone), because the multiset diff can
+ * alias a genuine "step has no way to advance" bug into this bucket
+ * when two steps carry the identical message — and that bug must not be
+ * silently dropped.
+ *
+ * Scope is deliberately the bare `ADVANCEMENT_ELEMENT_MESSAGE` — the
+ * usage-site form. The same rule firing while validating a template's
+ * own `content:` carries the templateSchema's "Invalid content for
+ * contentType '...': " prefix (see `stripTemplateContentPrefix`) and is
+ * left untouched: a template definition is validated in isolation, and
+ * its invocation sites get their own diagnosis.
+ */
+function suppressResolvedAdvancementWarnings(
+  sourceOnly: ZodIssue[],
+  merged: Record<string, unknown>,
+  mergedTemplates: unknown[],
+): ZodIssue[] {
+  const isAdvancementWarning = (issue: ZodIssue) =>
+    issue.code === "custom" && issue.message === ADVANCEMENT_ELEMENT_MESSAGE;
+
+  if (!sourceOnly.some(isAdvancementWarning)) return sourceOnly;
+
+  const templatesByName = indexTemplatesByName(mergedTemplates);
+
+  return sourceOnly.filter((issue) => {
+    if (!isAdvancementWarning(issue)) return true;
+    // Keep the warning unless we can positively prove the step's
+    // elements resolve to an advancement element via a template.
+    const elements = getAtPath(merged, issue.path);
+    return !elementsProvablyAdvanceViaTemplate(elements, templatesByName);
+  });
+}
+
+/** First-wins index of `templates` by `name`, skipping malformed entries. */
+function indexTemplatesByName(
+  templates: unknown[],
+): Map<string, Record<string, unknown>> {
+  const byName = new Map<string, Record<string, unknown>>();
+  for (const tmpl of templates) {
+    if (tmpl && typeof tmpl === "object" && !Array.isArray(tmpl)) {
+      const name = (tmpl as Record<string, unknown>).name;
+      if (typeof name === "string" && !byName.has(name)) {
+        byName.set(name, tmpl as Record<string, unknown>);
+      }
+    }
+  }
+  return byName;
+}
+
+/**
+ * True when `elements` is an array containing at least one `template:`
+ * invocation that resolves — one level deep — to a lexical advancement
+ * element.
+ */
+function elementsProvablyAdvanceViaTemplate(
+  elements: unknown,
+  templatesByName: Map<string, Record<string, unknown>>,
+): boolean {
+  if (!Array.isArray(elements)) return false;
+  return elements.some((el) =>
+    templateInvocationResolvesToAdvancement(el, templatesByName),
+  );
+}
+
+function templateInvocationResolvesToAdvancement(
+  element: unknown,
+  templatesByName: Map<string, Record<string, unknown>>,
+): boolean {
+  if (!element || typeof element !== "object" || Array.isArray(element)) {
+    return false;
+  }
+  const name = (element as Record<string, unknown>).template;
+  // Only concrete, statically-known template names. A parameterized
+  // name (`template: ${x}`) can't be resolved pre-fill — keep the warning.
+  if (typeof name !== "string" || name.includes("${")) return false;
+
+  const tmpl = templatesByName.get(name);
+  if (!tmpl) return false;
+
+  // Only `elements` / `element` templates can inject an advancement
+  // element into a step's element list. Other contentTypes are the wrong
+  // shape here; if one is (mis)used, hydration surfaces that separately.
+  const { contentType, content } = tmpl;
+  if (contentType === "elements") {
+    return Array.isArray(content) && content.some(isAdvancementElement);
+  }
+  if (contentType === "element") {
+    return isAdvancementElement(content);
+  }
+  return false;
+}
+
+/** Navigate `obj` along a Zod issue path (mixed string/number segments). */
+function getAtPath(obj: unknown, path: (string | number)[]): unknown {
+  let acc: unknown = obj;
+  for (const key of path) {
+    if (acc === null || typeof acc !== "object") return undefined;
+    acc = (acc as Record<string | number, unknown>)[key];
+  }
+  return acc;
 }
 
 /**

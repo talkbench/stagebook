@@ -39,9 +39,10 @@ type FetchFn = (
  *
  * Diagnostics come from `validateTreatmentWithDiff` — the same import-aware,
  * diff-based validator the VS Code extension drives its Problems panel from —
- * so the messages, positions, and severities match the editor exactly (a
- * template that injects an advancement element shows as a warning, not an
- * error; a schema slip inside an imported template is reported; etc.).
+ * so the messages, positions, and severities match the editor exactly (a step
+ * whose advancement element is injected by a provably-resolving template
+ * produces no diagnostic at all (#347); a schema slip inside an imported
+ * template is reported; etc.).
  *
  * Validation is non-fatal: a file with only warnings still renders (warnings
  * ride along in `diagnostics`); a file with structural errors returns a null
@@ -124,11 +125,11 @@ export async function loadTreatmentFromUrl(
 
   // Build the render object. Normally we render the schema-validated merged
   // object; but when the pre-fill schema rejects it while the diff validator
-  // found no error (only warnings), the rejection is a template artifact that
-  // resolves on hydration — e.g. a step whose only advancement element is
-  // injected by a template invocation. Expand from the merged object in that
-  // case so the preview still opens. A real structural error keeps the
-  // placeholder.
+  // found no error (only warnings, or — for a provably-resolving template —
+  // no diagnostic at all), the rejection is a template artifact that resolves
+  // on hydration — e.g. a step whose only advancement element is injected by a
+  // template invocation (#347). Expand from the merged object in that case so
+  // the preview still opens. A real structural error keeps the placeholder.
   const parsed = safeParseTreatmentFile(loadResult.merged);
   const hasError = diagnostics.some((d) => d.severity === "error");
   const expandInput: TreatmentFileType | null = parsed.success

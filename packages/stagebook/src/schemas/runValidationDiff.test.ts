@@ -93,15 +93,18 @@ treatments:
     });
   });
 
-  describe("source-only issues — templating artifacts", () => {
-    it("classifies intro-step-needs-advancement as source-only when a template provides it", () => {
-      // The intro step's only direct child is a `template:` invocation.
-      // The source-pass schema's refinement counts this as missing an
-      // advancement element (template invocations aren't submit buttons
-      // / surveys / qualtrics / submit-on-complete mediaPlayer). After
-      // hydration the template expands to include a submitButton, so
-      // the hydrated-pass passes. Diff classifies as source-only and
-      // recommends suppressing it.
+  describe("intro/exit advancement-element source-only suppression (#347)", () => {
+    // A `template:` invocation in an intro/exit step whose definition
+    // lexically resolves to an advancement element should NOT surface the
+    // "needs advancement element" warning: the author did the right thing
+    // and the source-pass refinement simply can't see through the
+    // invocation. The warning still fires in `sourceIssues` (the raw
+    // record), but is dropped from the surfaced `sourceOnly` bucket.
+
+    const hasAdvancementMessage = (i: { message: string }) =>
+      i.message.toLowerCase().includes("advancement element");
+
+    it("suppresses the intro-step warning when a `template:` (contentType elements) resolves to an advancement element", () => {
       const source = `templates:
   - name: advanceBtn
     contentType: elements
@@ -124,22 +127,180 @@ treatments:
 `;
       const result = runValidationDiff({ source });
       expect(result.hydrationError).toBeNull();
-      // The advancement-element rule fires in source but not in hydrated.
-      const advancementIssue = result.sourceIssues.find((i) =>
-        i.message.toLowerCase().includes("advancement element"),
-      );
-      expect(advancementIssue).toBeDefined();
-      // It's classified as source-only (not matched).
-      expect(
-        result.sourceOnly.some((i) =>
-          i.message.toLowerCase().includes("advancement element"),
-        ),
-      ).toBe(true);
-      expect(
-        result.matched.some((i) =>
-          i.message.toLowerCase().includes("advancement element"),
-        ),
-      ).toBe(false);
+      // The raw source pass still records the artifact ...
+      expect(result.sourceIssues.some(hasAdvancementMessage)).toBe(true);
+      // ... but it is neither a real bug (matched) nor surfaced (sourceOnly).
+      expect(result.matched.some(hasAdvancementMessage)).toBe(false);
+      expect(result.sourceOnly.some(hasAdvancementMessage)).toBe(false);
+    });
+
+    it("suppresses the exit-step warning when the template is contentType `element` (singular)", () => {
+      const source = `templates:
+  - name: submit
+    contentType: element
+    content:
+      type: submitButton
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - type: submitButton
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: submitButton
+    exitSequence:
+      - name: thanks
+        elements:
+          - template: submit
+`;
+      const result = runValidationDiff({ source });
+      expect(result.hydrationError).toBeNull();
+      expect(result.sourceOnly.some(hasAdvancementMessage)).toBe(false);
+      expect(result.matched.some(hasAdvancementMessage)).toBe(false);
+    });
+
+    it("suppresses when the template resolves via mediaPlayer with submitOnComplete: true", () => {
+      const source = `templates:
+  - name: video
+    contentType: elements
+    content:
+      - type: mediaPlayer
+        url: https://example.com/v.mp4
+        submitOnComplete: true
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - template: video
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: submitButton
+`;
+      const result = runValidationDiff({ source });
+      expect(result.hydrationError).toBeNull();
+      expect(result.sourceOnly.some(hasAdvancementMessage)).toBe(false);
+    });
+
+    it("does NOT suppress a genuine no-advancement step (real bug stays surfaced as `matched`)", () => {
+      // Safety: suppression keys off the step's actual contents, not
+      // bucket membership. A concrete step with no way to advance fires
+      // the rule in BOTH passes, so it lands in `matched` (a real error)
+      // and must never be dropped.
+      const source = `introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - type: submitButton
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: submitButton
+    exitSequence:
+      - name: broken
+        elements:
+          - type: display
+            reference: self.prompt.x
+`;
+      const result = runValidationDiff({ source });
+      expect(result.hydrationError).toBeNull();
+      expect(result.matched.some(hasAdvancementMessage)).toBe(true);
+      expect(result.sourceOnly.some(hasAdvancementMessage)).toBe(false);
+    });
+
+    it("never fully hides a real no-advancement bug, even mixed with a suppressible artifact", () => {
+      // Both a suppressible artifact (intro step → resolving template)
+      // and a real bug (concrete exit step, no advancement) share the
+      // identical message. The v1 multiset diff matches by
+      // `(code, normalized_message)`, so the two collapse and get routed
+      // by order — the real bug can land in either `matched` or
+      // `sourceOnly` (an acknowledged option-1 limitation, see #321). The
+      // invariant that must hold regardless: the advancement problem is
+      // still surfaced somewhere, and suppression — which only checks
+      // step contents — cannot drop the concrete-no-advancement step.
+      const source = `templates:
+  - name: advanceBtn
+    contentType: elements
+    content:
+      - type: submitButton
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - template: advanceBtn
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: submitButton
+    exitSequence:
+      - name: broken
+        elements:
+          - type: display
+            reference: self.prompt.x
+`;
+      const result = runValidationDiff({ source });
+      expect(result.hydrationError).toBeNull();
+      const stillSurfaced =
+        result.matched.some(hasAdvancementMessage) ||
+        result.sourceOnly.some(hasAdvancementMessage);
+      expect(stillSurfaced).toBe(true);
+    });
+
+    it("KEEPS the warning when the invoked template is defined but resolves through a further (unresolved-at-one-level) template", () => {
+      // The step invokes `wrap`, whose content is itself only another
+      // `template:` invocation — no lexical advancement element one level
+      // deep. Hydration still succeeds (wrap → inner → submitButton) so
+      // this lands in sourceOnly, but the static one-level check can't
+      // prove it, so we conservatively keep the warning.
+      const source = `templates:
+  - name: wrap
+    contentType: elements
+    content:
+      - template: inner
+  - name: inner
+    contentType: elements
+    content:
+      - type: submitButton
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - template: wrap
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: submitButton
+`;
+      const result = runValidationDiff({ source });
+      expect(result.hydrationError).toBeNull();
+      // Kept as a source-only warning (not provable one level deep).
+      expect(result.sourceOnly.some(hasAdvancementMessage)).toBe(true);
     });
   });
 
