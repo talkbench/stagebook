@@ -332,7 +332,7 @@ function UnrenderableScreen({
     <div style={centeredStyle}>
       <div style={{ maxWidth: "40rem", width: "100%", padding: "2rem" }}>
         <p style={{ color: "#ef4444", fontWeight: 600 }}>
-          This file can’t be previewed until its errors are fixed
+          This file can’t be previewed until the problems below are fixed
         </p>
         <p
           style={{

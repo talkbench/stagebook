@@ -9,6 +9,17 @@ import {
  * Format a count as "N error(s)" / "N warning(s)", omitting zero categories.
  * "2 errors, 1 warning" · "1 warning" · "3 errors".
  */
+/**
+ * A content-derived key so rows keep their identity when the list re-sorts
+ * (index keys would let React reuse the wrong row across a reorder). Position +
+ * severity + message is effectively unique; truly identical diagnostics are
+ * interchangeable, so a rare collision is harmless.
+ */
+function diagnosticKey(d: ViewerDiagnostic): string {
+  const pos = d.range ? `${d.range.startLine}:${d.range.startCol}` : "-";
+  return `${d.severity}|${d.file}|${pos}|${d.message}`;
+}
+
 function summaryLabel(errors: number, warnings: number): string {
   const parts: string[] = [];
   if (errors > 0) parts.push(`${errors} ${errors === 1 ? "error" : "errors"}`);
@@ -36,8 +47,8 @@ export function DiagnosticsList({
   const sorted = sortDiagnostics(diagnostics);
   return (
     <ul style={listStyle}>
-      {sorted.map((d, i) => (
-        <li key={i} style={rowStyle(d.severity)}>
+      {sorted.map((d) => (
+        <li key={diagnosticKey(d)} style={rowStyle(d.severity)}>
           <span style={iconStyle(d.severity)} aria-hidden>
             {d.severity === "error" ? "✕" : "⚠"}
           </span>
