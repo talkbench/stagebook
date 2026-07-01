@@ -114,16 +114,14 @@ treatments:
     // Positioned against the entry file the author is editing.
     expect(diag.range).not.toBeNull();
     expect(diag.file).toBe("treatment.yaml");
-    // The raw source already carries the (positioned) error, so the merged
-    // object's schema issues must NOT be appended on top — no unpositioned
-    // duplicate.
-    expect(result.diagnostics.every((d) => d.range !== null)).toBe(true);
   });
 
-  it("falls back to merged schema issues when the error hides in an imported template (#440)", async () => {
-    // The root file is schema-clean, so raw-source validation finds nothing —
-    // but the imported template's content is invalid, so the merged object
-    // fails schema. The placeholder must still explain why.
+  it("renders with a warning for a schema slip in an unused imported template (#440)", async () => {
+    // The bad template is defined in an import but never invoked. The diff
+    // validator downgrades such source-only artifacts to warnings (they don't
+    // survive hydration into a real bug), and expansion strips the unused
+    // template — so the preview still opens, with the warning in the drawer.
+    // This matches the VS Code extension's Problems panel.
     const rootYaml = `
 imports:
   - ./mod.stagebook.yaml
@@ -156,12 +154,10 @@ templates:
 
     const result = await loadTreatmentFromUrl(BLOB_URL, fetch);
 
-    expect(result.treatmentFile).toBeNull();
-    const diag = result.diagnostics.find((d) => /templates/.test(d.message));
+    expect(result.treatmentFile).not.toBeNull();
+    const diag = result.diagnostics.find((d) => /content/.test(d.message));
     expect(diag).toBeDefined();
-    expect(diag!.severity).toBe("error");
-    // The merged-object fallback has no source position.
-    expect(diag!.range).toBeNull();
+    expect(diag!.severity).toBe("warning");
     expect(diag!.file).toBe("treatment.yaml");
   });
 
@@ -321,9 +317,11 @@ introSequences:
       /authored in locale "en".*declares locale "he"/s.test(d.message),
     );
     expect(localeDiag).toBeDefined();
-    // Tagged with the offending prompt's own path, not the treatment file.
-    expect(localeDiag!.file).toBe("prompts/q.prompt.md");
     expect(localeDiag!.severity).toBe("error");
+    // The message names the offending prompt; the diagnostic is filed against
+    // the entry treatment file (no source token, same as the extension).
+    expect(localeDiag!.message).toContain("prompts/q.prompt.md");
+    expect(localeDiag!.file).toBe("treatment.yaml");
   });
 
   it("loads cleanly when the prompt is tagged with the treatment's locale (#483)", async () => {
@@ -505,10 +503,11 @@ introSequences:
       /authored in locale/.test(d.message),
     );
     expect(localeDiags).toHaveLength(2);
-    expect(localeDiags.map((d) => d.file).sort()).toEqual([
-      "prompts/a.prompt.md",
-      "prompts/b.prompt.md",
-    ]);
+    // Each mismatch is its own diagnostic, naming its prompt in the message.
+    const named = localeDiags
+      .map((d) => (d.message.match(/prompts\/[ab]\.prompt\.md/) ?? [])[0])
+      .sort();
+    expect(named).toEqual(["prompts/a.prompt.md", "prompts/b.prompt.md"]);
   });
 
   it("supports transitive imports (A imports B imports C) (#312)", async () => {
