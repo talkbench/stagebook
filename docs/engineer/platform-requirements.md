@@ -282,9 +282,11 @@ Two responsibilities that only the host can handle:
 
 For experiments where "why did this stage end?" matters — IRB protocols,
 participant compensation, data interpretation — record the advance reason
-alongside your per-stage timing (`duration_*`, `submitButton_*`). Stagebook
-does **not** emit this record; the host stamps it, because all three reasons
-already arrive on channels the host controls:
+alongside your host's own per-stage timing (the `submitButton_<name>` value
+from the [Key Patterns](#key-patterns) table, plus whatever stage-duration
+field your export records). Stagebook does **not** emit this record; the host
+stamps it, because all three reasons already arrive on channels the host
+controls:
 
 | Reason      | How the host sees it                                                                      |
 | ----------- | ----------------------------------------------------------------------------------------- |
@@ -295,7 +297,7 @@ already arrive on channels the host controls:
 Because these are separate channels, the host can label each advance without
 stagebook re-deriving anything. A minimal record — e.g.
 `player.stage.set("advanceRecord", { stageId, reason, stageElapsed })` — flows
-through to the JSONL export next to the existing timing fields.
+through to the JSONL export next to the host's other per-stage fields.
 
 > One caveat: if you do **not** implement `advanceStage`, stagebook falls back
 > to `submit()`, and a condition-driven advance becomes indistinguishable from
