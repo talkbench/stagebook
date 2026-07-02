@@ -278,6 +278,35 @@ Two responsibilities that only the host can handle:
 | Force-submit for disconnected players             |           | ✅   |
 | Hydration sentinel / atomic store snapshot        |           | ✅   |
 
+#### Recording the advance reason (auditability)
+
+For experiments where "why did this stage end?" matters — IRB protocols,
+participant compensation, data interpretation — record the advance reason
+alongside your per-stage timing (`duration_*`, `submitButton_*`). Stagebook
+does **not** emit this record; the host stamps it, because all three reasons
+already arrive on channels the host controls:
+
+| Reason      | How the host sees it                                                                      |
+| ----------- | ----------------------------------------------------------------------------------------- |
+| `condition` | `advanceStage()` fired — deliberately a distinct callback from `submit()`                 |
+| `submit`    | a `submitButton` element fired `submit()` (leaves a `submitButton_*` value)               |
+| `timer`     | the host's own stage-duration timer elapsed — stagebook never auto-advances on `duration` |
+
+Because these are separate channels, the host can label each advance without
+stagebook re-deriving anything. A minimal record — e.g.
+`player.stage.set("advanceRecord", { stageId, reason, stageElapsed })` — flows
+through to the JSONL export next to the existing timing fields.
+
+> One caveat: if you do **not** implement `advanceStage`, stagebook falls back
+> to `submit()`, and a condition-driven advance becomes indistinguishable from
+> a user submit. Hosts that record the advance reason should always implement
+> `advanceStage` so the `condition` channel stays distinct.
+
+Stagebook intentionally owns none of this: at this granularity it knows nothing
+the host doesn't. (The richer "which condition fired, with what resolved
+values" record — the one thing only stagebook could compute — was scoped out;
+see deliberation-lab/stagebook#199.)
+
 ---
 
 ## 3. Group Formation (required for multiplayer)
