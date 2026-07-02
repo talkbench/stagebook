@@ -476,6 +476,80 @@ describe("locale-consistency rule", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Unsatisfiable-condition rule (#480): a condition reading a prompt's answer
+// whose comparator can never match any value the prompt produces (dead gate)
+// is flagged as an error, reading the referenced prompt's option domain from
+// disk through the same expand-then-check pipeline the locale rule uses.
+// ---------------------------------------------------------------------------
+
+describe("unsatisfiable-condition rule", () => {
+  let dir: string;
+
+  function treatmentYaml(comparator: string, value: string): string {
+    return [
+      "treatments:",
+      "  - name: t1",
+      "    playerCount: 1",
+      "    gameStages:",
+      "      - name: s1",
+      "        duration: 10",
+      "        elements:",
+      "          - type: prompt",
+      "            name: goal",
+      "            file: prompts/goal.prompt.md",
+      "          - type: submitButton",
+      "            conditions:",
+      "              - reference: self.prompt.goal",
+      `                comparator: ${comparator}`,
+      `                value: "${value}"`,
+      "",
+    ].join("\n");
+  }
+
+  const GOAL_PROMPT = [
+    "---",
+    "type: multipleChoice",
+    "---",
+    "What is your goal?",
+    "---",
+    "- Understand your partner's perspective",
+    "- Find common ground",
+    "",
+  ].join("\n");
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "stagebook-cli-deadgate-"));
+    await mkdir(join(dir, "prompts"));
+    await writeFile(join(dir, "prompts", "goal.prompt.md"), GOAL_PROMPT);
+  });
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("errors on a condition no option can satisfy", async () => {
+    await writeFile(
+      join(dir, "dead.stagebook.yaml"),
+      treatmentYaml("includes", "joint solution"),
+    );
+    const r = await runCli([join(dir, "dead.stagebook.yaml")]);
+    expect(r.code).toBe(1);
+    expect(r.stdout).toContain("Unsatisfiable condition");
+    expect(r.stdout).toContain("self.prompt.goal");
+  });
+
+  it("passes when at least one option satisfies the condition", async () => {
+    await writeFile(
+      join(dir, "live.stagebook.yaml"),
+      treatmentYaml("includes", "common ground"),
+    );
+    const r = await runCli([join(dir, "live.stagebook.yaml")]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).not.toContain("Unsatisfiable condition");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Locale rule × template machinery — the ADR's single-source authoring
 // pattern (contentType: treatment, ${locale} threaded into both the
 // top-level locale: and the prompt paths), exercised end-to-end through

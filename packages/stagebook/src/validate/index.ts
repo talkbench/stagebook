@@ -9,6 +9,7 @@ export * from "./offsetToLineCol.js";
 export * from "./unrecognizedKeyMessage.js";
 export * from "./loadAndMergeImports.js";
 export * from "./localeConsistency.js";
+export * from "./unsatisfiableConditions.js";
 export * from "./parseTreatmentSource.js";
 export * from "./validateTreatment.js";
 export * from "./validatePrompt.js";

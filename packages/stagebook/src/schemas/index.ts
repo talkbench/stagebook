@@ -118,6 +118,11 @@ export {
 } from "./localeConsistency.js";
 
 export {
+  checkUnsatisfiableConditions,
+  type UnsatisfiableConditionIssue,
+} from "./unsatisfiableConditions.js";
+
+export {
   collectPreHydrationIssues,
   type PreHydrationIssue,
   type PreHydrationInput,

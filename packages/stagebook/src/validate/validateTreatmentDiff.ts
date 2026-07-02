@@ -8,6 +8,7 @@ import {
 import type { ZodIssue } from "zod";
 import { loadAndMergeImports } from "./loadAndMergeImports.js";
 import { checkPromptLocaleConsistencyWithLoader } from "./localeConsistency.js";
+import { checkUnsatisfiableConditionsWithLoader } from "./unsatisfiableConditions.js";
 import { createPositionMapper, extractYamlErrors } from "./yamlPositionMap.js";
 import type { Diagnostic } from "./types.js";
 
@@ -237,6 +238,26 @@ export async function validateTreatmentWithDiff({
         message: mismatch.message,
         severity: "error",
         range: null,
+      });
+    }
+
+    // Post-hydration unsatisfiable-condition rule (#480): a condition that
+    // reads a prompt's answer but whose comparator can never match any value
+    // the prompt can produce is a dead gate (submit never enables / element
+    // never shows). Cross-file — it loads each referenced prompt's value
+    // domain via the same `loadImport` bridge. Runs on the hydrated tree so
+    // references and prompt `file:` paths are concrete; the leaf path maps
+    // back to a source position via the same walk-up as the resolved-schema
+    // issues above.
+    const deadGates = await checkUnsatisfiableConditionsWithLoader({
+      fileObj: diff.hydrated,
+      loadPrompt: loadImport,
+    });
+    for (const issue of deadGates) {
+      diagnostics.push({
+        message: issue.message,
+        severity: "error",
+        range: resolveOrWalkUp(mapper, issue.path),
       });
     }
   }

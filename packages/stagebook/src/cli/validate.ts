@@ -10,6 +10,7 @@ import {
   validatePromptSource,
   expandAndValidateWithImports,
   checkPromptLocaleConsistencyWithLoader,
+  checkUnsatisfiableConditionsWithLoader,
 } from "../validate/index.js";
 import { load as loadYaml } from "js-yaml";
 
@@ -249,6 +250,7 @@ export async function run({
     if (!result.expandError) {
       diagnostics.push(
         ...(await checkLocaleConsistencyDiagnostics(result.fullYaml, dir)),
+        ...(await checkUnsatisfiableConditionDiagnostics(result.fullYaml, dir)),
       );
     }
     results.push({ path: displayPath, type: "treatment", diagnostics });
@@ -307,6 +309,45 @@ async function checkLocaleConsistencyDiagnostics(
   return mismatches.map((mismatch) => ({
     severity: "error" as const,
     message: mismatch.message,
+    range: null,
+  }));
+}
+
+/**
+ * Run the unsatisfiable-condition rule (#480) over the expanded treatment,
+ * reading each referenced prompt's value-domain from disk via the shared
+ * `checkUnsatisfiableConditionsWithLoader` wiring (same loop the extension and
+ * viewer use). Unreadable or unparseable prompts are skipped — those are
+ * different error classes, reported when the files are validated directly.
+ * Diagnostics carry `range: null` (top of file): the check runs on the
+ * *expanded* YAML, whose positions don't map to the source file, so the
+ * message names the offending reference and comparator as the locator.
+ */
+async function checkUnsatisfiableConditionDiagnostics(
+  fullYaml: string,
+  dir: string,
+): Promise<Diagnostic[]> {
+  let fileObj: unknown;
+  try {
+    fileObj = loadYaml(fullYaml);
+  } catch {
+    return []; // YAML errors are already reported by the schema pass
+  }
+
+  const issues = await checkUnsatisfiableConditionsWithLoader({
+    fileObj,
+    loadPrompt: async (relPath) => {
+      try {
+        return await readFile(resolvePath(dir, relPath), "utf8");
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  return issues.map((issue) => ({
+    severity: "error" as const,
+    message: issue.message,
     range: null,
   }));
 }

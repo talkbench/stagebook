@@ -23,6 +23,7 @@ const EXPECTED_FUNCTIONS = [
   "extractYamlErrors",
   "remapErrorPath",
   "offsetToLineCol",
+  "checkUnsatisfiableConditionsWithLoader",
 ] as const;
 
 describe("stagebook/validate public API", () => {

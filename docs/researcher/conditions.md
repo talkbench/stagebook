@@ -458,7 +458,7 @@ See [platform-requirements.md](../engineer/platform-requirements.md) for the ful
 
 ## Preflight reference validation
 
-References (in conditions, `display.reference`, `trackedLink` / `qualtrics` `urlParams`, discussion conditions, and `groupComposition` conditions) are checked at preflight. Two rules, the second of which is stage-condition-specific:
+References (in conditions, `display.reference`, `trackedLink` / `qualtrics` `urlParams`, discussion conditions, and `groupComposition` conditions) are checked at preflight. Three rules, the second of which is stage-condition-specific:
 
 ### No forward references — everywhere
 
@@ -493,3 +493,21 @@ conditions:
 ```
 
 This rule only applies to stage-level conditions. Element-level conditions, `display.reference`, `urlParams`, and discussion conditions all have "wait for data to arrive" semantics where false-at-load is the standard pattern (e.g., a submit button that appears only after the prompt is answered).
+
+### No unsatisfiable conditions — dead gates
+
+A condition that reads a prompt's answer (`self.prompt.<name>.value`) is rejected when **no value the prompt can ever produce** satisfies the comparator — a _dead gate_. The classic cause is editing an option's wording without updating the condition (or vice versa): the reference still resolves and the YAML is well-formed, but at runtime the gate never resolves — the submit button never enables, or the conditional element never shows.
+
+Rejected at preflight (the prompt's options contain that substring in none of them):
+
+```yaml
+# goal.prompt.md options: "…", "To explore possible ways forward you both could live with"
+conditions:
+  - reference: self.prompt.goal.value
+    comparator: includes
+    value: "joint solution" # substring of NO option → dead gate
+```
+
+The check compares against the prompt's bounded value domain: `multipleChoice` / `dropdown` options, `slider` snap points, and `openResponse` length bounds (`minLength` / `maxLength`). It runs on **every** `conditions:` block — display and submit alike — so chained gates (an element shown only if a prior answer matches, whose own answer then gates submit) fall out naturally.
+
+It stays silent whenever it can't _prove_ a gate is dead, so false positives are near zero: negative comparators (`doesNotEqual`, `doesNotInclude`, …) and `exists` / `doesNotExist` are satisfiable before any answer arrives; free-text `openResponse` value comparisons can't be disproven; leaves inside `any:` / `none:` operators aren't flagged (a sibling can carry the gate); and `matches` regexes, multi-select checkboxes, and `listSorter` are not checked. It proves _reachability_ (at least one option can satisfy the gate), not _correctness_ — a gate that matches the wrong option still passes.

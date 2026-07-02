@@ -461,6 +461,71 @@ introSequences:
     });
   });
 
+  describe("unsatisfiable conditions (#480)", () => {
+    const withGate = (comparator: string, value: string) => `treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: prompt
+            name: goal
+            file: goal.prompt.md
+          - type: submitButton
+            conditions:
+              - reference: self.prompt.goal
+                comparator: ${comparator}
+                value: "${value}"
+`;
+    const goalPrompt =
+      "---\ntype: multipleChoice\n---\nGoal?\n---\n- Understand your partner\n- Find common ground\n";
+
+    it("flags a dead gate at the precise `value:` token, as an error", async () => {
+      const source = withGate("includes", "joint solution");
+      const result = await validateTreatmentWithDiff({
+        source,
+        loadImport: loaderFromMap({ "goal.prompt.md": goalPrompt }),
+      });
+      const deadGate = result.diagnostics.find((d) =>
+        d.message.includes("Unsatisfiable condition"),
+      );
+      expect(deadGate).toBeDefined();
+      expect(deadGate!.severity).toBe("error");
+      // The whole point of the diff path (vs. the CLI's range: null) is a
+      // precise source position: the range must bracket the exact offending
+      // token, `"joint solution"`, not merely fall somewhere after line 0.
+      const { range } = deadGate!;
+      expect(range).not.toBeNull();
+      const line = source.split("\n")[range!.startLine];
+      expect(line.slice(range!.startCol, range!.endCol)).toContain(
+        "joint solution",
+      );
+    });
+
+    it("stays silent when the condition is satisfiable", async () => {
+      const result = await validateTreatmentWithDiff({
+        source: withGate("includes", "common ground"),
+        loadImport: loaderFromMap({ "goal.prompt.md": goalPrompt }),
+      });
+      const deadGate = result.diagnostics.find((d) =>
+        d.message.includes("Unsatisfiable condition"),
+      );
+      expect(deadGate).toBeUndefined();
+    });
+
+    it("stays silent when the prompt file can't be loaded", async () => {
+      const result = await validateTreatmentWithDiff({
+        source: withGate("includes", "joint solution"),
+        loadImport: noImports,
+      });
+      const deadGate = result.diagnostics.find((d) =>
+        d.message.includes("Unsatisfiable condition"),
+      );
+      expect(deadGate).toBeUndefined();
+    });
+  });
+
   describe("YAML parse errors are preserved", () => {
     it("surfaces a YAML duplicate-key warning at the offending line", async () => {
       const source = `treatments:
