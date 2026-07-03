@@ -120,7 +120,11 @@ export function checkPairing(
   for (const treatment of selectedTreatments) {
     const name = String(treatment.name);
     const declared = treatment.introSequences;
-    if (typeof declared === "string" || !Array.isArray(declared)) {
+    if (
+      typeof declared === "string" ||
+      !Array.isArray(declared) ||
+      declared.some((d) => typeof d !== "string")
+    ) {
       diagnostics.push(
         error(
           `Treatment "${name}" has an uninterpretable \`introSequences:\` declaration (${describeDeclaration(

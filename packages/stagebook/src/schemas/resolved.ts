@@ -287,11 +287,15 @@ export const resolvedTreatmentSchema = z.object({
   name: nameSchema,
   playerCount: z.number(),
   // Post-fill the declared pairing (#499) must be a concrete array of
-  // sequence names. BOTH leak forms are tagged `unresolved-placeholder`
+  // sequence names. Placeholder LEAKS (whole-field string or per-item
+  // entry still carrying `${...}`) are tagged `unresolved-placeholder`
   // (filtered in authoring contexts via `skipUnresolved`, hard errors in
-  // production hosts): the whole-field form arrives as a string, and the
-  // per-item form needs an explicit check because nameSchema
-  // deliberately ACCEPTS `${field}` placeholders (legal pre-fill).
+  // production hosts); a plain non-placeholder string is a SHAPE error
+  // (`introSequences: onboarding` instead of `[onboarding]`) and stays a
+  // hard error everywhere — misdiagnosing it as a binding problem would
+  // let authoring contexts silently swallow it. The per-item check is
+  // explicit because nameSchema deliberately ACCEPTS `${field}`
+  // placeholders (legal pre-fill).
   introSequences: z
     .array(
       nameSchema.superRefine((name, ctx) => {
@@ -306,11 +310,18 @@ export const resolvedTreatmentSchema = z.object({
     )
     .or(
       z.string().superRefine((value, ctx) => {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `introSequences is an unresolved \`${value}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row or additionalFields.`,
-          params: { reason: "unresolved-placeholder" },
-        });
+        if (value.includes("${")) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `introSequences is an unresolved \`${value}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row or additionalFields.`,
+            params: { reason: "unresolved-placeholder" },
+          });
+        } else {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `introSequences must be an array of intro-sequence names; got the string "${value}". Did you mean \`introSequences: [${value}]\`?`,
+          });
+        }
       }),
     ),
   // Post-fill the locale is a concrete BCP-47 tag — no `${field}` placeholder

@@ -543,3 +543,34 @@ describe("resolved: placeholder leaks are tagged for authoring contexts", () => 
     );
   });
 });
+
+describe("resolved: plain-string shape error is NOT masked as a placeholder leak", () => {
+  test("introSequences: 'onboarding' → hard error everywhere, with array suggestion", () => {
+    const file = {
+      treatments: [
+        {
+          name: "t",
+          playerCount: 1,
+          introSequences: "onboarding",
+          gameStages: [
+            {
+              name: "s1",
+              duration: 60,
+              elements: [{ type: "submitButton", name: "done" }],
+            },
+          ],
+        },
+      ],
+    };
+    const strict = validateResolvedTreatmentFile(file);
+    expect(strict.success).toBe(false);
+    expect(
+      strict.issues.some((i) =>
+        /Did you mean `introSequences: \[onboarding\]`/.test(i.message),
+      ),
+    ).toBe(true);
+    // A shape error is not a binding problem — skipUnresolved must NOT hide it.
+    const lax = validateResolvedTreatmentFile(file, { skipUnresolved: true });
+    expect(lax.issues.length).toBeGreaterThan(0);
+  });
+});

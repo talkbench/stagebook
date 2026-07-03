@@ -196,3 +196,18 @@ describe("checkPairing", () => {
     expect(diags.some((d) => /placeholder|expand/i.test(d.message))).toBe(true);
   });
 });
+
+describe("checkPairing input hygiene (Copilot review)", () => {
+  test("array with non-string entries → uninterpretable-declaration error, not a confusing constraint error", () => {
+    const file = structuredClone(FILE) as Record<string, unknown>;
+    (file.treatments as Record<string, unknown>[])[0].introSequences = [
+      5,
+      "prolific",
+    ];
+    const diags = checkPairing(file, { introSequenceName: "prolific" }, [
+      "uses_color",
+    ]);
+    expect(diags).toHaveLength(1);
+    expect(diags[0].message).toMatch(/uninterpretable/);
+  });
+});
