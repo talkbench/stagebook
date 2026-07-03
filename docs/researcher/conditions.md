@@ -386,6 +386,28 @@ groupComposition:
 
 **Note:** Group assignment conditions can only use the participant's own responses — reference strings must use the `self` position selector.
 
+## Consent gating
+
+Gated consent (#481) uses ordinary element conditions — a submit button in a consent step conditioned on acknowledgement checkboxes in the **same step** is the sanctioned pattern. Element conditions re-evaluate live against in-memory responses, so the "I consent" button enables the moment the boxes are checked:
+
+```yaml
+consent:
+  - name: consent-en
+    steps:
+      - name: consent-info
+        elements:
+          - type: prompt
+            file: consent/en/acknowledge.prompt.md
+            name: acknowledge
+          - type: submitButton
+            buttonText: I consent
+            conditions:
+              - reference: self.prompt.acknowledge
+                comparator: exists
+```
+
+References travel the other way only inside consent: a later consent step may read an earlier one in the same arm, but a reference **into** consent from anywhere else — intro, game, exit, `groupComposition`, or debrief — is an error. Consent responses are audit-only (see [Consent](treatment-files.md#consent)); if downstream logic needs an answer, collect it in an intro step instead.
+
 ## Stage-level conditions
 
 Any stage, intro step, or exit step can carry its own `conditions` array. Think of it as: _this stage should be active while these conditions hold._ When any condition is false, stagebook asks the host to advance — either skipping the stage at load (if the data comes from an earlier stage) or ending it early (if it comes from the current stage).

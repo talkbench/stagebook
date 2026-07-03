@@ -21,7 +21,17 @@
 # The locale-consistency rule enforces the pairing: a prompt under
 # prompts/he/ must declare `locale: he` in its frontmatter, and it's
 # checked against its CONTAINER's locale (the intro sequence for the
-# welcome step, the treatment for the game stages).
+# welcome step, the consent ARM for consent steps, the treatment for
+# the game stages AND the debrief).
+#
+# Consent (#481) is a top-level collection of arms; the host selects
+# one arm by name, before anything else runs. Like intro sequences,
+# arms declare their own locale, so the same `${locale}` single-source
+# pattern applies — one `contentType: consentArm` template, one arm per
+# language. Consent responses are audit-only: nothing outside consent
+# may reference them, but a SAME-STEP reference is legal and
+# live-reactive, which is what gates the "I consent" button on the
+# acknowledgement checkbox below.
 
 templates:
   # --- Intro sequence (pre-assignment; declares its own locale) ---
@@ -39,6 +49,35 @@ templates:
             - type: prompt
               file: prompts/${locale}/intro.prompt.md
             - type: submitButton
+
+  # --- Consent arm (runs first; host selects the arm by name) ---
+  - name: gallery-consent
+    contentType: consentArm
+    notes: |
+      The GATED consent pattern, localized. The acknowledgement
+      checkbox and the "I consent" button share one step, and the
+      button's `conditions:` pass only once the checkbox includes the
+      localized option text (same-step consent references are
+      live-reactive). The button label and the gate value are
+      participant-facing STRINGS, not files, so each arm threads them
+      through template fields alongside its locale.
+    content:
+      name: gallery consent ${locale}
+      locale: ${locale}
+      steps:
+        - name: consent
+          elements:
+            - type: prompt
+              file: prompts/${locale}/consent.prompt.md
+            - type: prompt
+              name: consent_ack
+              file: prompts/${locale}/acknowledge.prompt.md
+            - type: submitButton
+              buttonText: ${consent_label}
+              conditions:
+                - reference: self.prompt.consent_ack
+                  comparator: includes
+                  value: ${ack_text}
 
   # --- Treatment body (game stages) ---
   - name: gallery-body
@@ -109,6 +148,28 @@ templates:
             - type: prompt
               file: prompts/${locale}/open.prompt.md
             - type: submitButton
+
+      # Debrief steps run after the game stages and inherit the
+      # treatment's locale — so this prompt file is checked against the
+      # same locale the arm declared up top, no extra plumbing.
+      debrief:
+        - name: purpose
+          elements:
+            - type: prompt
+              file: prompts/${locale}/debrief.prompt.md
+            - type: submitButton
+
+consent:
+  - template: gallery-consent
+    fields:
+      locale: en
+      consent_label: I consent
+      ack_text: I have read and understood the information above
+  - template: gallery-consent
+    fields:
+      locale: he
+      consent_label: אני מסכים/ה
+      ack_text: קראתי והבנתי את המידע שלמעלה
 
 introSequences:
   - template: gallery-intro

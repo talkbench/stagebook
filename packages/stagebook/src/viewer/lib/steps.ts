@@ -4,7 +4,7 @@ import type {
   ConditionType,
 } from "../../schemas/index.js";
 
-export type Phase = "intro" | "game" | "exit";
+export type Phase = "consent" | "intro" | "game" | "exit" | "debrief";
 
 export interface ViewerStep {
   index: number;
@@ -26,34 +26,45 @@ export interface ViewerStep {
 }
 
 /**
- * A separately-selectable unit of a study: one intro sequence OR one
- * treatment. The viewer walks **one unit at a time** (rather than pairing an
- * intro with a treatment), which matches how researchers author each phase
- * independently — and removes any which-intro-goes-with-which-treatment
- * pairing logic. Each unit carries its own locale (intro sequences run before
- * treatment assignment, so they declare their own).
+ * A separately-selectable unit of a study: one consent arm, one intro
+ * sequence, OR one treatment. The viewer walks **one unit at a time** (rather
+ * than pairing an intro with a treatment), which matches how researchers
+ * author each phase independently — and removes any
+ * which-intro-goes-with-which-treatment pairing logic. Each unit carries its
+ * own locale (consent arms and intro sequences run before treatment
+ * assignment, so they declare their own).
  */
 export interface ViewerUnit {
-  /** Stable key, e.g. `intro:0` / `treatment:1`. */
+  /** Stable key, e.g. `consent:0` / `intro:0` / `treatment:1`. */
   key: string;
-  kind: "intro" | "treatment";
+  kind: "consent" | "intro" | "treatment";
   name: string;
   locale: string;
-  /** Participant count for the inspector; 1 for intro (pre-assignment). */
+  /** Participant count for the inspector; 1 for consent/intro
+   *  (pre-assignment). */
   playerCount: number;
   /** The unit's own stages, plus a trailing synthetic transition step. */
   steps: ViewerStep[];
 }
 
+/** The shared per-participant step shape (consent/intro/exit/debrief). */
+interface StepShape {
+  name: string;
+  notes?: string;
+  conditions?: ConditionType[];
+  elements: ElementType[];
+}
+
+interface ConsentArm {
+  name: string;
+  locale?: string;
+  steps: StepShape[];
+}
+
 interface IntroSequence {
   name: string;
   locale?: string;
-  introSteps: {
-    name: string;
-    notes?: string;
-    conditions?: ConditionType[];
-    elements: ElementType[];
-  }[];
+  introSteps: StepShape[];
 }
 
 interface Treatment {
@@ -68,26 +79,25 @@ interface Treatment {
     elements: ElementType[];
     discussion?: DiscussionType;
   }[];
-  exitSequence?: {
-    name: string;
-    notes?: string;
-    conditions?: ConditionType[];
-    elements: ElementType[];
-  }[];
+  exitSequence?: StepShape[];
+  debrief?: StepShape[];
 }
 
 /**
- * The participant-facing locale for a given phase. Intro steps render under
- * the intro sequence's declared locale (intro runs before treatment
- * assignment, so it carries its own); game + exit steps under the treatment's.
- * Both default to English. Which locale a real participant sees is the host's
- * assignment decision — this just reports what each phase declares.
+ * The participant-facing locale for a given phase. Consent steps render under
+ * the consent arm's declared locale and intro steps under the intro
+ * sequence's (both run before treatment assignment, so they carry their own);
+ * game + exit + debrief steps under the treatment's. All default to English.
+ * Which locale a real participant sees is the host's assignment decision —
+ * this just reports what each phase declares.
  */
 export function localeForPhase(
   phase: Phase | undefined,
+  consentArm: { locale?: string } | undefined,
   introSequence: { locale?: string } | undefined,
   treatment: { locale?: string },
 ): string {
+  if (phase === "consent") return consentArm?.locale ?? "en";
   if (phase === "intro") return introSequence?.locale ?? "en";
   return treatment.locale ?? "en";
 }
@@ -144,37 +154,72 @@ export function flattenSteps(
     }
   }
 
+  // Debrief renders last (#481): in a real study the platform runs quality
+  // checks and issues the completion code between exit and debrief.
+  for (const step of treatment.debrief ?? []) {
+    steps.push({
+      index: index++,
+      phase: "debrief",
+      name: step.name,
+      elements: step.elements,
+      notes: step.notes,
+      conditions: step.conditions,
+    });
+  }
+
   return steps;
 }
 
 interface TreatmentFileShape {
+  consent?: ConsentArm[];
   introSequences?: IntroSequence[];
   treatments?: Treatment[];
 }
 
 function transitionStep(
   index: number,
-  kind: "intro" | "treatment",
+  kind: "consent" | "intro" | "treatment",
   name: string,
-  opts: { hasPicker: boolean; hasTreatmentToPreview: boolean },
+  opts: {
+    hasPicker: boolean;
+    hasIntroToPreview: boolean;
+    hasTreatmentToPreview: boolean;
+    /** Treatment units only: the unit ends with debrief steps, so the
+     *  trailing transition follows the debrief rather than promising one. */
+    hasDebrief?: boolean;
+  },
 ): ViewerStep {
   // Narrate the platform's between-phase behavior the preview can't simulate.
-  // Only point at "the picker above" when one actually exists (2+ units) and,
-  // for an intro, only mention previewing a treatment when one exists — a
+  // Only point at "the picker above" when one actually exists (2+ units) and
+  // only mention previewing a specific next part when one exists — a
   // single-unit or intro-only preview has no such control/target (#485 review).
-  const base =
-    kind === "intro"
-      ? `End of the intro sequence “${name}”. In a real study, participants are now assigned to a condition and matched into a group.`
-      : `End of “${name}”. In a real study, participants would now finish the session (and complete any debrief).`;
+  let base: string;
+  if (kind === "consent") {
+    base = `End of the consent arm “${name}”. In a real study, participants now complete attention and equipment checks, then begin the intro sequence.`;
+  } else if (kind === "intro") {
+    base = `End of the intro sequence “${name}”. In a real study, participants are now assigned to a condition and matched into a group.`;
+  } else if (opts.hasDebrief) {
+    base = `End of “${name}”. In a real study, the session is now complete.`;
+  } else {
+    base = `End of “${name}”. In a real study, participants would now finish the session (and complete any debrief).`;
+  }
   let hint = "";
-  if (kind === "intro" && opts.hasPicker && opts.hasTreatmentToPreview) {
+  if (kind === "consent" && opts.hasPicker) {
+    hint = opts.hasIntroToPreview
+      ? " Use the picker above to preview an intro sequence."
+      : " Use the picker above to preview another part.";
+  } else if (kind === "intro" && opts.hasPicker && opts.hasTreatmentToPreview) {
     hint = " Use the picker above to preview a treatment.";
   } else if (kind === "treatment" && opts.hasPicker) {
     hint = " Use the picker above to preview another part.";
   }
+  let phase: Phase;
+  if (kind === "consent") phase = "consent";
+  else if (kind === "intro") phase = "intro";
+  else phase = opts.hasDebrief ? "debrief" : "exit";
   return {
     index,
-    phase: kind === "intro" ? "intro" : "exit",
+    phase,
     name: "→ transition",
     elements: [],
     isTransition: true,
@@ -183,18 +228,50 @@ function transitionStep(
 }
 
 /**
- * Build the flat list of separately-selectable units (each intro sequence and
- * each treatment), in picker order. Each unit's steps are its own stages plus
- * a trailing transition interstitial. A treatment-only file yields only
- * treatment units; an intro-only file only intro units.
+ * Build the flat list of separately-selectable units (each consent arm, intro
+ * sequence, and treatment), in picker order. Each unit's steps are its own
+ * stages plus a trailing transition interstitial. A treatment-only file
+ * yields only treatment units; an intro-only file only intro units.
  */
 export function buildUnits(treatmentFile: TreatmentFileShape): ViewerUnit[] {
   const units: ViewerUnit[] = [];
+  const consentArms = treatmentFile.consent ?? [];
   const introSequences = treatmentFile.introSequences ?? [];
   const treatments = treatmentFile.treatments ?? [];
   // A picker only renders when there's more than one unit to switch between.
-  const hasPicker = introSequences.length + treatments.length > 1;
+  const hasPicker =
+    consentArms.length + introSequences.length + treatments.length > 1;
+  const hasIntroToPreview = introSequences.length > 0;
   const hasTreatmentToPreview = treatments.length > 0;
+
+  // Consent runs before everything in a real study, so consent arms lead
+  // the picker order (#481).
+  consentArms.forEach((arm, i) => {
+    let index = 0;
+    const steps: ViewerStep[] = (arm.steps ?? []).map((step) => ({
+      index: index++,
+      phase: "consent" as const,
+      name: step.name,
+      elements: step.elements,
+      notes: step.notes,
+      conditions: step.conditions,
+    }));
+    steps.push(
+      transitionStep(index, "consent", arm.name, {
+        hasPicker,
+        hasIntroToPreview,
+        hasTreatmentToPreview,
+      }),
+    );
+    units.push({
+      key: `consent:${i}`,
+      kind: "consent",
+      name: arm.name,
+      locale: arm.locale ?? "en",
+      playerCount: 1,
+      steps,
+    });
+  });
 
   introSequences.forEach((seq, i) => {
     let index = 0;
@@ -209,6 +286,7 @@ export function buildUnits(treatmentFile: TreatmentFileShape): ViewerUnit[] {
     steps.push(
       transitionStep(index, "intro", seq.name, {
         hasPicker,
+        hasIntroToPreview,
         hasTreatmentToPreview,
       }),
     );
@@ -223,11 +301,37 @@ export function buildUnits(treatmentFile: TreatmentFileShape): ViewerUnit[] {
   });
 
   treatments.forEach((t, i) => {
-    const steps = flattenSteps(undefined, t);
+    // Flatten without the debrief so a transition interstitial can sit
+    // between exit and debrief: in a real study the platform runs quality
+    // checks and issues the completion code at that boundary (#481).
+    const steps = flattenSteps(undefined, { ...t, debrief: undefined });
+    if (t.debrief) {
+      steps.push({
+        index: steps.length,
+        phase: "exit",
+        name: "→ transition",
+        elements: [],
+        isTransition: true,
+        transitionCopy:
+          "In a real study, the platform now runs quality checks and issues the participant’s completion code, then shows the debrief.",
+      });
+      for (const step of t.debrief) {
+        steps.push({
+          index: steps.length,
+          phase: "debrief",
+          name: step.name,
+          elements: step.elements,
+          notes: step.notes,
+          conditions: step.conditions,
+        });
+      }
+    }
     steps.push(
       transitionStep(steps.length, "treatment", t.name, {
         hasPicker,
+        hasIntroToPreview,
         hasTreatmentToPreview,
+        hasDebrief: Boolean(t.debrief),
       }),
     );
     units.push({
