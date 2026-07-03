@@ -371,7 +371,20 @@ export type ResolvedTreatmentType = z.infer<typeof resolvedTreatmentSchema>;
 // Consent arm (#481) — post-fill: concrete name, concrete locale (a
 // leaked `${...}` fails the syntactic check, like intro sequences).
 const resolvedConsentArmSchema = z.object({
-  name: nameSchema,
+  // Post-fill the arm name must be CONCRETE: the host selects arms by
+  // name, so a leaked `${...}` (nameSchema accepts placeholders — they're
+  // legal pre-fill) would leave the missing binding invisible until
+  // host selection fails. Tagged like the other leak checks so authoring
+  // contexts can filter it via skipUnresolved.
+  name: nameSchema.superRefine((name, ctx) => {
+    if (name.includes("${")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Consent arm name is an unresolved \`${name}\` placeholder. The template field was not bound during fillTemplates — check the invocation's fields or broadcast row.`,
+        params: { reason: "unresolved-placeholder" },
+      });
+    }
+  }),
   locale: localeSchema.optional(),
   steps: z.array(resolvedIntroExitStepSchema).nonempty(),
 });

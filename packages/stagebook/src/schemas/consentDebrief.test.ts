@@ -7,6 +7,8 @@ import { validateTreatmentFileReferences } from "./validateReferences.js";
 import { collectStorageKeyCollisions } from "./storageKeyCollisions.js";
 import { checkPromptLocaleConsistency } from "./localeConsistency.js";
 import { validateResolvedTreatmentFile } from "./resolved.js";
+import { checkUnsatisfiableConditions } from "./unsatisfiableConditions.js";
+import { promptFileSchema } from "./promptFile.js";
 
 /**
  * Consent & debrief as first-class units (#481, Phase 1).
@@ -850,5 +852,141 @@ describe("resolved-layer uniqueness message hardening (Copilot review)", () => {
     expect(dup).toBeDefined();
     expect(dup!.message.length).toBeLessThan(300);
     expect(dup!.message).not.toContain("\u001b");
+  });
+});
+
+// --- Codex review round (#501) -------------------------------------------------
+
+describe("sampleId is pre-game in consent steps", () => {
+  test("consent condition on attributes.sampleId → error", () => {
+    const issues = validateTreatmentFileReferences({
+      consent: [
+        {
+          name: "c",
+          steps: [
+            {
+              name: "info",
+              elements: [
+                {
+                  type: "submitButton",
+                  conditions: [
+                    {
+                      reference: "self.attributes.sampleId",
+                      comparator: "exists",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const issue = issues.find((i) => /sampleId/.test(i.message));
+    expect(issue).toBeDefined();
+    expect(issue?.message).toContain("consent step");
+  });
+});
+
+describe("resolved consent-arm names must be concrete", () => {
+  test("leaked ${...} in an arm name → tagged error, filtered in authoring contexts", () => {
+    const step = {
+      name: "s",
+      elements: [{ type: "submitButton", name: "b" }],
+    };
+    const file = {
+      consent: [{ name: "consent ${locale}", locale: "en", steps: [step] }],
+    };
+    const strict = validateResolvedTreatmentFile(file);
+    expect(strict.success).toBe(false);
+    expect(
+      strict.issues.every((i) => i.reason === "unresolved-placeholder"),
+    ).toBe(true);
+    const lax = validateResolvedTreatmentFile(file, { skipUnresolved: true });
+    expect(lax.issues).toHaveLength(0);
+  });
+});
+
+describe("dead-gate rule (#480) covers consent and debrief steps", () => {
+  const ackPrompt = promptFileSchema.parse(
+    `---\ntype: multipleChoice\nselect: multiple\n---\nPick\n---\n- I have read and understood\n`,
+  );
+  const singlePrompt = promptFileSchema.parse(
+    `---\ntype: multipleChoice\n---\nPick\n---\n- Yes\n- No\n`,
+  );
+  const gate = (value: string) => ({
+    reference: "self.prompt.ack.value",
+    comparator: "includes",
+    value,
+  });
+
+  test("consent gate whose value matches no option → flagged", () => {
+    const issues = checkUnsatisfiableConditions(
+      {
+        consent: [
+          {
+            name: "c",
+            steps: [
+              {
+                name: "info",
+                elements: [
+                  { type: "prompt", file: "ack.prompt.md", name: "ack" },
+                  { type: "submitButton", conditions: [gate("I consent!!")] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      new Map([["ack.prompt.md", singlePrompt]]),
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path[0]).toBe("consent");
+  });
+
+  test("debrief gate whose value matches no option → flagged", () => {
+    const issues = checkUnsatisfiableConditions(
+      {
+        treatments: [
+          minimalTreatment({
+            debrief: [
+              {
+                name: "d",
+                elements: [
+                  { type: "prompt", file: "ack.prompt.md", name: "ack" },
+                  { type: "submitButton", conditions: [gate("nope")] },
+                ],
+              },
+            ],
+          }),
+        ],
+      },
+      new Map([["ack.prompt.md", singlePrompt]]),
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path.join(".")).toContain("debrief");
+  });
+
+  test("multi-select acknowledgement stays out of scope (documented v1 non-goal)", () => {
+    const issues = checkUnsatisfiableConditions(
+      {
+        consent: [
+          {
+            name: "c",
+            steps: [
+              {
+                name: "info",
+                elements: [
+                  { type: "prompt", file: "ack.prompt.md", name: "ack" },
+                  { type: "submitButton", conditions: [gate("anything")] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      new Map([["ack.prompt.md", ackPrompt]]),
+    );
+    expect(issues).toHaveLength(0);
   });
 });

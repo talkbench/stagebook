@@ -813,7 +813,9 @@ function applyRules({
   // sequence step index, not a phase rank. Exit steps run after the game,
   // so sampleId is available there.
   const isPreGame =
-    phaseLabel === "intro step" || allowedProducerRanks !== undefined;
+    phaseLabel === "intro step" ||
+    phaseLabel === "consent step" ||
+    allowedProducerRanks !== undefined;
   if (
     refType === "attributes" &&
     "path" in site.reference &&
