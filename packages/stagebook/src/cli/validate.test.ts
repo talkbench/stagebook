@@ -103,6 +103,25 @@ afterAll(async () => {
 
 describe("stagebook validate CLI", () => {
   describe("exit codes", () => {
+    it("exits 1 with the requiredness message when a treatment omits introSequences (#499)", async () => {
+      const missing = `treatments:
+  - name: no_pairing
+    playerCount: 1
+    gameStages:
+      - name: s1
+        duration: 60
+        elements:
+          - type: submitButton
+`;
+      const file = join(tmp, "missing-intro-sequences.stagebook.yaml");
+      await writeFile(file, missing);
+      const r = await runCli([file]);
+      expect(r.code).toBe(1);
+      expect(r.stdout).toContain("must declare `introSequences:`");
+      // Position walks up to the treatment node — a real location, not 0:0.
+      expect(r.stdout).toMatch(/:\d+:\d+/);
+    });
+
     it("exits 0 for a clean treatment file", async () => {
       const r = await runCli([join(tmp, "valid.stagebook.yaml")]);
       expect(r.code).toBe(0);

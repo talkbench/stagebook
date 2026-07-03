@@ -59,11 +59,14 @@ export function validateTreatmentSource(source: string): ValidationResult {
       const params =
         issue.code === "custom"
           ? ((issue as { params?: unknown }).params as
-              | { badKey?: unknown }
+              | { badKey?: unknown; severity?: unknown }
               | undefined)
           : undefined;
       const isUnrecognizedKey =
         params !== undefined && typeof params.badKey === "string";
+      // Lint-level issues (e.g. duplicate `introSequences:` entries,
+      // #499) self-mark via params.severity — see validateReferences.ts.
+      const severity = params?.severity === "warning" ? "warning" : "error";
 
       let range = isUnrecognizedKey
         ? mapper.resolveKey(issue.path)
@@ -90,7 +93,7 @@ export function validateTreatmentSource(source: string): ValidationResult {
 
       diagnostics.push({
         message,
-        severity: "error",
+        severity,
         range,
       });
     }

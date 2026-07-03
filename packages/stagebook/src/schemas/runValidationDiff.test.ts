@@ -848,3 +848,136 @@ treatments:
     });
   });
 });
+
+describe("introSequences pairing artifacts (#499)", () => {
+  it("routes pairing artifacts from a template-driven introSequences collection to sourceOnly", () => {
+    const source = `templates:
+  - name: introTpl
+    contentType: introSequence
+    content:
+      name: \${seqName}
+      introSteps:
+        - name: step
+          elements:
+            - { type: prompt, file: color.prompt.md, name: color }
+            - type: submitButton
+introSequences:
+  - template: introTpl
+    fields:
+      seqName: expanded
+treatments:
+  - name: t
+    playerCount: 1
+    introSequences: [expanded]
+    gameStages:
+      - name: s1
+        duration: 60
+        elements:
+          - type: submitButton
+            name: done
+            conditions:
+              - { reference: self.prompt.color, comparator: exists }`;
+    const result = runValidationDiff({ source, importedTemplates: [] });
+    expect(result.hydrationError).toBeNull();
+    // Both source-pass artifacts (dangling name + unknown ref) are
+    // templating noise: post-hydration the sequence exists and provides
+    // the key — they must land in sourceOnly (warnings), not matched.
+    expect(result.matched).toHaveLength(0);
+    expect(
+      result.sourceOnly.some((i) =>
+        /lists intro sequence "expanded"/.test(i.message),
+      ),
+    ).toBe(true);
+    expect(result.hydratedOnly).toHaveLength(0);
+  });
+});
+
+describe("advisory suffixes must not break cross-pass matching (#499 review)", () => {
+  // The dangling-name and unknown-ref messages carry advisory tails that
+  // enumerate the file's sequences — template expansion changes those
+  // enumerations, so the same real error renders differently across the
+  // two passes. normalizeIssueKey strips the tails; without that, these
+  // real errors demote from matched/error to sourceOnly/warning.
+  it("dangling name stays a matched error when another sequence is template-generated", () => {
+    const source = `templates:
+  - name: makeSeq
+    contentType: introSequence
+    content:
+      name: generated_seq
+      introSteps:
+        - name: step
+          elements:
+            - type: submitButton
+introSequences:
+  - name: onboarding
+    introSteps:
+      - name: welcome
+        elements:
+          - type: submitButton
+  - template: makeSeq
+treatments:
+  - name: t
+    playerCount: 1
+    introSequences: [onboarding, gohst]
+    gameStages:
+      - name: s1
+        duration: 60
+        elements:
+          - type: submitButton
+            name: done`;
+    const result = runValidationDiff({ source, importedTemplates: [] });
+    expect(result.hydrationError).toBeNull();
+    expect(
+      result.matched.some((i) =>
+        /lists intro sequence "gohst"/.test(i.message),
+      ),
+    ).toBe(true);
+    expect(
+      result.sourceOnly.some((i) =>
+        /lists intro sequence "gohst"/.test(i.message),
+      ),
+    ).toBe(false);
+  });
+
+  it("unknown-ref stays a matched error when the hint's producer is template-generated", () => {
+    const source = `templates:
+  - name: makeSeq
+    contentType: introSequence
+    content:
+      name: alt_pathway
+      introSteps:
+        - name: step
+          elements:
+            - { type: prompt, file: color.prompt.md, name: color }
+            - type: submitButton
+introSequences:
+  - name: onboarding
+    introSteps:
+      - name: welcome
+        elements:
+          - type: submitButton
+  - template: makeSeq
+treatments:
+  - name: t
+    playerCount: 1
+    introSequences: [onboarding]
+    gameStages:
+      - name: s1
+        duration: 60
+        elements:
+          - type: submitButton
+            name: done
+            conditions:
+              - { reference: self.prompt.color, comparator: exists }`;
+    const result = runValidationDiff({ source, importedTemplates: [] });
+    expect(result.hydrationError).toBeNull();
+    // The reference is genuinely unresolvable under the declared pairing
+    // in BOTH passes — only the hydrated pass can name alt_pathway in its
+    // hint. Must still match as a real error.
+    expect(
+      result.matched.some((i) =>
+        /doesn't match any prompt element/.test(i.message),
+      ),
+    ).toBe(true);
+  });
+});

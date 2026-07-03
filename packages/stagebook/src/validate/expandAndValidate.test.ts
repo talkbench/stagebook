@@ -195,3 +195,37 @@ ${broadcastItems}`;
     });
   });
 });
+
+describe("introSequences placeholder binding (#499)", () => {
+  it("binds whole-field and per-item introSequences placeholders through fillTemplates", () => {
+    const src = `templates:
+  - name: study
+    contentType: treatment
+    content:
+      name: t_\${pathway}
+      playerCount: 1
+      introSequences:
+        - \${pathway}
+      gameStages:
+        - name: s1
+          duration: 60
+          elements:
+            - { type: submitButton, name: done }
+introSequences:
+  - name: a
+    introSteps:
+      - name: step
+        elements:
+          - type: submitButton
+treatments:
+  - template: study
+    fields:
+      pathway: a`;
+    const result = expandAndValidate(src);
+    expect(result.expandError).toBeNull();
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual(
+      [],
+    );
+    expect(result.fullYaml).toMatch(/introSequences:\n {6}- a/);
+  });
+});

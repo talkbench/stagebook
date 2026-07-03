@@ -3,6 +3,7 @@ import { treatmentFileSchema } from "./treatment.js";
 import { validateTreatmentFileReferences } from "./validateReferences.js";
 import { collectStorageKeyCollisions } from "./storageKeyCollisions.js";
 import { validateResolvedTreatmentFile } from "./resolved.js";
+import { validateTreatmentSource } from "../validate/validateTreatment.js";
 
 /**
  * Treatment-level `introSequences:` pairing (#499).
@@ -146,6 +147,62 @@ describe("walker: introSequences name resolution", () => {
     expect(issue?.message).toMatch(/duplicate/i);
   });
 
+  test("duplicate entry surfaces as a WARNING through validateTreatmentSource", () => {
+    const src = `
+introSequences:
+  - name: a
+    introSteps:
+      - name: step
+        elements:
+          - { type: prompt, file: color.prompt.md, name: color }
+          - type: submitButton
+treatments:
+  - name: t
+    playerCount: 1
+    introSequences: [a, a]
+    gameStages:
+      - name: s1
+        duration: 60
+        elements:
+          - { type: submitButton, name: done }
+`;
+    const { diagnostics } = validateTreatmentSource(src);
+    const dup = diagnostics.find((d) => /duplicate entry/i.test(d.message));
+    expect(dup).toBeDefined();
+    expect(dup?.severity).toBe("warning");
+  });
+
+  test("dangling-only declaration → dangling error AND unknown-ref error (no union fallback)", () => {
+    const issues = validateTreatmentFileReferences({
+      introSequences: [seq("a", ["color"])],
+      treatments: [
+        treatment({
+          introSequences: ["ghost"],
+          gameStages: [stageReferencing("color")],
+        }),
+      ],
+    });
+    expect(issues.some((i) => /lists intro sequence/.test(i.message))).toBe(
+      true,
+    );
+    expect(issues.some((i) => /doesn't match any/i.test(i.message))).toBe(true);
+  });
+
+  test("duplicate + dangling combined → one dangling (idx 0), one duplicate (idx 1)", () => {
+    const issues = validateTreatmentFileReferences({
+      introSequences: [seq("a", ["color"])],
+      treatments: [treatment({ introSequences: ["ghost", "ghost"] })],
+    });
+    const dangling = issues.filter((i) =>
+      /but no intro sequence with that name/.test(i.message),
+    );
+    const dups = issues.filter((i) => /duplicate entry/.test(i.message));
+    expect(dangling).toHaveLength(1);
+    expect(dangling[0].path.join(".")).toBe("treatments.0.introSequences.0");
+    expect(dups).toHaveLength(1);
+    expect(dups[0].path.join(".")).toBe("treatments.0.introSequences.1");
+  });
+
   test("no introSequences collection in file → name checks are skipped", () => {
     const issues = validateTreatmentFileReferences({
       treatments: [treatment({ introSequences: ["ghost"] })],
@@ -236,6 +293,56 @@ describe("walker: references must resolve in every listed sequence", () => {
     expect(
       issues.filter((i) => /not provided by/i.test(i.message)),
     ).toHaveLength(0);
+  });
+
+  test("positive check fires at groupComposition and exit-step sites too", () => {
+    const issues = validateTreatmentFileReferences({
+      introSequences: [seq("a", ["color"]), seq("b", ["shape"])],
+      treatments: [
+        {
+          name: "t",
+          playerCount: 1,
+          introSequences: ["a", "b"],
+          groupComposition: [
+            {
+              position: 0,
+              title: "x",
+              conditions: [
+                { reference: "self.prompt.color", comparator: "exists" },
+              ],
+            },
+          ],
+          gameStages: [
+            {
+              name: "s1",
+              duration: 60,
+              elements: [{ type: "submitButton", name: "done" }],
+            },
+          ],
+          exitSequence: [
+            {
+              name: "exit1",
+              elements: [
+                {
+                  type: "submitButton",
+                  name: "bye",
+                  conditions: [
+                    { reference: "self.prompt.color", comparator: "exists" },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const pairingIssues = issues.filter((i) =>
+      /not provided by/i.test(i.message),
+    );
+    expect(pairingIssues.map((i) => i.path.join("."))).toEqual([
+      "treatments.0.groupComposition.0.conditions.0.reference",
+      "treatments.0.exitSequence.0.elements.0.conditions.0.reference",
+    ]);
   });
 
   test("whole-field placeholder → positive check and name checks are skipped", () => {
@@ -380,5 +487,59 @@ describe("resolved: introSequences must be concrete post-fill", () => {
     });
     expect(issues).toHaveLength(0);
     expect(success).toBe(true);
+  });
+});
+
+// --- resolved: both leak forms share the can't-prove posture ------------------
+
+describe("resolved: placeholder leaks are tagged for authoring contexts", () => {
+  const resolvedStage = {
+    name: "s1",
+    duration: 60,
+    elements: [{ type: "submitButton", name: "done" }],
+  };
+  const fileWith = (introSequences: unknown) => ({
+    treatments: [
+      {
+        name: "t",
+        playerCount: 1,
+        introSequences,
+        gameStages: [resolvedStage],
+      },
+    ],
+  });
+
+  test("whole-field and per-item leaks are both filtered under skipUnresolved", () => {
+    for (const leak of ["${intros}", ["${pathway}"]]) {
+      const lax = validateResolvedTreatmentFile(fileWith(leak), {
+        skipUnresolved: true,
+      });
+      expect(lax.issues).toHaveLength(0);
+      const strict = validateResolvedTreatmentFile(fileWith(leak));
+      expect(strict.success).toBe(false);
+      expect(
+        strict.issues.every((i) => i.reason === "unresolved-placeholder"),
+      ).toBe(true);
+    }
+  });
+
+  test("wrong-typed value keeps the guidance message pre-fill", () => {
+    const result = treatmentFileSchema.safeParse({
+      treatments: [
+        {
+          name: "t",
+          playerCount: 1,
+          introSequences: 5,
+          gameStages: [resolvedStage],
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    const messages = result.success
+      ? []
+      : result.error.issues.map((i) => i.message);
+    expect(messages.some((m) => /must declare `introSequences:`/.test(m))).toBe(
+      true,
+    );
   });
 });

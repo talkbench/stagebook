@@ -126,6 +126,59 @@ describe("checkPairing", () => {
     expect(diags.some((d) => /color/.test(d.message))).toBe(true);
   });
 
+  test("mixed selection: constraint failure and data failure name the right treatments", () => {
+    const file = structuredClone(FILE) as typeof FILE;
+    // third treatment: lists pilot but references color (which pilot lacks)
+    (file.treatments as Record<string, unknown>[]).push({
+      ...structuredClone(FILE.treatments[0]),
+      name: "wants_color_from_pilot",
+      introSequences: ["pilot"],
+    });
+    const diags = checkPairing(file, { introSequenceName: "pilot" }, [
+      "uses_color", // constraint fail: doesn't list pilot
+      "wants_color_from_pilot", // data fail: pilot doesn't provide color
+      "standalone", // constraint fail: declares []
+    ]);
+    // The data-check error must name wants_color_from_pilot — NOT
+    // uses_color (filtered out of the walker run by the constraint
+    // check, so synthetic indices shift).
+    const dataDiag = diags.find(
+      (d) => /color/.test(d.message) && /In treatment/.test(d.message),
+    );
+    expect(dataDiag?.message).toContain('"wants_color_from_pilot"');
+    expect(dataDiag?.message).not.toContain('"uses_color"');
+    expect(diags.some((d) => d.message.includes('"uses_color"'))).toBe(true);
+    expect(diags.some((d) => d.message.includes('"standalone"'))).toBe(true);
+  });
+
+  test("empty treatmentNames → vacuous pass (contract: nothing selected, nothing to check)", () => {
+    expect(checkPairing(FILE, { introSequenceName: "prolific" }, [])).toEqual(
+      [],
+    );
+  });
+
+  test("duplicate names in treatmentNames → one diagnostic per occurrence", () => {
+    const diags = checkPairing(FILE, { introSequenceName: "pilot" }, [
+      "uses_color",
+      "uses_color",
+    ]);
+    expect(
+      diags.filter((d) => d.message.includes('"uses_color"')),
+    ).toHaveLength(2);
+  });
+
+  test("selected sequence but file has no introSequences collection → single clear error", () => {
+    const diags = checkPairing(
+      { treatments: FILE.treatments },
+      { introSequenceName: "prolific" },
+      ["uses_color"],
+    );
+    expect(diags).toHaveLength(1);
+    expect(diags[0].message).toContain(
+      "The file defines no named intro sequences.",
+    );
+  });
+
   test("diagnostics carry null ranges (runtime check, no source positions)", () => {
     const diags = checkPairing(FILE, { introSequenceName: "ghost" }, [
       "uses_color",

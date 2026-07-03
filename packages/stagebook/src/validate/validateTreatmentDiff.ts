@@ -164,7 +164,10 @@ export async function validateTreatmentWithDiff({
   for (const issue of diff.matched) {
     diagnostics.push({
       message: appendPathIfMissing(issue),
-      severity: "error",
+      // Lint-level walker issues (duplicate `introSequences:` entries,
+      // #499) self-mark warning via params.severity; real bugs stay
+      // errors.
+      severity: issueSeverity(issue),
       range: resolveIssueRange(mapper, issue),
     });
   }
@@ -340,6 +343,18 @@ function formatPath(path: (string | number)[]): string {
     }
   }
   return out;
+}
+
+/** Severity for a matched-bucket issue: lint-level walker issues carry
+ *  `params.severity === "warning"` (see validateReferences.ts, #499);
+ *  everything else is an error. */
+function issueSeverity(
+  issue: ZodIssue | PreHydrationIssue,
+): "error" | "warning" {
+  const params = (issue as { params?: unknown }).params as
+    | { severity?: unknown }
+    | undefined;
+  return params?.severity === "warning" ? "warning" : "error";
 }
 
 /**

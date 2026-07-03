@@ -54,6 +54,18 @@ function toArray(v: unknown): unknown[] {
   return Array.isArray(v) ? v : [];
 }
 
+/** Render a malformed declaration for the error message without
+ *  trusting it: JSON.stringify throws on cyclic graphs (YAML anchors
+ *  can produce them), and this branch's whole job is to return a
+ *  diagnostic rather than crash the host's launch path. */
+function describeDeclaration(declared: unknown): string {
+  try {
+    return JSON.stringify(declared) ?? String(declared);
+  } catch {
+    return `a cyclic or non-serializable ${typeof declared}`;
+  }
+}
+
 export function checkPairing(
   file: unknown,
   selection: PairingSelection,
@@ -111,7 +123,7 @@ export function checkPairing(
     if (typeof declared === "string" || !Array.isArray(declared)) {
       diagnostics.push(
         error(
-          `Treatment "${name}" has an uninterpretable \`introSequences:\` declaration (${JSON.stringify(
+          `Treatment "${name}" has an uninterpretable \`introSequences:\` declaration (${describeDeclaration(
             declared,
           )}). Expand templates and bind all \`\${...}\` placeholders before calling checkPairing.`,
         ),

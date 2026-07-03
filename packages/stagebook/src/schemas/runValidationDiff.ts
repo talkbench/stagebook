@@ -142,13 +142,36 @@ export interface ValidationDiffResult {
  * directly.
  */
 export function normalizeIssueKey(issue: ZodIssue): string {
-  return `${issue.code}|${stripTemplateContentPrefix(issue.message)}`;
+  return `${issue.code}|${stripAdvisorySuffixes(
+    stripTemplateContentPrefix(issue.message),
+  )}`;
 }
 
 const TEMPLATE_CONTENT_PREFIX_RE = /^Invalid content for contentType '[^']+': /;
 
 function stripTemplateContentPrefix(message: string): string {
   return message.replace(TEMPLATE_CONTENT_PREFIX_RE, "");
+}
+
+/** Advisory suffixes on #499 pairing messages enumerate the file's
+ *  known intro sequences ("Defined in this file: …") or point at an
+ *  undeclared producer ("The key IS produced by intro sequence …").
+ *  Template expansion changes what those enumerations contain, so the
+ *  same underlying error renders differently on the source and
+ *  hydrated passes — matching on the raw message would demote a real
+ *  dangling-name or unresolvable-reference error from matched/error to
+ *  sourceOnly/warning. Strip the advisory tail from the KEY only; the
+ *  displayed message keeps its guidance. */
+const ADVISORY_SUFFIX_RES = [
+  / Defined in this file: .*$/s,
+  / This file defines no named intro sequences\..*$/s,
+  / The key IS produced by intro sequence.*$/s,
+];
+
+function stripAdvisorySuffixes(message: string): string {
+  let out = message;
+  for (const re of ADVISORY_SUFFIX_RES) out = out.replace(re, "");
+  return out;
 }
 
 export function runValidationDiff({

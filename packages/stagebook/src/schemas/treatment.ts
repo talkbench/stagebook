@@ -1983,12 +1983,20 @@ export const baseTreatmentSchema = z
     // Dangling names, duplicates, and the "every listed sequence
     // provides every referenced key" rule live in validateReferences.ts;
     // post-fill leaks are caught by `resolvedTreatmentSchema`.
-    introSequences: z
-      .array(z.string().min(1), {
-        required_error: INTRO_SEQUENCES_REQUIRED_MESSAGE,
-        invalid_type_error: INTRO_SEQUENCES_REQUIRED_MESSAGE,
-      })
-      .or(fieldPlaceholderSchema),
+    // The union-level errorMap keeps the guidance message on wrong-typed
+    // values (e.g. `introSequences: 5`), which would otherwise surface as
+    // a bare "Invalid input" — the union discards sub-schema
+    // invalid_type_error messages when no option matches.
+    introSequences: z.union(
+      [
+        z.array(z.string().min(1), {
+          required_error: INTRO_SEQUENCES_REQUIRED_MESSAGE,
+          invalid_type_error: INTRO_SEQUENCES_REQUIRED_MESSAGE,
+        }),
+        fieldPlaceholderSchema,
+      ],
+      { errorMap: () => ({ message: INTRO_SEQUENCES_REQUIRED_MESSAGE }) },
+    ),
     // Participant-facing language for this treatment (BCP-47, e.g. `he`).
     // Drives stagebook's chrome catalog + RTL when the host wires it onto the
     // provider. Optional — absent means English (the runtime resolves an
@@ -2349,6 +2357,10 @@ export const treatmentFileSchema = z
         code: z.ZodIssueCode.custom,
         path: issue.path,
         message: issue.message,
+        // Lint-level walker issues (#499 duplicate entries) mark
+        // themselves "warning"; the diagnostic layers read this back
+        // via params so severity survives the zod round-trip.
+        ...(issue.severity ? { params: { severity: issue.severity } } : {}),
       });
     }
     // Storage-key collision detection (#281): every `{type}_{name}` key

@@ -52,6 +52,12 @@ function normalizeReference(input: unknown): ReferenceType | null {
 export interface ReferenceValidationIssue {
   path: (string | number)[];
   message: string;
+  /** Lint-level issues (duplicate `introSequences:` entries) carry
+   *  "warning"; absent means error. Threaded through the schema's
+   *  superRefine as zod `params.severity` so the diagnostic layers
+   *  (validateTreatment, validateTreatmentDiff) can downgrade without
+   *  message sniffing. */
+  severity?: "error" | "warning";
 }
 
 /** Discriminator for which rules apply at a given reference site. */
@@ -309,11 +315,10 @@ function resolvePairing({
       return;
     }
     if (seen.has(entry)) {
-      // "duplicate" wording is load-bearing: the validate layer maps
-      // messages matching /unique|duplicate/i to warning severity.
       issues.push({
         path: [...treatmentPath, "introSequences", entryIdx],
         message: `Treatment "${treatmentName}" lists intro sequence "${entry}" more than once in \`introSequences:\` (duplicate entry).`,
+        severity: "warning",
       });
       return;
     }
