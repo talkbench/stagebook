@@ -829,3 +829,26 @@ describe("whole-value template invocations at step-list positions don't throw", 
     }
   });
 });
+
+describe("resolved-layer uniqueness message hardening (Copilot review)", () => {
+  test("oversized control-laden duplicate names are truncated and stripped post-fill", () => {
+    const hostile = `${"x".repeat(200)}\u001b[2J\nname`;
+    const step = {
+      name: "s",
+      elements: [{ type: "submitButton", name: "b" }],
+    };
+    const { success, issues } = validateResolvedTreatmentFile({
+      consent: [
+        { name: hostile, steps: [step] },
+        { name: hostile, steps: [step] },
+      ],
+    });
+    expect(success).toBe(false);
+    const dup = issues.find((i) =>
+      /already used by an earlier consent arm/.test(i.message),
+    );
+    expect(dup).toBeDefined();
+    expect(dup!.message.length).toBeLessThan(300);
+    expect(dup!.message).not.toContain("\u001b");
+  });
+});
