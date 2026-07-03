@@ -227,6 +227,7 @@ export async function validateTreatmentWithDiff({
       if (alreadyReported.has(issue.message) || alreadyReported.has(message)) {
         continue;
       }
+      alreadyReported.add(message);
       diagnostics.push({
         message,
         severity: "error",
