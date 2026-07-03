@@ -9,6 +9,7 @@ A Stagebook file may have any subset of these top-level sections:
 ```yaml
 imports: # optional — relative paths to other Stagebook files whose templates: should be merged in
 templates: # optional — reusable blocks of structure
+consent: # optional — named consent arms; the host shows one, selected by name
 introSequences: # used as the entry point — pre-randomization onboarding steps
 treatments: # used as the entry point — post-randomization experiment flows
 ```
@@ -68,6 +69,8 @@ The live portion where participants move through stages simultaneously. Each tre
 ### 3. Exit Sequence (asynchronous, solo)
 
 Post-game follow-up at each participant's pace: surveys, quality checks, debriefing. Defined per-treatment, so different conditions can have different exit flows.
+
+Two optional bookends sit outside the three phases: study-level [`consent:`](#consent) runs before everything, and per-treatment [`debrief:`](#debrief) runs after everything (after the host's own wrap-up steps). Both are additive — a file without them gets the host platform's existing consent and debrief behavior.
 
 ## Complete Example
 
@@ -155,6 +158,93 @@ introSequences: [prolific_en, prolific_es] # refs must resolve in BOTH
 introSequences: ${sequences} # whole field
 introSequences: [${pathway}_onboarding] # per item
 ```
+
+## Consent
+
+Consent used to be platform-owned content, outside the treatment file. Declaring `consent:` makes it a first-class part of the study — version-controlled with everything else, localizable, varied per jurisdiction, and interactive (comprehension-gated consent). The field is **additive**: a file without `consent:` gets the host platform's existing consent behavior.
+
+`consent:` is a top-level array of named **arms**, a sibling of `introSequences:` and `treatments:`:
+
+```yaml
+consent:
+  - name: consent-en
+    locale: en
+    steps:
+      - name: consent-info
+        elements:
+          - type: prompt
+            file: consent/en/study_information.prompt.md
+          - type: prompt
+            file: consent/en/acknowledge.prompt.md
+            name: acknowledge
+          - type: submitButton
+            buttonText: I consent
+            conditions:
+              - reference: self.prompt.acknowledge
+                comparator: exists
+```
+
+- **The host selects one arm by name** (a `consentName`-style batch-config field). Arm names must be unique within `consent:` only — collection namespaces are separate, so a consent arm, an intro sequence, and a treatment may all be named `default`.
+- **Arms declare their own locale.** Consent runs before treatment assignment, so it can't inherit a treatment's locale — same as intro sequences. Two arms may share a locale (e.g., different jurisdictions in the same language). For single-source localized consent, see [the `consentArm` template pattern](templates.md#single-source-localized-consent).
+- **Consent is study-level, not per-treatment.** It's an IRB artifact, invariant across manipulations — which is why there's no pairing field like `introSequences:`. Consent's only obligation to the rest of the study is negative: don't collide. Storage keys in consent arms are collision-checked against **every** intro sequence and **every** treatment; reusing a key across two arms is fine (a participant only ever sees one arm).
+- **Consent steps follow the intro-step rules**: each step needs an advancement element, no `shared` prompts, no position fields (consent runs pre-assignment, for a single participant).
+
+### The gated-submit pattern
+
+The example above is the sanctioned way to gate consent: an "I consent" submit button conditioned on acknowledgement checkboxes in the same step. Element conditions re-evaluate live against in-memory responses, so the button enables as soon as the boxes are checked — no extra machinery. Multi-step arms work the same way: a later consent step may reference responses from an earlier step in the same arm.
+
+### Consent responses are audit-only
+
+Consent responses join the same flat key namespace as everything else and ride the normal save/export machinery — but they are a **closed scope**. Referencing a consent key from anywhere outside consent (intro, game, exit, `groupComposition`, debrief) is a validation error. Within-arm references are legal (that's the gating pattern), and consent steps can't reference later-phase data (consent runs first). If a decision downstream should depend on something a participant tells you, ask it in an intro step, not in consent.
+
+### The responses are the record
+
+There is no separate consent-audit artifact. The consent content is version-controlled in the study repo, the batch records which version it ran, and the saved responses carry timestamps — together, (repo version + responses + timestamps) reconstructs exactly what was shown and what was agreed to.
+
+## Debrief
+
+`debrief:` is an optional per-treatment step list, a sibling of `exitSequence:`. The host renders it **after** its own wrap-up steps (quality checks, completion code) — the very last thing a participant sees. Like `exitSequence`, it inherits the treatment's locale and key scope, and its steps follow the exit-step rules (advancement element required, no `shared` prompts). Absent `debrief:` means the host's existing debrief behavior.
+
+Because debrief is per-treatment, **per-condition debriefs are just different treatment arms** — a deception arm carries a full-disclosure debrief the control arm doesn't need. For **per-participant** variation within a treatment, use step `conditions:`:
+
+```yaml
+treatments:
+  - name: deception_arm
+    playerCount: 2
+    introSequences: []
+    gameStages:
+      - name: main_task
+        duration: 300
+        elements:
+          - type: prompt
+            file: game/task.prompt.md
+          - type: submitButton
+    exitSequence:
+      - name: post_survey
+        elements:
+          - type: prompt
+            file: exit/distress_check.prompt.md
+            name: distress_check
+          - type: submitButton
+    debrief:
+      - name: full-disclosure
+        elements:
+          - type: prompt
+            file: debrief/full_disclosure.prompt.md
+          - type: submitButton
+            buttonText: Finish
+      - name: extra-support
+        conditions: # per-participant: only shown to those who reported distress
+          - reference: self.prompt.distress_check
+            comparator: equals
+            value: "Yes"
+        elements:
+          - type: prompt
+            file: debrief/support_resources.prompt.md
+          - type: submitButton
+```
+
+Debrief runs last, so its references may read data from any earlier phase — game, exit, or intro (intro references are subject to the [pairing rule](#pairing-treatments-with-intro-sequences), and consent keys stay off-limits per the audit-only rule). Nothing may reference a debrief key from an earlier phase — that's a forward reference.
 
 ## Stages
 

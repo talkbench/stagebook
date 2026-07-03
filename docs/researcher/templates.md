@@ -23,12 +23,12 @@ templates:
         - type: submitButton
 ```
 
-| Field         | Required | Description                                                                                                                                                                                                                                                                                       |
-| ------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`        | yes      | Unique identifier                                                                                                                                                                                                                                                                                 |
-| `contentType` | yes      | What the template produces. One of: `element`, `elements`, `stage`, `stages`, `treatment`, `treatments`, `introSequence`, `introSequences`, `introExitStep`, `introSteps`, `exitSteps`, `condition`, `conditions`, `reference`, `player`, `groupComposition`, `discussion`, `broadcastAxisValues` |
-| `notes`       | no       | Researcher-facing comments (one-liner or multi-line)                                                                                                                                                                                                                                              |
-| `content`     | yes      | The YAML structure to instantiate                                                                                                                                                                                                                                                                 |
+| Field         | Required | Description                                                                                                                                                                                                                                                                                                                                |
+| ------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`        | yes      | Unique identifier                                                                                                                                                                                                                                                                                                                          |
+| `contentType` | yes      | What the template produces. One of: `element`, `elements`, `stage`, `stages`, `treatment`, `treatments`, `introSequence`, `introSequences`, `introExitStep`, `introSteps`, `exitSteps`, `consentArm`, `consent`, `debriefSteps`, `condition`, `conditions`, `reference`, `player`, `groupComposition`, `discussion`, `broadcastAxisValues` |
+| `notes`       | no       | Researcher-facing comments (one-liner or multi-line)                                                                                                                                                                                                                                                                                       |
+| `content`     | yes      | The YAML structure to instantiate                                                                                                                                                                                                                                                                                                          |
 
 ## Using Templates
 
@@ -135,6 +135,43 @@ treatments:
       d0:
         template: topicList
 ```
+
+## Single-source localized consent
+
+Consent arms declare their own locale (see [Consent](treatment-files.md#consent)), and the natural way to keep multiple language versions in lockstep is the same single-source pattern used for localized treatments: define the structure once in a `contentType: consentArm` template, thread `${locale}` into the arm's `locale:` and its prompt `file:` paths, and `broadcast` to fan out one arm per locale:
+
+```yaml
+templates:
+  - name: localized-consent
+    contentType: consentArm
+    content:
+      name: consent-${locale}
+      locale: ${locale}
+      steps:
+        - name: consent-info
+          elements:
+            - type: prompt
+              file: consent/${locale}/study_information.prompt.md
+            - type: prompt
+              file: consent/${locale}/acknowledge.prompt.md
+              name: acknowledge
+            - type: submitButton
+              buttonText: ${agreeLabel}
+              conditions:
+                - reference: self.prompt.acknowledge
+                  comparator: exists
+
+consent:
+  - template: localized-consent
+    broadcast:
+      d0:
+        - locale: en
+          agreeLabel: I consent
+        - locale: he
+          agreeLabel: אני מסכים/ה
+```
+
+This expands to two arms, `consent-en` and `consent-he`, structurally identical by construction — edit the template once and every locale updates together. Element names may repeat across arms (a participant only ever sees one arm, so `acknowledge` in both is not a collision). The host selects an arm by name at batch time. The related content types `consent` (the whole array) and `debriefSteps` (a treatment's `debrief:` list) work the same way for reusing larger blocks.
 
 ## The `prefix:` convention for reusable modules
 

@@ -178,33 +178,72 @@ describe("flattenSteps", () => {
     expect(steps[0]?.phase).toBe("game");
     expect(steps.some((s) => s.phase === "intro")).toBe(false);
   });
+
+  it("appends debrief steps after exit, tagged with phase debrief (#481)", () => {
+    const withDebrief = {
+      ...treatment,
+      debrief: [
+        {
+          name: "study_purpose",
+          notes: "IRB-required disclosure",
+          elements: [{ type: "submitButton" as const, buttonText: "Done" }],
+        },
+      ],
+    };
+    const steps = flattenSteps(introSequence, withDebrief);
+    expect(steps.map((s) => s.phase)).toEqual([
+      "intro",
+      "intro",
+      "game",
+      "game",
+      "exit",
+      "debrief",
+    ]);
+    const last = steps.at(-1)!;
+    expect(last.name).toBe("study_purpose");
+    expect(last.notes).toBe("IRB-required disclosure");
+    expect(last.index).toBe(5);
+  });
 });
 
 describe("localeForPhase", () => {
+  const consentEs = { locale: "es" };
   const introHe = { locale: "he" };
   const treatmentEn = { locale: "en" };
 
-  it("intro phase uses the intro sequence's locale", () => {
-    expect(localeForPhase("intro", introHe, treatmentEn)).toBe("he");
+  it("consent phase uses the consent arm's own locale", () => {
+    expect(localeForPhase("consent", consentEs, introHe, treatmentEn)).toBe(
+      "es",
+    );
   });
 
-  it("game and exit phases use the treatment's locale", () => {
-    expect(localeForPhase("game", introHe, treatmentEn)).toBe("en");
-    expect(localeForPhase("exit", introHe, treatmentEn)).toBe("en");
+  it("intro phase uses the intro sequence's locale", () => {
+    expect(localeForPhase("intro", consentEs, introHe, treatmentEn)).toBe("he");
+  });
+
+  it("game, exit, and debrief phases use the treatment's locale", () => {
+    expect(localeForPhase("game", consentEs, introHe, treatmentEn)).toBe("en");
+    expect(localeForPhase("exit", consentEs, introHe, treatmentEn)).toBe("en");
+    expect(localeForPhase("debrief", consentEs, introHe, treatmentEn)).toBe(
+      "en",
+    );
   });
 
   it("an intro sequence does not inherit the treatment's locale", () => {
     // he treatment, en (or absent) intro → intro stays en, not he.
-    expect(localeForPhase("intro", { locale: "en" }, { locale: "he" })).toBe(
-      "en",
-    );
-    expect(localeForPhase("intro", undefined, { locale: "he" })).toBe("en");
+    expect(
+      localeForPhase("intro", undefined, { locale: "en" }, { locale: "he" }),
+    ).toBe("en");
+    expect(
+      localeForPhase("intro", undefined, undefined, { locale: "he" }),
+    ).toBe("en");
   });
 
   it("defaults to en when a phase declares no locale", () => {
-    expect(localeForPhase("intro", {}, {})).toBe("en");
-    expect(localeForPhase("game", undefined, {})).toBe("en");
-    expect(localeForPhase(undefined, undefined, {})).toBe("en");
+    expect(localeForPhase("consent", undefined, {}, {})).toBe("en");
+    expect(localeForPhase("intro", undefined, {}, {})).toBe("en");
+    expect(localeForPhase("game", undefined, undefined, {})).toBe("en");
+    expect(localeForPhase(undefined, undefined, undefined, {})).toBe("en");
   });
 });
 
@@ -302,6 +341,106 @@ describe("buildUnits", () => {
     expect(multi[0].steps.at(-1)!.transitionCopy).toMatch(
       /picker above to preview another part/i,
     );
+  });
+
+  it("consent arms become units that lead the picker order (#481)", () => {
+    const units = buildUnits({
+      consent: [
+        {
+          name: "consent-en",
+          steps: [{ name: "agree", elements: [] }],
+        },
+        {
+          name: "consent-es",
+          locale: "es",
+          steps: [{ name: "acepto", elements: [] }],
+        },
+      ],
+      introSequences: [
+        { name: "i", introSteps: [{ name: "s", elements: [] }] },
+      ],
+      treatments: [treatment],
+    });
+    // Consent runs first in a real study, so consent units come first.
+    expect(units.map((u) => u.key)).toEqual([
+      "consent:0",
+      "consent:1",
+      "intro:0",
+      "treatment:0",
+    ]);
+    // Each arm declares its own locale (defaulting to en) and, like intros,
+    // runs pre-assignment with a single participant.
+    expect(units[0]).toMatchObject({
+      kind: "consent",
+      name: "consent-en",
+      locale: "en",
+      playerCount: 1,
+    });
+    expect(units[1]).toMatchObject({
+      kind: "consent",
+      name: "consent-es",
+      locale: "es",
+      playerCount: 1,
+    });
+    // The arm's steps carry phase "consent", then a trailing transition
+    // narrating attention/equipment checks and the intro sequence.
+    const steps = units[0].steps;
+    expect(steps.map((s) => s.phase)).toEqual(["consent", "consent"]);
+    expect(steps[0].name).toBe("agree");
+    expect(steps[0].isTransition).toBeUndefined();
+    const last = steps.at(-1)!;
+    expect(last.isTransition).toBe(true);
+    expect(last.transitionCopy).toContain("consent-en");
+    expect(last.transitionCopy).toMatch(/attention and equipment checks/i);
+    expect(last.transitionCopy).toMatch(/intro sequence/i);
+    // Intros exist, so the hint points at previewing one.
+    expect(last.transitionCopy).toMatch(/picker above to preview an intro/i);
+  });
+
+  it("consent transition hint stays generic without an intro sequence", () => {
+    const units = buildUnits({
+      consent: [{ name: "c", steps: [{ name: "agree", elements: [] }] }],
+      treatments: [treatment],
+    });
+    const copy = units[0].steps.at(-1)!.transitionCopy!;
+    expect(copy).toMatch(/picker above to preview another part/i);
+  });
+
+  it("debrief steps follow a QC/completion-code transition after exit (#481)", () => {
+    const units = buildUnits({
+      treatments: [
+        {
+          ...treatment,
+          locale: "he",
+          debrief: [{ name: "study_purpose", elements: [] }],
+        },
+      ],
+    });
+    const steps = units[0].steps;
+    expect(steps.map((s) => s.phase)).toEqual([
+      "game",
+      "game",
+      "exit",
+      "exit", // QC + completion-code transition
+      "debrief",
+      "debrief", // end-of-unit transition
+    ]);
+    expect(steps.map((s) => s.index)).toEqual([0, 1, 2, 3, 4, 5]);
+    // The mid-unit transition narrates what runs between exit and debrief.
+    const mid = steps[3];
+    expect(mid.isTransition).toBe(true);
+    expect(mid.transitionCopy).toMatch(/quality checks/i);
+    expect(mid.transitionCopy).toMatch(/completion code/i);
+    // The debrief step itself is a real stage in the treatment's locale.
+    expect(steps[4]).toMatchObject({
+      name: "study_purpose",
+      phase: "debrief",
+    });
+    expect(units[0].locale).toBe("he");
+    // The trailing transition no longer promises a debrief — it just ran.
+    const last = steps.at(-1)!;
+    expect(last.isTransition).toBe(true);
+    expect(last.transitionCopy).not.toMatch(/complete any debrief/i);
   });
 
   it("intro transition mentions previewing a treatment only when one exists", () => {

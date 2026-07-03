@@ -326,6 +326,7 @@ From the batch configuration (platform-specific):
 
 - Which treatments to run
 - Which intro sequence participants complete first — must be one that every selected treatment lists in its `introSequences:`; validate the pairing at batch launch with `checkPairing` from `stagebook/validate` (see the [integration guide](./integration-guide.md#launch-time-pairing-guard))
+- Which consent arm participants see (when the file declares top-level `consent:`) — selected by name via a `consentName`-style config field; consent has no pairing with treatments, so the only launch-time check is that the name exists (see [Consent and Debrief Placement](./integration-guide.md#consent-and-debrief-placement))
 - Payoff weights (for optimizing assignment across treatments)
 
 ### The Assignment Problem
@@ -412,6 +413,8 @@ Before any experiment interaction, participants must provide informed consent. T
 - Record consent with a timestamp
 - Allow the researcher to specify custom consent addenda
 - Exit participants who decline
+
+When the treatment file declares top-level `consent:` arms (#481), the platform renders the selected arm's steps as the first thing participants see — before its own equipment and attention checks — using the ordinary intro-step provider shape. Responses ride the normal state store and export; the saved responses are the consent record, so no separate audit artifact is needed. Per-treatment `debrief:` steps are the mirror image at the other end: rendered after the platform's own wrap-up (QC, completion code). See [Consent and Debrief Placement](./integration-guide.md#consent-and-debrief-placement). The bullets above remain the fallback for studies that don't declare `consent:`.
 
 ### Equipment Checks
 

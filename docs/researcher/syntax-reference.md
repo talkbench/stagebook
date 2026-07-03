@@ -6,6 +6,7 @@ A concise, precise reference for the Stagebook experiment description language. 
 
 ```yaml
 templates: # optional: array of template definitions
+consent: # optional: array of consent arms — the host shows one, selected by name
 introSequences: # required: array of intro sequence objects
 treatments: # required: array of treatment objects
 ```
@@ -32,7 +33,7 @@ templates:
   broadcast: { d0: [...] }     # cartesian expansion
 ```
 
-Content types: `introSequence`, `introSequences`, `elements`, `element`, `stage`, `stages`, `treatment`, `treatments`, `reference`, `condition`, `conditions`, `player`, `groupComposition`, `introExitStep`, `introSteps`, `exitSteps`, `discussion`, `broadcastAxisValues`.
+Content types: `introSequence`, `introSequences`, `elements`, `element`, `stage`, `stages`, `treatment`, `treatments`, `reference`, `condition`, `conditions`, `player`, `groupComposition`, `introExitStep`, `introSteps`, `exitSteps`, `consentArm`, `consent`, `debriefSteps`, `discussion`, `broadcastAxisValues`.
 
 ## 4. References
 
@@ -150,7 +151,7 @@ discussion:
   conditions: [...] # optional
 ```
 
-## 9. Intro/Exit Steps
+## 9. Intro/Exit/Consent/Debrief Steps
 
 ```yaml
 introSequences:
@@ -168,6 +169,23 @@ treatments:
 
 Constraints: no `shared` prompts, no `position`/`showToPositions`/`hideFromPositions` on elements in intro steps. Exit steps disallow `shared` prompts.
 
+### Consent (#481)
+
+```yaml
+consent: # top-level; sibling of introSequences/treatments
+  - name: <name> # unique within consent: only — the host selects an arm by name
+    locale: <locale> # optional — arms declare their OWN locale (pre-assignment)
+    steps:
+      - name: <name>
+        elements: [...] # intro-step constraints apply
+```
+
+Consent steps take the intro-step constraints (advancement element required, no `shared` prompts, no position fields). Consent keys are **audit-only**: referencing one from intro/game/exit/`groupComposition`/debrief is an error; within-arm references (the gated-submit pattern) are legal; consent steps can't reference later-phase data. Collision-checked against every intro sequence and treatment; arm × arm key reuse is legal.
+
+### Debrief (#481)
+
+`treatments[].debrief` (see §10) — post-study step list, rendered by the host after its own wrap-up (QC, completion code). Inherits the treatment's locale and key scope, like `exitSequence`; exit-step constraints apply. May reference any earlier phase (except consent — audit-only); nothing may forward-reference debrief keys.
+
 ## 10. Treatments
 
 ```yaml
@@ -181,6 +199,7 @@ treatments:
         conditions: [...]
     gameStages: [...] # required, nonempty
     exitSequence: [...] # optional
+    debrief: [...] # optional — post-study steps (#481), exit-step rules
 ```
 
 Position indices in `showToPositions`, `hideFromPositions`, `groupComposition`, and discussion `rooms` must be < `playerCount`.

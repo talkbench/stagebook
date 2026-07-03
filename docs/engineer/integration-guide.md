@@ -257,6 +257,21 @@ if (diagnostics.length > 0) {
 
 Pass `introSequenceName: null` for a batch that launches without an intro sequence — only treatments declaring `introSequences: []` may run that way (map any host-side `"none"` sentinel to `null` before calling). The check verifies that the selected sequence and treatments exist, that every selected treatment lists the selected sequence (the declaration is a constraint — even a treatment that references no intro data may not run after a sequence it doesn't list), and that every reference in each treatment resolves under that specific sequence. Design-time validation checks every _declared_ pairing; `checkPairing` guards that the pairing the batch actually runs is one of them.
 
+## Consent and Debrief Placement
+
+Treatment files may declare first-class consent and debrief content (#481): a top-level `consent:` array of named arms, and a per-treatment `debrief:` step list. Stagebook labels and provides the content; the host decides placement and attaches behavior. The seam is the same one you already use for intro and exit steps — the host wraps its own steps around the extracted stagebook steps:
+
+```
+[consent] → host checks (attention, equipment) → [introSteps] → [gameStages] → [exitSequence] → host wrap-up (QC, completion code) → [debrief]
+```
+
+- **Consent renders first**, before the host's own onboarding checks. The host selects which arm to render by **name** — a `consentName`-style batch-config field resolved against the top-level `consent:` collection. There is no pairing to validate: consent arms have no treatment-level link (consent is invariant across manipulations), which is why `checkPairing` deliberately takes no `consentName` parameter. Verify only that the configured name exists in the expanded file.
+- **Debrief renders last**, after the host's QC and completion-code steps. It's per-treatment (`treatments[].debrief`), so read it off the participant's assigned treatment exactly as you do `exitSequence` — same locale, same key scope.
+- **Responses ride the normal path.** Consent and debrief steps save through the same `save()` / `get()` machinery as every other step and flow into the normal export. There is **no separate consent-audit artifact** to produce: the study repo's version plus the saved responses (with their timestamps) are the consent record — the host only needs to keep recording which content version each batch ran. Note that consent keys are audit-only by policy — design-time validation already rejects references to them from any other phase, so nothing downstream can depend on them.
+- **Both fields are optional.** A file without `consent:` / `debrief:` gets the host's existing behavior (e.g., the host's own consent markdown and debrief page). Keep that fallback.
+
+Consent steps run pre-assignment for a single participant — render them with the same provider shape as intro steps (`position` / `playerCount` undefined, `Date.now()`-based elapsed time). Debrief steps use the exit-step shape.
+
 ## Implementing a StagebookProvider
 
 To render Stagebook elements, your platform must implement the `StagebookContext` interface and wrap your component tree with `<StagebookProvider>`.

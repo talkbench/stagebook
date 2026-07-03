@@ -79,11 +79,12 @@ export function Viewer({
   onTreatmentIndexChange,
   onIntroIndexChange,
 }: ViewerProps) {
-  // The viewer walks ONE selectable unit at a time — an intro sequence OR a
-  // treatment — rather than pairing an intro with a treatment. A single
-  // <optgroup> picker switches between them; each unit declares its own locale
-  // and ends with a transition screen narrating the platform's next phase.
+  // The viewer walks ONE selectable unit at a time — a consent arm, an intro
+  // sequence, OR a treatment — rather than pairing them. A single <optgroup>
+  // picker switches between them; each unit declares its own locale and ends
+  // with a transition screen narrating the platform's next phase.
   const units = useMemo(() => buildUnits(treatmentFile), [treatmentFile]);
+  const consentUnits = units.filter((u) => u.kind === "consent");
   const introUnits = units.filter((u) => u.kind === "intro");
   const treatmentUnits = units.filter((u) => u.kind === "treatment");
   const [selectedUnitKey, setSelectedUnitKey] = useState(() =>
@@ -294,9 +295,20 @@ export function Viewer({
                 } else if (key.startsWith("intro:")) {
                   onIntroIndexChange?.(Number(key.slice("intro:".length)));
                 }
+                // Consent keys have no host-persisted index (yet) — the
+                // local selection alone drives the preview.
               }}
               style={treatmentSelectStyle}
             >
+              {consentUnits.length > 0 && (
+                <optgroup label="Consent">
+                  {consentUnits.map((u) => (
+                    <option key={u.key} value={u.key}>
+                      {u.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
               {introUnits.length > 0 && (
                 <optgroup label="Intro sequences">
                   {introUnits.map((u) => (
@@ -306,13 +318,15 @@ export function Viewer({
                   ))}
                 </optgroup>
               )}
-              <optgroup label="Treatments">
-                {treatmentUnits.map((u) => (
-                  <option key={u.key} value={u.key}>
-                    {u.name}
-                  </option>
-                ))}
-              </optgroup>
+              {treatmentUnits.length > 0 && (
+                <optgroup label="Treatments">
+                  {treatmentUnits.map((u) => (
+                    <option key={u.key} value={u.key}>
+                      {u.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           ) : (
             <span style={treatmentNameStyle}>{unit.name}</span>
@@ -331,10 +345,17 @@ export function Viewer({
         />
         <div style={positionSwitcherStyle}>
           {/* Read-only: the locale is whatever the current phase declares
-              (intro sequence vs treatment) — explicit, never overridden. */}
+              (consent arm vs intro sequence vs treatment) — explicit, never
+              overridden. */}
           <span
             data-testid="viewer-locale-badge"
-            title={`Locale declared by this ${unit.kind === "intro" ? "intro sequence" : "treatment"}`}
+            title={`Locale declared by this ${
+              unit.kind === "consent"
+                ? "consent arm"
+                : unit.kind === "intro"
+                  ? "intro sequence"
+                  : "treatment"
+            }`}
             style={localeBadgeStyle}
           >
             {locale}
