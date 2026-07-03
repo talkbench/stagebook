@@ -216,9 +216,19 @@ export async function validateTreatmentWithDiff({
     const resolved = validateResolvedTreatmentFile(diff.hydrated, {
       skipUnresolved: true,
     });
+    const alreadyReported = new Set(diagnostics.map((d) => d.message));
     for (const issue of resolved.issues) {
+      // Skip resolved-pass issues whose exact message already surfaced
+      // from the diff buckets — e.g. a literal duplicate consent-arm
+      // name (#481) fires the pre-fill uniqueness check in BOTH passes
+      // (matched bucket, precise position) and again here at a walk-up
+      // range; the second copy is noise.
+      const message = `${issue.message} (${formatPath(issue.path)})`;
+      if (alreadyReported.has(issue.message) || alreadyReported.has(message)) {
+        continue;
+      }
       diagnostics.push({
-        message: `${issue.message} (${formatPath(issue.path)})`,
+        message,
         severity: "error",
         range: resolveOrWalkUp(mapper, issue.path),
       });

@@ -334,3 +334,33 @@ treatments:
     });
   });
 });
+
+describe("consent-arm uniqueness diagnostics (#481)", () => {
+  test("duplicate literal consent-arm names → error with a source position on the second name", () => {
+    const source = `consent:
+  - name: default
+    steps:
+      - name: info
+        elements:
+          - type: prompt
+            file: a.prompt.md
+            name: ack
+          - type: submitButton
+  - name: default
+    steps:
+      - name: info
+        elements:
+          - type: prompt
+            file: b.prompt.md
+            name: ack2
+          - type: submitButton
+`;
+    const { diagnostics } = validateTreatmentSource(source);
+    const dup = diagnostics.find((d) =>
+      /already used by an earlier consent arm/.test(d.message),
+    );
+    expect(dup).toBeDefined();
+    expect(dup?.severity).toBe("error");
+    expect(dup?.range?.startLine).toBe(9); // 0-based: the second `name: default`
+  });
+});

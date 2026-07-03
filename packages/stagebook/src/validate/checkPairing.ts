@@ -169,7 +169,11 @@ export function checkPairing(
   }
 
   // Data check: re-run the reference walker over a synthetic file
-  // narrowed to exactly this pairing. Rewriting each treatment's
+  // narrowed to exactly this pairing. The synthetic file deliberately
+  // omits `consent:` — consent has no pairing relationship (#481), so a
+  // treatment reference to a consent key degrades here from the precise
+  // audit-only message to a generic unknown-reference error; still an
+  // error, launch still refused. Rewriting each treatment's
   // declaration to the selected sequence makes the walker's positive
   // check mean precisely "resolves under THIS sequence".
   if (constraintOk.length > 0) {

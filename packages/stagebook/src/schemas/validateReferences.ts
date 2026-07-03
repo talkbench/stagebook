@@ -888,12 +888,17 @@ function applyRules({
     // exit + invoked templates. `phaseLabel === "intro step"` is the
     // tell that we're in the intro-sequence walker.
     const inIntroSequence = phaseLabel === "intro step";
-    const scopeDescription = inIntroSequence
-      ? "this intro sequence"
-      : "this treatment";
-    const reachableDescription = inIntroSequence
-      ? "earlier in this intro sequence"
-      : "in this treatment's intro, game, or exit stages (or in a template this treatment invokes)";
+    const inConsentArm = phaseLabel === "consent step";
+    const scopeDescription = inConsentArm
+      ? "this consent arm"
+      : inIntroSequence
+        ? "this intro sequence"
+        : "this treatment";
+    const reachableDescription = inConsentArm
+      ? "earlier in this consent arm (consent is a closed scope — it runs before everything and cannot read other arms or later phases)"
+      : inIntroSequence
+        ? "earlier in this intro sequence"
+        : "in this treatment's intro, game, or exit stages (or in a template this treatment invokes)";
     // #499: if some sequence in the file DOES produce the key but this
     // treatment doesn't declare it, say so — the fix is usually to add
     // the sequence to `introSequences:`, not to rename anything.

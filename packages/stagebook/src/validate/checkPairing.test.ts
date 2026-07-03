@@ -211,3 +211,56 @@ describe("checkPairing input hygiene (Copilot review)", () => {
     expect(diags[0].message).toMatch(/uninterpretable/);
   });
 });
+
+describe("debrief under checkPairing (#481)", () => {
+  test("debrief references are verified under the selected sequence", () => {
+    const seq = (name: string, key: string) => ({
+      name,
+      introSteps: [
+        {
+          name: "s",
+          elements: [
+            { type: "prompt", file: `${key}.prompt.md`, name: key },
+            { type: "submitButton" },
+          ],
+        },
+      ],
+    });
+    const file = {
+      introSequences: [seq("a", "color"), seq("b", "shape")],
+      treatments: [
+        {
+          name: "t",
+          playerCount: 1,
+          introSequences: ["a", "b"],
+          gameStages: [
+            {
+              name: "s1",
+              duration: 60,
+              elements: [{ type: "submitButton", name: "done" }],
+            },
+          ],
+          debrief: [
+            {
+              name: "d",
+              elements: [
+                {
+                  type: "submitButton",
+                  conditions: [
+                    { reference: "self.prompt.color", comparator: "exists" },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(checkPairing(file, { introSequenceName: "a" }, ["t"])).toHaveLength(
+      0,
+    );
+    const diags = checkPairing(file, { introSequenceName: "b" }, ["t"]);
+    expect(diags).toHaveLength(1);
+    expect(diags[0].message).toMatch(/self\.prompt\.color/);
+  });
+});

@@ -298,23 +298,44 @@ export function collectStorageKeyCollisions(
   // consent arm, so a false conflict just prompts a rename). This is the
   // "collision scope follows pairing scope" principle: universal where
   // the relationship is independent.
+  // Capped per pair: unlike the treatment × intro check (scoped to the
+  // author's declared pairings), this product is unconditional — C arms
+  // × (I + T) containers. An adversarial file (hundreds of arms ×
+  // hundreds of containers × shared keys) would otherwise amplify into
+  // millions of diagnostics and gigabytes of message text inside the
+  // editor/manager process. Twenty per pair is far beyond anything an
+  // author needs to see; the summary entry says what was elided.
+  const MAX_CROSS_PER_PAIR = 20;
+  const emitCapped = (
+    cross: Map<string, Path[]>,
+    pairLabel: string,
+    summaryPath: Path,
+  ) => {
+    const emitted = emitDuplicates(cross, pairLabel);
+    if (emitted.length <= MAX_CROSS_PER_PAIR) {
+      out.push(...emitted);
+      return;
+    }
+    out.push(...emitted.slice(0, MAX_CROSS_PER_PAIR));
+    out.push({
+      key: "…",
+      paths: [summaryPath],
+      message: `…and ${String(emitted.length - MAX_CROSS_PER_PAIR)} more storage-key collisions for the ${pairLabel}. Fix the ones above and re-validate.`,
+    });
+  };
   for (const consentArm of consentMaps) {
     for (const intro of introMaps) {
-      const cross = crossDuplicates(consentArm.keys, intro.keys);
-      out.push(
-        ...emitDuplicates(
-          cross,
-          `pair of consent arm ${describe(consentArm.name, consentArm.idx)} × introSequence ${describe(intro.name, intro.idx)}`,
-        ),
+      emitCapped(
+        crossDuplicates(consentArm.keys, intro.keys),
+        `pair of consent arm ${describe(consentArm.name, consentArm.idx)} × introSequence ${describe(intro.name, intro.idx)}`,
+        ["consent", consentArm.idx],
       );
     }
     for (const treatment of treatmentMaps) {
-      const cross = crossDuplicates(consentArm.keys, treatment.keys);
-      out.push(
-        ...emitDuplicates(
-          cross,
-          `pair of consent arm ${describe(consentArm.name, consentArm.idx)} × treatment ${describe(treatment.name, treatment.idx)}`,
-        ),
+      emitCapped(
+        crossDuplicates(consentArm.keys, treatment.keys),
+        `pair of consent arm ${describe(consentArm.name, consentArm.idx)} × treatment ${describe(treatment.name, treatment.idx)}`,
+        ["consent", consentArm.idx],
       );
     }
   }

@@ -552,3 +552,280 @@ describe("resolved: consent and debrief post-fill shapes", () => {
     expect(success).toBe(false);
   });
 });
+
+// --- coverage-review additions -------------------------------------------------
+
+describe("audit-only rule fires at every non-consent site", () => {
+  test("exit-step reference to a consent-only key → audit-only error", () => {
+    const issues = validateTreatmentFileReferences({
+      consent: [consentArm("c", ["acknowledge"])],
+      treatments: [
+        minimalTreatment({
+          exitSequence: [
+            {
+              name: "e",
+              elements: [
+                {
+                  type: "submitButton",
+                  conditions: [refCondition("acknowledge")],
+                },
+              ],
+            },
+          ],
+        }),
+      ],
+    });
+    const issue = issues.find((i) => /audit-only/i.test(i.message));
+    expect(issue).toBeDefined();
+    expect(issue?.path.slice(0, 3)).toEqual(["treatments", 0, "exitSequence"]);
+  });
+
+  test("debrief-step reference to a consent-only key → audit-only error", () => {
+    const issues = validateTreatmentFileReferences({
+      consent: [consentArm("c", ["acknowledge"])],
+      treatments: [
+        minimalTreatment({
+          debrief: [
+            {
+              name: "d",
+              elements: [
+                {
+                  type: "submitButton",
+                  conditions: [refCondition("acknowledge")],
+                },
+              ],
+            },
+          ],
+        }),
+      ],
+    });
+    const issue = issues.find((i) => /audit-only/i.test(i.message));
+    expect(issue).toBeDefined();
+    expect(issue?.path.slice(0, 3)).toEqual(["treatments", 0, "debrief"]);
+  });
+
+  test("groupComposition reference to a consent-only key → audit-only error", () => {
+    const issues = validateTreatmentFileReferences({
+      consent: [consentArm("c", ["acknowledge"])],
+      treatments: [
+        minimalTreatment({
+          playerCount: 2,
+          groupComposition: [
+            {
+              position: 0,
+              title: "x",
+              conditions: [refCondition("acknowledge")],
+            },
+          ],
+        }),
+      ],
+    });
+    expect(issues.some((i) => /audit-only/i.test(i.message))).toBe(true);
+  });
+
+  test("key produced by BOTH consent and intro: collision fires, audit-only stands down", () => {
+    const file = {
+      consent: [consentArm("c", ["color"])],
+      introSequences: [
+        {
+          name: "a",
+          introSteps: [
+            {
+              name: "s",
+              elements: [promptEl("color"), { type: "submitButton" }],
+            },
+          ],
+        },
+      ],
+      treatments: [
+        minimalTreatment({
+          introSequences: ["a"],
+          gameStages: [
+            {
+              name: "s1",
+              duration: 60,
+              elements: [
+                {
+                  type: "submitButton",
+                  name: "done",
+                  conditions: [refCondition("color")],
+                },
+              ],
+            },
+          ],
+        }),
+      ],
+    };
+    expect(validateTreatmentFileReferences(file)).toHaveLength(0);
+    const collisions = collectStorageKeyCollisions(file);
+    expect(
+      collisions.some(
+        (c) =>
+          c.key === "prompt_color" &&
+          /consent arm "c" × introSequence "a"/.test(c.message),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("consent scope details", () => {
+  test("consent arm referencing ANOTHER arm's key → unknown-ref with consent-arm wording", () => {
+    const issues = validateTreatmentFileReferences({
+      consent: [
+        consentArm("c-en", ["ack_en"]),
+        {
+          name: "c-he",
+          steps: [
+            {
+              name: "info",
+              elements: [
+                {
+                  type: "submitButton",
+                  conditions: [refCondition("ack_en")],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path.slice(0, 2)).toEqual(["consent", 1]);
+    expect(issues[0].message).toMatch(/doesn't match any prompt element/);
+    expect(issues[0].message).toContain("this consent arm");
+  });
+
+  test("stage-level always-skip (Rule 2) applies inside consent steps", () => {
+    const issues = validateTreatmentFileReferences({
+      consent: [
+        {
+          name: "c",
+          steps: [
+            {
+              name: "info",
+              conditions: [
+                {
+                  reference: "self.prompt.ack",
+                  comparator: "equals",
+                  value: "yes",
+                },
+              ],
+              elements: [promptEl("ack"), { type: "submitButton" }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(
+      issues.some((i) => /always skip the stage at load/.test(i.message)),
+    ).toBe(true);
+  });
+});
+
+describe("consent template content types", () => {
+  test("invalid content under contentType consentArm → prefixed step-rule error", () => {
+    const result = treatmentFileSchema.safeParse({
+      templates: [
+        {
+          name: "bad-arm",
+          contentType: "consentArm",
+          content: {
+            name: "c",
+            steps: [{ name: "info", elements: [promptEl("ack")] }],
+          },
+        },
+      ],
+      consent: [{ template: "bad-arm" }],
+    });
+    expect(result.success).toBe(false);
+    const messages = result.success
+      ? []
+      : result.error.issues.map((i) => i.message);
+    expect(
+      messages.some((m) =>
+        m.startsWith("Invalid content for contentType 'consentArm':"),
+      ),
+    ).toBe(true);
+  });
+
+  test("template-driven consent arms with placeholder names skip the source-pass uniqueness check", () => {
+    const result = treatmentFileSchema.safeParse({
+      templates: [
+        {
+          name: "arm",
+          contentType: "consentArm",
+          content: {
+            name: "consent ${locale}",
+            locale: "${locale}",
+            steps: [
+              {
+                name: "info",
+                elements: [promptEl("ack"), { type: "submitButton" }],
+              },
+            ],
+          },
+        },
+      ],
+      consent: [
+        { template: "arm", fields: { locale: "en" } },
+        { template: "arm", fields: { locale: "en" } },
+      ],
+    });
+    const uniquenessIssues = result.success
+      ? []
+      : result.error.issues.filter((i) =>
+          /already used by an earlier consent arm/.test(i.message),
+        );
+    expect(uniquenessIssues).toHaveLength(0);
+  });
+
+  test("resolved layer catches duplicate arm names post-expansion", () => {
+    const { success, issues } = validateResolvedTreatmentFile({
+      consent: [
+        {
+          name: "consent en",
+          locale: "en",
+          steps: [
+            { name: "info", elements: [{ type: "submitButton", name: "b" }] },
+          ],
+        },
+        {
+          name: "consent en",
+          locale: "en",
+          steps: [
+            { name: "info", elements: [{ type: "submitButton", name: "b" }] },
+          ],
+        },
+      ],
+    });
+    expect(success).toBe(false);
+    expect(
+      issues.some((i) =>
+        /already used by an earlier consent arm/.test(i.message),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("whole-value template invocations at step-list positions don't throw", () => {
+  // Pre-existing latent crash on main for introSteps/exitSequence,
+  // guarded when the shared step-refine landed: the chained superRefine
+  // receives the raw {template: ...} object, not the expanded array.
+  test("safeParse returns diagnostics (not a throw) for template-valued step lists", () => {
+    for (const file of [
+      { consent: [{ name: "c", steps: { template: "t" } }] },
+      {
+        treatments: [minimalTreatment({ debrief: { template: "t" } })],
+      },
+      {
+        introSequences: [{ name: "a", introSteps: { template: "t" } }],
+        treatments: [minimalTreatment({ introSequences: ["a"] })],
+      },
+      {
+        treatments: [minimalTreatment({ exitSequence: { template: "t" } })],
+      },
+    ]) {
+      expect(() => treatmentFileSchema.safeParse(file)).not.toThrow();
+    }
+  });
+});
