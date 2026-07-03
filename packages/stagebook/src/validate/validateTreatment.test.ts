@@ -13,6 +13,7 @@ describe("validateTreatmentSource", () => {
 treatments:
   - name: study1
     playerCount: 1
+    introSequences: []
     gameStages:
       - name: stage1
         duration: 300

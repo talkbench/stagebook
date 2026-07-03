@@ -1958,11 +1958,37 @@ export const introSequencesSchema = altTemplateContext(
     .nonempty(),
 );
 
+/** Static half of the requiredness error (#499). The walker can't reach
+ *  this message to append the file's defined sequence names, so the
+ *  schema-level text carries the `[]` escape hatch and the walker's
+ *  dangling-name error carries the "which names exist" half. */
+export const INTRO_SEQUENCES_REQUIRED_MESSAGE =
+  "Each treatment must declare `introSequences:` — the intro sequences it " +
+  "may follow. Use `introSequences: []` for a treatment that runs without " +
+  "an intro sequence.";
+
 export const baseTreatmentSchema = z
   .object({
     name: nameSchema,
     notes: z.string().optional(),
     playerCount: z.number(),
+    // Which intro sequences this treatment may follow, by name (#499).
+    // REQUIRED — the pairing must be explicit; `[]` means "no intro
+    // sequence" (the host may only launch this treatment without one).
+    // Names resolve against the top-level `introSequences:` collection
+    // only (arm names are per-collection namespaces). Items are plain
+    // strings rather than `nameSchema` so per-item `${field}`
+    // placeholders survive to fillTemplates; the whole field may also
+    // be a single `${field}` placeholder, mirroring `groupComposition`.
+    // Dangling names, duplicates, and the "every listed sequence
+    // provides every referenced key" rule live in validateReferences.ts;
+    // post-fill leaks are caught by `resolvedTreatmentSchema`.
+    introSequences: z
+      .array(z.string().min(1), {
+        required_error: INTRO_SEQUENCES_REQUIRED_MESSAGE,
+        invalid_type_error: INTRO_SEQUENCES_REQUIRED_MESSAGE,
+      })
+      .or(fieldPlaceholderSchema),
     // Participant-facing language for this treatment (BCP-47, e.g. `he`).
     // Drives stagebook's chrome catalog + RTL when the host wires it onto the
     // provider. Optional — absent means English (the runtime resolves an

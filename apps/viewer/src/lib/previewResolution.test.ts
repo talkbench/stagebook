@@ -20,6 +20,7 @@ templates:
 treatments:
   - name: treatment1
     playerCount: 1
+    introSequences: []
     gameStages:
       - template: questionStage
         fields:
@@ -42,6 +43,7 @@ templates:
 treatments:
   - name: treatment1
     playerCount: 1
+    introSequences: []
     gameStages:
       - template: questionStage
         fields:
@@ -72,6 +74,7 @@ introSequences:
 treatments:
   - name: treatment1
     playerCount: 1
+    introSequences: [intro1]
     gameStages:
       - name: stage1
         duration: 10
@@ -98,6 +101,7 @@ templates:
 treatments:
   - name: treatment1
     playerCount: 1
+    introSequences: []
     gameStages:
       - template: questionStage
         fields:
@@ -113,6 +117,7 @@ const NO_TEMPLATE_YAML = `
 treatments:
   - name: treatment1
     playerCount: 1
+    introSequences: []
     gameStages:
       - name: stage1
         duration: 10

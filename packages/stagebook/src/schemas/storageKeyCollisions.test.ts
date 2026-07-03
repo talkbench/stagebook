@@ -123,6 +123,7 @@ describe("collectStorageKeyCollisions", () => {
       treatments: [
         {
           name: "t1",
+          introSequences: ["intro1"],
           gameStages: [
             {
               name: "stage1",
@@ -211,6 +212,7 @@ describe("collectStorageKeyCollisions", () => {
       treatments: [
         {
           name: "treatment_A",
+          introSequences: ["intro1"],
           gameStages: [
             {
               name: "stage1",
@@ -222,6 +224,7 @@ describe("collectStorageKeyCollisions", () => {
         },
         {
           name: "treatment_B",
+          introSequences: ["intro1"],
           gameStages: [
             {
               name: "stage1",

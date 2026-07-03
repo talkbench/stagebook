@@ -6,21 +6,21 @@ All schemas are [Zod](https://zod.dev/) objects. Use `.safeParse(data)` for vali
 
 ### Treatment File
 
-| Export                  | Description                                                        |
-| ----------------------- | ------------------------------------------------------------------ |
-| `treatmentFileSchema`   | Top-level schema for `.stagebook.yaml` files                       |
-| `treatmentSchema`       | Single treatment (name, playerCount, gameStages, exitSequence)     |
-| `stageSchema`           | Game stage (name, duration, elements, discussion)                  |
-| `elementSchema`         | Any element type (discriminated union on `type`)                   |
-| `promptSchema`          | Prompt element specifically                                        |
-| `discussionSchema`      | Discussion configuration                                           |
-| `conditionSchema`       | Single condition (reference, comparator, value, position)          |
-| `conditionsSchema`      | Array of conditions                                                |
-| `referenceSchema`       | Reference string validator (parses and validates `type.name.path`) |
-| `introSequenceSchema`   | Intro sequence with named steps                                    |
-| `introExitStepSchema`   | Single intro or exit step                                          |
-| `templateSchema`        | Template definition (name, contentType, content)                   |
-| `templateContextSchema` | Template usage (template, fields, broadcast)                       |
+| Export                  | Description                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `treatmentFileSchema`   | Top-level schema for `.stagebook.yaml` files                                   |
+| `treatmentSchema`       | Single treatment (name, playerCount, introSequences, gameStages, exitSequence) |
+| `stageSchema`           | Game stage (name, duration, elements, discussion)                              |
+| `elementSchema`         | Any element type (discriminated union on `type`)                               |
+| `promptSchema`          | Prompt element specifically                                                    |
+| `discussionSchema`      | Discussion configuration                                                       |
+| `conditionSchema`       | Single condition (reference, comparator, value, position)                      |
+| `conditionsSchema`      | Array of conditions                                                            |
+| `referenceSchema`       | Reference string validator (parses and validates `type.name.path`)             |
+| `introSequenceSchema`   | Intro sequence with named steps                                                |
+| `introExitStepSchema`   | Single intro or exit step                                                      |
+| `templateSchema`        | Template definition (name, contentType, content)                               |
+| `templateContextSchema` | Template usage (template, fields, broadcast)                                   |
 
 ### Prompt File
 
@@ -119,6 +119,33 @@ const expanded = fillTemplates({
 Throws if any `${field}` placeholders remain unresolved.
 
 Also exported: `expandTemplate`, `substituteFields`, `recursivelyFillTemplates` for lower-level control.
+
+## Validation (`stagebook/validate`)
+
+The `stagebook/validate` subpath exports the position-aware validators shared by the CLI, the VS Code extension, and the viewer: `validateTreatmentSource`, `validatePromptSource`, `loadAndMergeImports`, `expandAndValidateWithImports`, the `Diagnostic` type, and position-mapping helpers.
+
+### `checkPairing(file, { introSequenceName }, treatmentNames)`
+
+Launch-time guard for the treatment-level `introSequences:` declaration (#499). Hosts call it at batch launch — the point where batch config selects an intro sequence and a set of treatments.
+
+```typescript
+import { checkPairing, type Diagnostic } from "stagebook/validate";
+
+const diagnostics: Diagnostic[] = checkPairing(
+  expandedFile, // post fillTemplates / import merge
+  { introSequenceName: "prolific_en" }, // or null for an intro-less launch
+  ["negotiation_high_stakes", "control"],
+);
+```
+
+**Returns:** `Diagnostic[]` — empty means the pairing is valid. Checks, in order:
+
+1. The named intro sequence exists (when one is selected).
+2. Every named treatment exists.
+3. Every treatment **lists** the selected sequence in its `introSequences:` — or declares `[]` when launching without one. The declaration is a constraint, not just a data dependency: a treatment that references no intro data still may not run after a sequence it doesn't list.
+4. Every reference in each treatment resolves under that specific sequence.
+
+Expects **expanded** input (e.g. the output of `expandAndValidateWithImports` or the host's own hydration pipeline); an unresolved `${...}` placeholder in a selected treatment's declaration is reported as an error rather than guessed around. Diagnostics carry `range: null` — this is a runtime check with no source-position mapping, so hosts render messages only. Deliberately intro-only: consent arms have no pairing relationship, so there is no `consentName` parameter.
 
 ## React Components
 

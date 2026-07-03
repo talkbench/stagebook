@@ -86,6 +86,8 @@ for (const d of diagnostics) {
 }
 ```
 
+The same subpath exports `checkPairing(file, { introSequenceName }, treatmentNames)` — a launch-time guard hosts call where batch config pairs an intro sequence with treatments (pass `introSequenceName: null` for intro-less launches). See the [API reference](docs/engineer/api-reference.md) and [integration guide](docs/engineer/integration-guide.md#launch-time-pairing-guard).
+
 ### Validating a prompt file
 
 `promptFileSchema` takes raw markdown, parses it, and validates structure, metadata, response format, and slider labels in a single pass:
@@ -156,7 +158,7 @@ The template engine supports field substitution (`${fieldName}`), nested templat
 | Export                  | Description                                                                                          |
 | ----------------------- | ---------------------------------------------------------------------------------------------------- |
 | `treatmentFileSchema`   | Top-level schema for a treatment YAML file (templates, introSequences, treatments)                   |
-| `treatmentSchema`       | Single treatment with playerCount, gameStages, exitSequence                                          |
+| `treatmentSchema`       | Single treatment with playerCount, introSequences, gameStages, exitSequence                          |
 | `stageSchema`           | Game stage with name, duration, elements, discussion; validates element time bounds against duration |
 | `elementSchema`         | Any DSL element (prompt, display, survey, timer, etc.) with conditional rendering support            |
 | `promptSchema`          | Prompt element with file reference and optional shared flag                                          |

@@ -20,6 +20,7 @@ treatments:
     notes: |
       A **Markdown** note describing the treatment.
     playerCount: 1
+    introSequences: [intro]
     gameStages:
       - name: only
         duration: 10

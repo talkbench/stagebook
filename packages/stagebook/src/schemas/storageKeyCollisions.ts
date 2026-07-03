@@ -200,6 +200,11 @@ export function collectStorageKeyCollisions(
     name: unknown;
     idx: number;
     keys: Map<string, Path[]>;
+    /** Concrete declared `introSequences:` names (#499), or null when
+     *  the declaration can't be interpreted statically (missing field,
+     *  whole-field or per-item `${...}` placeholder) — cross-pair
+     *  checks are skipped for that treatment rather than guessed. */
+    declared: string[] | null;
   }[] = [];
   const treatments = Array.isArray(root.treatments) ? root.treatments : [];
   treatments.forEach((treatment, tIdx) => {
@@ -208,7 +213,16 @@ export function collectStorageKeyCollisions(
       name?: unknown;
       gameStages?: unknown;
       exitSequence?: unknown;
+      introSequences?: unknown;
     };
+    const declaredRaw = t.introSequences;
+    const declared =
+      Array.isArray(declaredRaw) &&
+      declaredRaw.every(
+        (n): n is string => typeof n === "string" && !n.includes("${"),
+      )
+        ? declaredRaw
+        : null;
     const keys = new Map<string, Path[]>();
     const gameStages = Array.isArray(t.gameStages) ? t.gameStages : [];
     gameStages.forEach((stage, stageIdx) => {
@@ -232,14 +246,26 @@ export function collectStorageKeyCollisions(
     });
     if (keys.size === 0) return;
     out.push(...emitDuplicates(keys, `treatment ${describe(t.name, tIdx)}`));
-    treatmentMaps.push({ name: t.name, idx: tIdx, keys });
+    treatmentMaps.push({ name: t.name, idx: tIdx, keys, declared });
   });
 
-  // Cross-pair: every (introSequence × treatment) combination. A participant
-  // who flows from intro_i into treatment_j sees both sets, so any key
-  // appearing in both is a collision for that participant.
+  // Cross-pair: each treatment × the intro sequences it DECLARES via
+  // `introSequences:` (#499) — collision scope follows pairing scope. A
+  // participant only ever flows from a declared sequence into the
+  // treatment, so a key shared with a never-paired sequence is not a
+  // collision anyone can experience. Treatments whose declaration isn't
+  // statically interpretable (placeholder / missing field) skip the
+  // cross-pair check — can't-prove posture, matching the reference
+  // validator.
   for (const intro of introMaps) {
     for (const treatment of treatmentMaps) {
+      if (
+        treatment.declared === null ||
+        typeof intro.name !== "string" ||
+        !treatment.declared.includes(intro.name)
+      ) {
+        continue;
+      }
       const cross = crossDuplicates(intro.keys, treatment.keys);
       out.push(
         ...emitDuplicates(

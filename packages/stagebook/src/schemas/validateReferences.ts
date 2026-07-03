@@ -169,8 +169,9 @@ export function validateTreatmentFileReferences(
     }
   }
 
-  // Intro-phase produced keys — merged across every intro sequence. Game
-  // stages and exit steps are allowed to reference any intro-phase key.
+  // Intro-phase produced keys, tracked per sequence (#499) plus the
+  // merged union. Which set a treatment validates against depends on
+  // its declared `introSequences:` pairing — see resolvePairing below.
   //
   // `collectStepKeys` iterates a step's elements; `collectProducedKeys`
   // operates on a single element and skips anything that isn't an
@@ -178,11 +179,19 @@ export function validateTreatmentFileReferences(
   // bug (#321 follow-up) that left this set empty — the result was
   // silently masked by a `globalProducedKeys` fallthrough that's been
   // removed (strict-by-default). Intro keys now flow correctly.
+  const introKeysBySequence = new Map<string, Set<string>>();
   const introProducedKeys = new Set<string>();
   for (const seq of introSequences) {
     if (!isRecord(seq)) continue;
+    const seqKeys = new Set<string>();
     for (const step of toArray(seq.introSteps)) {
-      for (const key of collectStepKeys(step)) introProducedKeys.add(key);
+      for (const key of collectStepKeys(step)) {
+        seqKeys.add(key);
+        introProducedKeys.add(key);
+      }
+    }
+    if (typeof seq.name === "string") {
+      introKeysBySequence.set(seq.name, seqKeys);
     }
   }
 
@@ -201,18 +210,140 @@ export function validateTreatmentFileReferences(
     });
   });
 
-  // Each treatment has its own game/exit rank space.
+  // Each treatment has its own game/exit rank space, scoped to the
+  // intro sequences it declares (#499).
   treatments.forEach((treatment, treatmentIdx) => {
     if (!isRecord(treatment)) return;
+    const pairing = resolvePairing({
+      treatment,
+      treatmentPath: ["treatments", treatmentIdx],
+      introKeysBySequence,
+      hasIntroCollection: treatmentFile.introSequences !== undefined,
+      introProducedKeys,
+      issues,
+    });
     validateTreatment({
       treatment,
       treatmentPath: ["treatments", treatmentIdx],
-      introProducedKeys,
+      introProducedKeys: pairing.availableIntroKeys,
+      pairing: pairing.declaredKeySets
+        ? {
+            declaredKeySets: pairing.declaredKeySets,
+            introKeysBySequence,
+          }
+        : undefined,
       issues,
     });
   });
 
   return issues;
+}
+
+/** Result of interpreting one treatment's declared `introSequences:`. */
+interface PairingResolution {
+  /** Intro keys the treatment's references may resolve against: the
+   *  union of the declared sequences' keys, or the file-wide union
+   *  when the declaration can't be interpreted (placeholder, missing
+   *  field, or no introSequences collection to resolve against). */
+  availableIntroKeys: Set<string>;
+  /** Per-declared-sequence key sets for the positive "every listed
+   *  sequence provides it" check. Null when the check must be skipped
+   *  (can't-prove posture, #480). */
+  declaredKeySets: Map<string, Set<string>> | null;
+}
+
+/**
+ * Interpret a treatment's `introSequences:` declaration (#499) and emit
+ * name-resolution issues. Returns which intro keys the treatment may
+ * reference and (when provable) the per-sequence sets for the positive
+ * check.
+ *
+ * Can't-prove cases fall back to the pre-#499 union behavior so a single
+ * root cause (unresolved placeholder, missing required field — the
+ * schema already errors on that) doesn't cascade into noise:
+ *   - field missing or not an array/string → union, no checks
+ *   - whole-field `${...}` placeholder → union, no checks
+ *   - any per-item `${...}` placeholder → union, dangling-name checks
+ *     still run on the concrete items
+ *   - no `introSequences:` collection in the file → union (empty), no
+ *     name checks (the other half may live in an importing file)
+ */
+function resolvePairing({
+  treatment,
+  treatmentPath,
+  introKeysBySequence,
+  hasIntroCollection,
+  introProducedKeys,
+  issues,
+}: {
+  treatment: Record<string, unknown>;
+  treatmentPath: (string | number)[];
+  introKeysBySequence: Map<string, Set<string>>;
+  hasIntroCollection: boolean;
+  introProducedKeys: Set<string>;
+  issues: ReferenceValidationIssue[];
+}): PairingResolution {
+  const fallback: PairingResolution = {
+    availableIntroKeys: introProducedKeys,
+    declaredKeySets: null,
+  };
+  const declared = treatment.introSequences;
+  if (!Array.isArray(declared)) return fallback;
+
+  const treatmentName =
+    typeof treatment.name === "string" ? treatment.name : "(unnamed)";
+  const seen = new Set<string>();
+  let provable = true;
+  const concreteNames: string[] = [];
+
+  declared.forEach((entry, entryIdx) => {
+    if (typeof entry !== "string") {
+      // Malformed item — schema's job, not ours.
+      provable = false;
+      return;
+    }
+    if (entry.includes("${")) {
+      // Unresolved template placeholder: the full set is unknowable on
+      // this pass, but concrete siblings can still be name-checked.
+      provable = false;
+      return;
+    }
+    if (seen.has(entry)) {
+      // "duplicate" wording is load-bearing: the validate layer maps
+      // messages matching /unique|duplicate/i to warning severity.
+      issues.push({
+        path: [...treatmentPath, "introSequences", entryIdx],
+        message: `Treatment "${treatmentName}" lists intro sequence "${entry}" more than once in \`introSequences:\` (duplicate entry).`,
+      });
+      return;
+    }
+    seen.add(entry);
+    if (hasIntroCollection && !introKeysBySequence.has(entry)) {
+      const defined = [...introKeysBySequence.keys()];
+      const definedNote =
+        defined.length > 0
+          ? ` Defined in this file: ${defined.join(", ")}.`
+          : " This file defines no named intro sequences.";
+      issues.push({
+        path: [...treatmentPath, "introSequences", entryIdx],
+        message: `Treatment "${treatmentName}" lists intro sequence "${entry}", but no intro sequence with that name is defined.${definedNote}`,
+      });
+      return;
+    }
+    concreteNames.push(entry);
+  });
+
+  if (!hasIntroCollection || !provable) return fallback;
+
+  const declaredKeySets = new Map<string, Set<string>>();
+  const availableIntroKeys = new Set<string>();
+  for (const name of concreteNames) {
+    const keys = introKeysBySequence.get(name);
+    if (!keys) continue; // dangling — already reported above
+    declaredKeySets.set(name, keys);
+    for (const key of keys) availableIntroKeys.add(key);
+  }
+  return { availableIntroKeys, declaredKeySets };
 }
 
 // ---------------------------------------------------------------------------
@@ -264,15 +395,32 @@ function validateStepSequence({
   });
 }
 
+/** Pairing context for the positive per-sequence check (#499). Present
+ *  only when the treatment's `introSequences:` declaration was fully
+ *  concrete and resolvable. */
+interface PairingContext {
+  /** name → produced keys, for each sequence the treatment declares. */
+  declaredKeySets: Map<string, Set<string>>;
+  /** name → produced keys for EVERY sequence in the file — used to
+   *  hint when a reference's producer exists but isn't declared. */
+  introKeysBySequence: Map<string, Set<string>>;
+  /** key → earliest own (game/exit) producer rank, ignoring intro
+   *  seeding. Lets the positive check stand down when the treatment
+   *  itself produces the key before the referencing site. */
+  ownProducedAt: Map<string, number>;
+}
+
 function validateTreatment({
   treatment,
   treatmentPath,
   introProducedKeys,
+  pairing,
   issues,
 }: {
   treatment: Record<string, unknown>;
   treatmentPath: (string | number)[];
   introProducedKeys: Set<string>;
+  pairing?: Omit<PairingContext, "ownProducedAt">;
   issues: ReferenceValidationIssue[];
 }): void {
   const gameStages = toArray(treatment.gameStages);
@@ -282,6 +430,11 @@ function validateTreatment({
   // at a single virtual rank (RANK_INTRO) before game stages; its produced
   // keys are in `introProducedKeys` and treated as "always earlier."
   const producedAt = new Map<string, number>();
+  // Own-production ranks, kept separately from the intro-seeded map: a
+  // key both intro-provided and own-produced resolves at RANK_INTRO in
+  // `producedAt` (earliest wins), which would otherwise hide the own
+  // producer from the positive pairing check.
+  const ownProducedAt = new Map<string, number>();
   // Pre-seed intro keys at RANK_INTRO so forward comparisons always place
   // them before any game/exit rank.
   for (const key of introProducedKeys) {
@@ -290,14 +443,20 @@ function validateTreatment({
   gameStages.forEach((stage, idx) => {
     for (const key of collectStepKeys(stage)) {
       if (!producedAt.has(key)) producedAt.set(key, RANK_GAME_BASE + idx);
+      if (!ownProducedAt.has(key)) ownProducedAt.set(key, RANK_GAME_BASE + idx);
     }
   });
   exitSequence.forEach((step, idx) => {
     for (const key of collectStepKeys(step)) {
       if (!producedAt.has(key))
         producedAt.set(key, RANK_GAME_BASE + gameStages.length + idx);
+      if (!ownProducedAt.has(key))
+        ownProducedAt.set(key, RANK_GAME_BASE + gameStages.length + idx);
     }
   });
+  const pairingContext: PairingContext | undefined = pairing
+    ? { ...pairing, ownProducedAt }
+    : undefined;
 
   // groupComposition runs before any stage — can only reference intro +
   // external.
@@ -326,6 +485,7 @@ function validateTreatment({
         producedAt,
         issues,
         allowedProducerRanks: new Set([RANK_INTRO]),
+        pairing: pairingContext,
       });
     }
   });
@@ -342,6 +502,7 @@ function validateTreatment({
         producedAt,
         issues,
         phaseLabel: "game stage",
+        pairing: pairingContext,
       });
     }
     // Discussion conditions nested under the stage
@@ -364,6 +525,7 @@ function validateTreatment({
           producedAt,
           issues,
           phaseLabel: "game stage",
+          pairing: pairingContext,
         });
       }
     }
@@ -381,6 +543,7 @@ function validateTreatment({
         producedAt,
         issues,
         phaseLabel: "exit step",
+        pairing: pairingContext,
       });
     }
   });
@@ -499,6 +662,7 @@ function applyRules({
   laterPhaseKeys,
   allowedProducerRanks,
   phaseLabel,
+  pairing,
 }: {
   site: RefSite;
   enclosingRank: number;
@@ -516,6 +680,10 @@ function applyRules({
   allowedProducerRanks?: Set<number>;
   /** Context word used in error messages — "game stage", "intro step", … */
   phaseLabel?: string;
+  /** Treatment walkers only (#499): declared-pairing context for the
+   *  "every listed sequence provides it" check and the undeclared-
+   *  sequence hint on unknown references. */
+  pairing?: PairingContext;
 }): void {
   // Try to derive the storage key from the (already normalised) ref.
   let referenceKey: string;
@@ -613,11 +781,56 @@ function applyRules({
     const reachableDescription = inIntroSequence
       ? "earlier in this intro sequence"
       : "in this treatment's intro, game, or exit stages (or in a template this treatment invokes)";
+    // #499: if some sequence in the file DOES produce the key but this
+    // treatment doesn't declare it, say so — the fix is usually to add
+    // the sequence to `introSequences:`, not to rename anything.
+    let undeclaredHint = "";
+    if (pairing) {
+      const undeclaredProducers = [...pairing.introKeysBySequence]
+        .filter(
+          ([name, keys]) =>
+            keys.has(referenceKey) && !pairing.declaredKeySets.has(name),
+        )
+        .map(([name]) => `"${name}"`);
+      if (undeclaredProducers.length > 0) {
+        undeclaredHint = ` The key IS produced by intro sequence${
+          undeclaredProducers.length > 1 ? "s" : ""
+        } ${undeclaredProducers.join(", ")} — add ${
+          undeclaredProducers.length > 1 ? "them" : "it"
+        } to this treatment's \`introSequences:\` if this treatment may follow ${
+          undeclaredProducers.length > 1 ? "them" : "it"
+        }.`;
+      }
+    }
     issues.push({
       path: site.path,
-      message: `Reference "${refStr}" doesn't match any ${refType} element reachable from ${scopeDescription}. Check the name — no element produces the storage key "${referenceKey}" ${reachableDescription}.`,
+      message: `Reference "${refStr}" doesn't match any ${refType} element reachable from ${scopeDescription}. Check the name — no element produces the storage key "${referenceKey}" ${reachableDescription}.${undeclaredHint}`,
     });
     return;
+  }
+
+  // #499 positive pairing check: a reference that resolves from intro
+  // data must be provided by EVERY intro sequence this treatment
+  // declares — the host may launch the treatment after any of them.
+  // Stands down when the treatment itself produces the key at or
+  // before the referencing site (then no sequence needs to supply it).
+  if (
+    pairing &&
+    producerRank === RANK_INTRO &&
+    (pairing.ownProducedAt.get(referenceKey) ?? Infinity) > enclosingRank
+  ) {
+    const missing = [...pairing.declaredKeySets]
+      .filter(([, keys]) => !keys.has(referenceKey))
+      .map(([name]) => `"${name}"`);
+    if (missing.length > 0) {
+      issues.push({
+        path: site.path,
+        message: `Reference "${refStr}" is not provided by intro sequence${
+          missing.length > 1 ? "s" : ""
+        } ${missing.join(", ")} listed in this treatment's \`introSequences:\`. A treatment's references must resolve in every intro sequence it may follow.`,
+      });
+      return;
+    }
   }
 
   // groupComposition: target must be in the allowed-rank whitelist.

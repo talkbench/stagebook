@@ -13,6 +13,7 @@ introSequences:
 treatments:
   - name: treatment1
     playerCount: 2
+    introSequences: [intro1]
     gameStages:
       - name: stage1
         duration: 10
@@ -34,6 +35,7 @@ introSequences:
 treatments:
   - name: control
     playerCount: 1
+    introSequences: [intro1]
     gameStages:
       - name: stage1
         duration: 10
@@ -43,6 +45,7 @@ treatments:
             file: prompts/q1.prompt.md
   - name: experimental
     playerCount: 2
+    introSequences: [intro1]
     gameStages:
       - name: stage1
         duration: 15
@@ -75,6 +78,7 @@ introSequences:
 treatments:
   - name: treatment1
     playerCount: 1
+    introSequences: [intro1]
     gameStages:
       - template: questionStage
         fields:
@@ -107,6 +111,7 @@ introSequences:
 treatments:
   - name: treatment1
     playerCount: 1
+    introSequences: [intro1]
     gameStages:
       - template: questionStage
         fields:

@@ -23,12 +23,12 @@ templates:
         - type: submitButton
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `name` | yes | Unique identifier |
-| `contentType` | yes | What the template produces. One of: `element`, `elements`, `stage`, `stages`, `treatment`, `treatments`, `introSequence`, `introSequences`, `introExitStep`, `introSteps`, `exitSteps`, `condition`, `conditions`, `reference`, `player`, `groupComposition`, `discussion`, `broadcastAxisValues` |
-| `notes` | no | Researcher-facing comments (one-liner or multi-line) |
-| `content` | yes | The YAML structure to instantiate |
+| Field         | Required | Description                                                                                                                                                                                                                                                                                       |
+| ------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`        | yes      | Unique identifier                                                                                                                                                                                                                                                                                 |
+| `contentType` | yes      | What the template produces. One of: `element`, `elements`, `stage`, `stages`, `treatment`, `treatments`, `introSequence`, `introSequences`, `introExitStep`, `introSteps`, `exitSteps`, `condition`, `conditions`, `reference`, `player`, `groupComposition`, `discussion`, `broadcastAxisValues` |
+| `notes`       | no       | Researcher-facing comments (one-liner or multi-line)                                                                                                                                                                                                                                              |
+| `content`     | yes      | The YAML structure to instantiate                                                                                                                                                                                                                                                                 |
 
 ## Using Templates
 
@@ -52,9 +52,9 @@ Placeholders use the `${fieldName}` syntax. They can appear in string values, as
 
 ```yaml
 content:
-  name: ${prefix}_study           # embedded in a string
-  file: ${promptFile}             # standalone (can be any type)
-  message: "Hello ${name}!"       # embedded in a string
+  name: ${prefix}_study # embedded in a string
+  file: ${promptFile} # standalone (can be any type)
+  message: "Hello ${name}!" # embedded in a string
 ```
 
 Field keys can contain letters, numbers, and underscores.
@@ -96,6 +96,7 @@ templates:
     content:
       name: ${treatmentName}
       playerCount: 2
+      introSequences: []
       gameStages:
         - template: innerStage
           fields:
@@ -112,6 +113,8 @@ templates:
 ```
 
 Templates are expanded recursively until no template blocks remain.
+
+Note that a `contentType: treatment` template declares the required `introSequences:` field once in its content, and every instantiation inherits it. To vary the pairing per instantiation, use a `${field}` placeholder (whole-field or per-item) and fill it like any other field.
 
 ## Templates in Broadcast Axes
 
@@ -135,7 +138,7 @@ treatments:
 
 ## The `prefix:` convention for reusable modules
 
-Templates that get invoked more than once — including templates *imported* from another file (see [treatment-files.md](treatment-files.md#imports)) — need a way to give each invocation's elements unique names. Stagebook saves participant responses keyed by `<elementType>_<name>`, so two invocations of the same template with the same element names overwrite each other.
+Templates that get invoked more than once — including templates _imported_ from another file (see [treatment-files.md](treatment-files.md#imports)) — need a way to give each invocation's elements unique names. Stagebook saves participant responses keyed by `<elementType>_<name>`, so two invocations of the same template with the same element names overwrite each other.
 
 The convention: **module templates take a `prefix:` field, and use it inside every named element.**
 
@@ -167,24 +170,25 @@ introSequences:
         elements:
           - template: tipi_questions
             fields:
-              prefix: preTIPI    # → preTIPI_q1, preTIPI_q2
+              prefix: preTIPI # → preTIPI_q1, preTIPI_q2
         # ... other intro elements
 treatments:
   - name: my_study
     playerCount: 1
+    introSequences: [intro]
     exitSequence:
       - name: post
         elements:
           - template: tipi_questions
             fields:
-              prefix: postTIPI   # → postTIPI_q1, postTIPI_q2
+              prefix: postTIPI # → postTIPI_q1, postTIPI_q2
 ```
 
 Each invocation now produces unique storage keys (`prompt_preTIPI_q1`, `prompt_postTIPI_q1`, …) — no collisions, exports keep responses separable.
 
 ### Modules that invoke other modules: extend the prefix
 
-When a module template invokes another module template, it should *extend* the prefix it received before passing it down — adding its own subnamespace. This keeps the convention compositional through arbitrary nesting:
+When a module template invokes another module template, it should _extend_ the prefix it received before passing it down — adding its own subnamespace. This keeps the convention compositional through arbitrary nesting:
 
 ```yaml
 # In a "battery" module that bundles a TIPI questionnaire + a Likert scale:
@@ -194,7 +198,7 @@ templates:
     content:
       - template: tipi_questions
         fields:
-          prefix: ${prefix}_tipi      # caller's prefix + this module's subnamespace
+          prefix: ${prefix}_tipi # caller's prefix + this module's subnamespace
       - template: likert_scale
         fields:
           prefix: ${prefix}_likert

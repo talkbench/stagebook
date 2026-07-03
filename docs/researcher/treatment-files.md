@@ -36,6 +36,7 @@ templates:
 treatments:
   - name: my_study
     playerCount: 1
+    introSequences: [] # this file defines no intro sequences
     gameStages:
       - name: intro
         duration: 60
@@ -58,7 +59,7 @@ Each study follows a three-phase structure:
 
 ### 1. Intro Sequence (asynchronous, solo)
 
-Completed individually before group assignment. Typically includes consent, setup checks, and researcher-defined surveys or prompts. You can define multiple intro sequences, but each batch uses exactly one.
+Completed individually before group assignment. Typically includes consent, setup checks, and researcher-defined surveys or prompts. You can define multiple intro sequences, but each batch uses exactly one — and each treatment declares which sequences it may follow (see [Pairing Treatments with Intro Sequences](#pairing-treatments-with-intro-sequences)).
 
 ### 2. Game Stages (synchronous, group)
 
@@ -91,6 +92,7 @@ treatments:
   - name: two_player_discussion
     notes: Simple two-player video discussion
     playerCount: 2
+    introSequences: [default]
 
     gameStages:
       - name: Discussion
@@ -119,6 +121,39 @@ treatments:
             file: exit/debrief.prompt.md
           - type: submitButton
             buttonText: Finish
+```
+
+## Pairing Treatments with Intro Sequences
+
+Every treatment must declare which intro sequences it may follow, via a required `introSequences:` field:
+
+```yaml
+treatments:
+  - name: two_player_discussion
+    playerCount: 2
+    introSequences: [default]
+```
+
+Names resolve against the top-level `introSequences:` collection (after imports are merged) — arm names are per-collection namespaces, so a treatment and an intro sequence may share a name without conflict. Use `introSequences: []` for a treatment that runs without an intro sequence; the host may then only launch it intro-less. Omitting the field is an error — the pairing must be explicit.
+
+Why declare it? Treatments consume data participants produce during intro steps (`self.prompt.<name>`, `self.survey.<name>...`). Without the declaration, a reference was accepted if _any_ intro sequence in the file provided the key — even when the batch ran a different one, where the reference silently never resolves and the participant gets stuck. With it:
+
+- Every game/exit/`groupComposition` reference to intro-provided data must resolve in **every** listed sequence (unless an earlier stage in the treatment itself produces the key). If a reference's key exists only in a sequence you didn't list, the error hints at adding that sequence.
+- A name that doesn't match any defined intro sequence is an error (the message lists the defined names); listing the same name twice is a warning.
+- Storage-key collision checks between intro sequences and treatments run only for declared pairs — a key shared with a sequence the treatment never follows isn't a collision any participant can experience.
+- At batch launch, the host verifies the selected intro sequence is one that every selected treatment lists (see `checkPairing` in the [engineer docs](../engineer/integration-guide.md)).
+
+Listing multiple sequences is normal when different recruitment pathways feed the same treatments — references must then resolve in all of them:
+
+```yaml
+introSequences: [prolific_en, prolific_es] # refs must resolve in BOTH
+```
+
+`${field}` placeholders work here the same way they do in `groupComposition` — the whole field or individual items can be placeholders, filled at template-expansion time:
+
+```yaml
+introSequences: ${sequences} # whole field
+introSequences: [${pathway}_onboarding] # per item
 ```
 
 ## Stages
@@ -179,6 +214,7 @@ Optionally define requirements for who fills each position:
 treatments:
   - name: cross_partisan
     playerCount: 2
+    introSequences: [onboarding] # the sequence that runs the partyAffiliation survey
     groupComposition:
       - position: 0
         title: "Democrat"

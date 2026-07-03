@@ -174,6 +174,7 @@ Constraints: no `shared` prompts, no `position`/`showToPositions`/`hideFromPosit
 treatments:
   - name: <name>
     playerCount: <integer>
+    introSequences: [<names>] # required; [] = runs without an intro sequence
     groupComposition: # optional
       - position: 0
         title: "Role A"
@@ -183,6 +184,8 @@ treatments:
 ```
 
 Position indices in `showToPositions`, `hideFromPositions`, `groupComposition`, and discussion `rooms` must be < `playerCount`.
+
+`introSequences` (#499) names the intro sequences the treatment may follow; names resolve against the top-level `introSequences:` collection. Dangling names error; duplicates warn; every game/exit/`groupComposition` reference to intro-provided data must resolve in **every** listed sequence. `${field}` placeholders allowed, whole-field or per-item (like `groupComposition`).
 
 ## 11. Prompt Files
 

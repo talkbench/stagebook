@@ -27,6 +27,7 @@ treatments:
       Components covered: Markdown, RadioGroup, CheckboxGroup, Select,
       TextArea, Slider, ListSorter, SubmitButton.
     playerCount: 1
+    introSequences: [gallery_intro]
     gameStages:
       - name: markdown
         duration: 600

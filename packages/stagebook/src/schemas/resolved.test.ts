@@ -61,6 +61,7 @@ describe("resolved schemas strip researcher `notes`", () => {
         name: "t_with_notes",
         notes: "Top-level treatment rationale.",
         playerCount: 2,
+        introSequences: [],
         gameStages: [
           {
             name: "s_with_notes",
@@ -149,6 +150,7 @@ describe("resolved schemas strip researcher `notes`", () => {
         {
           name: "t",
           playerCount: 2,
+          introSequences: [],
           gameStages: [
             {
               name: "s",
@@ -419,6 +421,7 @@ describe("validateResolvedTreatmentFile (#398)", () => {
       {
         name: "t",
         playerCount: 1,
+        introSequences: [],
         gameStages: [
           {
             name: "stage1",

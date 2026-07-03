@@ -21,6 +21,7 @@ introSequences:
 treatments:
   - name: study1
     playerCount: 1
+    introSequences: []
     gameStages:
       - template: myStage`;
       const result = expandAndValidate(src);
@@ -55,6 +56,7 @@ introSequences:
 treatments:
   - name: study1
     playerCount: 1
+    introSequences: []
     gameStages:
       - template: badStage
         fields:
@@ -87,6 +89,7 @@ introSequences:
 treatments:
   - name: study1
     playerCount: 1
+    introSequences: []
     gameStages:
       - template: badStage
         fields:
@@ -166,6 +169,7 @@ introSequences:
 treatments:
   - name: study1
     playerCount: 1
+    introSequences: []
     gameStages:
       - template: manyStage
         broadcast:

@@ -325,6 +325,7 @@ From the treatment file:
 From the batch configuration (platform-specific):
 
 - Which treatments to run
+- Which intro sequence participants complete first — must be one that every selected treatment lists in its `introSequences:`; validate the pairing at batch launch with `checkPairing` from `stagebook/validate` (see the [integration guide](./integration-guide.md#launch-time-pairing-guard))
 - Payoff weights (for optimizing assignment across treatments)
 
 ### The Assignment Problem

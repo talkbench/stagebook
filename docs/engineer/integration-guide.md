@@ -90,9 +90,7 @@ const raw = loadYaml(readFileSync(yamlPath, "utf-8")) as ParsedFile;
 //    post-merge list of just the *imported* template definitions.
 const rootDir = dirname(yamlPath);
 const loaded = new Map<string, ParsedFile>();
-const queue = (raw.imports ?? []).map((p) =>
-  resolveImportPath(yamlPath, p),
-);
+const queue = (raw.imports ?? []).map((p) => resolveImportPath(yamlPath, p));
 while (queue.length > 0) {
   const importPath = queue.shift()!;
   if (loaded.has(importPath)) continue;
@@ -198,8 +196,8 @@ const loaded = new Map();
 const queue = rootImports.map((p) => resolveImportPath(rootPath, p));
 while (queue.length > 0) {
   const path = queue.shift();
-  if (loaded.has(path)) continue;          // dedup — prevents cycles
-  const text = await loadFile(path);       // host's loader
+  if (loaded.has(path)) continue; // dedup — prevents cycles
+  const text = await loadFile(path); // host's loader
   const { parsed, imports } = parseTreatmentYaml(text);
   loaded.set(path, parsed);
   queue.push(...imports.map((p) => resolveImportPath(path, p)));
@@ -237,6 +235,27 @@ If your study doesn't use `imports:`, steps 2-3 are no-ops (`rootImports` is emp
 **Important:** The `<Stage>` component and `<Element>` component expect **hydrated** data. If you pass a stage that still contains `{ template: "..." }` objects or `${field}` placeholders, rendering will fail. Always run `fillTemplates()` before passing data to components.
 
 The hydration step also resolves broadcast expansion — a single template with `broadcast: { d0: [...], d1: [...] }` may produce multiple stages or elements via cartesian product. This happens during `fillTemplates()`, not during rendering.
+
+## Launch-Time Pairing Guard
+
+Every treatment declares which intro sequences it may follow (`introSequences:` — required; `[]` means "runs without one"). The host picks the actual pairing at batch launch: batch config selects an `introSequenceName` and a set of treatment names. That's where to call `checkPairing` — after hydration, before creating the batch:
+
+```typescript
+import { checkPairing } from "stagebook/validate";
+
+const diagnostics = checkPairing(
+  hydrated, // the expanded file from the pipeline above
+  { introSequenceName: batchConfig.introSequenceName ?? null },
+  batchConfig.treatmentNames,
+);
+if (diagnostics.length > 0) {
+  // Refuse to launch. Diagnostics carry `range: null` (runtime check,
+  // no source positions) — render the messages.
+  throw new Error(diagnostics.map((d) => d.message).join("\n"));
+}
+```
+
+Pass `introSequenceName: null` for a batch that launches without an intro sequence — only treatments declaring `introSequences: []` may run that way (map any host-side `"none"` sentinel to `null` before calling). The check verifies that the selected sequence and treatments exist, that every selected treatment lists the selected sequence (the declaration is a constraint — even a treatment that references no intro data may not run after a sequence it doesn't list), and that every reference in each treatment resolves under that specific sequence. Design-time validation checks every _declared_ pairing; `checkPairing` guards that the pairing the batch actually runs is one of them.
 
 ## Implementing a StagebookProvider
 

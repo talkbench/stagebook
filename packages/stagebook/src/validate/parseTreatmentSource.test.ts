@@ -25,6 +25,7 @@ const loaderFromMap = (files: Record<string, string>) => {
 const validTreatment = `treatments:
   - name: t
     playerCount: 1
+    introSequences: []
     gameStages:
       - name: s
         duration: 10
@@ -57,6 +58,7 @@ treatments:
     content:
       name: t
       playerCount: 1
+      introSequences: []
       gameStages:
         - name: s
           duration: 10
@@ -250,6 +252,7 @@ treatments:
     content:
       name: t
       playerCount: 1
+      introSequences: []
       gameStages:
         - name: s
           duration: 10

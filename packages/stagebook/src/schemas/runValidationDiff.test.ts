@@ -26,6 +26,7 @@ describe("runValidationDiff", () => {
 treatments:
   - name: t
     playerCount: 1
+    introSequences: []
     gameStages:
       - name: g
         duration: 10
@@ -791,6 +792,7 @@ treatments:
           content: {
             name: "t",
             playerCount: 1,
+            introSequences: [],
             gameStages: [
               {
                 name: "g",

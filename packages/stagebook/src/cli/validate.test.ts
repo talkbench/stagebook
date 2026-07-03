@@ -43,6 +43,7 @@ let tmp: string;
 const MINIMAL_TREATMENT = `treatments:
   - name: t1
     playerCount: 1
+    introSequences: []
     gameStages:
       - name: s1
         duration: 10
@@ -59,6 +60,7 @@ introSequences:
 const TREATMENT_WITH_SCHEMA_ERROR = `treatments:
   - name: t1
     playerCount: 1
+    introSequences: []
     gameStages:
       - name: s1
         duration: 10
@@ -315,6 +317,7 @@ describe("stagebook validate CLI", () => {
 treatments:
   - name: t
     playerCount: 1
+    introSequences: []
     gameStages:
       - name: s
         duration: 10
@@ -343,6 +346,7 @@ introSequences:
       const evil = `treatments:
   - name: t
     playerCount: 1
+    introSequences: []
     gameStages:
       - name: s
         duration: 10
@@ -373,6 +377,7 @@ introSequences:
       const tplRefTreatment = `treatments:
   - name: t
     playerCount: 1
+    introSequences: []
     gameStages:
       - template: missing_template
 introSequences:
@@ -406,6 +411,7 @@ describe("locale-consistency rule", () => {
       "  - name: t1",
       ...(locale ? [`    locale: ${locale}`] : []),
       "    playerCount: 1",
+      "    introSequences: []",
       "    gameStages:",
       "      - name: s1",
       "        duration: 10",
@@ -490,6 +496,7 @@ describe("unsatisfiable-condition rule", () => {
       "treatments:",
       "  - name: t1",
       "    playerCount: 1",
+      "    introSequences: []",
       "    gameStages:",
       "      - name: s1",
       "        duration: 10",
@@ -567,6 +574,7 @@ describe("locale rule through template expansion", () => {
       name: study-\${locale}
       locale: \${locale}
       playerCount: 1
+      introSequences: []
       gameStages:
         - name: s1
           duration: 10
@@ -664,6 +672,7 @@ treatments:
       "  - name: t1",
       "    locale: he",
       "    playerCount: 1",
+      "    introSequences: []",
       "    gameStages:",
       "      - name: s1",
       "        duration: 10",
@@ -689,6 +698,7 @@ treatments:
       "  - name: t1",
       "    locale: he",
       "    playerCount: 1",
+      "    introSequences: []",
       "    gameStages:",
       "      - name: s1",
       "        duration: 10",
@@ -724,6 +734,7 @@ describe("locale rule — intro sequences", () => {
       "treatments:",
       "  - name: t1",
       "    playerCount: 1",
+      "    introSequences: [intro1]",
       "    gameStages:",
       "      - name: s1",
       "        duration: 10",
