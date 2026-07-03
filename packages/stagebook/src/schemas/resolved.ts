@@ -384,7 +384,7 @@ const resolvedIntroSequenceSchema = z.object({
   introSteps: z.array(resolvedIntroExitStepSchema).nonempty(),
 });
 
-export const resolvedTreatmentFileSchema = z.object({
+const resolvedTreatmentFileBaseSchema = z.object({
   imports: z.array(z.string().min(1)).optional(),
   // `templates:` is stripped by `fillTemplates` so it's not in the
   // post-fill shape. Keep the field permissively typed in case a
@@ -394,6 +394,38 @@ export const resolvedTreatmentFileSchema = z.object({
   treatments: z.array(resolvedTreatmentSchema).optional(),
   consent: z.array(resolvedConsentArmSchema).optional(),
 });
+
+// Consent-arm uniqueness re-checked POST-fill (#481): the pre-fill check
+// (treatment.ts) rightly skips `${...}` placeholder names, so a
+// single-source consentArm template invoked twice with the same fields
+// produces duplicate arm names that only exist after expansion. Those
+// land in the diff orchestrator's hydratedOnly bucket, which the editor
+// deliberately doesn't surface — the resolved pass is what turns them
+// into errors. Host selects arms BY NAME, so a duplicate is a real
+// break, not a lint. The message deliberately carries NO arm index and
+// matches the pre-fill check's text byte-for-byte: template expansion
+// shifts indices between the source and hydrated passes, and the diff
+// orchestrator matches issues on exact normalized text — an embedded
+// index would unpair the same literal duplicate across passes (#499
+// advisory-suffix bug class).
+export const resolvedTreatmentFileSchema =
+  resolvedTreatmentFileBaseSchema.superRefine((data, ctx) => {
+    if (!Array.isArray(data.consent)) return;
+    const seen = new Set<string>();
+    data.consent.forEach((arm, armIdx) => {
+      const name = arm?.name;
+      if (typeof name !== "string") return;
+      if (!seen.has(name)) {
+        seen.add(name);
+        return;
+      }
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["consent", armIdx, "name"],
+        message: `Consent arm name "${name}" is already used by an earlier consent arm. Arm names must be unique within \`consent:\` — the host selects an arm by name.`,
+      });
+    });
+  });
 export type ResolvedTreatmentFileType = z.infer<
   typeof resolvedTreatmentFileSchema
 >;

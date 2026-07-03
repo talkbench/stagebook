@@ -1848,7 +1848,12 @@ function refinePerParticipantSteps(
   ctx: z.RefinementCtx,
   opts: { banPositionFields: boolean; stepLabel: string },
 ): void {
-  data?.forEach((step: IntroExitStepType, stepIdx: number) => {
+  // A whole-value template invocation (`introSteps: {template: t}`) routes
+  // through altTemplateContext's template branch, but this chained
+  // superRefine still receives the RAW input — guard the non-array shape
+  // or `.forEach` throws out of safeParse instead of diagnosing.
+  if (!Array.isArray(data)) return;
+  data.forEach((step: IntroExitStepType, stepIdx: number) => {
     if (Array.isArray(step.elements)) {
       step.elements.forEach((element: ElementType, elementIdx: number) => {
         if (
@@ -2442,21 +2447,29 @@ export const treatmentFileSchema = z
     // arm may share a name with a treatment or intro sequence. Entries
     // that are template invocations or carry unresolved placeholders
     // are skipped (can't-prove posture).
+    //
+    // The interpolated name is truncated and control-stripped: zod runs
+    // this superRefine on DIRTY parses (child issues don't abort), so a
+    // name that fails nameSchema's 64-char cap / charset regex still
+    // reaches this message — without the guard, a megabyte ANSI-laden
+    // "name" would flow verbatim into CLI/LSP diagnostics.
     if (Array.isArray(data.consent)) {
-      const seen = new Map<string, number>();
+      const seen = new Set<string>();
       data.consent.forEach((arm, armIdx) => {
         if (!arm || typeof arm !== "object" || Array.isArray(arm)) return;
         const name = (arm as { name?: unknown }).name;
         if (typeof name !== "string" || name.includes("${")) return;
-        const firstIdx = seen.get(name);
-        if (firstIdx === undefined) {
-          seen.set(name, armIdx);
+        if (!seen.has(name)) {
+          seen.add(name);
           return;
         }
+        const displayName = (
+          name.length > 80 ? `${name.slice(0, 77)}…` : name
+        ).replace(/\p{Cc}/gu, " ");
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["consent", armIdx, "name"],
-          message: `Consent arm name "${name}" is already used by consent arm #${String(firstIdx)}. Arm names must be unique within \`consent:\` — the host selects an arm by name.`,
+          message: `Consent arm name "${displayName}" is already used by an earlier consent arm. Arm names must be unique within \`consent:\` — the host selects an arm by name.`,
         });
       });
     }

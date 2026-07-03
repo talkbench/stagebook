@@ -556,3 +556,40 @@ introSequences:
     });
   });
 });
+
+describe("template-expanded consent-arm duplicates (#481 review)", () => {
+  test("duplicate arm names produced by template expansion surface through the editor pipeline", async () => {
+    const source = `templates:
+  - name: arm
+    contentType: consentArm
+    content:
+      name: consent \${locale}
+      locale: \${locale}
+      steps:
+        - name: info
+          elements:
+            - type: prompt
+              file: c.prompt.md
+              name: ack
+            - type: submitButton
+consent:
+  - template: arm
+    fields:
+      locale: en
+  - template: arm
+    fields:
+      locale: en
+`;
+    const { diagnostics } = await validateTreatmentWithDiff({
+      source,
+      loadImport: async () => {
+        throw new Error("no imports");
+      },
+    });
+    expect(
+      diagnostics.some((d) =>
+        /already used by an earlier consent arm/.test(d.message),
+      ),
+    ).toBe(true);
+  });
+});
