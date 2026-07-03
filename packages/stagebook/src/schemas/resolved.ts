@@ -339,6 +339,8 @@ export const resolvedTreatmentSchema = z.object({
     .optional(),
   gameStages: z.array(resolvedStageSchema).nonempty(),
   exitSequence: z.array(resolvedIntroExitStepSchema).optional(),
+  // Post-study debrief (#481) — same resolved step shape as exitSequence.
+  debrief: z.array(resolvedIntroExitStepSchema).optional(),
 });
 export type ResolvedTreatmentType = z.infer<typeof resolvedTreatmentSchema>;
 
@@ -366,6 +368,14 @@ export type ResolvedTreatmentType = z.infer<typeof resolvedTreatmentSchema>;
 // strictly to catch what fillTemplates could have introduced or
 // failed to clear.
 
+// Consent arm (#481) — post-fill: concrete name, concrete locale (a
+// leaked `${...}` fails the syntactic check, like intro sequences).
+const resolvedConsentArmSchema = z.object({
+  name: nameSchema,
+  locale: localeSchema.optional(),
+  steps: z.array(resolvedIntroExitStepSchema).nonempty(),
+});
+
 const resolvedIntroSequenceSchema = z.object({
   name: nameSchema,
   // Post-fill: a concrete BCP-47 tag (a leaked `${field}` placeholder fails
@@ -382,6 +392,7 @@ export const resolvedTreatmentFileSchema = z.object({
   templates: z.array(z.unknown()).optional(),
   introSequences: z.array(resolvedIntroSequenceSchema).optional(),
   treatments: z.array(resolvedTreatmentSchema).optional(),
+  consent: z.array(resolvedConsentArmSchema).optional(),
 });
 export type ResolvedTreatmentFileType = z.infer<
   typeof resolvedTreatmentFileSchema

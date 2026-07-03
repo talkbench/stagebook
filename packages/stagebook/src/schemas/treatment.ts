@@ -1835,28 +1835,40 @@ export function isAdvancementElement(element: unknown): boolean {
 export const ADVANCEMENT_ELEMENT_MESSAGE =
   "Intro/exit step must include at least one advancement element: submitButton, survey, qualtrics, or mediaPlayer with submitOnComplete: true.";
 
-export const introStepsSchema = introExitStepsBaseSchema.superRefine(
-  (data, ctx) => {
-    data?.forEach((step: IntroExitStepType, stepIdx: number) => {
-      if (Array.isArray(step.elements)) {
-        step.elements.forEach((element: ElementType, elementIdx: number) => {
-          if (
-            element &&
-            typeof element === "object" &&
-            "shared" in element &&
-            element.shared
-          ) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [stepIdx, "elements", elementIdx, "shared"],
-              message: `Prompt element in intro/exit steps cannot be shared.`,
-            });
-          }
+/** Shared per-step refinement for every per-participant step list
+ *  (intro, exit, consent (#481), debrief (#481)): the shared-prompt ban
+ *  and the advancement-element requirement, plus — for pre-assignment
+ *  contexts (intro, consent) — the position-field bans. `stepLabel`
+ *  parameterizes the position-ban messages ("intro steps", "consent
+ *  steps"); the shared-prompt and advancement messages are deliberately
+ *  IDENTICAL across contexts because `runValidationDiff` matches on
+ *  exact text (#347). */
+function refinePerParticipantSteps(
+  data: IntroExitStepType[] | undefined,
+  ctx: z.RefinementCtx,
+  opts: { banPositionFields: boolean; stepLabel: string },
+): void {
+  data?.forEach((step: IntroExitStepType, stepIdx: number) => {
+    if (Array.isArray(step.elements)) {
+      step.elements.forEach((element: ElementType, elementIdx: number) => {
+        if (
+          element &&
+          typeof element === "object" &&
+          "shared" in element &&
+          element.shared
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [stepIdx, "elements", elementIdx, "shared"],
+            message: `Prompt element in intro/exit steps cannot be shared.`,
+          });
+        }
+        if (opts.banPositionFields) {
           if (element && typeof element === "object" && "position" in element) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               path: [stepIdx, "elements", elementIdx, "position"],
-              message: `Elements in intro steps cannot have a 'position' field.`,
+              message: `Elements in ${opts.stepLabel} cannot have a 'position' field.`,
             });
           }
           if (
@@ -1867,7 +1879,7 @@ export const introStepsSchema = introExitStepsBaseSchema.superRefine(
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               path: [stepIdx, "elements", elementIdx],
-              message: `Elements in intro steps cannot have a 'showToPositions' field.`,
+              message: `Elements in ${opts.stepLabel} cannot have a 'showToPositions' field.`,
             });
           }
           if (
@@ -1878,52 +1890,107 @@ export const introStepsSchema = introExitStepsBaseSchema.superRefine(
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
               path: [stepIdx, "elements", elementIdx],
-              message: `Elements in intro steps cannot have a 'hideFromPositions' field.`,
+              message: `Elements in ${opts.stepLabel} cannot have a 'hideFromPositions' field.`,
             });
           }
-        });
-
-        if (!step.elements.some(isAdvancementElement)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: [stepIdx, "elements"],
-            message: ADVANCEMENT_ELEMENT_MESSAGE,
-          });
         }
+      });
+
+      if (!step.elements.some(isAdvancementElement)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [stepIdx, "elements"],
+          message: ADVANCEMENT_ELEMENT_MESSAGE,
+        });
       }
-    });
-  },
+    }
+  });
+}
+
+export const introStepsSchema = introExitStepsBaseSchema.superRefine(
+  (data, ctx) =>
+    refinePerParticipantSteps(data, ctx, {
+      banPositionFields: true,
+      stepLabel: "intro steps",
+    }),
 );
 
 export const exitStepsSchema = introExitStepsBaseSchema.superRefine(
-  (data, ctx) => {
-    data?.forEach((step: IntroExitStepType, stepIdx: number) => {
-      if (Array.isArray(step.elements)) {
-        step.elements.forEach((element: ElementType, elementIdx: number) => {
-          if (
-            element &&
-            typeof element === "object" &&
-            "shared" in element &&
-            element.shared
-          ) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [stepIdx, "elements", elementIdx, "shared"],
-              message: `Prompt element in intro/exit steps cannot be shared.`,
-            });
-          }
-        });
+  (data, ctx) =>
+    refinePerParticipantSteps(data, ctx, {
+      banPositionFields: false,
+      stepLabel: "exit steps",
+    }),
+);
 
-        if (!step.elements.some(isAdvancementElement)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: [stepIdx, "elements"],
-            message: ADVANCEMENT_ELEMENT_MESSAGE,
-          });
-        }
-      }
-    });
-  },
+// ------------------ Consent and Debrief (#481) ------------------ //
+//
+// Consent arms and debrief reuse the intro/exit step shape
+// (IntroExitStepType) and its per-step rules. Consent runs BEFORE
+// everything (pre-assignment, single participant) so it gets the
+// intro-style position-field bans; debrief runs LAST inside the
+// treatment and inherits the treatment's locale and key scope, like
+// `exitSequence`. Consent responses ride the normal save/export
+// machinery — the saved responses ARE the consent record — but are
+// non-referenceable outside the consent phase by policy
+// (validateReferences.ts) and collision-checked against every intro
+// sequence and treatment (storageKeyCollisions.ts).
+
+/** Step-list schema for a named field, with field-specific YAML-shape
+ *  error messages (the intro/exit base hardcodes `introSteps`). */
+function makeStepListSchema(fieldName: string) {
+  return altTemplateContext(
+    z
+      .array(introExitStepSchema, {
+        required_error: `Expected an array for \`${fieldName}\`. Make sure each item starts with a dash (\`-\`) in YAML.`,
+        invalid_type_error: `Expected an array for \`${fieldName}\`. Make sure each item starts with a dash (\`-\`) in YAML.`,
+      })
+      .nonempty(),
+  );
+}
+
+export const consentStepsSchema = makeStepListSchema("steps").superRefine(
+  (data, ctx) =>
+    refinePerParticipantSteps(data as IntroExitStepType[] | undefined, ctx, {
+      banPositionFields: true,
+      stepLabel: "consent steps",
+    }),
+);
+
+export const debriefStepsSchema = makeStepListSchema("debrief").superRefine(
+  (data, ctx) =>
+    refinePerParticipantSteps(data as IntroExitStepType[] | undefined, ctx, {
+      banPositionFields: false,
+      stepLabel: "debrief steps",
+    }),
+);
+
+export const consentArmSchema = altTemplateContext(
+  z
+    .object({
+      name: nameSchema,
+      notes: z.string().optional(),
+      // Participant-facing language for this consent arm (BCP-47).
+      // Consent runs before treatment assignment, so arms declare their
+      // own locale — same semantics as intro sequences. The host selects
+      // the arm by NAME (a `consentName` config field); locale may
+      // repeat across arms (two consents for the same locale are fine).
+      locale: localeSchema.or(fieldPlaceholderSchema).optional(),
+      steps: consentStepsSchema,
+    })
+    .strict(),
+);
+export type ConsentArmType = z.infer<typeof consentArmSchema>;
+
+export const consentSchema = altTemplateContext(
+  z
+    .array(consentArmSchema, {
+      required_error:
+        "Expected an array for `consent`. Make sure each item starts with a dash (`-`) in YAML.",
+      invalid_type_error:
+        "Expected an array for `consent`. Make sure each item starts with a dash (`-`) in YAML.",
+    })
+    .nonempty(),
 );
 
 // ------------------ Intro Sequences and Treatments ------------------ //
@@ -2018,6 +2085,12 @@ export const baseTreatmentSchema = z
       .optional(),
     gameStages: stagesSchema,
     exitSequence: exitStepsSchema.optional(),
+    // Post-study debrief steps (#481). Rendered by the host AFTER its own
+    // wrap-up steps (QC, completion code) — placement is the host's call;
+    // stagebook labels and provides the content. Inherits the treatment's
+    // locale and key scope, like `exitSequence`. Per-condition debrief =
+    // different treatment arms; per-participant = step `conditions:`.
+    debrief: debriefStepsSchema.optional(),
   })
   .strict();
 
@@ -2246,6 +2319,9 @@ export const contentTypeEnum = z.enum([
   "introExitStep",
   "introSteps",
   "exitSteps",
+  "consentArm",
+  "consent",
+  "debriefSteps",
   "discussion",
   "broadcastAxisValues",
 ]);
@@ -2286,6 +2362,12 @@ export function matchContentType(contentType: ContentType): z.ZodTypeAny {
       return introStepsSchema;
     case "exitSteps":
       return exitStepsSchema;
+    case "consentArm":
+      return consentArmSchema;
+    case "consent":
+      return consentSchema;
+    case "debriefSteps":
+      return debriefStepsSchema;
     case "discussion":
       return discussionSchema;
     case "broadcastAxisValues":
@@ -2347,8 +2429,37 @@ export const treatmentFileSchema = z
       .optional(),
     introSequences: introSequencesSchema.optional(),
     treatments: treatmentsSchema.optional(),
+    // Consent arms (#481) — study-level, selected by the host by name
+    // (`consentName` config). Deliberately NOT on introSequence and NOT
+    // paired with treatments: consent is invariant across manipulations
+    // (an IRB artifact) and its only obligation to the rest of the study
+    // is to not collide (negative-only; see storageKeyCollisions).
+    consent: consentSchema.optional(),
   })
   .superRefine((data, ctx) => {
+    // Consent-arm name uniqueness (#481): unique WITHIN the consent
+    // collection only — arm names are per-collection namespaces, so an
+    // arm may share a name with a treatment or intro sequence. Entries
+    // that are template invocations or carry unresolved placeholders
+    // are skipped (can't-prove posture).
+    if (Array.isArray(data.consent)) {
+      const seen = new Map<string, number>();
+      data.consent.forEach((arm, armIdx) => {
+        if (!arm || typeof arm !== "object" || Array.isArray(arm)) return;
+        const name = (arm as { name?: unknown }).name;
+        if (typeof name !== "string" || name.includes("${")) return;
+        const firstIdx = seen.get(name);
+        if (firstIdx === undefined) {
+          seen.set(name, armIdx);
+          return;
+        }
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["consent", armIdx, "name"],
+          message: `Consent arm name "${name}" is already used by consent arm #${String(firstIdx)}. Arm names must be unique within \`consent:\` — the host selects an arm by name.`,
+        });
+      });
+    }
     // Cross-stage reference validation (#197): forward-reference rejection
     // + stage-level always-skip-at-load detection. Walker lives in its
     // own module to keep this file focused.

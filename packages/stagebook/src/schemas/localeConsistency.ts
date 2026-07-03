@@ -30,7 +30,10 @@
 /** What declares the locale a prompt is checked against — a treatment (for
  *  game/exit stages) or an intro sequence (for intro steps, which run before
  *  any treatment is assigned and so carry their own locale). */
-export type LocaleContainerKind = "treatment" | "intro sequence";
+export type LocaleContainerKind =
+  | "treatment"
+  | "intro sequence"
+  | "consent arm";
 
 export interface PromptLocaleMismatch {
   /** Kind of declaring container. */
@@ -112,7 +115,12 @@ function walkPromptRefs(fileObj: unknown): PromptRef[] {
   if (Array.isArray(treatments)) {
     for (const t of treatments) {
       if (!isRecord(t)) continue;
-      refsFromStageLists(t, [t.gameStages, t.exitSequence], "treatment", refs);
+      refsFromStageLists(
+        t,
+        [t.gameStages, t.exitSequence, t.debrief],
+        "treatment",
+        refs,
+      );
     }
   }
 
@@ -121,6 +129,16 @@ function walkPromptRefs(fileObj: unknown): PromptRef[] {
     for (const seq of introSequences) {
       if (!isRecord(seq)) continue;
       refsFromStageLists(seq, [seq.introSteps], "intro sequence", refs);
+    }
+  }
+
+  // Consent arms (#481) declare their own locale (consent runs before
+  // treatment assignment, like intro sequences).
+  const consent = fileObj.consent;
+  if (Array.isArray(consent)) {
+    for (const arm of consent) {
+      if (!isRecord(arm)) continue;
+      refsFromStageLists(arm, [arm.steps], "consent arm", refs);
     }
   }
 

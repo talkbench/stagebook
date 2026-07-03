@@ -214,6 +214,7 @@ export function collectStorageKeyCollisions(
       gameStages?: unknown;
       exitSequence?: unknown;
       introSequences?: unknown;
+      debrief?: unknown;
     };
     const declaredRaw = t.introSequences;
     const declared =
@@ -244,10 +245,79 @@ export function collectStorageKeyCollisions(
         keys,
       );
     });
+    // Debrief (#481) shares the treatment's key scope, like exitSequence.
+    const debrief = Array.isArray(t.debrief) ? t.debrief : [];
+    debrief.forEach((step, stepIdx) => {
+      if (!step || typeof step !== "object") return;
+      const st = step as { elements?: unknown };
+      scanElements(
+        st.elements,
+        ["treatments", tIdx, "debrief", stepIdx, "elements"],
+        keys,
+      );
+    });
     if (keys.size === 0) return;
     out.push(...emitDuplicates(keys, `treatment ${describe(t.name, tIdx)}`));
     treatmentMaps.push({ name: t.name, idx: tIdx, keys, declared });
   });
+
+  // Consent arms (#481): per-arm key maps. Within-arm duplicates are
+  // collisions (internal gating references + one audit record per key);
+  // arm × arm reuse is legal (a participant sees exactly one arm), same
+  // as intro × intro.
+  const consentMaps: {
+    name: unknown;
+    idx: number;
+    keys: Map<string, Path[]>;
+  }[] = [];
+  const consentArms = Array.isArray(root.consent) ? root.consent : [];
+  consentArms.forEach((arm, armIdx) => {
+    if (!arm || typeof arm !== "object") return;
+    const a = arm as { name?: unknown; steps?: unknown };
+    const steps = Array.isArray(a.steps) ? a.steps : [];
+    if (steps.length === 0) return;
+    const keys = new Map<string, Path[]>();
+    steps.forEach((step, stepIdx) => {
+      if (!step || typeof step !== "object") return;
+      const st = step as { elements?: unknown };
+      scanElements(
+        st.elements,
+        ["consent", armIdx, "steps", stepIdx, "elements"],
+        keys,
+      );
+    });
+    out.push(
+      ...emitDuplicates(keys, `consent arm ${describe(a.name, armIdx)}`),
+    );
+    consentMaps.push({ name: a.name, idx: armIdx, keys });
+  });
+
+  // Consent × EVERYTHING (#481): consent has no pairing relationship, so
+  // its keys are checked against every intro sequence and every treatment
+  // — conservative, cheap, and never wrong (no treatment can "need" a
+  // consent arm, so a false conflict just prompts a rename). This is the
+  // "collision scope follows pairing scope" principle: universal where
+  // the relationship is independent.
+  for (const consentArm of consentMaps) {
+    for (const intro of introMaps) {
+      const cross = crossDuplicates(consentArm.keys, intro.keys);
+      out.push(
+        ...emitDuplicates(
+          cross,
+          `pair of consent arm ${describe(consentArm.name, consentArm.idx)} × introSequence ${describe(intro.name, intro.idx)}`,
+        ),
+      );
+    }
+    for (const treatment of treatmentMaps) {
+      const cross = crossDuplicates(consentArm.keys, treatment.keys);
+      out.push(
+        ...emitDuplicates(
+          cross,
+          `pair of consent arm ${describe(consentArm.name, consentArm.idx)} × treatment ${describe(treatment.name, treatment.idx)}`,
+        ),
+      );
+    }
+  }
 
   // Cross-pair: each treatment × the intro sequences it DECLARES via
   // `introSequences:` (#499) — collision scope follows pairing scope. A
