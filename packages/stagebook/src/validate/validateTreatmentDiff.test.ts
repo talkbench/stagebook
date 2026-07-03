@@ -558,7 +558,7 @@ introSequences:
 });
 
 describe("template-expanded consent-arm duplicates (#481 review)", () => {
-  test("duplicate arm names produced by template expansion surface through the editor pipeline", async () => {
+  it("duplicate arm names produced by template expansion surface through the editor pipeline", async () => {
     const source = `templates:
   - name: arm
     contentType: consentArm
