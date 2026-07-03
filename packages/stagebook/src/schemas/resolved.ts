@@ -419,10 +419,18 @@ export const resolvedTreatmentFileSchema =
         seen.add(name);
         return;
       }
+      // Truncate + control-strip like the pre-fill check: this superRefine
+      // also runs on dirty parses, so a name that fails nameSchema still
+      // reaches the interpolation. The stable prefix is what the diff
+      // layer's dedupe keys on, and both layers render identical text for
+      // schema-valid names.
+      const displayName = (
+        name.length > 80 ? `${name.slice(0, 77)}…` : name
+      ).replace(/\p{Cc}/gu, " ");
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["consent", armIdx, "name"],
-        message: `Consent arm name "${name}" is already used by an earlier consent arm. Arm names must be unique within \`consent:\` — the host selects an arm by name.`,
+        message: `Consent arm name "${displayName}" is already used by an earlier consent arm. Arm names must be unique within \`consent:\` — the host selects an arm by name.`,
       });
     });
   });
