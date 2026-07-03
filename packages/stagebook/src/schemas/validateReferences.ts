@@ -173,6 +173,25 @@ export function validateTreatmentFileReferences(
     for (const step of toArray(treatment.exitSequence)) {
       for (const key of collectStepKeys(step)) laterPhaseKeys.add(key);
     }
+    for (const step of toArray(treatment.debrief)) {
+      for (const key of collectStepKeys(step)) laterPhaseKeys.add(key);
+    }
+  }
+
+  // Consent-produced keys (#481). Consent is a CLOSED scope: these keys
+  // are audit-only and never enter any provides-set — a reference to one
+  // from intro/game/exit/debrief is an error (policy, not storage
+  // isolation), and consent steps may not read later-phase data (consent
+  // runs first). Union across arms is fine for the audit-only check: a
+  // participant sees exactly one arm, and referencing ANY arm's key from
+  // outside consent is illegal regardless of which arm ran.
+  const consentArms = toArray(treatmentFile.consent);
+  const consentProducedKeys = new Set<string>();
+  for (const arm of consentArms) {
+    if (!isRecord(arm)) continue;
+    for (const step of toArray(arm.steps)) {
+      for (const key of collectStepKeys(step)) consentProducedKeys.add(key);
+    }
   }
 
   // Intro-phase produced keys, tracked per sequence (#499) plus the
@@ -201,6 +220,25 @@ export function validateTreatmentFileReferences(
     }
   }
 
+  // Consent arms (#481): validate each arm in isolation. Later-phase
+  // keys for consent = EVERYTHING else (intro + game/exit/debrief) —
+  // consent runs first, so any reference out of the arm is a cross-phase
+  // forward reference.
+  const postConsentKeys = new Set<string>([
+    ...introProducedKeys,
+    ...laterPhaseKeys,
+  ]);
+  consentArms.forEach((arm, armIdx) => {
+    if (!isRecord(arm)) return;
+    validateStepSequence({
+      steps: toArray(arm.steps),
+      sequencePath: ["consent", armIdx, "steps"],
+      phase: "consent",
+      issues,
+      laterPhaseKeys: postConsentKeys,
+    });
+  });
+
   // Intro sequences: validate each sequence in isolation for within-sequence
   // forward references, cross-phase forward references into game/exit, and
   // stage-level always-skip.
@@ -213,6 +251,7 @@ export function validateTreatmentFileReferences(
       phase: "intro",
       issues,
       laterPhaseKeys,
+      consentKeys: consentProducedKeys,
     });
   });
 
@@ -238,6 +277,7 @@ export function validateTreatmentFileReferences(
             introKeysBySequence,
           }
         : undefined,
+      consentKeys: consentProducedKeys,
       issues,
     });
   });
@@ -364,16 +404,20 @@ function validateStepSequence({
   issues,
   priorPhaseKeys,
   laterPhaseKeys,
+  consentKeys,
 }: {
   steps: unknown[];
   sequencePath: (string | number)[];
-  phase: "intro" | "exit";
+  phase: "intro" | "exit" | "consent";
   issues: ReferenceValidationIssue[];
   /** Keys produced by earlier phases (for exit sequences: intro + game). */
   priorPhaseKeys?: Set<string>;
   /** Keys produced by later phases. Any intro-step reference to one of
    *  these is a cross-phase forward reference. */
   laterPhaseKeys?: Set<string>;
+  /** Audit-only consent keys (#481) — non-consent walkers pass these so
+   *  a reference to one gets the audit-only error. */
+  consentKeys?: Set<string>;
 }): void {
   // Build producedAt: key → earliest step index that produces it.
   const producedAt = new Map<string, number>();
@@ -394,7 +438,15 @@ function validateStepSequence({
         issues,
         priorPhaseKeys,
         laterPhaseKeys,
-        phaseLabel: phase === "intro" ? "intro step" : "exit step",
+        consentKeys,
+        phaseLabel:
+          phase === "intro"
+            ? "intro step"
+            : phase === "consent"
+              ? "consent step"
+              : "exit step",
+        laterPhasesDescription:
+          phase === "consent" ? "intro, game, exit, or debrief" : undefined,
       });
     }
   });
@@ -420,16 +472,20 @@ function validateTreatment({
   treatmentPath,
   introProducedKeys,
   pairing,
+  consentKeys,
   issues,
 }: {
   treatment: Record<string, unknown>;
   treatmentPath: (string | number)[];
   introProducedKeys: Set<string>;
   pairing?: Omit<PairingContext, "ownProducedAt">;
+  /** Audit-only consent keys (#481) for the closed-scope error. */
+  consentKeys?: Set<string>;
   issues: ReferenceValidationIssue[];
 }): void {
   const gameStages = toArray(treatment.gameStages);
   const exitSequence = toArray(treatment.exitSequence);
+  const debrief = toArray(treatment.debrief);
 
   // Per-treatment ranks: game stages 1..K, exit entries K+1…. Intro sits
   // at a single virtual rank (RANK_INTRO) before game stages; its produced
@@ -457,6 +513,16 @@ function validateTreatment({
         producedAt.set(key, RANK_GAME_BASE + gameStages.length + idx);
       if (!ownProducedAt.has(key))
         ownProducedAt.set(key, RANK_GAME_BASE + gameStages.length + idx);
+    }
+  });
+  // Debrief (#481) ranks after the exit sequence — last in the flow.
+  const debriefRankBase =
+    RANK_GAME_BASE + gameStages.length + exitSequence.length;
+  debrief.forEach((step, idx) => {
+    for (const key of collectStepKeys(step)) {
+      if (!producedAt.has(key)) producedAt.set(key, debriefRankBase + idx);
+      if (!ownProducedAt.has(key))
+        ownProducedAt.set(key, debriefRankBase + idx);
     }
   });
   const pairingContext: PairingContext | undefined = pairing
@@ -491,6 +557,7 @@ function validateTreatment({
         issues,
         allowedProducerRanks: new Set([RANK_INTRO]),
         pairing: pairingContext,
+        consentKeys,
       });
     }
   });
@@ -508,6 +575,7 @@ function validateTreatment({
         issues,
         phaseLabel: "game stage",
         pairing: pairingContext,
+        consentKeys,
       });
     }
     // Discussion conditions nested under the stage
@@ -531,6 +599,7 @@ function validateTreatment({
           issues,
           phaseLabel: "game stage",
           pairing: pairingContext,
+          consentKeys,
         });
       }
     }
@@ -549,6 +618,25 @@ function validateTreatment({
         issues,
         phaseLabel: "exit step",
         pairing: pairingContext,
+        consentKeys,
+      });
+    }
+  });
+
+  // Debrief steps (#481) — same site enumeration as exit steps.
+  debrief.forEach((step, stepIdx) => {
+    if (!isRecord(step)) return;
+    const rank = debriefRankBase + stepIdx;
+    const stepPath = [...treatmentPath, "debrief", stepIdx];
+    for (const site of enumerateStepSites(step, stepPath)) {
+      applyRules({
+        site,
+        enclosingRank: rank,
+        producedAt,
+        issues,
+        phaseLabel: "debrief step",
+        pairing: pairingContext,
+        consentKeys,
       });
     }
   });
@@ -668,6 +756,8 @@ function applyRules({
   allowedProducerRanks,
   phaseLabel,
   pairing,
+  consentKeys,
+  laterPhasesDescription,
 }: {
   site: RefSite;
   enclosingRank: number;
@@ -689,6 +779,14 @@ function applyRules({
    *  "every listed sequence provides it" check and the undeclared-
    *  sequence hint on unknown references. */
   pairing?: PairingContext;
+  /** Audit-only consent keys (#481). When the referenced key resolves
+   *  ONLY to a consent response, emit the closed-scope error instead of
+   *  the generic unknown-reference message. */
+  consentKeys?: Set<string>;
+  /** Overrides the "(game or exit)" phrase in the cross-phase
+   *  forward-reference message — the consent walker's later phases are
+   *  everything. */
+  laterPhasesDescription?: string;
 }): void {
   // Try to derive the storage key from the (already normalised) ref.
   let referenceKey: string;
@@ -745,7 +843,17 @@ function applyRules({
       const phase = phaseLabel ?? "stage";
       issues.push({
         path: site.path,
-        message: `Reference "${refStr}" points at data produced by a later phase (game or exit) than this ${phase}. Forward references across phases are always falsy at runtime — move the reference or reorder the flow.`,
+        message: `Reference "${refStr}" points at data produced by a later phase (${laterPhasesDescription ?? "game or exit"}) than this ${phase}. Forward references across phases are always falsy at runtime — move the reference or reorder the flow.`,
+      });
+      return;
+    }
+    // #481: consent is a closed scope. A key produced only by a consent
+    // arm is audit-only — recorded with the data, never readable from
+    // intro, game, exit, or debrief.
+    if (consentKeys?.has(referenceKey)) {
+      issues.push({
+        path: site.path,
+        message: `Reference "${refStr}" reads a consent response (storage key "${referenceKey}"). Consent responses are audit-only and cannot be referenced outside the consent phase.`,
       });
       return;
     }
