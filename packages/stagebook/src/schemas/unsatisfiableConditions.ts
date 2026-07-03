@@ -192,12 +192,27 @@ function* walkAllConditionLeaves(
       stages: t.exitSequence,
       base: ["treatments", ti, "exitSequence"],
     });
+    stageLists.push({
+      stages: t.debrief,
+      base: ["treatments", ti, "debrief"],
+    });
   });
   toArray(fileObj.introSequences).forEach((seq, si) => {
     if (!isRecord(seq)) return;
     stageLists.push({
       stages: seq.introSteps,
       base: ["introSequences", si, "introSteps"],
+    });
+  });
+  // Consent steps (#481): the gated "I consent" submit button is exactly
+  // the dead-gate shape this rule exists for — a comparator that can
+  // never match the acknowledgement prompt's options strands the
+  // participant before the study even starts.
+  toArray(fileObj.consent).forEach((arm, ci) => {
+    if (!isRecord(arm)) return;
+    stageLists.push({
+      stages: arm.steps,
+      base: ["consent", ci, "steps"],
     });
   });
 
@@ -259,9 +274,13 @@ function buildPromptNameToFiles(
     if (!isRecord(t)) continue;
     scanStages(t.gameStages);
     scanStages(t.exitSequence);
+    scanStages(t.debrief);
   }
   for (const seq of toArray(fileObj.introSequences)) {
     if (isRecord(seq)) scanStages(seq.introSteps);
+  }
+  for (const arm of toArray(fileObj.consent)) {
+    if (isRecord(arm)) scanStages(arm.steps);
   }
   return map;
 }
