@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { createStaticContentFns } from "./contentFns.js";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { createStaticContentFns, createUrlContentFns } from "./contentFns.js";
 
 describe("createStaticContentFns", () => {
   it("resolves getTextContent from the provided file map", async () => {
@@ -29,5 +29,57 @@ describe("createStaticContentFns", () => {
   it("returns the path unchanged as an asset URL", () => {
     const fns = createStaticContentFns({});
     expect(fns.getAssetURL("images/logo.png")).toBe("images/logo.png");
+  });
+});
+
+describe("createUrlContentFns", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("fetches text from baseUrl + path and returns it", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("hello", { status: 200 }));
+    const fns = createUrlContentFns("https://raw.example.com/");
+    await expect(fns.getTextContent("a.md")).resolves.toBe("hello");
+    expect(fetchMock).toHaveBeenCalledWith("https://raw.example.com/a.md");
+  });
+
+  it("caches a successful fetch (no re-fetch for the same path)", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("cached", { status: 200 }));
+    const fns = createUrlContentFns("https://raw.example.com/");
+    await fns.getTextContent("a.md");
+    await fns.getTextContent("a.md");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws with the HTTP status on a non-ok response", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("nope", { status: 404 }),
+    );
+    const fns = createUrlContentFns("https://raw.example.com/");
+    await expect(fns.getTextContent("missing.md")).rejects.toThrow(/404/);
+  });
+
+  it("evicts a failed fetch so a later call retries", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("nope", { status: 500 }))
+      .mockResolvedValueOnce(new Response("recovered", { status: 200 }));
+    const fns = createUrlContentFns("https://raw.example.com/");
+    await expect(fns.getTextContent("flaky.md")).rejects.toThrow(/500/);
+    // The failed promise was evicted from the cache, so a retry re-fetches.
+    await expect(fns.getTextContent("flaky.md")).resolves.toBe("recovered");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("builds asset URLs by concatenating base + path", () => {
+    const fns = createUrlContentFns("https://raw.example.com/");
+    expect(fns.getAssetURL("img/x.png")).toBe(
+      "https://raw.example.com/img/x.png",
+    );
   });
 });
