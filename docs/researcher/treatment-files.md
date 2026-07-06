@@ -201,6 +201,14 @@ Consent responses join the same flat key namespace as everything else and ride t
 
 There is no separate consent-audit artifact. The consent content is version-controlled in the study repo, the batch records which version it ran, and the saved responses carry timestamps — together, (repo version + responses + timestamps) reconstructs exactly what was shown and what was agreed to.
 
+### Author consent in its own file, pulled in via `imports:`
+
+Consent is a **site parameter, not part of the reproducible instrument**: a replicator at another institution must swap it, because their IRB owns and verifies that language. What stagebook makes reusable is the consent _machinery_ (localization, gating, storage, validation) — the text is meant to be swapped. So package it to be swapped cleanly:
+
+- Keep the `consent:` arms (or the templates that generate them) in their **own file**, and pull them into the study with one `imports:` line — not inline in the treatment file. `imports:` resolves at hydration, so imported consent still gets the schema slot, per-locale arms, and every collision and audit-only check; a replicator repoints one line at their institution's consent module and touches nothing else in the study.
+- **Consent modules are per-institution.** Institutions maintain their own importable modules (e.g. `imports: [@your-inst/consent-gdpr]`) carrying their jurisdiction/IRB language; a study composes those plus a study-specific addendum. Module authors should use distinctive prompt names — a collision with a study key is a design-time validation error either way.
+- **Checking that the consent covers what the study does**: point an LLM at the consent text plus the treatment file and ask whether they're compatible. There is deliberately no tag/capability validator for this — natural-language review handles free-text IRB prose better than a controlled vocabulary would (see the [ADR](../decisions/2026-07-consent-debrief.md#alternatives-considered)).
+
 ## Debrief
 
 `debrief:` is an optional per-treatment step list, a sibling of `exitSequence:`. The host renders it **after** its own wrap-up steps (quality checks, completion code) — the very last thing a participant sees. Like `exitSequence`, it inherits the treatment's locale and key scope, and its steps follow the exit-step rules (advancement element required, no `shared` prompts). Absent `debrief:` means the host's existing debrief behavior.
