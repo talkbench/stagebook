@@ -1,5 +1,5 @@
 import { parseGitHubUrl } from "./github";
-import { expandTreatmentFile } from "./expandTreatmentFile";
+import { expandTreatmentFile } from "stagebook/viewer";
 import { safeParseTreatmentFile, type TreatmentFileType } from "stagebook";
 import {
   loadAndMergeImports,

@@ -1,5 +1,5 @@
-import type { StagebookContext } from "stagebook/components";
-import { ViewerStateStore } from "./store";
+import type { StagebookContext } from "../../components/index.js";
+import { ViewerStateStore } from "./store.js";
 
 export interface ViewerContextOptions {
   store: ViewerStateStore;

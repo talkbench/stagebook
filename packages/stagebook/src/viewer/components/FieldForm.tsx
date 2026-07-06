@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { PostFillIssue } from "../lib/previewResolution";
+import type { PostFillIssue } from "../lib/previewResolution.js";
 
 interface FieldFormProps {
   unresolvedFields: string[];

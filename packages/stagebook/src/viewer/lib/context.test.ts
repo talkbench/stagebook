@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { createViewerContext } from "./context";
-import { ViewerStateStore } from "./store";
+import { createViewerContext } from "./context.js";
+import { ViewerStateStore } from "./store.js";
 
 const BASE_URL = "https://raw.githubusercontent.com/org/repo/main/treatments/";
 

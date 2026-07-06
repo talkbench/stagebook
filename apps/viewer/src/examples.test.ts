@@ -11,7 +11,7 @@ import {
   type ParsedFile,
 } from "stagebook";
 import { parseTreatmentYaml } from "./lib/treatment";
-import { expandTreatmentFile } from "./lib/expandTreatmentFile";
+import { expandTreatmentFile } from "stagebook/viewer";
 
 const examplesRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),

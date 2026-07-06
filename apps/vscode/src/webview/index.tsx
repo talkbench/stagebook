@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import type { TreatmentFileType } from "stagebook";
-import { PreviewHost } from "stagebook-viewer/preview";
+import { PreviewHost } from "stagebook/viewer";
 
 // Declare the VS Code API injected by the webview
 declare function acquireVsCodeApi(): {

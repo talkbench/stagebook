@@ -31,3 +31,28 @@ export function createUrlContentFns(rawBaseUrl: string) {
     },
   };
 }
+
+/**
+ * Create getTextContent and getAssetURL functions backed by an in-memory
+ * map of path → text content. Intended for tests, fixtures, and hosts that
+ * already hold every file in memory (no I/O).
+ *
+ * `getTextContent` rejects for a path absent from the map — mirroring the
+ * 404 an HTTP-backed loader would surface — while an empty string is a
+ * valid, present file. `getAssetURL` returns the path unchanged, matching
+ * the passthrough convention of the other content-fn providers.
+ */
+export function createStaticContentFns(files: Record<string, string>) {
+  return {
+    getTextContent(path: string): Promise<string> {
+      if (!Object.prototype.hasOwnProperty.call(files, path)) {
+        return Promise.reject(new Error(`No content for ${path}`));
+      }
+      return Promise.resolve(files[path]);
+    },
+
+    getAssetURL(path: string): string {
+      return path;
+    },
+  };
+}

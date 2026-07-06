@@ -30,6 +30,16 @@
         "default": "./dist/components/index.cjs"
       }
     },
+    "./viewer": {
+      "import": {
+        "types": "./dist/viewer/index.d.ts",
+        "default": "./dist/viewer/index.js"
+      },
+      "require": {
+        "types": "./dist/viewer/index.d.cts",
+        "default": "./dist/viewer/index.cjs"
+      }
+    },
     "./validate": {
       "import": {
         "types": "./dist/validate/index.d.ts",

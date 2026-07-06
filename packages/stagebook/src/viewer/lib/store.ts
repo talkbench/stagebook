@@ -161,3 +161,12 @@ export class ViewerStateStore {
     }
   }
 }
+
+/**
+ * Factory for a fresh {@link ViewerStateStore}. The function-style entry
+ * point for hosts assembling a custom viewer harness; the class stays
+ * exported so callers can type the store instance they pass around.
+ */
+export function createViewerStateStore(): ViewerStateStore {
+  return new ViewerStateStore();
+}

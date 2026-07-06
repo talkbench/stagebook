@@ -164,6 +164,7 @@ stagebook/                          # workspace root
 
 - `stagebook` — schemas, utils, templates (no React dependency)
 - `stagebook/components` — React components, StagebookProvider (peer-depends on React)
+- `stagebook/viewer` — the reusable preview harness (`PreviewHost`, `Viewer`, introspection utils, mock state store, content-fn helpers). Wraps the `stagebook/components` rendering contract with a mock provider + dev chrome; zero-I/O (hosts supply content via callbacks), peer-depends on React. Consumed by the standalone viewer app (`apps/viewer`), the VS Code extension preview (`apps/vscode`), and external hosts (e.g. TalkBench's preview lens). **Rule of thumb: components render, validate diagnoses, viewer harnesses.**
 - `stagebook/validate` — `validateTreatmentSource`, `validatePromptSource`, `loadAndMergeImports`, `expandAndValidateWithImports`, `Diagnostic` type, and position-mapping helpers. Used by the VS Code extension, the viewer, and the CLI; consumed externally by manager / deliberation-lab / annotator
 - `stagebook` bin — the `stagebook` CLI (subcommands: `validate`). Reached via `npx --package=stagebook stagebook <cmd>` in study repos that don't otherwise have a JS toolchain
 

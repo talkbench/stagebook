@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { TreatmentFileType } from "stagebook";
+import { PreviewHost, createUrlContentFns } from "stagebook/viewer";
 import { loadTreatmentFromUrl } from "./lib/loader";
 import type { ViewerDiagnostic } from "./lib/diagnostics";
-import { createUrlContentFns } from "./lib/contentFns";
 import { needsOverviewPicker } from "./lib/selection";
 import {
   exampleCatalog,
@@ -12,7 +12,6 @@ import {
 } from "./lib/exampleCatalog";
 import { LandingPage } from "./components/LandingPage";
 import { OverviewPage } from "./components/OverviewPage";
-import { PreviewHost } from "./components/PreviewHost";
 import {
   DiagnosticsDrawer,
   DiagnosticsList,

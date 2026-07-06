@@ -1,5 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { ViewerStateStore } from "./store";
+import { ViewerStateStore, createViewerStateStore } from "./store.js";
+
+describe("createViewerStateStore", () => {
+  it("returns a fresh, working ViewerStateStore instance", () => {
+    const store = createViewerStateStore();
+    expect(store).toBeInstanceOf(ViewerStateStore);
+    store.save("prompt_q1", { value: "yes" }, "player", 0, 2);
+    expect(store.lookup("prompt_q1", 0)).toEqual([{ value: "yes" }]);
+  });
+
+  it("returns independent stores on each call", () => {
+    const a = createViewerStateStore();
+    const b = createViewerStateStore();
+    a.save("k", 1, "player", 0, 0);
+    expect(b.lookup("k", 0)).toEqual([]);
+  });
+});
 
 describe("ViewerStateStore", () => {
   describe("save and get", () => {

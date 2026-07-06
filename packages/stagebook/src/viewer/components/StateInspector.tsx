@@ -2,12 +2,12 @@ import { useState } from "react";
 import {
   getReferenceKeyAndPath,
   getNestedValueByPath,
-  parseDottedReference,
-} from "stagebook";
-import { Markdown } from "stagebook/components";
-import { ViewerStateStore, type PositionKey } from "../lib/store";
-import { extractStageReferences } from "../lib/references";
-import type { ViewerStep } from "../lib/steps";
+} from "../../utils/index.js";
+import { parseDottedReference } from "../../schemas/index.js";
+import { Markdown } from "../../components/index.js";
+import { ViewerStateStore, type PositionKey } from "../lib/store.js";
+import { extractStageReferences } from "../lib/references.js";
+import type { ViewerStep } from "../lib/steps.js";
 
 /**
  * Resolve a reference string's position prefix to a store-level

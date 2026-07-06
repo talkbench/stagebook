@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { extractTimeBreakpoints } from "../lib/timeBreakpoints";
-import type { ViewerStep } from "../lib/steps";
+import { extractTimeBreakpoints } from "../lib/timeBreakpoints.js";
+import type { ViewerStep } from "../lib/steps.js";
 
 interface TimeScrubberProps {
   currentStep: ViewerStep;

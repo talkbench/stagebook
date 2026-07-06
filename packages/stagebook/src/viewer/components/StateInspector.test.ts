@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveReferencePosition } from "./StateInspector";
+import { resolveReferencePosition } from "./StateInspector.js";
 
 /**
  * Focused unit test for the position-resolution helper that closes

@@ -257,3 +257,49 @@ Requires StagebookProvider. Dispatches to the appropriate element component base
 | `PositionConditionalRender`   | `showToPositions?`, `hideFromPositions?`, `position`, `children` |
 | `ConditionsConditionalRender` | `conditions`, `resolve`, `children`, `fallback?`                 |
 | `SubmissionConditionalRender` | `isSubmitted`, `playerCount`, `children`                         |
+
+## Viewer harness (`stagebook/viewer`)
+
+The `stagebook/viewer` subpath is the reusable preview harness — the code behind the standalone viewer app, the VS Code extension's preview, and any external host embedding a participant-perspective preview over its own study files. It wraps the `stagebook/components` rendering contract (a `StagebookProvider` fed by a mock state store) and adds the dev chrome (treatment/intro pickers, stage navigation, position selector, timeline scrubber, state inspector). Peer-depends on React; performs no I/O — the host supplies file content through callbacks.
+
+**Rule of thumb: components render, validate diagnoses, viewer harnesses.**
+
+### `PreviewHost`
+
+Batteries-included harness: give it a parsed treatment file plus two content callbacks and it owns template expansion, unresolved-`${field}` prompting, the mock state store, and the full dev chrome.
+
+```tsx
+import { PreviewHost, createStaticContentFns } from "stagebook/viewer";
+
+const { getTextContent, getAssetURL } = createStaticContentFns({
+  "prompts/q1.prompt.md": "# Your view\n\nWrite a sentence.",
+});
+
+<PreviewHost
+  treatmentFile={parsedTreatment}
+  getTextContent={getTextContent} // async (path) => Promise<string>; must be stable
+  getAssetURL={getAssetURL} // sync (path) => string; must be stable
+  selectedIntroIndex={0}
+  selectedTreatmentIndex={0}
+/>;
+```
+
+`getTextContent`/`getAssetURL` **must be referentially stable** (memoize them) or the harness re-fetches on every render.
+
+### Content-fn helpers
+
+| Helper                        | For                                                        |
+| ----------------------------- | --------------------------------------------------------- |
+| `createStaticContentFns(map)` | An in-memory `path → text` map (tests, fixtures, hosts holding files in memory). `getTextContent` rejects for an absent path; `getAssetURL` returns the path unchanged. |
+| `createUrlContentFns(base)`   | Fetch-backed loading from a base URL (e.g. `raw.githubusercontent.com`), with per-path caching. |
+
+### Other exports
+
+| Export                                                                    | Purpose                                                                                       |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `Viewer`                                                                  | The rendering component `PreviewHost` wraps — for hosts that resolve `${field}`s themselves.   |
+| `ViewerStateStore` / `createViewerStateStore()`                           | The simulated response store (resettable), for custom harnesses.                              |
+| `createViewerContext(opts)`                                               | Builds the mock `StagebookContext` bridging the store to `stagebook/components`.               |
+| `flattenSteps`, `extractStageReferences`, `extractTimeBreakpoints`        | Structural introspection over a treatment (steps, references, timeline breakpoints).           |
+| `expandTreatmentFile(file, fields?)`                                       | Expand `templates:` and report unresolved `${field}`s (no import merge, no js-yaml).           |
+| `StageNav`, `StateInspector`, `TimeScrubber`, `TreatmentPicker`, `FieldForm`, `SkeletonPlaceholder` | The individual dev-chrome components, for hosts assembling bespoke chrome. |

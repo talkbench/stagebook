@@ -1,7 +1,7 @@
 import { load as loadYaml } from "js-yaml";
 import { safeParseTreatmentFile, type TreatmentFileType } from "stagebook";
 
-export { expandTreatmentFile } from "./expandTreatmentFile";
+export { expandTreatmentFile } from "stagebook/viewer";
 
 export interface ValidationIssue {
   path: string;

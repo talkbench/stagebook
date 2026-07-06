@@ -1,8 +1,8 @@
 import {
   validateResolvedTreatmentFile,
   type TreatmentFileType,
-} from "stagebook";
-import { expandTreatmentFile } from "./expandTreatmentFile";
+} from "../../schemas/index.js";
+import { expandTreatmentFile } from "./expandTreatmentFile.js";
 
 export interface PostFillIssue {
   /** Dotted path into the filled tree, or "(root)" for top-level issues. */

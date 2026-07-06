@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type RefObject } from "react";
-import type { ViewerStep } from "../lib/steps";
-import { noteAnchorId } from "./StateInspector";
+import type { ViewerStep } from "../lib/steps.js";
+import { noteAnchorId } from "./StateInspector.js";
 
 export interface NotesIconsOverlayProps {
   /** Container whose DOM children include the rendered `<Stage>`. */
