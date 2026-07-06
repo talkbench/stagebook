@@ -21,6 +21,15 @@ per-condition (deception-study debriefs), or made interactive
 (comprehension-gated consent). Making them first-class stagebook units
 fixes all four at once.
 
+**Consent is a site parameter, not part of the reproducible
+instrument.** Stagebook reproduces the study _instrument_
+(treatments/stages/elements) identically across replications; consent is
+the deliberate exception a replicator **must** swap, because their IRB
+owns and verifies that language. What this feature makes reusable is the
+consent _machinery_ — localization, gating, storage/export, validation —
+**not the consent text**. Reusable machinery, swappable text: that is
+the real justification for first-classing it.
+
 ## The shape in one sentence
 
 **Consent is a study-level array of named arms selected by the host;
@@ -44,7 +53,19 @@ responses plus the version-controlled content ARE the consent record.**
 | 10  | Step rules          | Consent steps get intro-style restrictions (advancement element required, no `shared` prompts, no position fields — pre-assignment, single participant); debrief gets exit-style (advancement + no shared).                                              |
 | 11  | Locale              | Consent arms declare their **own** locale (pre-assignment, like intro sequences); debrief inherits the treatment's. The locale-consistency rule covers both (new "consent arm" container kind).                                                          |
 | 12  | Templates           | New content types `consentArm` / `consent` / `debriefSteps` — a single-source `consentArm` template with `${locale}` broadcasts to one arm per locale, same pattern as the i18n gallery's treatments.                                                    |
-| 13  | Boilerplate         | Phase 2 ships canonical legal text as importable stagebook content (`imports:` + a study addendum). Collisions with study keys surface as design-time validation errors; the first-party library uses distinctive key names.                             |
+| 13  | Boilerplate         | **Per-institution**, not one global library: institutions maintain their own importable consent modules (e.g. `imports: [@your-inst/consent-gdpr]`) carrying their jurisdiction/IRB language; studies compose those + a study-specific addendum. This is where the institution-defaulting responsibility lands once deliberation-lab's hardcoded US/UK/EU statements are retired. Collisions with study keys surface as design-time validation errors; module authors use distinctive key names.                             |
+
+## Alternatives considered
+
+**Capability-tag coverage validation — rejected.** A machine-readable
+check that a treatment only uses capabilities its consent declares
+(tag every element, maintain a controlled vocabulary, validate
+`requires ⊆ declares`) was considered and rejected: it imposes heavy
+author burden for a check that natural-language review does better
+against broad free-text IRB prose. The recommended practice is to point
+an LLM at the consent text plus the treatment and ask whether they are
+compatible — zero author burden, and it reads the actual language the
+IRB approved. Recorded here so the tag scheme isn't re-proposed later.
 
 ## Out of scope
 
@@ -59,6 +80,11 @@ The host wraps its own steps around extracted stagebook steps —
 `[consent] → attention/equipment checks → [introSteps] → [gameStages] →
 [exitSequence] → QC → completion code → [debrief]`. Stagebook labels and
 provides the content; the host decides placement and attaches behavior.
+One responsibility is load-bearing: **advancing past the consent steps
+is the recorded act of consent** — the host must not render any
+downstream phase until the consent advancement has fired, and must
+treat the gate as a mandatory, non-skippable precondition (see the
+host consent-gate contract in the integration guide).
 The viewer previews consent arms as their own units (first in the list)
 and debrief as the trailing phase of a treatment unit, with transition
 interstitials narrating the platform steps it can't simulate.
