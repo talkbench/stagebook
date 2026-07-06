@@ -122,7 +122,6 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "stagebook": "*",
-    "stagebook-viewer": "*",
     "yaml": "^2.8.3",
     "zod": "^3.23.0"
   },

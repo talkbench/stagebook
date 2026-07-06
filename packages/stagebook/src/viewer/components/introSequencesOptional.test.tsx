@@ -1,19 +1,19 @@
 // @vitest-environment jsdom
 //
 // Regression guard for the crash that shipped twice (#479): a treatments-only
-// treatment file (no `introSequences:`) must render in every host component
-// that reads `introSequences`. `altTemplateContext` types that field as `any`
-// in the built .d.ts, so tsc can't catch a `.length`/`.map`/`[idx]`-on-
-// undefined regression — these render tests are the guard. Also pins the
-// viewer's per-phase locale (intro sequence vs treatment).
+// treatment file (no `introSequences:`) must render in the viewer harness
+// components that read `introSequences`. `altTemplateContext` types that field
+// as `any` in the built .d.ts, so tsc can't catch a `.length`/`.map`/`[idx]`-
+// on-undefined regression — these render tests are the guard. Also pins the
+// viewer's per-phase locale (intro sequence vs treatment). The OverviewPage
+// half of this guard lives in the app shell (apps/viewer).
 import { describe, it, expect, beforeAll } from "vitest";
 import React, { type ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { TreatmentFileType } from "stagebook";
-import { OverviewPage } from "./OverviewPage";
-import { TreatmentPicker } from "./TreatmentPicker";
-import { Viewer } from "./Viewer";
+import type { TreatmentFileType } from "../../schemas/index.js";
+import { TreatmentPicker } from "./TreatmentPicker.js";
+import { Viewer } from "./Viewer.js";
 
 beforeAll(() => {
   // jsdom lacks these; Viewer's scroll-awareness + Stage touch them.
@@ -158,18 +158,6 @@ function introHeTreatmentEnFile(): TreatmentFileType {
 }
 
 describe("treatments-only file renders (no introSequences)", () => {
-  it("OverviewPage does not crash", () => {
-    const { container, unmount } = render(
-      <OverviewPage
-        treatmentFile={treatmentsOnlyFile()}
-        readmeContent={null}
-        onSelect={noop}
-      />,
-    );
-    expect(container.textContent).toBeTruthy();
-    unmount();
-  });
-
   it("TreatmentPicker does not crash", () => {
     const { container, unmount } = render(
       <TreatmentPicker treatmentFile={treatmentsOnlyFile()} onSelect={noop} />,
@@ -202,18 +190,6 @@ describe("intro-only file renders (no treatments)", () => {
   // Symmetric to the treatments-only case: `treatments` is also optional in
   // the schema, so previewing while you've only built the intro must not
   // crash. See #476 (the secondary note).
-  it("OverviewPage does not crash", () => {
-    const { container, unmount } = render(
-      <OverviewPage
-        treatmentFile={introOnlyFile()}
-        readmeContent={null}
-        onSelect={noop}
-      />,
-    );
-    expect(container.textContent).toBeTruthy();
-    unmount();
-  });
-
   it("TreatmentPicker does not crash", () => {
     const { container, unmount } = render(
       <TreatmentPicker treatmentFile={introOnlyFile()} onSelect={noop} />,

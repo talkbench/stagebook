@@ -1,5 +1,5 @@
 import React from "react";
-import type { DiscussionType } from "stagebook";
+import type { DiscussionType } from "../../schemas/index.js";
 
 interface SkeletonPlaceholderProps {
   type: string;

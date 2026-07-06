@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { parseTreatmentYaml } from "./treatment";
-import { computePreviewState } from "./previewResolution";
+import { load as loadYaml } from "js-yaml";
+import { safeParseTreatmentFile } from "../../schemas/index.js";
+
+function parseTreatmentYaml(yaml: string) {
+  const result = safeParseTreatmentFile(loadYaml(yaml));
+  if (!result.success) throw new Error("invalid treatment YAML");
+  return result.data;
+}
+import { computePreviewState } from "./previewResolution.js";
 
 // `file:` is fully templated so a host-supplied binding can violate
 // the post-fill `.prompt.md` contract (#474) — the scenario where the

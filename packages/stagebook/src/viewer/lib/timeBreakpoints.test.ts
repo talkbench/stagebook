@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractTimeBreakpoints } from "./timeBreakpoints";
+import { extractTimeBreakpoints } from "./timeBreakpoints.js";
 
 describe("extractTimeBreakpoints", () => {
   it("extracts displayTime and hideTime from elements", () => {

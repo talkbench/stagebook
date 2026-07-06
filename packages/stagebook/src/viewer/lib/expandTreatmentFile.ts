@@ -1,11 +1,13 @@
-import { fillTemplates, type TreatmentFileType } from "stagebook";
+import { fillTemplates } from "../../templates/index.js";
+import type { TreatmentFileType } from "../../schemas/index.js";
 
 /**
  * Expand templates in a parsed treatment file and detect unresolved fields.
  * Optionally provide additionalFields to resolve remaining placeholders.
  *
- * Lives in its own module (not `treatment.ts`) so it can be imported by
- * the webview entry point without pulling in js-yaml transitively.
+ * Lives in its own module so the viewer surface can expand templates
+ * without pulling in js-yaml — that dependency belongs to the treatment-
+ * YAML parser in the app shell, not to the published preview harness.
  */
 export function expandTreatmentFile(
   treatmentFile: TreatmentFileType,

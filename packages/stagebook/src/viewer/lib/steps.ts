@@ -1,4 +1,8 @@
-import type { ElementType, DiscussionType, ConditionType } from "stagebook";
+import type {
+  ElementType,
+  DiscussionType,
+  ConditionType,
+} from "../../schemas/index.js";
 
 export type Phase = "intro" | "game" | "exit";
 

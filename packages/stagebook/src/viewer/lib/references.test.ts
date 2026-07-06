@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractStageReferences } from "./references";
+import { extractStageReferences } from "./references.js";
 
 describe("extractStageReferences", () => {
   it("extracts condition references from elements", () => {

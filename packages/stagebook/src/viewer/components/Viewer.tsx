@@ -6,22 +6,22 @@ import {
   useCallback,
   useSyncExternalStore,
 } from "react";
-import type { TreatmentFileType } from "stagebook";
+import type { TreatmentFileType } from "../../schemas/index.js";
 import {
   StagebookProvider,
   Stage,
   ScrollIndicator,
   useScrollAwareness,
   isRTLLocale,
-} from "stagebook/components";
-import { buildUnits, initialUnitKey, type ViewerUnit } from "../lib/steps";
-import { ViewerStateStore } from "../lib/store";
-import { createViewerContext } from "../lib/context";
-import { StageNav } from "./StageNav";
-import { StateInspector } from "./StateInspector";
-import { TimeScrubber } from "./TimeScrubber";
-import { NotesIconsOverlay } from "./NotesIconsOverlay";
-import { createSkeletonRenderers } from "./SkeletonPlaceholder";
+} from "../../components/index.js";
+import { buildUnits, initialUnitKey, type ViewerUnit } from "../lib/steps.js";
+import { ViewerStateStore } from "../lib/store.js";
+import { createViewerContext } from "../lib/context.js";
+import { StageNav } from "./StageNav.js";
+import { StateInspector } from "./StateInspector.js";
+import { TimeScrubber } from "./TimeScrubber.js";
+import { NotesIconsOverlay } from "./NotesIconsOverlay.js";
+import { createSkeletonRenderers } from "./SkeletonPlaceholder.js";
 
 export interface ViewerProps {
   treatmentFile: TreatmentFileType;
@@ -200,7 +200,8 @@ export function Viewer({
         contentVersion,
         renderers: createSkeletonRenderers(),
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Deps are curated by hand — the stagebook library does not run
+    // react-hooks/exhaustive-deps (unlike the app this was lifted from).
     [
       store,
       storeVersion,

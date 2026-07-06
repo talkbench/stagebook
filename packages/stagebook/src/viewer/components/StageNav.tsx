@@ -1,4 +1,4 @@
-import type { ViewerStep } from "../lib/steps";
+import type { ViewerStep } from "../lib/steps.js";
 
 interface StageNavProps {
   steps: ViewerStep[];

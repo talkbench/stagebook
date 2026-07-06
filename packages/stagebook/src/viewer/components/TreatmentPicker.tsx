@@ -1,4 +1,4 @@
-import type { TreatmentFileType } from "stagebook";
+import type { TreatmentFileType } from "../../schemas/index.js";
 
 interface TreatmentPickerProps {
   treatmentFile: TreatmentFileType;

@@ -6,7 +6,7 @@ import {
   type ParsedFile,
 } from "stagebook";
 import { parseTreatmentYaml } from "./treatment";
-import { expandTreatmentFile } from "./expandTreatmentFile";
+import { expandTreatmentFile } from "stagebook/viewer";
 
 export interface ExampleEntry {
   /** Directory name, e.g. "annotated-walkthrough". */

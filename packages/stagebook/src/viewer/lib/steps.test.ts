@@ -4,7 +4,7 @@ import {
   localeForPhase,
   buildUnits,
   initialUnitKey,
-} from "./steps";
+} from "./steps.js";
 
 describe("flattenSteps", () => {
   const introSequence = {

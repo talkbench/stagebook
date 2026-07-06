@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     "components/index": "src/components/index.ts",
+    "viewer/index": "src/viewer/index.ts",
     "validate/index": "src/validate/index.ts",
     "dispatch/index": "src/dispatch/index.ts",
     "dispatch/contract": "src/dispatch/contract.ts",
