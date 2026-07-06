@@ -260,7 +260,7 @@ Requires StagebookProvider. Dispatches to the appropriate element component base
 
 ## Viewer harness (`stagebook/viewer`)
 
-The `stagebook/viewer` subpath is the reusable preview harness — the code behind the standalone viewer app, the VS Code extension's preview, and any external host embedding a participant-perspective preview over its own study files. It wraps the `stagebook/components` rendering contract (a `StagebookProvider` fed by a mock state store) and adds the dev chrome (treatment/intro pickers, stage navigation, position selector, timeline scrubber, state inspector). Peer-depends on React; performs no I/O — the host supplies file content through callbacks.
+The `stagebook/viewer` subpath is the reusable preview harness — the code behind the standalone viewer app, the VS Code extension's preview, and any external host embedding a participant-perspective preview over its own study files. It wraps the `stagebook/components` rendering contract (a `StagebookProvider` fed by a mock state store) and adds the dev chrome (treatment/intro pickers, stage navigation, position selector, timeline scrubber, state inspector). Peer-depends on React. The harness itself does no I/O — `PreviewHost`/`Viewer` read content only through host-supplied callbacks; the `createUrlContentFns` helper below is an optional fetch-backed convenience, while `createStaticContentFns` keeps the whole flow I/O-free.
 
 **Rule of thumb: components render, validate diagnoses, viewer harnesses.**
 

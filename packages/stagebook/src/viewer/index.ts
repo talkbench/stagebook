@@ -7,8 +7,11 @@
 //
 // `components` render, `validate` diagnoses, `viewer` harnesses: this surface
 // wraps the participant-rendering contract (`stagebook/components` behind a
-// `StagebookProvider`) with a mock state store and dev chrome, and never
-// performs I/O — hosts supply content through callbacks.
+// `StagebookProvider`) with a mock state store and dev chrome. The harness
+// itself does no I/O — `PreviewHost`/`Viewer` read content only through
+// host-supplied callbacks. (The optional `createUrlContentFns` helper is a
+// convenience that fetches over the network; hosts that want zero I/O use
+// `createStaticContentFns` or bring their own callbacks.)
 
 // --- State store ---
 export { ViewerStateStore, createViewerStateStore } from "./lib/store.js";
