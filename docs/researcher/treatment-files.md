@@ -37,7 +37,7 @@ templates:
 treatments:
   - name: my_study
     playerCount: 1
-    introSequences: [] # this file defines no intro sequences
+    compatibleIntroSequences: [] # this file defines no intro sequences
     gameStages:
       - name: intro
         duration: 60
@@ -95,7 +95,7 @@ treatments:
   - name: two_player_discussion
     notes: Simple two-player video discussion
     playerCount: 2
-    introSequences: [default]
+    compatibleIntroSequences: [default]
 
     gameStages:
       - name: Discussion
@@ -128,16 +128,16 @@ treatments:
 
 ## Pairing Treatments with Intro Sequences
 
-Every treatment must declare which intro sequences it may follow, via a required `introSequences:` field:
+Every treatment must declare which intro sequences it may follow, via a required `compatibleIntroSequences:` field:
 
 ```yaml
 treatments:
   - name: two_player_discussion
     playerCount: 2
-    introSequences: [default]
+    compatibleIntroSequences: [default]
 ```
 
-Names resolve against the top-level `introSequences:` collection (after imports are merged) — arm names are per-collection namespaces, so a treatment and an intro sequence may share a name without conflict. Use `introSequences: []` for a treatment that runs without an intro sequence; the host may then only launch it intro-less. Omitting the field is an error — the pairing must be explicit.
+Names resolve against the top-level `introSequences:` collection (after imports are merged) — arm names are per-collection namespaces, so a treatment and an intro sequence may share a name without conflict. Use `compatibleIntroSequences: []` for a treatment that runs without an intro sequence; the host may then only launch it intro-less. Omitting the field is an error — the pairing must be explicit.
 
 Why declare it? Treatments consume data participants produce during intro steps (`self.prompt.<name>`, `self.survey.<name>...`). Without the declaration, a reference was accepted if _any_ intro sequence in the file provided the key — even when the batch ran a different one, where the reference silently never resolves and the participant gets stuck. With it:
 
@@ -149,14 +149,14 @@ Why declare it? Treatments consume data participants produce during intro steps 
 Listing multiple sequences is normal when different recruitment pathways feed the same treatments — references must then resolve in all of them:
 
 ```yaml
-introSequences: [prolific_en, prolific_es] # refs must resolve in BOTH
+compatibleIntroSequences: [prolific_en, prolific_es] # refs must resolve in BOTH
 ```
 
 `${field}` placeholders work here the same way they do in `groupComposition` — the whole field or individual items can be placeholders, filled at template-expansion time:
 
 ```yaml
-introSequences: ${sequences} # whole field
-introSequences: [${pathway}_onboarding] # per item
+compatibleIntroSequences: ${sequences} # whole field
+compatibleIntroSequences: [${pathway}_onboarding] # per item
 ```
 
 ## Consent
@@ -186,7 +186,7 @@ consent:
 
 - **The host selects one arm by name** (a `consentName`-style batch-config field). Arm names must be unique within `consent:` only — collection namespaces are separate, so a consent arm, an intro sequence, and a treatment may all be named `default`.
 - **Arms declare their own locale.** Consent runs before treatment assignment, so it can't inherit a treatment's locale — same as intro sequences. Two arms may share a locale (e.g., different jurisdictions in the same language). For single-source localized consent, see [the `consentArm` template pattern](templates.md#single-source-localized-consent).
-- **Consent is study-level, not per-treatment.** It's an IRB artifact, invariant across manipulations — which is why there's no pairing field like `introSequences:`. Consent's only obligation to the rest of the study is negative: don't collide. Storage keys in consent arms are collision-checked against **every** intro sequence and **every** treatment; reusing a key across two arms is fine (a participant only ever sees one arm).
+- **Consent is study-level, not per-treatment.** It's an IRB artifact, invariant across manipulations — which is why there's no pairing field like `compatibleIntroSequences:`. Consent's only obligation to the rest of the study is negative: don't collide. Storage keys in consent arms are collision-checked against **every** intro sequence and **every** treatment; reusing a key across two arms is fine (a participant only ever sees one arm).
 - **Consent steps follow the intro-step rules**: each step needs an advancement element, no `shared` prompts, no position fields (consent runs pre-assignment, for a single participant).
 
 ### The gated-submit pattern
@@ -219,7 +219,7 @@ Because debrief is per-treatment, **per-condition debriefs are just different tr
 treatments:
   - name: deception_arm
     playerCount: 2
-    introSequences: []
+    compatibleIntroSequences: []
     gameStages:
       - name: main_task
         duration: 300
@@ -312,7 +312,7 @@ Optionally define requirements for who fills each position:
 treatments:
   - name: cross_partisan
     playerCount: 2
-    introSequences: [onboarding] # the sequence that runs the partyAffiliation survey
+    compatibleIntroSequences: [onboarding] # the sequence that runs the partyAffiliation survey
     groupComposition:
       - position: 0
         title: "Democrat"

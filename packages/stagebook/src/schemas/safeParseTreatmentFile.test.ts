@@ -137,7 +137,7 @@ function makeBaseTreatmentFile(): Record<string, unknown> {
       {
         name: "study1",
         playerCount: 1,
-        introSequences: [],
+        compatibleIntroSequences: [],
         gameStages: [
           {
             name: "stage1",
@@ -298,7 +298,7 @@ describe("safeParseTreatmentFile — stage / treatment / discussion / player", (
     );
     expect(issue).toBeDefined();
     expect(issue!.message).toBe(
-      "Unrecognized key 'plyerCount' on treatment. Did you mean 'playerCount'? Valid keys: name, notes, playerCount, introSequences, locale, groupComposition, gameStages, exitSequence, debrief",
+      "Unrecognized key 'plyerCount' on treatment. Did you mean 'playerCount'? Valid keys: name, notes, playerCount, compatibleIntroSequences, locale, groupComposition, gameStages, exitSequence, debrief",
     );
   });
 

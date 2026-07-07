@@ -2,7 +2,7 @@
  * Runtime pairing guard (#499).
  *
  * `checkPairing` is the host-facing half of the treatment-level
- * `introSequences:` declaration: called at batch launch with the
+ * `compatibleIntroSequences:` declaration: called at batch launch with the
  * already-expanded treatment file, the selected intro sequence (or
  * null for an intro-less launch), and the selected treatment names.
  * It verifies:
@@ -10,7 +10,7 @@
  *   1. the named intro sequence exists (when one is selected);
  *   2. every selected treatment exists;
  *   3. every selected treatment LISTS the selected sequence in its
- *      `introSequences:` — or declares `[]` for an intro-less launch
+ *      `compatibleIntroSequences:` — or declares `[]` for an intro-less launch
  *      (the declaration is a constraint, not just a data dependency:
  *      a treatment with no intro references still may not run after a
  *      sequence it doesn't list);
@@ -119,7 +119,7 @@ export function checkPairing(
   const constraintOk: Record<string, unknown>[] = [];
   for (const treatment of selectedTreatments) {
     const name = String(treatment.name);
-    const declared = treatment.introSequences;
+    const declared = treatment.compatibleIntroSequences;
     if (
       typeof declared === "string" ||
       !Array.isArray(declared) ||
@@ -127,7 +127,7 @@ export function checkPairing(
     ) {
       diagnostics.push(
         error(
-          `Treatment "${name}" has an uninterpretable \`introSequences:\` declaration (${describeDeclaration(
+          `Treatment "${name}" has an uninterpretable \`compatibleIntroSequences:\` declaration (${describeDeclaration(
             declared,
           )}). Expand templates and bind all \`\${...}\` placeholders before calling checkPairing.`,
         ),
@@ -137,7 +137,7 @@ export function checkPairing(
     if (declared.some((d) => typeof d === "string" && d.includes("${"))) {
       diagnostics.push(
         error(
-          `Treatment "${name}" still carries an unresolved \`\${...}\` placeholder in \`introSequences:\`. Expand templates and bind all placeholders before calling checkPairing.`,
+          `Treatment "${name}" still carries an unresolved \`\${...}\` placeholder in \`compatibleIntroSequences:\`. Expand templates and bind all placeholders before calling checkPairing.`,
         ),
       );
       continue;
@@ -148,7 +148,7 @@ export function checkPairing(
           error(
             `Treatment "${name}" may only follow intro sequence${
               declared.length > 1 ? "s" : ""
-            } ${declared.map((d) => `"${String(d)}"`).join(", ")}. Launching without an intro sequence is only allowed for treatments declaring \`introSequences: []\`.`,
+            } ${declared.map((d) => `"${String(d)}"`).join(", ")}. Launching without an intro sequence is only allowed for treatments declaring \`compatibleIntroSequences: []\`.`,
           ),
         );
         continue;
@@ -156,7 +156,7 @@ export function checkPairing(
     } else if (!declared.includes(introSequenceName)) {
       diagnostics.push(
         error(
-          `Treatment "${name}" does not list intro sequence "${introSequenceName}" in its \`introSequences:\` (${
+          `Treatment "${name}" does not list intro sequence "${introSequenceName}" in its \`compatibleIntroSequences:\` (${
             declared.length > 0
               ? `allowed: ${declared.map((d) => `"${String(d)}"`).join(", ")}`
               : "it declares `[]` — no intro sequence"
@@ -181,7 +181,7 @@ export function checkPairing(
       introSequences: selectedSequence ? [selectedSequence] : undefined,
       treatments: constraintOk.map((t) => ({
         ...t,
-        introSequences: selectedSequence ? [introSequenceName] : [],
+        compatibleIntroSequences: selectedSequence ? [introSequenceName] : [],
       })),
     };
     for (const issue of validateTreatmentFileReferences(synthetic)) {

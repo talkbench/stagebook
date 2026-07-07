@@ -73,7 +73,7 @@ function minimalTreatment(
   return {
     name: "t",
     playerCount: 1,
-    introSequences: [],
+    compatibleIntroSequences: [],
     gameStages: [
       {
         name: "s1",
@@ -169,7 +169,10 @@ describe("schema: top-level consent collection", () => {
       consent: [consentArm("default", ["ack"])],
       introSequences: [seq("default", ["color"])],
       treatments: [
-        minimalTreatment({ name: "default", introSequences: ["default"] }),
+        minimalTreatment({
+          name: "default",
+          compatibleIntroSequences: ["default"],
+        }),
       ],
     });
     expect(crossCollection.success).toBe(true);
@@ -249,7 +252,7 @@ describe("references: consent closed scope", () => {
         },
       ],
       introSequences: [seq("a", ["color"])],
-      treatments: [minimalTreatment({ introSequences: ["a"] })],
+      treatments: [minimalTreatment({ compatibleIntroSequences: ["a"] })],
     });
     expect(
       issues.some(
@@ -329,7 +332,7 @@ describe("references: consent closed scope", () => {
           ],
         },
       ],
-      treatments: [minimalTreatment({ introSequences: ["a"] })],
+      treatments: [minimalTreatment({ compatibleIntroSequences: ["a"] })],
     });
     expect(issues.some((i) => /audit-only/i.test(i.message))).toBe(true);
   });
@@ -391,7 +394,7 @@ describe("references: debrief", () => {
       introSequences: [seq("a", ["color"]), seq("b", ["shape"])],
       treatments: [
         minimalTreatment({
-          introSequences: ["a", "b"],
+          compatibleIntroSequences: ["a", "b"],
           debrief: [
             {
               name: "purpose",
@@ -419,7 +422,7 @@ describe("collisions: consent × everything; debrief in treatment scope", () => 
     const collisions = collectStorageKeyCollisions({
       consent: [consentArm("c", ["shared_key"])],
       introSequences: [seq("a", ["shared_key"])],
-      treatments: [minimalTreatment({ introSequences: [] })],
+      treatments: [minimalTreatment({ compatibleIntroSequences: [] })],
     });
     expect(collisions.length).toBeGreaterThan(0);
   });
@@ -531,7 +534,7 @@ describe("resolved: consent and debrief post-fill shapes", () => {
         {
           name: "t",
           playerCount: 1,
-          introSequences: [],
+          compatibleIntroSequences: [],
           gameStages: [
             {
               name: "s1",
@@ -641,7 +644,7 @@ describe("audit-only rule fires at every non-consent site", () => {
       ],
       treatments: [
         minimalTreatment({
-          introSequences: ["a"],
+          compatibleIntroSequences: ["a"],
           gameStages: [
             {
               name: "s1",
@@ -821,7 +824,7 @@ describe("whole-value template invocations at step-list positions don't throw", 
       },
       {
         introSequences: [{ name: "a", introSteps: { template: "t" } }],
-        treatments: [minimalTreatment({ introSequences: ["a"] })],
+        treatments: [minimalTreatment({ compatibleIntroSequences: ["a"] })],
       },
       {
         treatments: [minimalTreatment({ exitSequence: { template: "t" } })],

@@ -36,7 +36,7 @@ introSequences:
 treatments:
   - name: imports_demo
     playerCount: 1
-    introSequences: [intro]
+    compatibleIntroSequences: [intro]
     gameStages:
       - name: main
         duration: 60

@@ -26,7 +26,7 @@ describe("runValidationDiff", () => {
 treatments:
   - name: t
     playerCount: 1
-    introSequences: []
+    compatibleIntroSequences: []
     gameStages:
       - name: g
         duration: 10
@@ -792,7 +792,7 @@ treatments:
           content: {
             name: "t",
             playerCount: 1,
-            introSequences: [],
+            compatibleIntroSequences: [],
             gameStages: [
               {
                 name: "g",
@@ -868,7 +868,7 @@ introSequences:
 treatments:
   - name: t
     playerCount: 1
-    introSequences: [expanded]
+    compatibleIntroSequences: [expanded]
     gameStages:
       - name: s1
         duration: 60
@@ -918,7 +918,7 @@ introSequences:
 treatments:
   - name: t
     playerCount: 1
-    introSequences: [onboarding, gohst]
+    compatibleIntroSequences: [onboarding, gohst]
     gameStages:
       - name: s1
         duration: 60
@@ -960,7 +960,7 @@ introSequences:
 treatments:
   - name: t
     playerCount: 1
-    introSequences: [onboarding]
+    compatibleIntroSequences: [onboarding]
     gameStages:
       - name: s1
         duration: 60

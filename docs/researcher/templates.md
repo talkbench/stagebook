@@ -96,7 +96,7 @@ templates:
     content:
       name: ${treatmentName}
       playerCount: 2
-      introSequences: []
+      compatibleIntroSequences: []
       gameStages:
         - template: innerStage
           fields:
@@ -114,7 +114,7 @@ templates:
 
 Templates are expanded recursively until no template blocks remain.
 
-Note that a `contentType: treatment` template declares the required `introSequences:` field once in its content, and every instantiation inherits it. To vary the pairing per instantiation, use a `${field}` placeholder (whole-field or per-item) and fill it like any other field.
+Note that a `contentType: treatment` template declares the required `compatibleIntroSequences:` field once in its content, and every instantiation inherits it. To vary the pairing per instantiation, use a `${field}` placeholder (whole-field or per-item) and fill it like any other field.
 
 ## Templates in Broadcast Axes
 
@@ -212,7 +212,7 @@ introSequences:
 treatments:
   - name: my_study
     playerCount: 1
-    introSequences: [intro]
+    compatibleIntroSequences: [intro]
     exitSequence:
       - name: post
         elements:

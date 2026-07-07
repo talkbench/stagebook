@@ -2034,19 +2034,24 @@ export const introSequencesSchema = altTemplateContext(
  *  this message to append the file's defined sequence names, so the
  *  schema-level text carries the `[]` escape hatch and the walker's
  *  dangling-name error carries the "which names exist" half. */
-export const INTRO_SEQUENCES_REQUIRED_MESSAGE =
-  "Each treatment must declare `introSequences:` — the intro sequences it " +
-  "may follow. Use `introSequences: []` for a treatment that runs without " +
-  "an intro sequence.";
+export const COMPATIBLE_INTRO_SEQUENCES_REQUIRED_MESSAGE =
+  "Each treatment must declare `compatibleIntroSequences:` — the intro " +
+  "sequences it may follow. Use `compatibleIntroSequences: []` for a " +
+  "treatment that runs without an intro sequence.";
 
 export const baseTreatmentSchema = z
   .object({
     name: nameSchema,
     notes: z.string().optional(),
     playerCount: z.number(),
-    // Which intro sequences this treatment may follow, by name (#499).
-    // REQUIRED — the pairing must be explicit; `[]` means "no intro
-    // sequence" (the host may only launch this treatment without one).
+    // The intro sequences this treatment is COMPATIBLE with, by name —
+    // any one of which supplies the treatment's precursor materials
+    // (#499). This is a disjunction, not a sequence of steps: the host
+    // launches the treatment after exactly ONE of these. REQUIRED — the
+    // pairing must be explicit; `[]` means "no intro sequence" (the host
+    // may only launch this treatment without one). Named `compatible…`
+    // rather than `introSequences` so it doesn't read as "all of these
+    // run" when sitting next to `gameStages`.
     // Names resolve against the top-level `introSequences:` collection
     // only (arm names are per-collection namespaces). Items are plain
     // strings rather than `nameSchema` so per-item `${field}`
@@ -2056,18 +2061,22 @@ export const baseTreatmentSchema = z
     // provides every referenced key" rule live in validateReferences.ts;
     // post-fill leaks are caught by `resolvedTreatmentSchema`.
     // The union-level errorMap keeps the guidance message on wrong-typed
-    // values (e.g. `introSequences: 5`), which would otherwise surface as
-    // a bare "Invalid input" — the union discards sub-schema
+    // values (e.g. `compatibleIntroSequences: 5`), which would otherwise
+    // surface as a bare "Invalid input" — the union discards sub-schema
     // invalid_type_error messages when no option matches.
-    introSequences: z.union(
+    compatibleIntroSequences: z.union(
       [
         z.array(z.string().min(1), {
-          required_error: INTRO_SEQUENCES_REQUIRED_MESSAGE,
-          invalid_type_error: INTRO_SEQUENCES_REQUIRED_MESSAGE,
+          required_error: COMPATIBLE_INTRO_SEQUENCES_REQUIRED_MESSAGE,
+          invalid_type_error: COMPATIBLE_INTRO_SEQUENCES_REQUIRED_MESSAGE,
         }),
         fieldPlaceholderSchema,
       ],
-      { errorMap: () => ({ message: INTRO_SEQUENCES_REQUIRED_MESSAGE }) },
+      {
+        errorMap: () => ({
+          message: COMPATIBLE_INTRO_SEQUENCES_REQUIRED_MESSAGE,
+        }),
+      },
     ),
     // Participant-facing language for this treatment (BCP-47, e.g. `he`).
     // Drives stagebook's chrome catalog + RTL when the host wires it onto the

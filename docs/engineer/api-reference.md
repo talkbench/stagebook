@@ -9,7 +9,7 @@ All schemas are [Zod](https://zod.dev/) objects. Use `.safeParse(data)` for vali
 | Export                  | Description                                                                             |
 | ----------------------- | --------------------------------------------------------------------------------------- |
 | `treatmentFileSchema`   | Top-level schema for `.stagebook.yaml` files                                            |
-| `treatmentSchema`       | Single treatment (name, playerCount, introSequences, gameStages, exitSequence, debrief) |
+| `treatmentSchema`       | Single treatment (name, playerCount, compatibleIntroSequences, gameStages, exitSequence, debrief) |
 | `stageSchema`           | Game stage (name, duration, elements, discussion)                                       |
 | `elementSchema`         | Any element type (discriminated union on `type`)                                        |
 | `promptSchema`          | Prompt element specifically                                                             |
@@ -130,7 +130,7 @@ The `stagebook/validate` subpath exports the position-aware validators shared by
 
 ### `checkPairing(file, { introSequenceName }, treatmentNames)`
 
-Launch-time guard for the treatment-level `introSequences:` declaration (#499). Hosts call it at batch launch — the point where batch config selects an intro sequence and a set of treatments.
+Launch-time guard for the treatment-level `compatibleIntroSequences:` declaration (#499). Hosts call it at batch launch — the point where batch config selects an intro sequence and a set of treatments.
 
 ```typescript
 import { checkPairing, type Diagnostic } from "stagebook/validate";
@@ -146,7 +146,7 @@ const diagnostics: Diagnostic[] = checkPairing(
 
 1. The named intro sequence exists (when one is selected).
 2. Every named treatment exists.
-3. Every treatment **lists** the selected sequence in its `introSequences:` — or declares `[]` when launching without one. The declaration is a constraint, not just a data dependency: a treatment that references no intro data still may not run after a sequence it doesn't list.
+3. Every treatment **lists** the selected sequence in its `compatibleIntroSequences:` — or declares `[]` when launching without one. The declaration is a constraint, not just a data dependency: a treatment that references no intro data still may not run after a sequence it doesn't list.
 4. Every reference in each treatment resolves under that specific sequence.
 
 Expects **expanded** input (e.g. the output of `expandAndValidateWithImports` or the host's own hydration pipeline); an unresolved `${...}` placeholder in a selected treatment's declaration is reported as an error rather than guessed around. Diagnostics carry `range: null` — this is a runtime check with no source-position mapping, so hosts render messages only. Deliberately intro-only: consent arms have no pairing relationship, so there is no `consentName` parameter.

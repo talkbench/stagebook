@@ -43,7 +43,7 @@ let tmp: string;
 const MINIMAL_TREATMENT = `treatments:
   - name: t1
     playerCount: 1
-    introSequences: []
+    compatibleIntroSequences: []
     gameStages:
       - name: s1
         duration: 10
@@ -60,7 +60,7 @@ introSequences:
 const TREATMENT_WITH_SCHEMA_ERROR = `treatments:
   - name: t1
     playerCount: 1
-    introSequences: []
+    compatibleIntroSequences: []
     gameStages:
       - name: s1
         duration: 10
@@ -103,7 +103,7 @@ afterAll(async () => {
 
 describe("stagebook validate CLI", () => {
   describe("exit codes", () => {
-    it("exits 1 with the requiredness message when a treatment omits introSequences (#499)", async () => {
+    it("exits 1 with the requiredness message when a treatment omits compatibleIntroSequences (#499)", async () => {
       const missing = `treatments:
   - name: no_pairing
     playerCount: 1
@@ -117,7 +117,7 @@ describe("stagebook validate CLI", () => {
       await writeFile(file, missing);
       const r = await runCli([file]);
       expect(r.code).toBe(1);
-      expect(r.stdout).toContain("must declare `introSequences:`");
+      expect(r.stdout).toContain("must declare `compatibleIntroSequences:`");
       // Position walks up to the treatment node — a real location, not 0:0.
       expect(r.stdout).toMatch(/:\d+:\d+/);
     });
@@ -336,7 +336,7 @@ describe("stagebook validate CLI", () => {
 treatments:
   - name: t
     playerCount: 1
-    introSequences: []
+    compatibleIntroSequences: []
     gameStages:
       - name: s
         duration: 10
@@ -365,7 +365,7 @@ introSequences:
       const evil = `treatments:
   - name: t
     playerCount: 1
-    introSequences: []
+    compatibleIntroSequences: []
     gameStages:
       - name: s
         duration: 10
@@ -396,7 +396,7 @@ introSequences:
       const tplRefTreatment = `treatments:
   - name: t
     playerCount: 1
-    introSequences: []
+    compatibleIntroSequences: []
     gameStages:
       - template: missing_template
 introSequences:
@@ -430,7 +430,7 @@ describe("locale-consistency rule", () => {
       "  - name: t1",
       ...(locale ? [`    locale: ${locale}`] : []),
       "    playerCount: 1",
-      "    introSequences: []",
+      "    compatibleIntroSequences: []",
       "    gameStages:",
       "      - name: s1",
       "        duration: 10",
@@ -515,7 +515,7 @@ describe("unsatisfiable-condition rule", () => {
       "treatments:",
       "  - name: t1",
       "    playerCount: 1",
-      "    introSequences: []",
+      "    compatibleIntroSequences: []",
       "    gameStages:",
       "      - name: s1",
       "        duration: 10",
@@ -593,7 +593,7 @@ describe("locale rule through template expansion", () => {
       name: study-\${locale}
       locale: \${locale}
       playerCount: 1
-      introSequences: []
+      compatibleIntroSequences: []
       gameStages:
         - name: s1
           duration: 10
@@ -691,7 +691,7 @@ treatments:
       "  - name: t1",
       "    locale: he",
       "    playerCount: 1",
-      "    introSequences: []",
+      "    compatibleIntroSequences: []",
       "    gameStages:",
       "      - name: s1",
       "        duration: 10",
@@ -717,7 +717,7 @@ treatments:
       "  - name: t1",
       "    locale: he",
       "    playerCount: 1",
-      "    introSequences: []",
+      "    compatibleIntroSequences: []",
       "    gameStages:",
       "      - name: s1",
       "        duration: 10",
@@ -753,7 +753,7 @@ describe("locale rule — intro sequences", () => {
       "treatments:",
       "  - name: t1",
       "    playerCount: 1",
-      "    introSequences: [intro1]",
+      "    compatibleIntroSequences: [intro1]",
       "    gameStages:",
       "      - name: s1",
       "        duration: 10",

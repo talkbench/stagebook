@@ -350,7 +350,7 @@ Conditions in `groupComposition` control which participants fill which positions
 treatments:
   - name: cross_partisan
     playerCount: 2
-    introSequences: [onboarding] # the sequence that runs the partyAffiliation survey
+    compatibleIntroSequences: [onboarding] # the sequence that runs the partyAffiliation survey
     groupComposition:
       - position: 0
         title: "Democrat"
@@ -493,7 +493,7 @@ introSteps → gameStages → exitSequence
 
 Referencing a stage that hasn't run yet is rejected. External references (`entryUrl.params.*`, `attributes.*`) are always valid — they come from the platform, not a stage. The one exception is `attributes.sampleId`, which is assigned at game-stage start: reading it during intro / groupComposition is rejected like a forward reference.
 
-References that resolve from intro-step data are checked against the treatment's declared `introSequences:` (see [Pairing Treatments with Intro Sequences](treatment-files.md#pairing-treatments-with-intro-sequences)): the key must be provided by **every** sequence the treatment lists, not just one of them — a batch can run the treatment after any listed sequence, so the reference must hold under all of them. A reference whose key exists only in a sequence the treatment doesn't list gets a hint suggesting you add that sequence.
+References that resolve from intro-step data are checked against the treatment's declared `compatibleIntroSequences:` (see [Pairing Treatments with Intro Sequences](treatment-files.md#pairing-treatments-with-intro-sequences)): the key must be provided by **every** sequence the treatment lists, not just one of them — a batch can run the treatment after any listed sequence, so the reference must hold under all of them. A reference whose key exists only in a sequence the treatment doesn't list gets a hint suggesting you add that sequence.
 
 `groupComposition` is stricter: it runs before the game starts, so its conditions can only reference intro-phase or external data. Referencing game or exit data from `groupComposition` is rejected.
 

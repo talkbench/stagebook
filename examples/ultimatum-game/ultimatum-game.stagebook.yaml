@@ -8,7 +8,7 @@ treatments:
       and responder are working from the same stage but seeing
       different content.
     playerCount: 2
-    introSequences: [orientation]
+    compatibleIntroSequences: [orientation]
     groupComposition:
       - position: 0
         title: Proposer

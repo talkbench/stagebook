@@ -21,7 +21,7 @@ introSequences:
 treatments:
   - name: study1
     playerCount: 1
-    introSequences: []
+    compatibleIntroSequences: []
     gameStages:
       - template: myStage`;
       const result = expandAndValidate(src);
@@ -56,7 +56,7 @@ introSequences:
 treatments:
   - name: study1
     playerCount: 1
-    introSequences: []
+    compatibleIntroSequences: []
     gameStages:
       - template: badStage
         fields:
@@ -89,7 +89,7 @@ introSequences:
 treatments:
   - name: study1
     playerCount: 1
-    introSequences: []
+    compatibleIntroSequences: []
     gameStages:
       - template: badStage
         fields:
@@ -169,7 +169,7 @@ introSequences:
 treatments:
   - name: study1
     playerCount: 1
-    introSequences: []
+    compatibleIntroSequences: []
     gameStages:
       - template: manyStage
         broadcast:
@@ -196,15 +196,15 @@ ${broadcastItems}`;
   });
 });
 
-describe("introSequences placeholder binding (#499)", () => {
-  it("binds whole-field and per-item introSequences placeholders through fillTemplates", () => {
+describe("compatibleIntroSequences placeholder binding (#499)", () => {
+  it("binds whole-field and per-item compatibleIntroSequences placeholders through fillTemplates", () => {
     const src = `templates:
   - name: study
     contentType: treatment
     content:
       name: t_\${pathway}
       playerCount: 1
-      introSequences:
+      compatibleIntroSequences:
         - \${pathway}
       gameStages:
         - name: s1
@@ -226,6 +226,6 @@ treatments:
     expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual(
       [],
     );
-    expect(result.fullYaml).toMatch(/introSequences:\n {6}- a/);
+    expect(result.fullYaml).toMatch(/compatibleIntroSequences:\n {6}- a/);
   });
 });

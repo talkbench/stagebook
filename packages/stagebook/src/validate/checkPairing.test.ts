@@ -37,7 +37,7 @@ const FILE = {
     {
       name: "uses_color",
       playerCount: 1,
-      introSequences: ["prolific"],
+      compatibleIntroSequences: ["prolific"],
       gameStages: [
         {
           name: "s1",
@@ -57,7 +57,7 @@ const FILE = {
     {
       name: "standalone",
       playerCount: 1,
-      introSequences: [],
+      compatibleIntroSequences: [],
       gameStages: [
         {
           name: "s1",
@@ -107,7 +107,7 @@ describe("checkPairing", () => {
     ).toBe(true);
   });
 
-  test("launching without an intro sequence: only introSequences:[] treatments pass", () => {
+  test("launching without an intro sequence: only compatibleIntroSequences:[] treatments pass", () => {
     const ok = checkPairing(FILE, { introSequenceName: null }, ["standalone"]);
     expect(ok).toHaveLength(0);
 
@@ -118,7 +118,7 @@ describe("checkPairing", () => {
   test("listed sequence that fails to provide a referenced key → error", () => {
     // Force the constraint through: pretend uses_color listed pilot too.
     const file = structuredClone(FILE) as typeof FILE;
-    (file.treatments[0].introSequences as string[]).push("pilot");
+    (file.treatments[0].compatibleIntroSequences as string[]).push("pilot");
     const diags = checkPairing(file, { introSequenceName: "pilot" }, [
       "uses_color",
     ]);
@@ -132,7 +132,7 @@ describe("checkPairing", () => {
     (file.treatments as Record<string, unknown>[]).push({
       ...structuredClone(FILE.treatments[0]),
       name: "wants_color_from_pilot",
-      introSequences: ["pilot"],
+      compatibleIntroSequences: ["pilot"],
     });
     const diags = checkPairing(file, { introSequenceName: "pilot" }, [
       "uses_color", // constraint fail: doesn't list pilot
@@ -188,7 +188,7 @@ describe("checkPairing", () => {
 
   test("unexpanded placeholder in a selected treatment → error telling host to expand first", () => {
     const file = structuredClone(FILE) as Record<string, unknown>;
-    (file.treatments as Record<string, unknown>[])[0].introSequences =
+    (file.treatments as Record<string, unknown>[])[0].compatibleIntroSequences =
       "${intros}";
     const diags = checkPairing(file, { introSequenceName: "prolific" }, [
       "uses_color",
@@ -200,10 +200,8 @@ describe("checkPairing", () => {
 describe("checkPairing input hygiene (Copilot review)", () => {
   test("array with non-string entries → uninterpretable-declaration error, not a confusing constraint error", () => {
     const file = structuredClone(FILE) as Record<string, unknown>;
-    (file.treatments as Record<string, unknown>[])[0].introSequences = [
-      5,
-      "prolific",
-    ];
+    (file.treatments as Record<string, unknown>[])[0].compatibleIntroSequences =
+      [5, "prolific"];
     const diags = checkPairing(file, { introSequenceName: "prolific" }, [
       "uses_color",
     ]);
@@ -232,7 +230,7 @@ describe("debrief under checkPairing (#481)", () => {
         {
           name: "t",
           playerCount: 1,
-          introSequences: ["a", "b"],
+          compatibleIntroSequences: ["a", "b"],
           gameStages: [
             {
               name: "s1",

@@ -158,7 +158,7 @@ The template engine supports field substitution (`${fieldName}`), nested templat
 | Export                  | Description                                                                                          |
 | ----------------------- | ---------------------------------------------------------------------------------------------------- |
 | `treatmentFileSchema`   | Top-level schema for a treatment YAML file (templates, consent, introSequences, treatments)          |
-| `treatmentSchema`       | Single treatment with playerCount, introSequences, gameStages, exitSequence, debrief                 |
+| `treatmentSchema`       | Single treatment with playerCount, compatibleIntroSequences, gameStages, exitSequence, debrief       |
 | `consentArmSchema`      | Single named consent arm with its own locale and steps (#481)                                        |
 | `consentSchema`         | Top-level `consent:` array of arms — the host selects one by name                                    |
 | `debriefStepsSchema`    | Per-treatment `debrief:` step list, rendered by the host after its own wrap-up                       |
