@@ -13,7 +13,7 @@ introSequences:
 treatments:
   - name: treatment1
     playerCount: 2
-    introSequences: [intro1]
+    compatibleIntroSequences: [intro1]
     gameStages:
       - name: stage1
         duration: 10
@@ -98,7 +98,7 @@ introSequences:
 treatments:
   - name: t
     playerCount: two
-    introSequences: [i]
+    compatibleIntroSequences: [i]
     gameStages:
       - name: g
         duration: 10
@@ -136,7 +136,7 @@ introSequences:
 treatments:
   - name: t
     playerCount: 1
-    introSequences: [i]
+    compatibleIntroSequences: [i]
     gameStages:
       - name: g
         duration: 10
@@ -179,7 +179,7 @@ treatments:
   - name: t
     playerCount: 2
     playerCount: 3
-    introSequences: [i]
+    compatibleIntroSequences: [i]
     gameStages:
       - name: g
         duration: 10
@@ -216,7 +216,7 @@ introSequences:
 treatments:
   - name: treatment1
     playerCount: 2
-    introSequences: [intro1]
+    compatibleIntroSequences: [intro1]
     gameStages:
       - name: stage1
         duration: 10
@@ -265,7 +265,7 @@ imports:
 treatments:
   - name: t
     playerCount: 1
-    introSequences: [i]
+    compatibleIntroSequences: [i]
     gameStages:
       - name: s
         duration: 10
@@ -295,7 +295,7 @@ introSequences:
 treatments:
   - name: t
     playerCount: 1
-    introSequences: [i]
+    compatibleIntroSequences: [i]
     locale: he
     gameStages:
       - name: g
@@ -336,7 +336,7 @@ introSequences:
 treatments:
   - name: t
     playerCount: 1
-    introSequences: [i]
+    compatibleIntroSequences: [i]
     locale: he
     gameStages:
       - name: g
@@ -373,7 +373,7 @@ introSequences:
 treatments:
   - name: t
     playerCount: 1
-    introSequences: [i]
+    compatibleIntroSequences: [i]
     locale: he
     gameStages:
       - name: g
@@ -409,7 +409,7 @@ introSequences:
 treatments:
   - name: t
     playerCount: 1
-    introSequences: [i]
+    compatibleIntroSequences: [i]
     locale: he
     gameStages:
       - name: g
@@ -459,7 +459,7 @@ introSequences:
 treatments:
   - name: t
     playerCount: 1
-    introSequences: [i]
+    compatibleIntroSequences: [i]
     gameStages:
       - name: g
         duration: 10
@@ -485,7 +485,7 @@ treatments:
 treatments:
   - name: t
     playerCount: 1
-    introSequences: [i]
+    compatibleIntroSequences: [i]
     locale: he
     gameStages:
       - name: g
@@ -535,7 +535,7 @@ introSequences:
 treatments:
   - name: t
     playerCount: 1
-    introSequences: [i]
+    compatibleIntroSequences: [i]
     gameStages:
       - name: g
         duration: 10

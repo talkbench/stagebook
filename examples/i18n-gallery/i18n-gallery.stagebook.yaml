@@ -91,7 +91,7 @@ templates:
       playerCount: 1
       # ${locale} threads here too, so each arm pairs with its
       # same-locale intro sequence.
-      introSequences: ["gallery intro ${locale}"]
+      compatibleIntroSequences: ["gallery intro ${locale}"]
       gameStages:
         - name: choices
           duration: 600

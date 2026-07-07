@@ -325,7 +325,7 @@ From the treatment file:
 From the batch configuration (platform-specific):
 
 - Which treatments to run
-- Which intro sequence participants complete first — must be one that every selected treatment lists in its `introSequences:`; validate the pairing at batch launch with `checkPairing` from `stagebook/validate` (see the [integration guide](./integration-guide.md#launch-time-pairing-guard))
+- Which intro sequence participants complete first — must be one that every selected treatment lists in its `compatibleIntroSequences:`; validate the pairing at batch launch with `checkPairing` from `stagebook/validate` (see the [integration guide](./integration-guide.md#launch-time-pairing-guard))
 - Which consent arm participants see (when the file declares top-level `consent:`) — selected by name via a `consentName`-style config field; consent has no pairing with treatments, so the only launch-time check is that the name exists (see [Consent and Debrief Placement](./integration-guide.md#consent-and-debrief-placement))
 - Payoff weights (for optimizing assignment across treatments)
 

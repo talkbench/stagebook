@@ -32,7 +32,7 @@ sequence a treatment may follow.
 ## Decision
 
 **Each treatment declares the intro sequences it may follow — a required
-`introSequences:` array of names (option B of [#499]).** The treatment is
+`compatibleIntroSequences:` array of names (option B of [#499]).** The treatment is
 the consumer of intro-provided data, so it declares its supplier set; and
 treatments are the heavily-templated, more-numerous side, so the
 declaration lives where templates already fan out.
@@ -41,13 +41,13 @@ declaration lives where templates already fan out.
 treatments:
   - name: negotiation_high_stakes
     playerCount: 2
-    introSequences: [prolific_en, prolific_es] # refs must resolve in BOTH
+    compatibleIntroSequences: [prolific_en, prolific_es] # refs must resolve in BOTH
     gameStages: [...]
 ```
 
 Key semantics:
 
-- **Required — breaking.** Absence is a schema error. `introSequences: []`
+- **Required — breaking.** Absence is a schema error. `compatibleIntroSequences: []`
   declares "no intro sequence": the host may only launch the treatment
   without one. There is no back-compat mode; existing files add one line
   per treatment (the error message carries the `[]` escape hatch, the
@@ -95,7 +95,7 @@ Key semantics:
 ## Consequences
 
 - Major version bump; every consumer's treatment files add
-  `introSequences:` to each treatment (see the consumer issues filed from
+  `compatibleIntroSequences:` to each treatment (see the consumer issues filed from
   [#499] for deliberation-lab, manager, annotator).
 - Hosts gain a launch-time guard (`checkPairing`) at the point where
   batch config selects `introSequenceName` + `treatments`.
@@ -103,3 +103,14 @@ Key semantics:
   checks (consent/debrief, [#481]) extend a pairing-aware model instead
   of the union model; locale-coherence between treatments and their
   declared sequences becomes statically checkable.
+
+## Addendum — field name (July 2026)
+
+The treatment-level field was originally named `introSequences:`, matching
+the top-level collection. Sitting next to `gameStages:` it read as though
+*all* the listed sequences run as part of the participant's experience,
+when the relationship is the opposite — the treatment is *compatible with*
+each listed sequence, and the host launches it after exactly **one** of
+them. Renamed to `compatibleIntroSequences:` before any study adopted the
+syntax, to make the ANY-of-these (not ALL) meaning read off the key and to
+disambiguate the treatment field from the same-named top-level collection.

@@ -119,7 +119,7 @@ treatments:
       The template returns 2 stages (choice + outcome), so this
       treatment ends up with 2 game stages plus the shared exit step.
     playerCount: 2
-    introSequences: [orientation]
+    compatibleIntroSequences: [orientation]
     gameStages:
       - template: roundTemplate
         fields:
@@ -140,7 +140,7 @@ treatments:
       prompt is named `choice_round_<N>` (where N is 1, 2, or 3), so
       references from one round don't collide with another's.
     playerCount: 2
-    introSequences: [orientation]
+    compatibleIntroSequences: [orientation]
     gameStages:
       - template: roundTemplate
         broadcast:

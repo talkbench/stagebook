@@ -16,7 +16,7 @@ templates:
       notes: A two-person text discussion about ${topicLabel}, annotated as a syntax tour.
       playerCount: 2
       # intro sequences this treatment may follow; [] = none
-      introSequences: [onboarding]
+      compatibleIntroSequences: [onboarding]
       groupComposition:
         - position: 0
           title: Familiar

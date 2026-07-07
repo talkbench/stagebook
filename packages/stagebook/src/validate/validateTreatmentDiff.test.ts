@@ -40,7 +40,7 @@ describe("validateTreatmentWithDiff", () => {
 treatments:
   - name: t
     playerCount: 1
-    introSequences: []
+    compatibleIntroSequences: []
     gameStages:
       - name: g
         duration: 10

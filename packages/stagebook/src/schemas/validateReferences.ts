@@ -196,7 +196,7 @@ export function validateTreatmentFileReferences(
 
   // Intro-phase produced keys, tracked per sequence (#499) plus the
   // merged union. Which set a treatment validates against depends on
-  // its declared `introSequences:` pairing — see resolvePairing below.
+  // its declared `compatibleIntroSequences:` pairing — see resolvePairing below.
   //
   // `collectStepKeys` iterates a step's elements; `collectProducedKeys`
   // operates on a single element and skips anything that isn't an
@@ -285,7 +285,7 @@ export function validateTreatmentFileReferences(
   return issues;
 }
 
-/** Result of interpreting one treatment's declared `introSequences:`. */
+/** Result of interpreting one treatment's declared `compatibleIntroSequences:`. */
 interface PairingResolution {
   /** Intro keys the treatment's references may resolve against: the
    *  union of the declared sequences' keys, or the file-wide union
@@ -299,8 +299,8 @@ interface PairingResolution {
 }
 
 /**
- * Interpret a treatment's `introSequences:` declaration (#499) and emit
- * name-resolution issues. Returns which intro keys the treatment may
+ * Interpret a treatment's `compatibleIntroSequences:` declaration (#499)
+ * and emit name-resolution issues. Returns which intro keys the treatment may
  * reference and (when provable) the per-sequence sets for the positive
  * check.
  *
@@ -333,7 +333,7 @@ function resolvePairing({
     availableIntroKeys: introProducedKeys,
     declaredKeySets: null,
   };
-  const declared = treatment.introSequences;
+  const declared = treatment.compatibleIntroSequences;
   if (!Array.isArray(declared)) return fallback;
 
   const treatmentName =
@@ -356,8 +356,8 @@ function resolvePairing({
     }
     if (seen.has(entry)) {
       issues.push({
-        path: [...treatmentPath, "introSequences", entryIdx],
-        message: `Treatment "${treatmentName}" lists intro sequence "${entry}" more than once in \`introSequences:\` (duplicate entry).`,
+        path: [...treatmentPath, "compatibleIntroSequences", entryIdx],
+        message: `Treatment "${treatmentName}" lists intro sequence "${entry}" more than once in \`compatibleIntroSequences:\` (duplicate entry).`,
         severity: "warning",
       });
       return;
@@ -370,7 +370,7 @@ function resolvePairing({
           ? ` Defined in this file: ${defined.join(", ")}.`
           : " This file defines no named intro sequences.";
       issues.push({
-        path: [...treatmentPath, "introSequences", entryIdx],
+        path: [...treatmentPath, "compatibleIntroSequences", entryIdx],
         message: `Treatment "${treatmentName}" lists intro sequence "${entry}", but no intro sequence with that name is defined.${definedNote}`,
       });
       return;
@@ -453,8 +453,8 @@ function validateStepSequence({
 }
 
 /** Pairing context for the positive per-sequence check (#499). Present
- *  only when the treatment's `introSequences:` declaration was fully
- *  concrete and resolvable. */
+ *  only when the treatment's `compatibleIntroSequences:` declaration was
+ *  fully concrete and resolvable. */
 interface PairingContext {
   /** name → produced keys, for each sequence the treatment declares. */
   declaredKeySets: Map<string, Set<string>>;
@@ -917,7 +917,7 @@ function applyRules({
           undeclaredProducers.length > 1 ? "s" : ""
         } ${undeclaredProducers.join(", ")} — add ${
           undeclaredProducers.length > 1 ? "them" : "it"
-        } to this treatment's \`introSequences:\` if this treatment may follow ${
+        } to this treatment's \`compatibleIntroSequences:\` if this treatment may follow ${
           undeclaredProducers.length > 1 ? "them" : "it"
         }.`;
       }
@@ -947,7 +947,7 @@ function applyRules({
         path: site.path,
         message: `Reference "${refStr}" is not provided by intro sequence${
           missing.length > 1 ? "s" : ""
-        } ${missing.join(", ")} listed in this treatment's \`introSequences:\`. A treatment's references must resolve in every intro sequence it may follow.`,
+        } ${missing.join(", ")} listed in this treatment's \`compatibleIntroSequences:\`. A treatment's references must resolve in every intro sequence it may follow.`,
       });
       return;
     }

@@ -46,7 +46,7 @@ function minimalTreatment(extra: Record<string, unknown> = {}) {
   return {
     name: "t1",
     playerCount: 1,
-    introSequences: [],
+    compatibleIntroSequences: [],
     gameStages: [
       {
         name: "stage1",
@@ -92,7 +92,7 @@ describe("resolvedTreatmentSchema.locale (post-fill)", () => {
   const resolvedBase = {
     name: "t1",
     playerCount: 1,
-    introSequences: [],
+    compatibleIntroSequences: [],
     gameStages: [
       {
         name: "stage1",

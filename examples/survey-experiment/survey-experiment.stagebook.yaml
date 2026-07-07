@@ -18,7 +18,7 @@ templates:
       name: Survey experiment - ${condition}
       notes: A single-player pre/post attitude study with a ${condition} reading manipulation.
       playerCount: 1
-      introSequences: [orientation]
+      compatibleIntroSequences: [orientation]
 
       gameStages:
         - name: pre_attitude

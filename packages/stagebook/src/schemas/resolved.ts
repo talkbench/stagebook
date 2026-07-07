@@ -291,18 +291,18 @@ export const resolvedTreatmentSchema = z.object({
   // entry still carrying `${...}`) are tagged `unresolved-placeholder`
   // (filtered in authoring contexts via `skipUnresolved`, hard errors in
   // production hosts); a plain non-placeholder string is a SHAPE error
-  // (`introSequences: onboarding` instead of `[onboarding]`) and stays a
+  // (`compatibleIntroSequences: onboarding` instead of `[onboarding]`) and stays a
   // hard error everywhere — misdiagnosing it as a binding problem would
   // let authoring contexts silently swallow it. The per-item check is
   // explicit because nameSchema deliberately ACCEPTS `${field}`
   // placeholders (legal pre-fill).
-  introSequences: z
+  compatibleIntroSequences: z
     .array(
       nameSchema.superRefine((name, ctx) => {
         if (name.includes("${")) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `introSequences entry is an unresolved \`${name}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row or additionalFields.`,
+            message: `compatibleIntroSequences entry is an unresolved \`${name}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row or additionalFields.`,
             params: { reason: "unresolved-placeholder" },
           });
         }
@@ -313,13 +313,13 @@ export const resolvedTreatmentSchema = z.object({
         if (value.includes("${")) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `introSequences is an unresolved \`${value}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row or additionalFields.`,
+            message: `compatibleIntroSequences is an unresolved \`${value}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row or additionalFields.`,
             params: { reason: "unresolved-placeholder" },
           });
         } else {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: `introSequences must be an array of intro-sequence names; got the string "${value}". Did you mean \`introSequences: [${value}]\`?`,
+            message: `compatibleIntroSequences must be an array of intro-sequence names; got the string "${value}". Did you mean \`compatibleIntroSequences: [${value}]\`?`,
           });
         }
       }),

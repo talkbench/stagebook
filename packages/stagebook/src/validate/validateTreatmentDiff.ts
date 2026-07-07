@@ -164,7 +164,7 @@ export async function validateTreatmentWithDiff({
   for (const issue of diff.matched) {
     diagnostics.push({
       message: appendPathIfMissing(issue),
-      // Lint-level walker issues (duplicate `introSequences:` entries,
+      // Lint-level walker issues (duplicate `compatibleIntroSequences:` entries,
       // #499) self-mark warning via params.severity; real bugs stay
       // errors.
       severity: issueSeverity(issue),

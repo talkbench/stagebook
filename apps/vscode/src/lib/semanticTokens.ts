@@ -68,6 +68,7 @@ const enumValues = new Set([
 
 const sectionKeys = new Set([
   "introSequences",
+  "compatibleIntroSequences",
   "introSteps",
   "gameStages",
   "elements",

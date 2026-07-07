@@ -238,7 +238,7 @@ The hydration step also resolves broadcast expansion — a single template with 
 
 ## Launch-Time Pairing Guard
 
-Every treatment declares which intro sequences it may follow (`introSequences:` — required; `[]` means "runs without one"). The host picks the actual pairing at batch launch: batch config selects an `introSequenceName` and a set of treatment names. That's where to call `checkPairing` — after hydration, before creating the batch:
+Every treatment declares which intro sequences it may follow (`compatibleIntroSequences:` — required; `[]` means "runs without one"). The host picks the actual pairing at batch launch: batch config selects an `introSequenceName` and a set of treatment names. That's where to call `checkPairing` — after hydration, before creating the batch:
 
 ```typescript
 import { checkPairing } from "stagebook/validate";
@@ -255,7 +255,7 @@ if (diagnostics.length > 0) {
 }
 ```
 
-Pass `introSequenceName: null` for a batch that launches without an intro sequence — only treatments declaring `introSequences: []` may run that way (map any host-side `"none"` sentinel to `null` before calling). The check verifies that the selected sequence and treatments exist, that every selected treatment lists the selected sequence (the declaration is a constraint — even a treatment that references no intro data may not run after a sequence it doesn't list), and that every reference in each treatment resolves under that specific sequence. Design-time validation checks every _declared_ pairing; `checkPairing` guards that the pairing the batch actually runs is one of them.
+Pass `introSequenceName: null` for a batch that launches without an intro sequence — only treatments declaring `compatibleIntroSequences: []` may run that way (map any host-side `"none"` sentinel to `null` before calling). The check verifies that the selected sequence and treatments exist, that every selected treatment lists the selected sequence (the declaration is a constraint — even a treatment that references no intro data may not run after a sequence it doesn't list), and that every reference in each treatment resolves under that specific sequence. Design-time validation checks every _declared_ pairing; `checkPairing` guards that the pairing the batch actually runs is one of them.
 
 ## Consent and Debrief Placement
 

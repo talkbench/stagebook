@@ -64,7 +64,7 @@ export function validateTreatmentSource(source: string): ValidationResult {
           : undefined;
       const isUnrecognizedKey =
         params !== undefined && typeof params.badKey === "string";
-      // Lint-level issues (e.g. duplicate `introSequences:` entries,
+      // Lint-level issues (e.g. duplicate `compatibleIntroSequences:` entries,
       // #499) self-mark via params.severity — see validateReferences.ts.
       const severity = params?.severity === "warning" ? "warning" : "error";
 

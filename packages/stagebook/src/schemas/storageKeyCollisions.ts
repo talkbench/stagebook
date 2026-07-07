@@ -200,7 +200,7 @@ export function collectStorageKeyCollisions(
     name: unknown;
     idx: number;
     keys: Map<string, Path[]>;
-    /** Concrete declared `introSequences:` names (#499), or null when
+    /** Concrete declared `compatibleIntroSequences:` names (#499), or null when
      *  the declaration can't be interpreted statically (missing field,
      *  whole-field or per-item `${...}` placeholder) — cross-pair
      *  checks are skipped for that treatment rather than guessed. */
@@ -213,10 +213,10 @@ export function collectStorageKeyCollisions(
       name?: unknown;
       gameStages?: unknown;
       exitSequence?: unknown;
-      introSequences?: unknown;
+      compatibleIntroSequences?: unknown;
       debrief?: unknown;
     };
-    const declaredRaw = t.introSequences;
+    const declaredRaw = t.compatibleIntroSequences;
     const declared =
       Array.isArray(declaredRaw) &&
       declaredRaw.every(
@@ -341,7 +341,7 @@ export function collectStorageKeyCollisions(
   }
 
   // Cross-pair: each treatment × the intro sequences it DECLARES via
-  // `introSequences:` (#499) — collision scope follows pairing scope. A
+  // `compatibleIntroSequences:` (#499) — collision scope follows pairing scope. A
   // participant only ever flows from a declared sequence into the
   // treatment, so a key shared with a never-paired sequence is not a
   // collision anyone can experience. Treatments whose declaration isn't

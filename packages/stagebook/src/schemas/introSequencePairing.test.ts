@@ -6,7 +6,7 @@ import { validateResolvedTreatmentFile } from "./resolved.js";
 import { validateTreatmentSource } from "../validate/validateTreatment.js";
 
 /**
- * Treatment-level `introSequences:` pairing (#499).
+ * Treatment-level `compatibleIntroSequences:` pairing (#499).
  *
  * Covers the four cooperating pieces:
  *   - schema: the field is required on every treatment (breaking)
@@ -38,9 +38,9 @@ function seq(name: string, elementNames: string[]): Record<string, unknown> {
 
 function treatment(opts: {
   name?: string;
-  introSequences?: unknown;
+  compatibleIntroSequences?: unknown;
   gameStages?: Record<string, unknown>[];
-  omitIntroSequences?: boolean;
+  omitCompatibleIntroSequences?: boolean;
 }): Record<string, unknown> {
   const t: Record<string, unknown> = {
     name: opts.name ?? "t",
@@ -53,8 +53,8 @@ function treatment(opts: {
       },
     ],
   };
-  if (!opts.omitIntroSequences) {
-    t.introSequences = opts.introSequences ?? [];
+  if (!opts.omitCompatibleIntroSequences) {
+    t.compatibleIntroSequences = opts.compatibleIntroSequences ?? [];
   }
   return t;
 }
@@ -81,30 +81,57 @@ function stageReferencing(key: string): Record<string, unknown> {
 
 // --- schema: required field ------------------------------------------------
 
-describe("schema: introSequences is required on every treatment", () => {
-  test("treatment without introSequences → error mentioning the field", () => {
+describe("schema: compatibleIntroSequences is required on every treatment", () => {
+  test("treatment without compatibleIntroSequences → error mentioning the field", () => {
     const result = treatmentFileSchema.safeParse({
-      treatments: [treatment({ omitIntroSequences: true })],
+      treatments: [treatment({ omitCompatibleIntroSequences: true })],
     });
     expect(result.success).toBe(false);
     const messages = result.success
       ? []
       : result.error.issues.map((i) => i.message);
     expect(
-      messages.some((m) => /must declare `?introSequences`?/i.test(m)),
+      messages.some((m) =>
+        /must declare `?compatibleIntroSequences`?/i.test(m),
+      ),
     ).toBe(true);
   });
 
-  test("introSequences: [] is accepted", () => {
+  test("compatibleIntroSequences: [] is accepted", () => {
     const result = treatmentFileSchema.safeParse({
-      treatments: [treatment({ introSequences: [] })],
+      treatments: [treatment({ compatibleIntroSequences: [] })],
     });
     expect(result.success).toBe(true);
   });
 
+  test("the old name `introSequences` on a treatment is rejected as an unrecognized key", () => {
+    // Regression guard for the #499 → compatibleIntroSequences rename: the
+    // field was renamed to disambiguate ANY-of-these from the same-named
+    // top-level `introSequences:` collection. `baseTreatmentSchema` is
+    // strict, so the stale name must surface as an unrecognized key (and
+    // still trip the requiredness error for the new one), never silently
+    // pass. `introSequences` remains valid at the FILE level, so this
+    // guards specifically against re-introducing it on a treatment.
+    const t = treatment({ omitCompatibleIntroSequences: true });
+    t.introSequences = ["onboarding"];
+    const result = treatmentFileSchema.safeParse({ treatments: [t] });
+    expect(result.success).toBe(false);
+    const messages = result.success
+      ? []
+      : result.error.issues.map((i) => i.message);
+    expect(
+      messages.some((m) => /Unrecognized key.*introSequences/.test(m)),
+    ).toBe(true);
+    expect(
+      messages.some((m) =>
+        /must declare `?compatibleIntroSequences`?/i.test(m),
+      ),
+    ).toBe(true);
+  });
+
   test("whole-field ${...} placeholder is accepted pre-fill", () => {
     const result = treatmentFileSchema.safeParse({
-      treatments: [treatment({ introSequences: "${intros}" })],
+      treatments: [treatment({ compatibleIntroSequences: "${intros}" })],
     });
     expect(result.success).toBe(true);
   });
@@ -112,7 +139,7 @@ describe("schema: introSequences is required on every treatment", () => {
   test("per-item ${...} placeholder is accepted pre-fill", () => {
     const result = treatmentFileSchema.safeParse({
       introSequences: [seq("a", ["color"])],
-      treatments: [treatment({ introSequences: ["${pathway}"] })],
+      treatments: [treatment({ compatibleIntroSequences: ["${pathway}"] })],
     });
     expect(result.success).toBe(true);
   });
@@ -120,14 +147,16 @@ describe("schema: introSequences is required on every treatment", () => {
 
 // --- walker: name resolution ------------------------------------------------
 
-describe("walker: introSequences name resolution", () => {
+describe("walker: compatibleIntroSequences name resolution", () => {
   test("dangling sequence name → error naming treatment and sequence", () => {
     const issues = validateTreatmentFileReferences({
       introSequences: [seq("a", ["color"])],
-      treatments: [treatment({ name: "tx", introSequences: ["a", "ghost"] })],
+      treatments: [
+        treatment({ name: "tx", compatibleIntroSequences: ["a", "ghost"] }),
+      ],
     });
     const issue = issues.find((i) =>
-      i.path.join(".").endsWith("treatments.0.introSequences.1"),
+      i.path.join(".").endsWith("treatments.0.compatibleIntroSequences.1"),
     );
     expect(issue).toBeDefined();
     expect(issue?.message).toContain('"tx"');
@@ -138,10 +167,10 @@ describe("walker: introSequences name resolution", () => {
   test("duplicate entry → issue worded as a duplicate (warning severity downstream)", () => {
     const issues = validateTreatmentFileReferences({
       introSequences: [seq("a", ["color"])],
-      treatments: [treatment({ introSequences: ["a", "a"] })],
+      treatments: [treatment({ compatibleIntroSequences: ["a", "a"] })],
     });
     const issue = issues.find((i) =>
-      i.path.join(".").endsWith("treatments.0.introSequences.1"),
+      i.path.join(".").endsWith("treatments.0.compatibleIntroSequences.1"),
     );
     expect(issue).toBeDefined();
     expect(issue?.message).toMatch(/duplicate/i);
@@ -159,7 +188,7 @@ introSequences:
 treatments:
   - name: t
     playerCount: 1
-    introSequences: [a, a]
+    compatibleIntroSequences: [a, a]
     gameStages:
       - name: s1
         duration: 60
@@ -177,7 +206,7 @@ treatments:
       introSequences: [seq("a", ["color"])],
       treatments: [
         treatment({
-          introSequences: ["ghost"],
+          compatibleIntroSequences: ["ghost"],
           gameStages: [stageReferencing("color")],
         }),
       ],
@@ -191,21 +220,25 @@ treatments:
   test("duplicate + dangling combined → one dangling (idx 0), one duplicate (idx 1)", () => {
     const issues = validateTreatmentFileReferences({
       introSequences: [seq("a", ["color"])],
-      treatments: [treatment({ introSequences: ["ghost", "ghost"] })],
+      treatments: [treatment({ compatibleIntroSequences: ["ghost", "ghost"] })],
     });
     const dangling = issues.filter((i) =>
       /but no intro sequence with that name/.test(i.message),
     );
     const dups = issues.filter((i) => /duplicate entry/.test(i.message));
     expect(dangling).toHaveLength(1);
-    expect(dangling[0].path.join(".")).toBe("treatments.0.introSequences.0");
+    expect(dangling[0].path.join(".")).toBe(
+      "treatments.0.compatibleIntroSequences.0",
+    );
     expect(dups).toHaveLength(1);
-    expect(dups[0].path.join(".")).toBe("treatments.0.introSequences.1");
+    expect(dups[0].path.join(".")).toBe(
+      "treatments.0.compatibleIntroSequences.1",
+    );
   });
 
   test("no introSequences collection in file → name checks are skipped", () => {
     const issues = validateTreatmentFileReferences({
-      treatments: [treatment({ introSequences: ["ghost"] })],
+      treatments: [treatment({ compatibleIntroSequences: ["ghost"] })],
     });
     expect(
       issues.filter((i) => /lists intro sequence/.test(i.message)),
@@ -221,7 +254,7 @@ describe("walker: references must resolve in every listed sequence", () => {
       introSequences: [seq("a", ["color"]), seq("b", ["color"])],
       treatments: [
         treatment({
-          introSequences: ["a", "b"],
+          compatibleIntroSequences: ["a", "b"],
           gameStages: [stageReferencing("color")],
         }),
       ],
@@ -234,7 +267,7 @@ describe("walker: references must resolve in every listed sequence", () => {
       introSequences: [seq("a", ["color"]), seq("b", ["shape"])],
       treatments: [
         treatment({
-          introSequences: ["a", "b"],
+          compatibleIntroSequences: ["a", "b"],
           gameStages: [stageReferencing("color")],
         }),
       ],
@@ -250,7 +283,7 @@ describe("walker: references must resolve in every listed sequence", () => {
       introSequences: [seq("a", ["color"]), seq("c", ["shape"])],
       treatments: [
         treatment({
-          introSequences: ["a"],
+          compatibleIntroSequences: ["a"],
           gameStages: [stageReferencing("shape")],
         }),
       ],
@@ -260,12 +293,12 @@ describe("walker: references must resolve in every listed sequence", () => {
     expect(issue?.message).toContain('"c"');
   });
 
-  test("introSequences: [] with an intro-style reference → unknown-ref error", () => {
+  test("compatibleIntroSequences: [] with an intro-style reference → unknown-ref error", () => {
     const issues = validateTreatmentFileReferences({
       introSequences: [seq("a", ["color"])],
       treatments: [
         treatment({
-          introSequences: [],
+          compatibleIntroSequences: [],
           gameStages: [stageReferencing("color")],
         }),
       ],
@@ -278,7 +311,7 @@ describe("walker: references must resolve in every listed sequence", () => {
       introSequences: [seq("a", ["color"]), seq("b", [])],
       treatments: [
         treatment({
-          introSequences: ["a", "b"],
+          compatibleIntroSequences: ["a", "b"],
           gameStages: [
             {
               name: "produce",
@@ -302,7 +335,7 @@ describe("walker: references must resolve in every listed sequence", () => {
         {
           name: "t",
           playerCount: 1,
-          introSequences: ["a", "b"],
+          compatibleIntroSequences: ["a", "b"],
           groupComposition: [
             {
               position: 0,
@@ -350,7 +383,7 @@ describe("walker: references must resolve in every listed sequence", () => {
       introSequences: [seq("a", ["color"])],
       treatments: [
         treatment({
-          introSequences: "${intros}",
+          compatibleIntroSequences: "${intros}",
           gameStages: [stageReferencing("color")],
         }),
       ],
@@ -363,7 +396,7 @@ describe("walker: references must resolve in every listed sequence", () => {
       introSequences: [seq("a", ["color"])],
       treatments: [
         treatment({
-          introSequences: ["${pathway}", "ghost"],
+          compatibleIntroSequences: ["${pathway}", "ghost"],
           gameStages: [stageReferencing("color")],
         }),
       ],
@@ -381,7 +414,7 @@ describe("walker: references must resolve in every listed sequence", () => {
       introSequences: [seq("a", ["color"])],
       treatments: [
         treatment({
-          omitIntroSequences: true,
+          omitCompatibleIntroSequences: true,
           gameStages: [stageReferencing("color")],
         }),
       ],
@@ -399,7 +432,7 @@ describe("collisions: intro × treatment cross-pairs narrow to declared pairs", 
       {
         name: "t",
         playerCount: 1,
-        introSequences: declared,
+        compatibleIntroSequences: declared,
         gameStages: [
           {
             name: "s1",
@@ -432,7 +465,7 @@ describe("collisions: intro × treatment cross-pairs narrow to declared pairs", 
 
 // --- resolved: post-fill leak checks -----------------------------------------
 
-describe("resolved: introSequences must be concrete post-fill", () => {
+describe("resolved: compatibleIntroSequences must be concrete post-fill", () => {
   const resolvedStage = {
     name: "s1",
     duration: 60,
@@ -445,7 +478,7 @@ describe("resolved: introSequences must be concrete post-fill", () => {
         {
           name: "t",
           playerCount: 1,
-          introSequences: "${intros}",
+          compatibleIntroSequences: "${intros}",
           gameStages: [resolvedStage],
         },
       ],
@@ -459,7 +492,7 @@ describe("resolved: introSequences must be concrete post-fill", () => {
         {
           name: "t",
           playerCount: 1,
-          introSequences: ["${pathway}"],
+          compatibleIntroSequences: ["${pathway}"],
           gameStages: [resolvedStage],
         },
       ],
@@ -480,7 +513,7 @@ describe("resolved: introSequences must be concrete post-fill", () => {
         {
           name: "t",
           playerCount: 1,
-          introSequences: ["a"],
+          compatibleIntroSequences: ["a"],
           gameStages: [resolvedStage],
         },
       ],
@@ -498,12 +531,12 @@ describe("resolved: placeholder leaks are tagged for authoring contexts", () => 
     duration: 60,
     elements: [{ type: "submitButton", name: "done" }],
   };
-  const fileWith = (introSequences: unknown) => ({
+  const fileWith = (compatibleIntroSequences: unknown) => ({
     treatments: [
       {
         name: "t",
         playerCount: 1,
-        introSequences,
+        compatibleIntroSequences,
         gameStages: [resolvedStage],
       },
     ],
@@ -529,7 +562,7 @@ describe("resolved: placeholder leaks are tagged for authoring contexts", () => 
         {
           name: "t",
           playerCount: 1,
-          introSequences: 5,
+          compatibleIntroSequences: 5,
           gameStages: [resolvedStage],
         },
       ],
@@ -538,20 +571,20 @@ describe("resolved: placeholder leaks are tagged for authoring contexts", () => 
     const messages = result.success
       ? []
       : result.error.issues.map((i) => i.message);
-    expect(messages.some((m) => /must declare `introSequences:`/.test(m))).toBe(
-      true,
-    );
+    expect(
+      messages.some((m) => /must declare `compatibleIntroSequences:`/.test(m)),
+    ).toBe(true);
   });
 });
 
 describe("resolved: plain-string shape error is NOT masked as a placeholder leak", () => {
-  test("introSequences: 'onboarding' → hard error everywhere, with array suggestion", () => {
+  test("compatibleIntroSequences: 'onboarding' → hard error everywhere, with array suggestion", () => {
     const file = {
       treatments: [
         {
           name: "t",
           playerCount: 1,
-          introSequences: "onboarding",
+          compatibleIntroSequences: "onboarding",
           gameStages: [
             {
               name: "s1",
@@ -566,7 +599,9 @@ describe("resolved: plain-string shape error is NOT masked as a placeholder leak
     expect(strict.success).toBe(false);
     expect(
       strict.issues.some((i) =>
-        /Did you mean `introSequences: \[onboarding\]`/.test(i.message),
+        /Did you mean `compatibleIntroSequences: \[onboarding\]`/.test(
+          i.message,
+        ),
       ),
     ).toBe(true);
     // A shape error is not a binding problem — skipUnresolved must NOT hide it.

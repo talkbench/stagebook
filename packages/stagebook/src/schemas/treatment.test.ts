@@ -298,7 +298,7 @@ test("validate entire file", () => {
       {
         name: "treatment1",
         playerCount: 2,
-        introSequences: [],
+        compatibleIntroSequences: [],
         groupComposition: [
           { position: 0, title: "Bill" },
           { position: 1, title: "Ted" },
@@ -372,7 +372,7 @@ test("treatment accepts an optional notes field with Markdown", () => {
         name: "treatment1",
         notes: "A **markdown** description of what this treatment does.",
         playerCount: 1,
-        introSequences: [],
+        compatibleIntroSequences: [],
         gameStages: [
           {
             name: "stage1",
@@ -2212,7 +2212,7 @@ test("groupComposition field on a treatment accepts a ${field} placeholder (#284
       {
         name: "varies",
         playerCount: 4,
-        introSequences: [],
+        compatibleIntroSequences: [],
         groupComposition: "${composition}",
         gameStages: [
           {
@@ -2256,7 +2256,7 @@ test("end-to-end: rooms placeholder resolves through fillTemplates and re-valida
       {
         name: "example",
         playerCount: 4,
-        introSequences: [],
+        compatibleIntroSequences: [],
         gameStages: [
           {
             template: "storytelling_round",
@@ -2332,7 +2332,7 @@ test("end-to-end: an unbound complex placeholder survives fillTemplates and is r
       {
         name: "broken",
         playerCount: 2,
-        introSequences: [],
+        compatibleIntroSequences: [],
         gameStages: [
           {
             name: "stage1",
@@ -2527,7 +2527,7 @@ test("treatment-shape file: `imports:` plus `treatments:`", () => {
       {
         name: "t1",
         playerCount: 1,
-        introSequences: [],
+        compatibleIntroSequences: [],
         gameStages: [
           {
             name: "stage1",

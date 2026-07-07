@@ -13,7 +13,7 @@ describe("validateTreatmentSource", () => {
 treatments:
   - name: study1
     playerCount: 1
-    introSequences: []
+    compatibleIntroSequences: []
     gameStages:
       - name: stage1
         duration: 300
@@ -68,7 +68,7 @@ treatments:
         duration: 300
         elements:
           - type: submitButton`;
-      // Missing playerCount and introSequences
+      // Missing playerCount and compatibleIntroSequences
       const result = validateTreatmentSource(src);
       expect(result.diagnostics.length).toBeGreaterThan(0);
       expect(result.diagnostics[0].severity).toBe("error");
