@@ -171,6 +171,45 @@ function newScan(): ScopeScan {
   };
 }
 
+// A `${...}` template placeholder that survived expansion (e.g. an
+// unbound field in an `allowUnresolved` parse). We never hand such a
+// path to `loadPrompt` — it isn't a real file — mirroring how
+// `getReferencedAssets` excludes placeholder paths.
+const PLACEHOLDER_PATTERN = /\$\{[^}]*\}/;
+
+/** Classify a node reached AS a stage/step element (an item of an
+ *  `elements:` array). Detection is deliberately scoped to this position
+ *  rather than "any node with `type: prompt`" so a matching object inside
+ *  an opaque `z.unknown()` bag (e.g. a discussion layout feed's
+ *  `options`) isn't mistaken for a real element. */
+function classifyElement(el: Record<string, unknown>, acc: ScopeScan): void {
+  const type = el.type;
+  // Shared open-response prompt → candidate for coedit. Only the path is
+  // collected here; the frontmatter is resolved (async) after the walk.
+  if (
+    type === "prompt" &&
+    el.shared === true &&
+    typeof el.file === "string" &&
+    !PLACEHOLDER_PATTERN.test(el.file)
+  ) {
+    acc.sharedPromptFiles.add(el.file);
+  }
+  if (type === "qualtrics") {
+    acc.externalSurvey = true;
+  }
+}
+
+/** Classify a node reached AS a stage's `discussion:` block. `chatType`
+ *  is the discussion schema's enum; gating on its values is precise. */
+function classifyDiscussion(d: Record<string, unknown>, acc: ScopeScan): void {
+  const chatType = d.chatType;
+  if (chatType === "video" || chatType === "audio") {
+    acc.video = true;
+  } else if (chatType === "text") {
+    acc.textChat = true;
+  }
+}
+
 function walk(node: unknown, acc: ScopeScan, seen: WeakSet<object>): void {
   if (node === null || typeof node !== "object") return;
   // Guard against cyclic object graphs. YAML anchors/aliases can produce
@@ -185,34 +224,20 @@ function walk(node: unknown, acc: ScopeScan, seen: WeakSet<object>): void {
     return;
   }
 
+  // Classify by the KEY a child sits under, not by finding `type:`
+  // anywhere — so service triggers can only come from real DSL positions
+  // (`elements:` items, a `discussion:` block), never from arbitrary
+  // opaque config values. Still recurse into every value so nested
+  // stages/steps deeper in the tree are reached.
   const record = node as Record<string, unknown>;
-  const type = record.type;
-
-  // Shared open-response prompt → candidate for coedit. Resolve the
-  // frontmatter after the walk (async), so here we only collect paths.
-  if (
-    type === "prompt" &&
-    record.shared === true &&
-    typeof record.file === "string"
-  ) {
-    acc.sharedPromptFiles.add(record.file);
+  for (const [key, value] of Object.entries(record)) {
+    if (key === "elements" && Array.isArray(value)) {
+      for (const item of value) if (isRecord(item)) classifyElement(item, acc);
+    } else if (key === "discussion" && isRecord(value)) {
+      classifyDiscussion(value, acc);
+    }
+    walk(value, acc, seen);
   }
-
-  if (type === "qualtrics") {
-    acc.externalSurvey = true;
-  }
-
-  // Discussion block. `chatType` is unique to the discussion schema, so
-  // gating on its enum values is a precise signal without needing to key
-  // off the `discussion` parent key.
-  const chatType = record.chatType;
-  if (chatType === "video" || chatType === "audio") {
-    acc.video = true;
-  } else if (chatType === "text") {
-    acc.textChat = true;
-  }
-
-  for (const value of Object.values(record)) walk(value, acc, seen);
 }
 
 /** Walk one subtree into a fresh scope scan. */
@@ -243,9 +268,15 @@ function namedEntries(
  * Walk an expanded treatment file and report the external services it
  * requires, keyed by arm.
  *
- * Expects EXPANDED, import-merged input (e.g. the `merged` output of
- * `loadAndMergeImports` / `expandAndValidateWithImports`, or the host's
- * own hydration pipeline). Accepts `unknown`; a non-object yields an
+ * Expects a fully HYDRATED tree — imports merged AND templates expanded
+ * (`fillTemplates` run), e.g. `parseTreatmentSource(...).data` or the
+ * host's own hydration pipeline. A merely import-merged tree
+ * (`loadAndMergeImports().merged`) is NOT enough: it still carries
+ * `templates:` definitions and unsubstituted `${...}` fields, which would
+ * leak triggers from unused templates and produce placeholder prompt
+ * paths. (Defensively, a top-level `templates:` key is dropped from the
+ * `overall` walk and `${...}` prompt paths are skipped, but the arm-level
+ * maps assume expanded input.) Accepts `unknown`; a non-object yields an
  * all-false `overall` and empty maps, mirroring `getReferencedAssets`'
  * tolerance of pre-schema input.
  *
@@ -274,8 +305,15 @@ export async function getRequiredServices(
 
   // `overall` is a genuine whole-file walk (not the union of the maps),
   // so any stray or unnamed service-bearing content is still caught in
-  // the safe over-provisioning direction.
-  const overallScan = scan(mergedFile);
+  // the safe over-provisioning direction. Drop a top-level `templates:`
+  // key first: template DEFINITIONS aren't launchable content, and a
+  // caller that passed a merely import-merged (not template-expanded)
+  // tree would otherwise leak service triggers from unused templates.
+  const { templates: _templates, ...withoutTemplates } = root;
+  void _templates;
+  const overallScan = scan(
+    isRecord(mergedFile) ? withoutTemplates : mergedFile,
+  );
   const scanEntries = (key: string) =>
     namedEntries(root, key).map((e) => ({ name: e.name, scan: scan(e.node) }));
   const treatments = scanEntries("treatments");

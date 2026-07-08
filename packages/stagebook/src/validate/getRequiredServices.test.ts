@@ -486,16 +486,117 @@ describe("getRequiredServices", () => {
   test("unnamed treatments are excluded from byTreatment but still in overall", async () => {
     const file = {
       treatments: [
-        { gameStages: [{ type: "qualtrics", url: "https://x/SV_9" }] },
+        {
+          // No `name` → can't be a launch-selection key.
+          gameStages: [
+            { elements: [{ type: "qualtrics", url: "https://x/SV_9" }] },
+          ],
+        },
       ],
     };
     const report = await getRequiredServices(file, {
       loadPrompt: loaderFrom({}),
     });
     expect(report.byTreatment).toEqual({});
-    // overall is a genuine whole-file walk, so the stray need is still
-    // caught in the safe over-provisioning direction.
+    // overall is a genuine whole-file walk, so the stray (unnamed) arm's
+    // need is still caught in the safe over-provisioning direction.
     expect(report.overall.externalSurvey).toBe(true);
+  });
+
+  test("element-shaped objects inside opaque config bags are not classified", async () => {
+    // A discussion layout feed's `options` is `z.record(z.string(),
+    // z.unknown())` — arbitrary. An object there that happens to look
+    // like a prompt/qualtrics element (or carries a `chatType`) must NOT
+    // be treated as a real element: no loadPrompt call, no flags flipped.
+    const file = {
+      treatments: [
+        {
+          name: "t",
+          gameStages: [
+            {
+              discussion: {
+                chatType: "text",
+                layout: {
+                  feeds: [
+                    {
+                      options: {
+                        overlay: {
+                          type: "prompt",
+                          shared: true,
+                          file: "overlay.prompt.md",
+                        },
+                        fake: { type: "qualtrics", url: "https://x/SV_FAKE" },
+                        nestedChat: { chatType: "video" },
+                      },
+                    },
+                  ],
+                },
+              },
+              elements: [{ type: "display", body: "hi" }],
+            },
+          ],
+        },
+      ],
+    };
+    const load = loaderFrom({
+      "overlay.prompt.md": promptFile("openResponse"),
+    });
+    const report = await getRequiredServices(file, { loadPrompt: load });
+    // Only the real discussion (chatType: text) counts.
+    expect(report.byTreatment.t).toEqual({ ...NONE, textChat: true });
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  test("a `${...}` placeholder prompt path is skipped, not loaded", async () => {
+    // A survived `${locale}` (allowUnresolved parse) is not a real file.
+    const file = {
+      treatments: [
+        {
+          name: "t",
+          gameStages: [
+            {
+              elements: [
+                {
+                  type: "prompt",
+                  file: "prompts/${locale}/x.prompt.md",
+                  shared: true,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const load = loaderFrom({});
+    const report = await getRequiredServices(file, { loadPrompt: load });
+    expect(report.overall.coedit).toBe(false);
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  test("top-level template definitions do not leak into overall", async () => {
+    // A merely import-merged (not expanded) tree keeps `templates:` — a
+    // template definition's qualtrics/discussion must not flip flags.
+    const file = {
+      templates: [
+        {
+          name: "surveyBlock",
+          content: {
+            elements: [{ type: "qualtrics", url: "https://x/SV_TEMPLATE" }],
+          },
+        },
+      ],
+      treatments: [
+        {
+          name: "t",
+          gameStages: [{ elements: [{ type: "display", body: "hi" }] }],
+        },
+      ],
+    };
+    const report = await getRequiredServices(file, {
+      loadPrompt: loaderFrom({}),
+    });
+    expect(report.overall.externalSurvey).toBe(false);
+    expect(report.byTreatment.t).toEqual(NONE);
   });
 
   test("loader errors propagate rather than under-provisioning", async () => {
