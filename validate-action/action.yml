@@ -68,16 +68,6 @@ runs:
       run: |
         set -euo pipefail
 
-        # Surface `path:line:col: severity: message` diagnostics as inline
-        # annotations on the PR. Additive only — the CLI's exit code (below)
-        # is what actually passes or fails the job.
-        if [ "$SB_FORMAT" != "json" ]; then
-          echo "::add-matcher::${MATCHER_DIR}/stagebook.problem-matcher.json"
-        fi
-
-        # Build one args array (always non-empty — starts with `validate`) so
-        # `"${args[@]}"` is safe under `set -u` even on bash < 4.4, where an
-        # empty-array expansion errors as "unbound variable".
         # Constrain `version` to a plain npm version / range / dist-tag.
         # `:` and `/` are the entry points for alias / git-URL / tarball /
         # file specs (npm:, github:user/repo, https://…), which would
@@ -88,6 +78,9 @@ runs:
           *[:/]*) echo "::error::input 'version' must be a version, range, or dist-tag (got '${SB_VERSION}')"; exit 2 ;;
         esac
 
+        # Build one args array (always non-empty — starts with `validate`) so
+        # `"${args[@]}"` is safe under `set -u` even on bash < 4.4, where an
+        # empty-array expansion errors as "unbound variable".
         args=(validate)
         case "$SB_FORMAT" in
           text) ;;
@@ -106,6 +99,15 @@ runs:
         # shellcheck disable=SC2086
         for entry in $SB_FILES; do args+=("$entry"); done
         set +f
+
+        # Register the problem matcher only after inputs validate, so an early
+        # `exit 2` above can't leave it enabled for later steps in the job
+        # (matters under continue-on-error / if: always()). Text format only;
+        # surfaces `path:line:col: severity: message` diagnostics as inline PR
+        # annotations. Additive — the CLI's exit code is what passes/fails.
+        if [ "$SB_FORMAT" != "json" ]; then
+          echo "::add-matcher::${MATCHER_DIR}/stagebook.problem-matcher.json"
+        fi
 
         rc=0
         npx --yes --package="stagebook@${SB_VERSION:-latest}" stagebook "${args[@]}" || rc=$?

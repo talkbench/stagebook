@@ -27,6 +27,10 @@ jobs:
           version: "0.21.0" # pin for reproducible validation
 ```
 
+> **Note:** `@v1` is a floating tag created when the first version is
+> released. Until it exists, pin `@main` or a commit SHA
+> (`talkbench/stagebook/validate-action@<sha>`).
+
 The CLI dispatches by suffix (`.stagebook.yaml` → treatment validator,
 `.prompt.md` → prompt validator), and by default expands templates and
 resolves `imports:` before checking the schema — so errors that only appear
