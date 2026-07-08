@@ -274,33 +274,47 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      # Happy path: run the composite action against the fixture study repo,
-      # exercising setup-node + npx + glob quoting + import resolution
-      # end-to-end. Pins the validator to the current release so the dogfood
-      # isn't coupled to unreleased schema changes on main.
+      # Stage the fixtures as standalone study repos OUTSIDE this monorepo.
+      # `npx`/`npm exec` resolve `stagebook` against the nearest project;
+      # run from the repo root, npm matches the requested version to this
+      # repo's own `packages/stagebook` workspace (same version) and tries to
+      # run it locally — uninstalled → "not found" — instead of fetching from
+      # npm. A real no-JS study repo has no such workspace, so validate from a
+      # plain directory the same way a study repo's CI would.
+      - name: Stage fixtures as standalone study repos
+        run: |
+          mkdir -p "$RUNNER_TEMP/study" "$RUNNER_TEMP/study-invalid"
+          cp -R validate-action/fixtures/. "$RUNNER_TEMP/study/"
+          cp -R validate-action/fixtures-invalid/. "$RUNNER_TEMP/study-invalid/"
+      # Happy path: run the composite action end-to-end (setup-node + npx +
+      # glob quoting + import resolution). Pins the validator to the current
+      # release so the dogfood isn't coupled to unreleased schema changes.
       - name: Valid fixtures (text) → exit 0
         uses: ./validate-action
         with:
           version: "0.21.0"
+          working-directory: ${{ runner.temp }}/study
           files: |
-            validate-action/fixtures/**/*.stagebook.yaml
-            validate-action/fixtures/**/*.prompt.md
+            **/*.stagebook.yaml
+            **/*.prompt.md
       # JSON output branch (also skips the problem matcher).
       - name: Valid fixtures (json)
         uses: ./validate-action
         with:
           version: "0.21.0"
           format: json
+          working-directory: ${{ runner.temp }}/study
           files: |
-            validate-action/fixtures/**/*.stagebook.yaml
-            validate-action/fixtures/**/*.prompt.md
+            **/*.stagebook.yaml
+            **/*.prompt.md
       # --no-expand branch (raw syntax only).
       - name: Valid treatment (no-expand)
         uses: ./validate-action
         with:
           version: "0.21.0"
           no-expand: "true"
-          files: validate-action/fixtures/**/*.stagebook.yaml
+          working-directory: ${{ runner.temp }}/study
+          files: "**/*.stagebook.yaml"
       # Negative case: the action must fail the job on a validation error.
       # `continue-on-error` lets the job survive so the next step can assert
       # the failure — this guards the exit-code propagation that is the whole
@@ -311,7 +325,8 @@ jobs:
         uses: ./validate-action
         with:
           version: "0.21.0"
-          files: validate-action/fixtures-invalid/**/*.prompt.md
+          working-directory: ${{ runner.temp }}/study-invalid
+          files: "**/*.prompt.md"
       - name: Assert the invalid fixture failed validation
         if: steps.expect_fail.outcome != 'failure'
         run: |

@@ -58,6 +58,17 @@ root (the default). If you set `working-directory` to a subdirectory,
 validation still passes/fails the job correctly, but the inline annotations
 may not attach — prefer repo-root-relative globs over `working-directory`.
 
+## Running inside an npm workspace
+
+This action is built for study repos with **no** JS toolchain, where `npx`
+cleanly fetches the pinned `stagebook`. If you instead run it from a
+directory that is itself an npm project/workspace declaring a `stagebook`
+package at the same version (as this monorepo does), `npx` resolves
+`stagebook` to that local package rather than fetching it — and fails if it
+isn't installed. In that case, run the action against a checkout that isn't
+inside the workspace (or `npm ci` first). This repo's own CI dogfood copies
+the fixtures to a temp directory for exactly this reason.
+
 ## Inputs
 
 | Input               | Default    | Description                                                                                       |
