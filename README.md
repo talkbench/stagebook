@@ -53,7 +53,7 @@ Default is **expand-and-validate**: the validator expands templates + resolves `
 
 Exit codes: `0` clean (warnings OK), `1` schema errors, `2` couldn't read a file / YAML unparseable / glob matched nothing (use `--allow-empty` to opt out of the last).
 
-Diagnostics match what the [VS Code extension](apps/vscode/) shows in its Problems panel — same text, positions, severities — so an editor user and a CI bot see the same errors.
+Diagnostics match what the [VS Code extension](apps/vscode/) shows in its Problems panel — same text, positions, severities — so an editor user and a CI bot see the same errors. The extension isn't on the Marketplace yet; install it from the [latest release](https://github.com/talkbench/stagebook/releases/latest) with a one-line `curl` — see [apps/vscode/README.md](apps/vscode/README.md#install).
 
 ### Validating from TypeScript
 

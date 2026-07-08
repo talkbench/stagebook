@@ -54,7 +54,9 @@ jobs:
               - '**/*.js'
               - '**/*.json'
               - '.prettierrc'
-              - '.github/workflows/ci.yml'
+              # All workflow files, so `format:check` guards them — a PR that
+              # edits only a workflow (e.g. release-vscode.yml) still runs lint.
+              - '.github/workflows/*.yml'
 
   lint:
     name: Lint & Format
@@ -118,6 +120,31 @@ jobs:
       - run: npm ci
       - run: npm run build -w stagebook
       - run: npm test -w stagebook-vscode
+
+  package-vscode:
+    name: Package (vscode)
+    needs: changes
+    if: needs.changes.outputs.vscode == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # `vsce package` runs the `vscode:prepublish` script (library build +
+      # production bundle) before packaging, so this surfaces any packaging
+      # regression on every PR that touches the extension — the drift that
+      # used to be caught only by a human remembering to rebuild (#494).
+      - run: npm run package -w stagebook-vscode
+      - name: Upload .vsix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stagebook-vscode-vsix
+          path: apps/vscode/*.vsix
+          if-no-files-found: error
 
   test-ct:
     name: Component Tests (${{ matrix.browser }} ${{ matrix.shard }}/4)
@@ -216,7 +243,17 @@ jobs:
   ci-gate:
     name: CI Gate
     if: always()
-    needs: [changes, lint, test-stagebook, test-viewer, test-vscode, test-ct, build]
+    needs:
+      [
+        changes,
+        lint,
+        test-stagebook,
+        test-viewer,
+        test-vscode,
+        package-vscode,
+        test-ct,
+        build,
+      ]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
