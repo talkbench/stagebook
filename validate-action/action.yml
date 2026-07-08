@@ -1,0 +1,116 @@
+name: "Stagebook Validate"
+description: >-
+  Validate Stagebook treatment (.stagebook.yaml) and prompt (.prompt.md)
+  files in a repo with no JS toolchain — a thin wrapper around
+  `npx --package=stagebook stagebook validate`.
+author: "talkbench"
+branding:
+  icon: "check-circle"
+  color: "purple"
+
+inputs:
+  files:
+    description: >-
+      Files and/or globs to validate, whitespace- or newline-separated (a
+      YAML block scalar with one entry per line is clearest). The action
+      disables shell globbing internally and passes globs to the CLI intact
+      (it expands them recursively), so do NOT wrap entries in extra quotes.
+      See the action README for examples.
+    required: true
+  version:
+    description: >-
+      stagebook npm version to run: an exact version ("0.21.0"), a range,
+      or "latest" (default). Pin an exact version for reproducible
+      validation across runs.
+    required: false
+    default: "latest"
+  format:
+    description: 'Output format: "text" (default) or "json".'
+    required: false
+    default: "text"
+  node-version:
+    description: "Node.js version to set up."
+    required: false
+    default: "24"
+  working-directory:
+    description: "Directory to run validation in."
+    required: false
+    default: "."
+  allow-empty:
+    description: >-
+      When "true", a glob that matches no files is not an error
+      (passes --allow-empty). Default "false".
+    required: false
+    default: "false"
+  no-expand:
+    description: >-
+      When "true", skip template expansion + import resolution and check
+      raw syntax only (passes --no-expand). Default "false".
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-node@v5
+      with:
+        node-version: ${{ inputs.node-version }}
+    - name: Validate Stagebook files
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        SB_VERSION: ${{ inputs.version }}
+        SB_FILES: ${{ inputs.files }}
+        SB_FORMAT: ${{ inputs.format }}
+        SB_ALLOW_EMPTY: ${{ inputs.allow-empty }}
+        SB_NO_EXPAND: ${{ inputs.no-expand }}
+        MATCHER_DIR: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+
+        # Surface `path:line:col: severity: message` diagnostics as inline
+        # annotations on the PR. Additive only — the CLI's exit code (below)
+        # is what actually passes or fails the job.
+        if [ "$SB_FORMAT" != "json" ]; then
+          echo "::add-matcher::${MATCHER_DIR}/stagebook.problem-matcher.json"
+        fi
+
+        # Build one args array (always non-empty — starts with `validate`) so
+        # `"${args[@]}"` is safe under `set -u` even on bash < 4.4, where an
+        # empty-array expansion errors as "unbound variable".
+        # Constrain `version` to a plain npm version / range / dist-tag.
+        # `:` and `/` are the entry points for alias / git-URL / tarball /
+        # file specs (npm:, github:user/repo, https://…), which would
+        # redirect `--package=stagebook@<version>` to a different package.
+        # Defense-in-depth: the caller already controls their own job, but
+        # `format` is validated too and this keeps the wrapper honest.
+        case "$SB_VERSION" in
+          *[:/]*) echo "::error::input 'version' must be a version, range, or dist-tag (got '${SB_VERSION}')"; exit 2 ;;
+        esac
+
+        args=(validate)
+        case "$SB_FORMAT" in
+          text) ;;
+          json) args+=(--format=json) ;;
+          *) echo "::error::input 'format' must be 'text' or 'json' (got '${SB_FORMAT}')"; exit 2 ;;
+        esac
+        if [ "$SB_ALLOW_EMPTY" = "true" ]; then args+=(--allow-empty); fi
+        if [ "$SB_NO_EXPAND" = "true" ]; then args+=(--no-expand); fi
+
+        # Disable shell globbing so globs like '**/*.stagebook.yaml' reach the
+        # CLI intact. The CLI expands them recursively (tinyglobby); bash
+        # without `globstar` would expand `**` as a single level and silently
+        # under-match. Word-split `$SB_FILES` on whitespace/newlines with
+        # globbing off, appending each entry as a literal argument.
+        set -f
+        # shellcheck disable=SC2086
+        for entry in $SB_FILES; do args+=("$entry"); done
+        set +f
+
+        rc=0
+        npx --yes --package="stagebook@${SB_VERSION:-latest}" stagebook "${args[@]}" || rc=$?
+
+        if [ "$SB_FORMAT" != "json" ]; then
+          echo "::remove-matcher owner=stagebook::"
+        fi
+        exit "$rc"

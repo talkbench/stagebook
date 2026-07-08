@@ -24,6 +24,7 @@ jobs:
       vscode: ${{ steps.filter.outputs.vscode }}
       ct: ${{ steps.filter.outputs.ct }}
       lint: ${{ steps.filter.outputs.lint }}
+      action: ${{ steps.filter.outputs.action }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -68,6 +69,9 @@ jobs:
               # All workflow files, so `format:check` guards them — a PR that
               # edits only a workflow (e.g. release-vscode.yml) still runs lint.
               - '.github/workflows/*.yml'
+            action:
+              - 'validate-action/**'
+              - '.github/workflows/ci.yml'
 
   lint:
     name: Lint & Format
@@ -256,6 +260,64 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+  validate-action:
+    name: Dogfood validate-action
+    needs: changes
+    if: needs.changes.outputs.action == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    # The action fetches + runs a network-downloaded package (npx), so scope
+    # this job to read-only — it never needs to write anything.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      # Happy path: run the composite action against the fixture study repo,
+      # exercising setup-node + npx + glob quoting + import resolution
+      # end-to-end. Pins the validator to the current release so the dogfood
+      # isn't coupled to unreleased schema changes on main.
+      - name: Valid fixtures (text) → exit 0
+        uses: ./validate-action
+        with:
+          version: "0.21.0"
+          files: |
+            validate-action/fixtures/**/*.stagebook.yaml
+            validate-action/fixtures/**/*.prompt.md
+      # JSON output branch (also skips the problem matcher).
+      - name: Valid fixtures (json)
+        uses: ./validate-action
+        with:
+          version: "0.21.0"
+          format: json
+          files: |
+            validate-action/fixtures/**/*.stagebook.yaml
+            validate-action/fixtures/**/*.prompt.md
+      # --no-expand branch (raw syntax only).
+      - name: Valid treatment (no-expand)
+        uses: ./validate-action
+        with:
+          version: "0.21.0"
+          no-expand: "true"
+          files: validate-action/fixtures/**/*.stagebook.yaml
+      # Negative case: the action must fail the job on a validation error.
+      # `continue-on-error` lets the job survive so the next step can assert
+      # the failure — this guards the exit-code propagation that is the whole
+      # point of the action.
+      - name: Invalid fixture → non-zero
+        id: expect_fail
+        continue-on-error: true
+        uses: ./validate-action
+        with:
+          version: "0.21.0"
+          files: validate-action/fixtures-invalid/**/*.prompt.md
+      - name: Assert the invalid fixture failed validation
+        if: steps.expect_fail.outcome != 'failure'
+        run: |
+          echo "Expected validate-action to fail on the invalid fixture, got '${{ steps.expect_fail.outcome }}'" >&2
+          exit 1
+
   ci-gate:
     name: CI Gate
     if: always()
@@ -269,6 +331,7 @@ jobs:
         package-vscode,
         test-ct,
         build,
+        validate-action,
       ]
     runs-on: ubuntu-latest
     timeout-minutes: 2
