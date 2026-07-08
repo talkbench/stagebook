@@ -1,10 +1,14 @@
+// Import from the schemas barrel (not the top-level `../index.js`): the latter
+// re-exports the imports/YAML subtree, which — now that this module is reachable
+// from the `stagebook/viewer` entry (#492) — would otherwise pull js-yaml's
+// parser into the viewer bundle. schemas/index.ts carries all of these without it.
 import {
   fileSchema,
   promptFileSchema,
   collectReferencedPromptFiles,
   checkPromptLocaleConsistency,
   type PromptLocaleMismatch,
-} from "../index.js";
+} from "../schemas/index.js";
 
 /**
  * Host-side wiring for the locale-consistency rule (ADR
