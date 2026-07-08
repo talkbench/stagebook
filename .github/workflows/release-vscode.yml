@@ -50,7 +50,13 @@ jobs:
           TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
-          built=$(ls apps/vscode/stagebook-vscode-*.vsix)
+          shopt -s nullglob
+          vsix=(apps/vscode/stagebook-vscode-*.vsix)
+          if [ "${#vsix[@]}" -ne 1 ]; then
+            echo "Expected exactly one built .vsix, found ${#vsix[@]}: ${vsix[*]:-<none>}" >&2
+            exit 1
+          fi
+          built="${vsix[0]}"
           cp "$built" "stagebook-vscode-${TAG}.vsix"
           cp "$built" stagebook-vscode.vsix
           gh release upload "$TAG" "stagebook-vscode-${TAG}.vsix" stagebook-vscode.vsix --clobber
