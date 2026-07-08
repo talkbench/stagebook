@@ -86,7 +86,7 @@ for (const d of diagnostics) {
 }
 ```
 
-The same subpath exports `checkPairing(file, { introSequenceName }, treatmentNames)` — a launch-time guard hosts call where batch config pairs an intro sequence with treatments (pass `introSequenceName: null` for intro-less launches) — and `getRequiredServices(file, { loadPrompt })`, a provisioning primitive that walks an expanded treatment and reports which external services it needs (`coedit`, `video`, `textChat`, `externalSurvey`) so a host spawns exactly those. See the [API reference](docs/engineer/api-reference.md) and [integration guide](docs/engineer/integration-guide.md#launch-time-pairing-guard).
+The same subpath exports `checkPairing(file, { introSequenceName }, treatmentNames)` — a launch-time guard hosts call where batch config pairs an intro sequence with treatments (pass `introSequenceName: null` for intro-less launches) — and `getRequiredServices(file, { loadPrompt })`, a provisioning primitive that walks an expanded treatment and reports which external services it needs (`coedit`, `video`, `textChat`, `externalSurvey`) — keyed by arm (`overall`, `byTreatment`, `byIntroSequence`, `byConsent`) so a host can provision exactly what the selected launch uses. See the [API reference](docs/engineer/api-reference.md) and [integration guide](docs/engineer/integration-guide.md#launch-time-pairing-guard).
 
 ### Validating a prompt file
 
