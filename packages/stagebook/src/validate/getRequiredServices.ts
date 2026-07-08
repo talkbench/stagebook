@@ -158,6 +158,16 @@ function walk(
  * via `opts.loadPrompt`. Loader errors propagate to the caller — a host
  * that can't read a referenced prompt should surface that rather than
  * silently under-provision.
+ *
+ * SCOPE: reports the union over EVERY treatment and intro sequence in
+ * the file, not a selected launch subset — same whole-file contract as
+ * `getReferencedAssets`. In a file that keeps pilot/control variants
+ * together, an unlaunched arm's video discussion, qualtrics element, or
+ * shared openResponse prompt therefore still flips the flag. That is the
+ * safe direction (over- rather than under-provisioning), but a host that
+ * wants per-launch precision should pass a tree narrowed to the selected
+ * arms — the same selection it already passes to `checkPairing` — rather
+ * than the whole merged file.
  */
 export async function getRequiredServices(
   mergedFile: unknown,

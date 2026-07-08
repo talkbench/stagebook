@@ -179,6 +179,8 @@ if (svc.externalSurvey) requireQualtricsCreds();
 
 Async because the coedit signal is **split across files**: `shared: true` lives in the treatment YAML but `type: openResponse` lives in the separate `.prompt.md`, so shared prompts' frontmatter is resolved via `loadPrompt` — the same loader-injection shape `loadAndMergeImports` uses (the host owns path resolution and I/O). `loadPrompt` is only called for prompts flagged `shared: true`, each unique file at most once; loader errors propagate rather than silently under-provisioning. Expects **expanded**, import-merged input.
 
+**Scope:** reports the union over **every** treatment and intro sequence in the file — the same whole-file contract as `getReferencedAssets`, not a selected-launch subset. So in a file that keeps pilot/control variants together, an unlaunched arm's video discussion or Qualtrics element still flips the flag. That is the safe direction (over- rather than under-provisioning); a host wanting per-launch precision should pass a tree narrowed to the selected arms — the same selection it passes to [`checkPairing`](#checkpairingfile-introsequencename-treatmentnames) — rather than the whole merged file.
+
 ## React Components
 
 ### StagebookProvider
