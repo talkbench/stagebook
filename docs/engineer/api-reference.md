@@ -151,6 +151,34 @@ const diagnostics: Diagnostic[] = checkPairing(
 
 Expects **expanded** input (e.g. the output of `expandAndValidateWithImports` or the host's own hydration pipeline); an unresolved `${...}` placeholder in a selected treatment's declaration is reported as an error rather than guessed around. Diagnostics carry `range: null` — this is a runtime check with no source-position mapping, so hosts render messages only. Deliberately intro-only: consent arms have no pairing relationship, so there is no `consentName` parameter.
 
+### `getRequiredServices(mergedFile, { loadPrompt })`
+
+Host provisioning primitive (#508): walk an expanded treatment and report which external services it requires, so a host provisions exactly those and nothing more. The third member of the host-facing analysis family alongside `getReferencedAssets` (→ asset mirror) and `checkPairing` (→ intro pairing).
+
+```typescript
+import { getRequiredServices, type RequiredServices } from "stagebook/validate";
+
+const svc: RequiredServices = await getRequiredServices(
+  expandedFile, // post fillTemplates / import merge
+  { loadPrompt: (path) => readPromptFile(path) }, // same injection shape as loadAndMergeImports
+);
+
+if (svc.coedit) spawnPairedCoeditPod();
+if (svc.video) ensureDailyKeyForwarded();
+if (svc.externalSurvey) requireQualtricsCreds();
+```
+
+**Returns:** `Promise<RequiredServices>` — `{ coedit, video, textChat, externalSurvey }` booleans. Trigger → service mapping (walk of the expanded tree):
+
+| Service          | Trigger                                                                     |
+| ---------------- | --------------------------------------------------------------------------- |
+| `coedit`         | `prompt` element, `shared: true`, referenced prompt file `type: openResponse` |
+| `video`          | stage `discussion` block, `chatType: video` or `audio` (→ Daily / WebRTC)   |
+| `textChat`       | stage `discussion` block, `chatType: text`                                  |
+| `externalSurvey` | `type: qualtrics` element (the native `type: survey` needs no external service) |
+
+Async because the coedit signal is **split across files**: `shared: true` lives in the treatment YAML but `type: openResponse` lives in the separate `.prompt.md`, so shared prompts' frontmatter is resolved via `loadPrompt` — the same loader-injection shape `loadAndMergeImports` uses (the host owns path resolution and I/O). `loadPrompt` is only called for prompts flagged `shared: true`, each unique file at most once; loader errors propagate rather than silently under-provisioning. Expects **expanded**, import-merged input.
+
 ## React Components
 
 ### StagebookProvider
