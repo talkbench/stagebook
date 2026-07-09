@@ -192,10 +192,6 @@ function* walkAllConditionLeaves(
       stages: t.exitSequence,
       base: ["treatments", ti, "exitSequence"],
     });
-    stageLists.push({
-      stages: t.debrief,
-      base: ["treatments", ti, "debrief"],
-    });
   });
   toArray(fileObj.introSequences).forEach((seq, si) => {
     if (!isRecord(seq)) return;
@@ -274,7 +270,6 @@ function buildPromptNameToFiles(
     if (!isRecord(t)) continue;
     scanStages(t.gameStages);
     scanStages(t.exitSequence);
-    scanStages(t.debrief);
   }
   for (const seq of toArray(fileObj.introSequences)) {
     if (isRecord(seq)) scanStages(seq.introSteps);

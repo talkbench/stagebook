@@ -298,7 +298,7 @@ describe("safeParseTreatmentFile — stage / treatment / discussion / player", (
     );
     expect(issue).toBeDefined();
     expect(issue!.message).toBe(
-      "Unrecognized key 'plyerCount' on treatment. Did you mean 'playerCount'? Valid keys: name, notes, playerCount, compatibleIntroSequences, locale, groupComposition, gameStages, exitSequence, debrief",
+      "Unrecognized key 'plyerCount' on treatment. Did you mean 'playerCount'? Valid keys: name, notes, playerCount, compatibleIntroSequences, locale, groupComposition, gameStages, exitSequence",
     );
   });
 

@@ -1836,7 +1836,7 @@ export const ADVANCEMENT_ELEMENT_MESSAGE =
   "Intro/exit step must include at least one advancement element: submitButton, survey, qualtrics, or mediaPlayer with submitOnComplete: true.";
 
 /** Shared per-step refinement for every per-participant step list
- *  (intro, exit, consent (#481), debrief (#481)): the shared-prompt ban
+ *  (intro, exit, consent (#481)): the shared-prompt ban
  *  and the advancement-element requirement, plus — for pre-assignment
  *  contexts (intro, consent) — the position-field bans. `stepLabel`
  *  parameterizes the position-ban messages ("intro steps", "consent
@@ -1928,18 +1928,22 @@ export const exitStepsSchema = introExitStepsBaseSchema.superRefine(
     }),
 );
 
-// ------------------ Consent and Debrief (#481) ------------------ //
+// ------------------ Consent (#481) ------------------ //
 //
-// Consent arms and debrief reuse the intro/exit step shape
-// (IntroExitStepType) and its per-step rules. Consent runs BEFORE
-// everything (pre-assignment, single participant) so it gets the
-// intro-style position-field bans; debrief runs LAST inside the
-// treatment and inherits the treatment's locale and key scope, like
-// `exitSequence`. Consent responses ride the normal save/export
-// machinery — the saved responses ARE the consent record — but are
-// non-referenceable outside the consent phase by policy
-// (validateReferences.ts) and collision-checked against every intro
-// sequence and treatment (storageKeyCollisions.ts).
+// Consent arms reuse the intro/exit step shape (IntroExitStepType) and
+// its per-step rules. Consent runs BEFORE everything (pre-assignment,
+// single participant) so it gets the intro-style position-field bans.
+// Consent responses ride the normal save/export machinery — the saved
+// responses ARE the consent record — but are non-referenceable outside
+// the consent phase by policy (validateReferences.ts) and
+// collision-checked against every intro sequence and treatment
+// (storageKeyCollisions.ts).
+//
+// Debrief was first-classed alongside consent in #481, then retired:
+// debrief content is authored as the trailing steps of `exitSequence`
+// (the host renders the exit sequence before the completion code, so
+// trailing exit steps ARE the debrief). See
+// docs/decisions/2026-07-consent-debrief.md.
 
 /** Step-list schema for a named field, with field-specific YAML-shape
  *  error messages (the intro/exit base hardcodes `introSteps`). */
@@ -1959,14 +1963,6 @@ export const consentStepsSchema = makeStepListSchema("steps").superRefine(
     refinePerParticipantSteps(data as IntroExitStepType[] | undefined, ctx, {
       banPositionFields: true,
       stepLabel: "consent steps",
-    }),
-);
-
-export const debriefStepsSchema = makeStepListSchema("debrief").superRefine(
-  (data, ctx) =>
-    refinePerParticipantSteps(data as IntroExitStepType[] | undefined, ctx, {
-      banPositionFields: false,
-      stepLabel: "debrief steps",
     }),
 );
 
@@ -2098,13 +2094,14 @@ export const baseTreatmentSchema = z
       .or(fieldPlaceholderSchema)
       .optional(),
     gameStages: stagesSchema,
+    // Exit steps run after the game, at the participant's own pace. Debrief
+    // content (study purpose, dehoaxing, any data-withdrawal choice) is
+    // authored as the FINAL steps of `exitSequence` — there is no separate
+    // `debrief:` field (#481 retired it). The host renders the exit sequence
+    // before the completion code, so trailing exit steps ARE the debrief and
+    // the code stays gated behind them. Per-condition debrief = different
+    // treatment arms; per-participant = step `conditions:`.
     exitSequence: exitStepsSchema.optional(),
-    // Post-study debrief steps (#481). Rendered by the host AFTER its own
-    // wrap-up steps (QC, completion code) — placement is the host's call;
-    // stagebook labels and provides the content. Inherits the treatment's
-    // locale and key scope, like `exitSequence`. Per-condition debrief =
-    // different treatment arms; per-participant = step `conditions:`.
-    debrief: debriefStepsSchema.optional(),
   })
   .strict();
 
@@ -2335,7 +2332,6 @@ export const contentTypeEnum = z.enum([
   "exitSteps",
   "consentArm",
   "consent",
-  "debriefSteps",
   "discussion",
   "broadcastAxisValues",
 ]);
@@ -2380,8 +2376,6 @@ export function matchContentType(contentType: ContentType): z.ZodTypeAny {
       return consentArmSchema;
     case "consent":
       return consentSchema;
-    case "debriefSteps":
-      return debriefStepsSchema;
     case "discussion":
       return discussionSchema;
     case "broadcastAxisValues":

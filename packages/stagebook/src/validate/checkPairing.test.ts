@@ -210,8 +210,8 @@ describe("checkPairing input hygiene (Copilot review)", () => {
   });
 });
 
-describe("debrief under checkPairing (#481)", () => {
-  test("debrief references are verified under the selected sequence", () => {
+describe("exit-step references under checkPairing (#481)", () => {
+  test("exit-step references are verified under the selected sequence", () => {
     const seq = (name: string, key: string) => ({
       name,
       introSteps: [
@@ -238,7 +238,7 @@ describe("debrief under checkPairing (#481)", () => {
               elements: [{ type: "submitButton", name: "done" }],
             },
           ],
-          debrief: [
+          exitSequence: [
             {
               name: "d",
               elements: [

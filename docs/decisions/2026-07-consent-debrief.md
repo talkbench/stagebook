@@ -1,15 +1,89 @@
 # Consent & debrief as first-class components (July 2026)
 
 Status: **accepted** — design settled in the [#481] comment thread
-(2026-07-02/03); this ADR records the outcome. Phase 1 (stagebook library
-+ viewer) is implemented by the PR that links here; Phase 2
+(2026-07-02/03); this ADR records the outcome. Phase 1 (stagebook
+library + viewer) is implemented by the PR that links here; Phase 2
 (runner integration + boilerplate library) follows in the host
 repo. Builds on the intro-sequence pairing model of [#499]
 ([2026-07-intro-sequence-pairing.md](./2026-07-intro-sequence-pairing.md)).
 
+> **Revised 2026-07-09 — the per-treatment `debrief:` field was retired.**
+> Debrief content is now authored as the trailing steps of `exitSequence`;
+> see the **Revision** section immediately below. This supersedes decision
+> **#2** (debrief home) and the debrief half of the **Host placement**
+> section. Everything about **consent** is unchanged.
+
 [#481]: https://github.com/talkbench/stagebook/issues/481
 [#499]: https://github.com/talkbench/stagebook/issues/499
 [#479]: https://github.com/talkbench/stagebook/issues/479
+
+## Revision (2026-07-09): debrief retired — folded into `exitSequence`
+
+**What changed.** The per-treatment `debrief:` field is removed from the
+schema (breaking). Debrief content — study purpose, dehoaxing, and any
+"may we use your data?" withdrawal choice — is now authored as the
+**trailing steps of `exitSequence`**. Host ordering becomes:
+
+```
+… → [exitSequence (trailing steps = debrief)] → QC survey → completion code
+```
+
+which **reverses** the original placement (debrief _after_ the completion
+code). Consent is entirely unchanged.
+
+**Why.**
+
+1. **The field was redundant.** In every validation pass — references,
+   storage-key collisions, unsatisfiable-conditions, locale consistency,
+   the resolved shape — `debrief` was handled _identically_ to
+   `exitSequence`, just ranked immediately after it. The only thing that
+   ever distinguished it was host placement (after QC + completion code).
+
+2. **Interactive debrief must precede the completion code.** The feature
+   that justified first-classing debrief was making it _interactive_
+   (comprehension-gated, or offering data withdrawal). A debrief the
+   participant must actually see or act on cannot sit after the completion
+   code: a web-study RCT (n=11,943; PMC3510731) found only ~25% of
+   participants opened an _available_ debrief once they already had what
+   they came for. So an interactive debrief has to block _before_ the code
+   — exactly what trailing `exitSequence` steps do (the code is the
+   platform's terminal "you're done" signal). Once debrief moved before the
+   code, the parallel/after-code placement that was the field's sole reason
+   to exist was gone.
+
+3. **QC-after-debrief is a feature, not contamination.** With the debrief
+   at the tail of the exit sequence and the host's QC survey after it, the
+   QC survey measures the participant's _post-debrief exit state_ — the
+   "peak-end" experience you actually want for retention/satisfaction
+   items. Review of the deployed QC survey confirmed it is reveal-safe as
+   measurement (operational/experience items — compensation, time, tech
+   quality, "would you participate again" — with no manipulation check or
+   suspicion probe), so debrief-before-QC does not corrupt it. A study that
+   _does_ need a funnel/suspicion probe still authors it as an exit step
+   _before_ the dehoaxing step.
+
+4. **It simplifies every consumer.** One construct instead of two: the
+   viewer drops a whole phase plus a mid-unit interstitial; the host drops a
+   placement decision; the validators drop their debrief branches. "Debrief
+   = the last steps of the exit sequence" is the whole rule.
+
+**The gate is positional.** There is no debrief-specific gate flag: because
+the completion code follows the exit sequence, the debrief is gated behind
+the code by construction. The host contract is simply "don't reveal the
+completion code until the exit sequence has completed."
+
+**Ethics floor is unchanged.** Whether a concealment/deception study _needs_
+a debrief remains the researcher's / IRB's call (the tool provides the
+mechanism; it cannot detect concealment) — the same division of
+responsibility this ADR already takes for consent _text_. A treatment with
+no trailing debrief steps simply has no debrief.
+
+**What did NOT change.** Consent stays first-classed. Its unique needs —
+closed reference scope, the hard consent gate, a study-level home invariant
+across manipulations, and retiring the host's hardcoded legal text — are
+real and specific to consent; debrief never had any of them, which is why
+only debrief folds away. The consent record below (decisions #1, #3–#13)
+stands as written.
 
 ## Motivation
 
@@ -75,6 +149,10 @@ deleting experiment data while keeping proof of consent within one
 record). Nothing in this design anticipates it.
 
 ## Host placement (unchanged seam)
+
+> **Superseded for debrief (see Revision):** debrief is no longer a trailing
+> phase after the completion code — it is the tail of `exitSequence`, so the
+> order is now `… → [exitSequence (…debrief)] → QC → completion code`.
 
 The host wraps its own steps around extracted stagebook steps —
 `[consent] → attention/equipment checks → [introSteps] → [gameStages] →

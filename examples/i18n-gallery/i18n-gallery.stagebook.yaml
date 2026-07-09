@@ -22,7 +22,7 @@
 # prompts/he/ must declare `locale: he` in its frontmatter, and it's
 # checked against its CONTAINER's locale (the intro sequence for the
 # welcome step, the consent ARM for consent steps, the treatment for
-# the game stages AND the debrief).
+# the game stages AND exit steps).
 #
 # Consent (#481) is a top-level collection of arms; the host selects
 # one arm by name, before anything else runs. Like intro sequences,
@@ -149,11 +149,15 @@ templates:
               file: prompts/${locale}/open.prompt.md
             - type: submitButton
 
-      # Debrief steps run after the game stages and inherit the
-      # treatment's locale — so this prompt file is checked against the
-      # same locale the arm declared up top, no extra plumbing.
-      debrief:
-        - name: purpose
+      # The debrief is authored as the trailing step(s) of the exit
+      # sequence — there is no separate `debrief:` field. Exit steps run
+      # after the game stages and inherit the treatment's locale, so this
+      # prompt file is checked against the same locale the arm declared up
+      # top, no extra plumbing. In a real study the platform runs its
+      # quality-control survey and issues the completion code after the
+      # exit sequence, so these trailing steps stay gated behind the code.
+      exitSequence:
+        - name: debrief
           elements:
             - type: prompt
               file: prompts/${locale}/debrief.prompt.md

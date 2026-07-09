@@ -178,32 +178,6 @@ describe("flattenSteps", () => {
     expect(steps[0]?.phase).toBe("game");
     expect(steps.some((s) => s.phase === "intro")).toBe(false);
   });
-
-  it("appends debrief steps after exit, tagged with phase debrief (#481)", () => {
-    const withDebrief = {
-      ...treatment,
-      debrief: [
-        {
-          name: "study_purpose",
-          notes: "IRB-required disclosure",
-          elements: [{ type: "submitButton" as const, buttonText: "Done" }],
-        },
-      ],
-    };
-    const steps = flattenSteps(introSequence, withDebrief);
-    expect(steps.map((s) => s.phase)).toEqual([
-      "intro",
-      "intro",
-      "game",
-      "game",
-      "exit",
-      "debrief",
-    ]);
-    const last = steps.at(-1)!;
-    expect(last.name).toBe("study_purpose");
-    expect(last.notes).toBe("IRB-required disclosure");
-    expect(last.index).toBe(5);
-  });
 });
 
 describe("localeForPhase", () => {
@@ -221,12 +195,9 @@ describe("localeForPhase", () => {
     expect(localeForPhase("intro", consentEs, introHe, treatmentEn)).toBe("he");
   });
 
-  it("game, exit, and debrief phases use the treatment's locale", () => {
+  it("game and exit phases use the treatment's locale", () => {
     expect(localeForPhase("game", consentEs, introHe, treatmentEn)).toBe("en");
     expect(localeForPhase("exit", consentEs, introHe, treatmentEn)).toBe("en");
-    expect(localeForPhase("debrief", consentEs, introHe, treatmentEn)).toBe(
-      "en",
-    );
   });
 
   it("an intro sequence does not inherit the treatment's locale", () => {
@@ -406,13 +377,17 @@ describe("buildUnits", () => {
     expect(copy).toMatch(/picker above to preview another part/i);
   });
 
-  it("debrief steps follow a QC/completion-code transition after exit (#481)", () => {
+  it("the treatment transition narrates the platform QC + completion code (#481)", () => {
+    // Debrief content is authored as the trailing steps of the exit sequence
+    // and renders inline — there is no separate mid-unit transition or a
+    // "debrief" phase. The end-of-treatment transition narrates the platform
+    // quality checks + completion code that follow the exit sequence.
     const units = buildUnits({
       treatments: [
         {
           ...treatment,
           locale: "he",
-          debrief: [{ name: "study_purpose", elements: [] }],
+          exitSequence: [{ name: "study_purpose", elements: [] }],
         },
       ],
     });
@@ -420,27 +395,17 @@ describe("buildUnits", () => {
     expect(steps.map((s) => s.phase)).toEqual([
       "game",
       "game",
-      "exit",
-      "exit", // QC + completion-code transition
-      "debrief",
-      "debrief", // end-of-unit transition
+      "exit", // the debrief, authored as a trailing exit step
+      "exit", // end-of-unit transition
     ]);
-    expect(steps.map((s) => s.index)).toEqual([0, 1, 2, 3, 4, 5]);
-    // The mid-unit transition narrates what runs between exit and debrief.
-    const mid = steps[3];
-    expect(mid.isTransition).toBe(true);
-    expect(mid.transitionCopy).toMatch(/quality checks/i);
-    expect(mid.transitionCopy).toMatch(/completion code/i);
-    // The debrief step itself is a real stage in the treatment's locale.
-    expect(steps[4]).toMatchObject({
-      name: "study_purpose",
-      phase: "debrief",
-    });
-    expect(units[0].locale).toBe("he");
-    // The trailing transition no longer promises a debrief — it just ran.
+    expect(steps.map((s) => s.index)).toEqual([0, 1, 2, 3]);
+    expect(steps.some((s) => (s.phase as string) === "debrief")).toBe(false);
+    expect(steps[2]).toMatchObject({ name: "study_purpose", phase: "exit" });
     const last = steps.at(-1)!;
     expect(last.isTransition).toBe(true);
-    expect(last.transitionCopy).not.toMatch(/complete any debrief/i);
+    expect(last.transitionCopy).toMatch(/quality checks/i);
+    expect(last.transitionCopy).toMatch(/completion code/i);
+    expect(units[0].locale).toBe("he");
   });
 
   it("intro transition mentions previewing a treatment only when one exists", () => {

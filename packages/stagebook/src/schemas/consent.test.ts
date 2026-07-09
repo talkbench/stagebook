@@ -11,19 +11,21 @@ import { checkUnsatisfiableConditions } from "./unsatisfiableConditions.js";
 import { promptFileSchema } from "./promptFile.js";
 
 /**
- * Consent & debrief as first-class units (#481, Phase 1).
+ * Consent as a first-class unit (#481, Phase 1).
  *
  * The settled model (see the #481 comment thread / ADR):
  *   - top-level `consent:` array of arms { name, locale?, steps } — host
  *     selects one arm by name; arm names unique WITHIN the collection only
- *   - per-treatment `debrief:` steps — inherit the treatment's locale and
- *     its key scope (like exitSequence)
  *   - consent responses ride the normal machinery in the flat key
  *     namespace: collision-checked against EVERY intro sequence and EVERY
  *     treatment (no pairing exists for consent)
  *   - consent is a closed reference scope: nothing outside consent may
  *     reference a consent key (audit-only, by policy), and consent steps
  *     may not reference later-phase data (consent runs first)
+ *
+ * Debrief was first-classed alongside consent, then retired: debrief
+ * content is authored as the trailing steps of `exitSequence`, so the
+ * former debrief cases below are exercised as exit-sequence steps.
  */
 
 // --- fixture builders --------------------------------------------------------
@@ -203,9 +205,9 @@ describe("schema: top-level consent collection", () => {
   });
 });
 
-describe("schema: per-treatment debrief", () => {
-  test("debrief steps validate and require an advancement element", () => {
-    const ok = treatmentFileSchema.safeParse({
+describe("schema: retired `debrief:` field (#481)", () => {
+  test("a treatment `debrief:` key is rejected — fold debrief into exitSequence", () => {
+    const result = treatmentFileSchema.safeParse({
       treatments: [
         minimalTreatment({
           debrief: [
@@ -217,16 +219,27 @@ describe("schema: per-treatment debrief", () => {
         }),
       ],
     });
-    expect(ok.success).toBe(true);
+    expect(result.success).toBe(false);
+    const messages = result.success
+      ? []
+      : result.error.issues.map((i) => i.message);
+    expect(messages.some((m) => /debrief/.test(m))).toBe(true);
+  });
 
-    const bad = treatmentFileSchema.safeParse({
+  test("the same steps validate as trailing exit-sequence steps", () => {
+    const ok = treatmentFileSchema.safeParse({
       treatments: [
         minimalTreatment({
-          debrief: [{ name: "study-purpose", elements: [promptEl("purpose")] }],
+          exitSequence: [
+            {
+              name: "study-purpose",
+              elements: [promptEl("purpose"), { type: "submitButton" }],
+            },
+          ],
         }),
       ],
     });
-    expect(bad.success).toBe(false);
+    expect(ok.success).toBe(true);
   });
 });
 
@@ -338,10 +351,10 @@ describe("references: consent closed scope", () => {
   });
 });
 
-// --- references: debrief joins the treatment flow -----------------------------
+// --- references: trailing exit steps (the debrief) ----------------------------
 
-describe("references: debrief", () => {
-  test("debrief may reference game-stage data; earlier phases may not reference debrief keys", () => {
+describe("references: exit sequence (the trailing debrief)", () => {
+  test("exit steps may reference game-stage data; earlier phases may not reference exit keys", () => {
     const issues = validateTreatmentFileReferences({
       treatments: [
         minimalTreatment({
@@ -352,7 +365,6 @@ describe("references: debrief", () => {
               elements: [
                 promptEl("verdict"),
                 { type: "submitButton", name: "done" },
-                // forward ref into debrief — must be flagged
               ],
             },
             {
@@ -362,12 +374,14 @@ describe("references: debrief", () => {
                 {
                   type: "submitButton",
                   name: "d2",
+                  // game→exit forward ref (reads a key produced later, in the
+                  // exit sequence) — must be flagged
                   conditions: [refCondition("reaction")],
                 },
               ],
             },
           ],
-          debrief: [
+          exitSequence: [
             {
               name: "purpose",
               elements: [
@@ -382,20 +396,20 @@ describe("references: debrief", () => {
         }),
       ],
     });
-    // game→debrief forward ref flagged; debrief→game backward ref clean
+    // game→exit forward ref flagged; exit→game backward ref clean
     expect(issues.some((i) => /later/i.test(i.message))).toBe(true);
     expect(
-      issues.filter((i) => i.path.join(".").includes("debrief")),
+      issues.filter((i) => i.path.join(".").includes("exitSequence")),
     ).toHaveLength(0);
   });
 
-  test("debrief reference to intro data is subject to the pairing positive check", () => {
+  test("exit-step reference to intro data is subject to the pairing positive check", () => {
     const issues = validateTreatmentFileReferences({
       introSequences: [seq("a", ["color"]), seq("b", ["shape"])],
       treatments: [
         minimalTreatment({
           compatibleIntroSequences: ["a", "b"],
-          debrief: [
+          exitSequence: [
             {
               name: "purpose",
               elements: [
@@ -417,7 +431,7 @@ describe("references: debrief", () => {
 
 // --- collisions ----------------------------------------------------------------
 
-describe("collisions: consent × everything; debrief in treatment scope", () => {
+describe("collisions: consent × everything; exit steps in treatment scope", () => {
   test("consent key colliding with any intro sequence key → flagged regardless of pairing", () => {
     const collisions = collectStorageKeyCollisions({
       consent: [consentArm("c", ["shared_key"])],
@@ -427,12 +441,12 @@ describe("collisions: consent × everything; debrief in treatment scope", () => 
     expect(collisions.length).toBeGreaterThan(0);
   });
 
-  test("consent key colliding with a treatment (debrief) key → flagged", () => {
+  test("consent key colliding with a treatment (exit) key → flagged", () => {
     const collisions = collectStorageKeyCollisions({
       consent: [consentArm("c", ["shared_key"])],
       treatments: [
         minimalTreatment({
-          debrief: [
+          exitSequence: [
             {
               name: "d",
               elements: [promptEl("shared_key"), { type: "submitButton" }],
@@ -461,7 +475,7 @@ describe("collisions: consent × everything; debrief in treatment scope", () => 
     expect(collisions.length).toBeGreaterThan(0);
   });
 
-  test("debrief key duplicating a game-stage key within the treatment → collision", () => {
+  test("exit key duplicating a game-stage key within the treatment → collision", () => {
     const collisions = collectStorageKeyCollisions({
       treatments: [
         minimalTreatment({
@@ -472,7 +486,7 @@ describe("collisions: consent × everything; debrief in treatment scope", () => 
               elements: [promptEl("k"), { type: "submitButton", name: "done" }],
             },
           ],
-          debrief: [
+          exitSequence: [
             { name: "d", elements: [promptEl("k"), { type: "submitButton" }] },
           ],
         }),
@@ -484,7 +498,7 @@ describe("collisions: consent × everything; debrief in treatment scope", () => 
 
 // --- locale consistency ---------------------------------------------------------
 
-describe("locale: consent arms use their own locale; debrief uses the treatment's", () => {
+describe("locale: consent arms use their own locale; exit steps use the treatment's", () => {
   test("consent arm prompt in the wrong locale → mismatch against the ARM", () => {
     const mismatches = checkPromptLocaleConsistency(
       {
@@ -497,13 +511,13 @@ describe("locale: consent arms use their own locale; debrief uses the treatment'
     expect(mismatches[0].containerLocale).toBe("he");
   });
 
-  test("debrief prompt checked against the treatment locale", () => {
+  test("exit-step prompt checked against the treatment locale", () => {
     const mismatches = checkPromptLocaleConsistency(
       {
         treatments: [
           minimalTreatment({
             locale: "he",
-            debrief: [
+            exitSequence: [
               {
                 name: "d",
                 elements: [promptEl("purpose"), { type: "submitButton" }],
@@ -521,13 +535,13 @@ describe("locale: consent arms use their own locale; debrief uses the treatment'
 
 // --- resolved (post-fill) --------------------------------------------------------
 
-describe("resolved: consent and debrief post-fill shapes", () => {
+describe("resolved: consent and exit post-fill shapes", () => {
   const resolvedStep = {
     name: "s",
     elements: [{ type: "submitButton", name: "b" }],
   };
 
-  test("resolved file with consent + debrief passes", () => {
+  test("resolved file with consent + exit steps passes", () => {
     const { success, issues } = validateResolvedTreatmentFile({
       consent: [{ name: "c", locale: "en", steps: [resolvedStep] }],
       treatments: [
@@ -542,7 +556,7 @@ describe("resolved: consent and debrief post-fill shapes", () => {
               elements: [{ type: "submitButton", name: "done" }],
             },
           ],
-          debrief: [resolvedStep],
+          exitSequence: [resolvedStep],
         },
       ],
     });
@@ -583,30 +597,6 @@ describe("audit-only rule fires at every non-consent site", () => {
     const issue = issues.find((i) => /audit-only/i.test(i.message));
     expect(issue).toBeDefined();
     expect(issue?.path.slice(0, 3)).toEqual(["treatments", 0, "exitSequence"]);
-  });
-
-  test("debrief-step reference to a consent-only key → audit-only error", () => {
-    const issues = validateTreatmentFileReferences({
-      consent: [consentArm("c", ["acknowledge"])],
-      treatments: [
-        minimalTreatment({
-          debrief: [
-            {
-              name: "d",
-              elements: [
-                {
-                  type: "submitButton",
-                  conditions: [refCondition("acknowledge")],
-                },
-              ],
-            },
-          ],
-        }),
-      ],
-    });
-    const issue = issues.find((i) => /audit-only/i.test(i.message));
-    expect(issue).toBeDefined();
-    expect(issue?.path.slice(0, 3)).toEqual(["treatments", 0, "debrief"]);
   });
 
   test("groupComposition reference to a consent-only key → audit-only error", () => {
@@ -820,9 +810,6 @@ describe("whole-value template invocations at step-list positions don't throw", 
     for (const file of [
       { consent: [{ name: "c", steps: { template: "t" } }] },
       {
-        treatments: [minimalTreatment({ debrief: { template: "t" } })],
-      },
-      {
         introSequences: [{ name: "a", introSteps: { template: "t" } }],
         treatments: [minimalTreatment({ compatibleIntroSequences: ["a"] })],
       },
@@ -910,7 +897,7 @@ describe("resolved consent-arm names must be concrete", () => {
   });
 });
 
-describe("dead-gate rule (#480) covers consent and debrief steps", () => {
+describe("dead-gate rule (#480) covers consent and exit steps", () => {
   const ackPrompt = promptFileSchema.parse(
     `---\ntype: multipleChoice\nselect: multiple\n---\nPick\n---\n- I have read and understood\n`,
   );
@@ -947,12 +934,12 @@ describe("dead-gate rule (#480) covers consent and debrief steps", () => {
     expect(issues[0].path[0]).toBe("consent");
   });
 
-  test("debrief gate whose value matches no option → flagged", () => {
+  test("exit-step gate whose value matches no option → flagged", () => {
     const issues = checkUnsatisfiableConditions(
       {
         treatments: [
           minimalTreatment({
-            debrief: [
+            exitSequence: [
               {
                 name: "d",
                 elements: [
@@ -967,7 +954,7 @@ describe("dead-gate rule (#480) covers consent and debrief steps", () => {
       new Map([["ack.prompt.md", singlePrompt]]),
     );
     expect(issues).toHaveLength(1);
-    expect(issues[0].path.join(".")).toContain("debrief");
+    expect(issues[0].path.join(".")).toContain("exitSequence");
   });
 
   test("multi-select acknowledgement stays out of scope (documented v1 non-goal)", () => {

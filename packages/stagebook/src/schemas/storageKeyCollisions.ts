@@ -214,7 +214,6 @@ export function collectStorageKeyCollisions(
       gameStages?: unknown;
       exitSequence?: unknown;
       compatibleIntroSequences?: unknown;
-      debrief?: unknown;
     };
     const declaredRaw = t.compatibleIntroSequences;
     const declared =
@@ -242,17 +241,6 @@ export function collectStorageKeyCollisions(
       scanElements(
         st.elements,
         ["treatments", tIdx, "exitSequence", stepIdx, "elements"],
-        keys,
-      );
-    });
-    // Debrief (#481) shares the treatment's key scope, like exitSequence.
-    const debrief = Array.isArray(t.debrief) ? t.debrief : [];
-    debrief.forEach((step, stepIdx) => {
-      if (!step || typeof step !== "object") return;
-      const st = step as { elements?: unknown };
-      scanElements(
-        st.elements,
-        ["treatments", tIdx, "debrief", stepIdx, "elements"],
         keys,
       );
     });

@@ -6,24 +6,23 @@ All schemas are [Zod](https://zod.dev/) objects. Use `.safeParse(data)` for vali
 
 ### Treatment File
 
-| Export                  | Description                                                                                       |
-| ----------------------- | ------------------------------------------------------------------------------------------------- |
-| `treatmentFileSchema`   | Top-level schema for `.stagebook.yaml` files                                                      |
-| `treatmentSchema`       | Single treatment (name, playerCount, compatibleIntroSequences, gameStages, exitSequence, debrief) |
-| `stageSchema`           | Game stage (name, duration, elements, discussion)                                                 |
-| `elementSchema`         | Any element type (discriminated union on `type`)                                                  |
-| `promptSchema`          | Prompt element specifically                                                                       |
-| `discussionSchema`      | Discussion configuration                                                                          |
-| `conditionSchema`       | Single condition (reference, comparator, value, position)                                         |
-| `conditionsSchema`      | Array of conditions                                                                               |
-| `referenceSchema`       | Reference string validator (parses and validates `type.name.path`)                                |
-| `introSequenceSchema`   | Intro sequence with named steps                                                                   |
-| `introExitStepSchema`   | Single intro or exit step                                                                         |
-| `consentArmSchema`      | Single consent arm (name, own locale, steps) — #481                                               |
-| `consentSchema`         | Top-level `consent:` array of arms (names unique within the collection)                           |
-| `debriefStepsSchema`    | Per-treatment `debrief:` step list (exit-style step rules)                                        |
-| `templateSchema`        | Template definition (name, contentType, content)                                                  |
-| `templateContextSchema` | Template usage (template, fields, broadcast)                                                      |
+| Export                  | Description                                                                              |
+| ----------------------- | ---------------------------------------------------------------------------------------- |
+| `treatmentFileSchema`   | Top-level schema for `.stagebook.yaml` files                                             |
+| `treatmentSchema`       | Single treatment (name, playerCount, compatibleIntroSequences, gameStages, exitSequence) |
+| `stageSchema`           | Game stage (name, duration, elements, discussion)                                        |
+| `elementSchema`         | Any element type (discriminated union on `type`)                                         |
+| `promptSchema`          | Prompt element specifically                                                              |
+| `discussionSchema`      | Discussion configuration                                                                 |
+| `conditionSchema`       | Single condition (reference, comparator, value, position)                                |
+| `conditionsSchema`      | Array of conditions                                                                      |
+| `referenceSchema`       | Reference string validator (parses and validates `type.name.path`)                       |
+| `introSequenceSchema`   | Intro sequence with named steps                                                          |
+| `introExitStepSchema`   | Single intro or exit step                                                                |
+| `consentArmSchema`      | Single consent arm (name, own locale, steps) — #481                                      |
+| `consentSchema`         | Top-level `consent:` array of arms (names unique within the collection)                  |
+| `templateSchema`        | Template definition (name, contentType, content)                                         |
+| `templateContextSchema` | Template usage (template, fields, broadcast)                                             |
 
 ### Prompt File
 
