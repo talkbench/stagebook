@@ -21,9 +21,14 @@ export default tseslint.config(
     },
   },
   {
-    // Validators lifted from the VS Code extension carry over their
-    // previous quality bar (apps/vscode has no linter). Tightening these
-    // is tracked for a follow-up — out of scope for the lift.
+    // Validators lifted from the VS Code extension carry over their previous
+    // quality bar (apps/vscode has no linter). Unlike the viewer lift — whose
+    // unsafe-* hits traced to the schema typing treatments/introSequences as
+    // `any` and were cleared in #504 by tightening those schema types — these
+    // hits come from a different source: traversal of the `yaml` library's
+    // loosely-typed AST (yamlPositionMap.ts) and async functions kept `async`
+    // for interface parity. Tightening them (typing the yaml AST, auditing the
+    // require-await sites) is tracked for a separate follow-up.
     files: ["**/src/validate/**/*.ts"],
     rules: {
       "@typescript-eslint/no-unsafe-assignment": "off",
@@ -33,24 +38,6 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-argument": "off",
       "@typescript-eslint/require-await": "off",
       "@typescript-eslint/no-unnecessary-type-assertion": "off",
-    },
-  },
-  {
-    // Preview/viewer harness lifted from apps/viewer (which has no linter),
-    // #502. Its unsafe-* hits come from the schema typing `treatments` /
-    // `introSequences` as `any`; the base-to-string hits are String() calls
-    // already guarded by a typeof/compound check. Same posture as the
-    // validate lift above — tightening is tracked for a follow-up.
-    files: ["**/src/viewer/**/*.ts", "**/src/viewer/**/*.tsx"],
-    rules: {
-      "@typescript-eslint/no-unsafe-assignment": "off",
-      "@typescript-eslint/no-unsafe-member-access": "off",
-      "@typescript-eslint/no-unsafe-call": "off",
-      "@typescript-eslint/no-unsafe-return": "off",
-      "@typescript-eslint/no-unsafe-argument": "off",
-      "@typescript-eslint/require-await": "off",
-      "@typescript-eslint/no-unnecessary-type-assertion": "off",
-      "@typescript-eslint/no-base-to-string": "off",
     },
   },
 );

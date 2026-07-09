@@ -9,6 +9,13 @@ function parseTreatmentYaml(yaml: string) {
 }
 import { computePreviewState } from "./previewResolution.js";
 
+// The raw schema types `treatments` as `any` (its runtime schema accepts
+// template invocations). These tests walk the concrete post-expansion tree,
+// so narrow to the shape they read.
+type TreatmentsWalk = {
+  gameStages: { elements: Record<string, unknown>[] }[];
+}[];
+
 // `file:` is fully templated so a host-supplied binding can violate
 // the post-fill `.prompt.md` contract (#474) — the scenario where the
 // FieldForm submit produces resolved-schema issues.
@@ -152,7 +159,8 @@ describe("computePreviewState", () => {
     expect(state.mode).toBe("ready");
     if (state.mode !== "ready") return;
     expect(
-      state.resolved.treatments?.[0].gameStages[0].elements[0],
+      (state.resolved.treatments as TreatmentsWalk | undefined)?.[0]
+        ?.gameStages[0].elements[0],
     ).toMatchObject({ file: "prompts/q1.prompt.md" });
   });
 
@@ -229,7 +237,8 @@ describe("computePreviewState", () => {
     expect(state.mode).toBe("ready");
     if (state.mode !== "ready") return;
     expect(
-      state.resolved.treatments?.[0].gameStages[0].elements[0],
+      (state.resolved.treatments as TreatmentsWalk | undefined)?.[0]
+        ?.gameStages[0].elements[0],
     ).toMatchObject({ file: "prompts/user.prompt.md" });
   });
 
@@ -298,8 +307,9 @@ describe("computePreviewState", () => {
     // mutate the parsed tree the way a hand-authored bad file would
     // arrive. (Pre-fill schema is relaxed for this path only when a
     // placeholder is present, so craft the object directly.)
-    parsed.treatments![0].gameStages[0].elements[0] = {
-      ...parsed.treatments![0].gameStages[0].elements[0],
+    const treatments = parsed.treatments as TreatmentsWalk;
+    treatments[0].gameStages[0].elements[0] = {
+      ...treatments[0].gameStages[0].elements[0],
       file: "prompts/q1.md",
     };
     const state = computePreviewState(parsed);

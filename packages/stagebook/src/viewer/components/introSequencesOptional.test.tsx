@@ -61,9 +61,9 @@ function render(node: ReactNode): {
 
 /** Switch the "part to preview" picker to the given unit key. */
 function selectUnit(container: HTMLElement, key: string): void {
-  const picker = container.querySelector(
+  const picker = container.querySelector<HTMLSelectElement>(
     'select[aria-label="Part to preview"]',
-  ) as HTMLSelectElement | null;
+  );
   if (!picker) throw new Error("part picker not found");
   act(() => {
     picker.value = key;
@@ -272,9 +272,9 @@ describe("unit-switch state hygiene", () => {
 
     // Switch to the intro unit and submit its only step → waiting overlay.
     selectUnit(container, "intro:0");
-    const submit = main().querySelector(
+    const submit = main().querySelector<HTMLButtonElement>(
       '[data-testid="submitButton"]',
-    ) as HTMLButtonElement | null;
+    );
     expect(submit).not.toBeNull();
     act(() => {
       submit!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -373,9 +373,9 @@ describe("viewer unit selection (one unit at a time)", () => {
 
     // Switch to the intro-sequence unit via the part picker → badge flips to he
     // (each unit declares its own locale; the catalog re-resolves).
-    const picker = container.querySelector(
+    const picker = container.querySelector<HTMLSelectElement>(
       'select[aria-label="Part to preview"]',
-    ) as HTMLSelectElement | null;
+    );
     expect(picker).not.toBeNull();
     act(() => {
       picker!.value = "intro:0";
@@ -397,16 +397,16 @@ describe("viewer unit selection (one unit at a time)", () => {
     );
     // The treatment unit here is one stage + a transition. Navigate to the
     // last step (the transition) via StageNav's stage <select>.
-    const stageSelect = container.querySelector(
+    const stageSelect = container.querySelector<HTMLSelectElement>(
       'select[aria-label="Stage"], select[title="Stage"]',
-    ) as HTMLSelectElement | null;
+    );
     // Fallback: the stage selector is the one whose options are stage indices.
     const selects = Array.from(container.querySelectorAll("select"));
     const nav =
       stageSelect ??
-      (selects.find((sel) =>
+      selects.find((sel) =>
         Array.from(sel.options).some((o) => o.value === "1"),
-      ) as HTMLSelectElement | undefined);
+      );
     expect(nav).toBeTruthy();
     act(() => {
       nav!.value = "1";

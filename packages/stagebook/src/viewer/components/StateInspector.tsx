@@ -350,7 +350,9 @@ function ReferenceEditor({
       ? JSON.stringify(values, null, 2)
       : isCompound
         ? JSON.stringify(firstValue, null, 2)
-        : String(firstValue);
+        : // Not compound (and not null): a stored primitive. Store values are
+          // `unknown`, so assert the non-object residual for String().
+          String(firstValue as string | number | boolean | null | undefined);
 
   // Edits are scoped to a single position. `all`-style references don't
   // have an unambiguous write target, so they're read-only here.
@@ -544,7 +546,11 @@ function AllState({
             <div style={allStateValueStyle}>
               {typeof entry.value === "object"
                 ? JSON.stringify(entry.value)
-                : String(entry.value)}
+                : // Non-object store value (`unknown`): assert the primitive
+                  // residual for String().
+                  String(
+                    entry.value as string | number | boolean | null | undefined,
+                  )}
             </div>
           </div>
         );
