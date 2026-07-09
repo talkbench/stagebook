@@ -12,6 +12,7 @@ import { Display } from "./elements/Display.js";
 import { SubmitButton } from "./elements/SubmitButton.js";
 import { AudioElement } from "./elements/AudioElement.js";
 import { ImageElement } from "./elements/ImageElement.js";
+import { AssetPlaceholder } from "./elements/AssetPlaceholder.js";
 import { KitchenTimer } from "./elements/KitchenTimer.js";
 import { TrackedLink, type ResolvedParam } from "./elements/TrackedLink.js";
 import { MediaPlayer } from "./elements/MediaPlayer.js";
@@ -21,6 +22,17 @@ import { Qualtrics } from "./elements/Qualtrics.js";
 import { Loading } from "./form/Loading.js";
 import { deriveStorageKeyName } from "../utils/deriveStorageKeyName.js";
 import { encodeAssetPath } from "../utils/encodeAssetPath.js";
+
+// A media src that is STILL an `asset://` URI after passing through the host's
+// getAssetURL means the host couldn't resolve it (a preview host has no
+// platform resolver and returns the URI unchanged). Render a labeled
+// placeholder instead of a broken <img>/<video> or a failed request (#191).
+// Production hosts resolve `asset://` to a real URL, so this never fires there.
+function isUnresolvedAsset(url: string): boolean {
+  // Case-insensitive — `fileSchema`'s scheme check accepts `ASSET://` /
+  // `Asset://` too, so those valid inputs must be detected here as well.
+  return /^asset:\/\//i.test(url);
+}
 
 // Resolve element URL params using the StagebookProvider's resolve.
 // Plain function — no hooks — so it's safe to call conditionally (e.g. in
@@ -131,8 +143,15 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
     [save, progressLabel, getElapsedTime],
   );
 
-  // For prompt elements, load the file content
+  // For prompt elements, load the file content through the host resolver —
+  // including `asset://` refs, so a production host that serves prompt markdown
+  // via getTextContent still renders it. Only when the load fails (e.g. a
+  // preview host with no resolver) does an `asset://` prompt fall back to the
+  // placeholder — the same "try to resolve, then placeholder" contract the
+  // media fields follow (#191).
   const promptFile = element.type === "prompt" ? element.file : undefined;
+  const promptFileIsAsset =
+    typeof promptFile === "string" && isUnresolvedAsset(promptFile);
   const {
     data: promptMarkdown,
     isLoading: promptLoading,
@@ -145,10 +164,14 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
   );
 
   switch (element.type) {
-    case "audio":
+    case "audio": {
+      const audioSrc = getAssetURL(encodeAssetPath(element.file ?? ""));
+      if (isUnresolvedAsset(audioSrc)) {
+        return <AssetPlaceholder uri={element.file ?? ""} kind="audio" />;
+      }
       return (
         <AudioElement
-          src={getAssetURL(encodeAssetPath(element.file ?? ""))}
+          src={audioSrc}
           save={wrappedSave}
           // When `name:` is omitted, fall back to a position-based
           // identifier (`<progressLabel>_<file>`) so two unnamed
@@ -167,6 +190,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           }
         />
       );
+    }
 
     case "display": {
       // Per #298, the position is part of the reference itself —
@@ -199,16 +223,22 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
       );
     }
 
-    case "image":
-      return (
-        <ImageElement
-          src={getAssetURL(encodeAssetPath(element.file ?? ""))}
-          width={element.width}
-        />
-      );
+    case "image": {
+      const imageSrc = getAssetURL(encodeAssetPath(element.file ?? ""));
+      if (isUnresolvedAsset(imageSrc)) {
+        return <AssetPlaceholder uri={element.file ?? ""} kind="image" />;
+      }
+      return <ImageElement src={imageSrc} width={element.width} />;
+    }
 
     case "prompt": {
       if (promptError) {
+        // An `asset://` prompt the host couldn't resolve → labeled placeholder
+        // rather than a raw fetch error (a production host that CAN resolve it
+        // renders above, since useTextContent succeeded).
+        if (promptFileIsAsset) {
+          return <AssetPlaceholder uri={promptFile ?? ""} kind="prompt" />;
+        }
         return (
           <p style={{ color: "#dc2626", fontSize: "0.875rem" }}>
             Error loading prompt{element.file ? ` "${element.file}"` : ""}:{" "}
@@ -303,15 +333,24 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
         rawURL.startsWith("http://") || rawURL.startsWith("https://")
           ? rawURL
           : getAssetURL(encodeAssetPath(rawURL));
+      if (isUnresolvedAsset(resolvedURL)) {
+        return <AssetPlaceholder uri={rawURL} kind="video" />;
+      }
       const rawCaptions =
         typeof element.captionsFile === "string" ? element.captionsFile : null;
-      const resolvedCaptionsURL =
+      const resolvedCaptionsRaw =
         rawCaptions == null
           ? undefined
           : rawCaptions.startsWith("http://") ||
               rawCaptions.startsWith("https://")
             ? rawCaptions
             : getAssetURL(encodeAssetPath(rawCaptions));
+      // Drop an unresolved `asset://` captions track rather than pointing the
+      // <track> at a nonsensical URL — the video still plays (#191).
+      const resolvedCaptionsURL =
+        resolvedCaptionsRaw && isUnresolvedAsset(resolvedCaptionsRaw)
+          ? undefined
+          : resolvedCaptionsRaw;
       return (
         <MediaPlayer
           // Position-based fallback when `name:` is omitted — same

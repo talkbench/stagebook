@@ -496,7 +496,15 @@ export function MediaPlayer({
 
   // Fetch and parse captions when captionsURL changes
   useEffect(() => {
-    if (!captionsURL) return;
+    if (!captionsURL) {
+      // Captions were dropped (e.g. a resolvable track edited to an
+      // unresolved `asset://` one). The viewer keeps the same Stage across
+      // content refreshes, so clear any previously-loaded cues — otherwise
+      // stale captions keep showing over the video (#191 review).
+      setCues([]);
+      setCaptionText(null);
+      return;
+    }
     // Don't fetch captions for media we're rejecting — the component only
     // renders the invalid-URL alert. Re-runs when urlIsUnsafe flips false so
     // captions still load once the media URL recovers (#487).

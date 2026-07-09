@@ -94,6 +94,12 @@ export interface StagebookContext {
   //   intentional `%XX` sequences (e.g. VS Code's `asWebviewUri`
   //   yields `https://file%2B.vscode-resource.vscode-cdn.net/...`),
   //   and re-encoding would double-encode the `%`.
+  // - An `asset://…` URI names platform-provided media the host resolves
+  //   at run time (to a presigned URL or similar). A host that can't
+  //   resolve it (e.g. a preview with no platform backend) should return
+  //   the `asset://…` URI UNCHANGED — not concatenate it onto the base.
+  //   The renderer detects an unresolved `asset://` src and shows a
+  //   labeled placeholder instead of a broken element (#191).
   getAssetURL(path: string): string;
   getTextContent(path: string): Promise<string>;
 
