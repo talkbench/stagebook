@@ -6,3 +6,8 @@ playwright-report/
 test-results/
 *.tsbuildinfo
 .DS_Store
+
+# VS Code extension package — built in CI and attached to GitHub Releases
+# (see .github/workflows/release-vscode.yml), never committed. Building
+# locally with `npm run package -w stagebook-vscode` produces one here.
+*.vsix

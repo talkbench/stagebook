@@ -1,0 +1,62 @@
+name: Release VS Code Extension
+
+# Builds the .vsix and attaches it to the GitHub Release, so the extension
+# has a stable public download URL without committing the binary or drifting
+# from main (#494). Fires on the same "release published" event as the npm
+# publish — the release is cut by the cut-release flow after its PR merges.
+#
+# Two assets are uploaded per release:
+#   - stagebook-vscode-<tag>.vsix — named for the release tag, so each
+#     release has a distinct archival artifact (the extension's own
+#     package.json version is decoupled from the library release and does
+#     not advance, so the tag is what makes the name unique).
+#   - stagebook-vscode.vsix — stable name, so
+#     https://github.com/talkbench/stagebook/releases/latest/download/stagebook-vscode.vsix
+#     always resolves to the newest release. Install with:
+#       curl -L -o stagebook-vscode.vsix \
+#         https://github.com/talkbench/stagebook/releases/latest/download/stagebook-vscode.vsix
+#       code --install-extension stagebook-vscode.vsix
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  package:
+    name: Package & attach .vsix
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Scoped to this job (least privilege): only the upload needs write.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The GITHUB_TOKEN reaches `gh` via GH_TOKEN below, not git, so
+          # don't persist it into .git/config where the npm/vsce build steps
+          # (which run arbitrary dependency scripts) could read it.
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # `vsce package` (via the `vscode:prepublish` script) builds the library
+      # and the production extension bundle, then emits the .vsix.
+      - run: npm run package -w stagebook-vscode
+      - name: Attach .vsix to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          vsix=(apps/vscode/stagebook-vscode-*.vsix)
+          if [ "${#vsix[@]}" -ne 1 ]; then
+            echo "Expected exactly one built .vsix, found ${#vsix[@]}: ${vsix[*]:-<none>}" >&2
+            exit 1
+          fi
+          built="${vsix[0]}"
+          cp "$built" "stagebook-vscode-${TAG}.vsix"
+          cp "$built" stagebook-vscode.vsix
+          gh release upload "$TAG" "stagebook-vscode-${TAG}.vsix" stagebook-vscode.vsix --clobber
