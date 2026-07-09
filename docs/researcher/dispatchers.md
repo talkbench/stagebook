@@ -19,6 +19,60 @@ The first three are stateless or carry only a small piece of state (urn's remain
 >
 > **Stagebook 0.17 breaking change.** The file-reference key was renamed from `{ from: "..." }` to `{ file: "..." }` to match the manager + runner convention. New shape: `counts: { file: "study1/counts.json" }`. The runtime check accepts both shapes during a one-release deprecation window; `{ from }` is removed in 0.18. (#466)
 
+## How assignment works
+
+All four dispatchers are pure functions with the same shape: given the participants currently waiting to be grouped, the treatments, a precomputed eligibility table, a source of randomness, and — for the stateful ones — their current state, each returns a set of group assignments (and the next state). They differ only in **selection** — how a treatment is chosen for each group. Everything else — **packing** participants into a treatment's positions, deciding **eligibility**, staying **deterministic**, and the **structural guarantees** on the result — is shared across all four.
+
+### The dispatch loop: selection → packing
+
+Each round, while participants remain to be placed:
+
+1. **Build the feasible pool** — the treatments that can still be used this round: those with capacity left (a positive weight / count / payoff, for the dispatchers that use one) and a `playerCount` no larger than the number of participants still waiting.
+2. **Select** one treatment from the pool by the dispatcher's own rule — a uniform draw, a weight-proportional draw, an urn draw, or a softmax pick.
+3. **Pack** it (below). On success, emit the group, remove those participants from the waiting set, and apply the dispatcher's state update (an urn decrement, a softmax knockdown), then re-rank for the next round. If packing fails, set that treatment aside for this round and try another from the pool.
+4. **Stop** when no treatment in the pool can be filled.
+
+### Packing: filling a treatment's positions
+
+To fill a selected treatment, the dispatcher shuffles that treatment's positions, then fills them one at a time: for each position, it collects the still-waiting participants who are eligible for that position and haven't already been claimed by an earlier position in this same group, and picks one at random. Shuffling the positions first removes a systematic bias — without it, a tightly-constrained position would always be filled before an unconstrained one even when the unconstrained position has the much larger candidate pool. If any position has no eligible candidate, the whole attempt is abandoned and the dispatcher tries a different treatment.
+
+This fill is **greedy**: in the rare case where eligibility classes are tightly coupled it can miss a valid grouping that a global matching solver would find. For the loose role conditions studies use in practice this doesn't come up, and when a group can't be greedily completed the round simply moves on to another treatment.
+
+### Eligibility: who can fill which position
+
+Eligibility is decided once, up front, and only from **each participant's own data**. A `groupComposition` slot's `conditions` are written against `self.*` — the [same rule the condition docs describe](conditions.md#using-conditions-for-group-assignment) — because eligibility is a per-candidate question, answered before any group exists: there is no other participant to compare against yet. A treatment with no `groupComposition`, or a slot with no `conditions`, is unconstrained — every participant is eligible for it.
+
+The selection and packing steps then see only a yes/no answer per `(participant, treatment, position)` — never the underlying responses. Keeping raw answers out of the routing layer is what makes an assignment reproducible from the recorded inputs.
+
+### Determinism
+
+The dispatchers take all of their randomness from a random source the host supplies, and they are **order-sensitive**: each random draw picks a participant by index into a candidate list, and that list follows the order the participants were supplied in. So given the same waiting participants _in the same order_, the same treatments and eligibility, the same incoming state, and the same random sequence, a dispatcher returns exactly the same assignments — and the positions within each group are returned sorted, so the output never leaks the internal order in which slots happened to be filled. Seeding **and** a stable participant order are the host's responsibility; together with a seeded PRNG they make an entire batch replayable after the fact (a host that wants replay records or sorts the participant order it feeds in).
+
+### State across dispatch ticks
+
+Participants finish the intro at different times, so a batch is dispatched over several ticks as groups become fillable. `uniform-random` and `weighted-random` are **stateless** — every tick is independent. `urn` and `softmax-knockdown` are **stateful**: `urn` carries its remaining counts, `softmax-knockdown` its attenuated payoffs. Each call returns the updated state; the host persists it and threads it into the next tick. The dispatchers never mutate their inputs to do this — state moves only through the returned value, which is what makes host-side mirroring and post-hoc replay straightforward. See [`softmax-knockdown` → State-in / state-out](#state-in--state-out) for a worked loop.
+
+### What every dispatcher guarantees
+
+Whatever the selection rule, the assignment a dispatcher returns satisfies a fixed set of structural invariants — pinned by a shared contract-test suite every dispatcher must pass:
+
+- Each group has exactly its treatment's `playerCount` participants, one per position `0 … playerCount − 1`, with no position repeated.
+- No participant appears in more than one group, and the total number assigned never exceeds the waiting pool.
+- Every group's treatment is one of the inputs, and every participant placed in a slot satisfies that slot's conditions.
+- An empty pool yields an empty set of groups (never an error), and the inputs are never mutated.
+
+### What the host owns
+
+Stagebook owns the algorithm _given a pool_; everything around it is the host's responsibility:
+
+- **When to dispatch** — how long to hold the lobby and how often to run a tick — is runtime behavior, not part of the DSL.
+- **Assembling the inputs** — gathering the waiting participants and fetching the data their slot conditions reference, then building the eligibility table from it.
+- **Supplying and seeding** the random source.
+- **Persisting** a stateful dispatcher's returned state between ticks.
+- **Materializing** the returned assignments into live games.
+
+Because the routing decision is a pure function of these inputs, it stays reproducible and testable in isolation — and the lobby, the clock, and participants' raw responses stay on the host's side of the line.
+
 ## `weighted-random` in detail
 
 This is the dispatcher most ordinary randomized experiments want when the allocation isn't 50/50. You specify weights up to scale, keyed by treatment name:
