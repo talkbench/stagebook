@@ -17,3 +17,4 @@ export * from "./expandTreatment.js";
 export * from "./expandAndValidate.js";
 export * from "./validateTreatmentDiff.js";
 export * from "./checkPairing.js";
+export * from "./getRequiredServices.js";

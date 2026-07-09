@@ -6,24 +6,24 @@ All schemas are [Zod](https://zod.dev/) objects. Use `.safeParse(data)` for vali
 
 ### Treatment File
 
-| Export                  | Description                                                                             |
-| ----------------------- | --------------------------------------------------------------------------------------- |
-| `treatmentFileSchema`   | Top-level schema for `.stagebook.yaml` files                                            |
+| Export                  | Description                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------- |
+| `treatmentFileSchema`   | Top-level schema for `.stagebook.yaml` files                                                      |
 | `treatmentSchema`       | Single treatment (name, playerCount, compatibleIntroSequences, gameStages, exitSequence, debrief) |
-| `stageSchema`           | Game stage (name, duration, elements, discussion)                                       |
-| `elementSchema`         | Any element type (discriminated union on `type`)                                        |
-| `promptSchema`          | Prompt element specifically                                                             |
-| `discussionSchema`      | Discussion configuration                                                                |
-| `conditionSchema`       | Single condition (reference, comparator, value, position)                               |
-| `conditionsSchema`      | Array of conditions                                                                     |
-| `referenceSchema`       | Reference string validator (parses and validates `type.name.path`)                      |
-| `introSequenceSchema`   | Intro sequence with named steps                                                         |
-| `introExitStepSchema`   | Single intro or exit step                                                               |
-| `consentArmSchema`      | Single consent arm (name, own locale, steps) — #481                                     |
-| `consentSchema`         | Top-level `consent:` array of arms (names unique within the collection)                 |
-| `debriefStepsSchema`    | Per-treatment `debrief:` step list (exit-style step rules)                              |
-| `templateSchema`        | Template definition (name, contentType, content)                                        |
-| `templateContextSchema` | Template usage (template, fields, broadcast)                                            |
+| `stageSchema`           | Game stage (name, duration, elements, discussion)                                                 |
+| `elementSchema`         | Any element type (discriminated union on `type`)                                                  |
+| `promptSchema`          | Prompt element specifically                                                                       |
+| `discussionSchema`      | Discussion configuration                                                                          |
+| `conditionSchema`       | Single condition (reference, comparator, value, position)                                         |
+| `conditionsSchema`      | Array of conditions                                                                               |
+| `referenceSchema`       | Reference string validator (parses and validates `type.name.path`)                                |
+| `introSequenceSchema`   | Intro sequence with named steps                                                                   |
+| `introExitStepSchema`   | Single intro or exit step                                                                         |
+| `consentArmSchema`      | Single consent arm (name, own locale, steps) — #481                                               |
+| `consentSchema`         | Top-level `consent:` array of arms (names unique within the collection)                           |
+| `debriefStepsSchema`    | Per-treatment `debrief:` step list (exit-style step rules)                                        |
+| `templateSchema`        | Template definition (name, contentType, content)                                                  |
+| `templateContextSchema` | Template usage (template, fields, broadcast)                                                      |
 
 ### Prompt File
 
@@ -150,6 +150,52 @@ const diagnostics: Diagnostic[] = checkPairing(
 4. Every reference in each treatment resolves under that specific sequence.
 
 Expects **expanded** input (e.g. the output of `expandAndValidateWithImports` or the host's own hydration pipeline); an unresolved `${...}` placeholder in a selected treatment's declaration is reported as an error rather than guessed around. Diagnostics carry `range: null` — this is a runtime check with no source-position mapping, so hosts render messages only. Deliberately intro-only: consent arms have no pairing relationship, so there is no `consentName` parameter.
+
+### `getRequiredServices(mergedFile, { loadPrompt })`
+
+Host provisioning primitive (#508): walk an expanded treatment and report which external services it requires, so a host provisions exactly those and nothing more. The third member of the host-facing analysis family alongside `getReferencedAssets` (→ asset mirror) and `checkPairing` (→ intro pairing).
+
+```typescript
+import {
+  getRequiredServices,
+  mergeRequiredServices,
+  type RequiredServicesReport,
+} from "stagebook/validate";
+
+const report: RequiredServicesReport = await getRequiredServices(
+  expandedFile, // post fillTemplates / import merge
+  { loadPrompt: (path) => readPromptFile(path) }, // same injection shape as loadAndMergeImports
+);
+
+// Whole-file default — provision for any arm the file could launch:
+if (report.overall.coedit) spawnPairedCoeditPod();
+
+// Or narrow to the selected launch (treatments × intro sequence — the
+// same selection you pass to checkPairing — × consent arm) and provision
+// precisely:
+const needs = mergeRequiredServices(
+  ...selectedTreatmentNames.map((t) => report.byTreatment[t]),
+  report.byIntroSequence[selectedIntroSequenceName],
+  report.byConsent[selectedConsentName],
+);
+if (needs.video) ensureDailyKeyForwarded();
+if (needs.externalSurvey) requireQualtricsCreds();
+```
+
+**Returns:** `Promise<RequiredServicesReport>` — `{ overall, byTreatment, byIntroSequence, byConsent }`, where each value is a `RequiredServices` = `{ coedit, video, textChat, externalSurvey }` of booleans. `overall` is the whole-file union; `byTreatment` / `byIntroSequence` / `byConsent` are keyed by arm `name` (built with a null prototype, so a schema-valid but hostile arm name like `__proto__` stays an ordinary, enumerable key). Trigger → service mapping (walk of the expanded tree):
+
+| Service          | Trigger                                                                         |
+| ---------------- | ------------------------------------------------------------------------------- |
+| `coedit`         | `prompt` element, `shared: true`, referenced prompt file `type: openResponse`   |
+| `video`          | stage `discussion` block, `chatType: video` or `audio` (→ Daily / WebRTC)       |
+| `textChat`       | stage `discussion` block, `chatType: text`                                      |
+| `externalSurvey` | `type: qualtrics` element (the native `type: survey` needs no external service) |
+
+Async because the coedit signal is **split across files**: `shared: true` lives in the treatment YAML but `type: openResponse` lives in the separate `.prompt.md`, so shared prompts' frontmatter is resolved via `loadPrompt` — the same loader-injection shape `loadAndMergeImports` uses (the host owns path resolution and I/O). `loadPrompt` is only called for prompts flagged `shared: true` (its `file:` path skipped if it still holds a `${...}` placeholder), and every referenced shared prompt is loaded at most once across all arms; loader errors propagate rather than silently under-provisioning.
+
+Expects a **fully hydrated** tree — imports merged **and** templates expanded (`fillTemplates` run), e.g. `parseTreatmentSource(...).data` or your own hydration pipeline. A merely import-merged tree (`loadAndMergeImports().merged`) is not enough: it still carries `templates:` definitions and unsubstituted `${...}` fields. Service triggers are read only from real DSL positions (`elements:` items and a stage's `discussion:` block), so an element-shaped object sitting in an opaque config bag (e.g. a discussion layout feed's `options`) is never mistaken for an element.
+
+**Keyed by arm.** A launch selects **(treatment set) × (one intro sequence) × (one consent arm)** — the treatment/intro axes are exactly `checkPairing`'s inputs; the top-level `consent:` collection (#481) is selected separately by `consentName`. A file that keeps pilot/control variants together can be provisioned for just the selected arms via `byTreatment` / `byIntroSequence` / `byConsent` + `mergeRequiredServices`, instead of the whole-file `overall` union (which over-provisions in the safe direction). `coedit`, `video` and `textChat` are game-stage-only, so they only ever surface under `byTreatment`; `externalSurvey` is the one need that can also come from an intro sequence or a consent arm (a Qualtrics consent/demographics step), which is why those are separate keyed axes. `overall` is a genuine whole-file walk (not merely the union of the maps), so stray or unnamed service-bearing content is still caught. `mergeRequiredServices(...services)` OR-combines any number of `RequiredServices` (skipping `undefined`, so an unknown arm key contributes nothing).
 
 ## React Components
 
@@ -292,18 +338,18 @@ const { getTextContent, getAssetURL } = createStaticContentFns({
 
 ### Content-fn helpers
 
-| Helper                        | For                                                        |
-| ----------------------------- | --------------------------------------------------------- |
+| Helper                        | For                                                                                                                                                                     |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `createStaticContentFns(map)` | An in-memory `path → text` map (tests, fixtures, hosts holding files in memory). `getTextContent` rejects for an absent path; `getAssetURL` returns the path unchanged. |
-| `createUrlContentFns(base)`   | Fetch-backed loading from a base URL (e.g. `raw.githubusercontent.com`), with per-path caching. |
+| `createUrlContentFns(base)`   | Fetch-backed loading from a base URL (e.g. `raw.githubusercontent.com`), with per-path caching.                                                                         |
 
 ### Other exports
 
-| Export                                                                    | Purpose                                                                                       |
-| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `Viewer`                                                                  | The rendering component `PreviewHost` wraps — for hosts that resolve `${field}`s themselves.   |
-| `ViewerStateStore` / `createViewerStateStore()`                           | The simulated response store (resettable), for custom harnesses.                              |
-| `createViewerContext(opts)`                                               | Builds the mock `StagebookContext` bridging the store to `stagebook/components`.               |
-| `flattenSteps`, `extractStageReferences`, `extractTimeBreakpoints`        | Structural introspection over a treatment (steps, references, timeline breakpoints).           |
-| `expandTreatmentFile(file, fields?)`                                       | Expand `templates:` and report unresolved `${field}`s (no import merge, no js-yaml).           |
-| `StageNav`, `StateInspector`, `TimeScrubber`, `TreatmentPicker`, `FieldForm`, `SkeletonPlaceholder` | The individual dev-chrome components, for hosts assembling bespoke chrome. |
+| Export                                                                                              | Purpose                                                                                      |
+| --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `Viewer`                                                                                            | The rendering component `PreviewHost` wraps — for hosts that resolve `${field}`s themselves. |
+| `ViewerStateStore` / `createViewerStateStore()`                                                     | The simulated response store (resettable), for custom harnesses.                             |
+| `createViewerContext(opts)`                                                                         | Builds the mock `StagebookContext` bridging the store to `stagebook/components`.             |
+| `flattenSteps`, `extractStageReferences`, `extractTimeBreakpoints`                                  | Structural introspection over a treatment (steps, references, timeline breakpoints).         |
+| `expandTreatmentFile(file, fields?)`                                                                | Expand `templates:` and report unresolved `${field}`s (no import merge, no js-yaml).         |
+| `StageNav`, `StateInspector`, `TimeScrubber`, `TreatmentPicker`, `FieldForm`, `SkeletonPlaceholder` | The individual dev-chrome components, for hosts assembling bespoke chrome.                   |
