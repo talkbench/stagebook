@@ -58,13 +58,15 @@ Template names must be unique across the main file and every imported file. The 
 
 Each study follows a three-phase structure:
 
+![Recruitment flows into an asynchronous intro sequence that is the same for all participants, then randomization splits participants into groups assigned to different treatments for synchronous game stages, then an asynchronous exit sequence — game and exit both vary by treatment.](../images/study_phases.jpg)
+
 ### 1. Intro Sequence (asynchronous, solo)
 
 Completed individually before group assignment. Typically includes consent, setup checks, and researcher-defined surveys or prompts. You can define multiple intro sequences, but each batch uses exactly one — and each treatment declares which sequences it may follow (see [Pairing Treatments with Intro Sequences](#pairing-treatments-with-intro-sequences)).
 
 ### 2. Game Stages (synchronous, group)
 
-The live portion where participants move through stages simultaneously. Each treatment defines a unique pathway. You can host video or text conversations, insert prompts between discussions, show different content to different positions, and include timers and submit buttons.
+The live portion where participants move through stages simultaneously. A treatment defines a deterministic path through this portion _after_ randomization, at the level of the **group** — the `playerCount` participants who move through the experiment together. Members of a group may interact directly (for example, in conversation) or indirectly (by viewing or responding to one another's input); a group can be a dyad paired for a single discussion, or a larger set — say four participants who each hold a series of dyadic conversations with different partners. You can host video or text conversations, insert prompts between discussions, show different content to different [positions](#positions), and include timers and submit buttons.
 
 ### 3. Exit Sequence (asynchronous, solo)
 

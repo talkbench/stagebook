@@ -120,6 +120,8 @@ discussion:
           displayRegion: { rows: 0, cols: 1 }
 ```
 
+In this example the two positions see different things. The participant at position `0` sees their partner (position `1`) filling the whole video window on a fine 100×100 grid, with their own self-view as a small muted picture-in-picture tile in the bottom-right corner (a higher `zOrder` stacks it on top). The participant at position `1` sees a side-by-side split on a 1×2 grid: their partner (position `0`) in the left cell and their own muted self-view in the right cell. Because `layout` is keyed by position, each participant can be shown a different arrangement of the same call.
+
 ### Grid System
 
 The grid defines rows and columns. Display regions specify which cells a feed occupies (zero-based, inclusive). Use a fine grid (e.g., 100x100) for precise percentage-based positioning.

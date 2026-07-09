@@ -165,6 +165,17 @@ Returns elapsed seconds when the button was clicked.
 <position>.trackedLink.<name>.totalTimeAwaySeconds
 ```
 
+A [`trackedLink`](elements.md#tracked-link) records an `events` array plus cumulative `totalTimeAwaySeconds`. Each entry in `events` has a `type` (`click`, `blur`, or `focus`), a `timestamp`, the `stage` it occurred in, and `stageTimeSeconds` (seconds into that stage); `focus` events also carry the `timeAwaySeconds` for that excursion.
+
+`blur`/`focus` events fire on any tab switch while the element is on screen, so `events.length` on its own is **not** proof the link was opened. To require that a participant actually visited the link, gate on `totalTimeAwaySeconds` — it only accumulates after the link is clicked and the participant returns to the study tab:
+
+```yaml
+conditions:
+  - reference: self.trackedLink.signup_link.totalTimeAwaySeconds
+    comparator: isAbove
+    value: 0
+```
+
 ### URL Parameters
 
 ```
@@ -365,6 +376,8 @@ treatments:
             comparator: isAbove
             value: 0.5
 ```
+
+Each entry's optional `title` is a short human-readable label for the role (max 25 characters); `position` and `conditions` do the assignment.
 
 You can also use URL parameters for pre-assigned roles:
 
