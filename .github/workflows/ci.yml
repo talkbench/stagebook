@@ -263,7 +263,7 @@ jobs:
   validate-action:
     name: Dogfood validate-action
     needs: changes
-    if: needs.changes.outputs.action == 'true'
+    if: needs.changes.outputs.action == 'true' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     # The action fetches + runs a network-downloaded package (npx), so scope
