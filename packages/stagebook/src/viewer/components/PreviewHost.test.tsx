@@ -256,3 +256,80 @@ describe("PreviewHost post-fill locale-consistency (#492)", () => {
     unmount();
   });
 });
+
+describe("PreviewHost hostNotice pass-through (#192)", () => {
+  const hostNotice = <div data-testid="host-notice">choose a folder</div>;
+  const findHostNotice = (c: HTMLElement) =>
+    c.querySelector('[data-testid="host-notice"]');
+
+  it("renders a host-supplied notice above the live preview", async () => {
+    // Locales agree → no built-in banner; the host notice must still show once
+    // the Viewer renders (the asset-mount card is non-blocking).
+    const getText = vi.fn(() => Promise.resolve(HE_PROMPT));
+    const { container, unmount } = render(
+      <PreviewHost
+        treatmentFile={fieldBoundLocaleTreatment()}
+        additionalFields={{ lang: "he" }}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        hostNotice={hostNotice}
+      />,
+    );
+    await flush();
+
+    expect(banner(container)).toBeNull();
+    expect(findHostNotice(container)).not.toBeNull();
+    unmount();
+  });
+
+  it("stacks the host notice ABOVE the built-in locale banner", async () => {
+    // Mismatch → banner shows; the host notice must precede it in document
+    // order (both are non-blocking notices in the Viewer's notice slot).
+    const getText = vi.fn(() => Promise.resolve(UNTAGGED_PROMPT));
+    const { container, unmount } = render(
+      <PreviewHost
+        treatmentFile={fieldBoundLocaleTreatment()}
+        additionalFields={{ lang: "he" }}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        hostNotice={hostNotice}
+      />,
+    );
+    await flush();
+
+    const host = findHostNotice(container);
+    const b = banner(container);
+    expect(host).not.toBeNull();
+    expect(b).not.toBeNull();
+    // DOCUMENT_POSITION_FOLLOWING is set when `b` comes after `host`.
+    expect(
+      host!.compareDocumentPosition(b!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    unmount();
+  });
+
+  it("does not render the notice while the FieldForm gate is showing", async () => {
+    // An unresolved ${field} keeps PreviewHost in the blocking FieldForm branch
+    // (Viewer isn't mounted), so the host notice must not appear yet.
+    const getText = vi.fn(() => Promise.resolve(UNTAGGED_PROMPT));
+    const { container, unmount } = render(
+      <PreviewHost
+        treatmentFile={fieldBoundLocaleTreatment()}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        hostNotice={hostNotice}
+      />,
+    );
+    await flush();
+
+    // `lang` is unbound → FieldForm gate is up, Viewer (and its notice) is not.
+    expect(findHostNotice(container)).toBeNull();
+    unmount();
+  });
+});

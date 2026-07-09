@@ -64,18 +64,83 @@ function isCollectableLocalPath(value: unknown): value is string {
  */
 export function getReferencedAssets(treatmentFile: unknown): ReferencedAsset[] {
   const results: ReferencedAsset[] = [];
-  walk(treatmentFile, [], results);
+  visitFileFields(treatmentFile, [], (info) => {
+    if (!isCollectableLocalPath(info.value)) return;
+    const asset: ReferencedAsset = {
+      path: info.value,
+      field: info.field,
+      elementType: info.elementType,
+      pathInTree: info.pathInTree,
+    };
+    if (info.elementName !== undefined) {
+      asset.elementName = info.elementName;
+    }
+    results.push(asset);
+  });
   return results;
 }
 
-function walk(
+// Matches the hierarchical `asset://<prefix>/…` form only (the mountable
+// shape). The scheme is case-insensitive because `fileSchema` accepts
+// `ASSET://`; `[^/]+` captures the prefix up to the first slash. An opaque
+// `asset:clip.mp4` (no `//host`) has no mount prefix and is intentionally not
+// matched.
+const ASSET_PREFIX_PATTERN = /^asset:\/\/([^/]+)/i;
+
+/**
+ * Collect the distinct mount prefixes referenced by `asset://<prefix>/…` URIs
+ * in a treatment (#192), using the same file-field allowlist as
+ * {@link getReferencedAssets}.
+ *
+ * The `asset:` scheme match is case-insensitive (fileSchema accepts
+ * `ASSET://`), but the prefix case is PRESERVED — it's a literal mount key a
+ * host looks up exactly, so lowercasing it would break a mixed-case mount.
+ * Prefixes that still contain a `${…}` template placeholder are skipped (they
+ * can't be mounted until the field binds).
+ *
+ * Pass the EXPANDED (template-filled) treatment so a `${field}` inside a
+ * prefix has already resolved to a concrete name. Non-object input yields
+ * `[]`. Order is stable tree-walk order.
+ */
+export function collectAssetPrefixes(treatmentFile: unknown): string[] {
+  const prefixes = new Set<string>();
+  visitFileFields(treatmentFile, [], (info) => {
+    if (typeof info.value !== "string") return;
+    const match = ASSET_PREFIX_PATTERN.exec(info.value);
+    if (!match) return;
+    const prefix = match[1];
+    // A prefix containing an unresolved `${…}` (or the start of one) isn't a
+    // concrete mount key — skip it rather than mount a literal placeholder.
+    if (prefix.includes("${")) return;
+    prefixes.add(prefix);
+  });
+  return [...prefixes];
+}
+
+/** Info passed to a {@link visitFileFields} callback for one file-like field. */
+interface FileFieldVisit {
+  /** The raw field value (may be any type; callers narrow to string). */
+  value: unknown;
+  field: string;
+  elementType: string;
+  elementName?: string;
+  pathInTree: (string | number)[];
+}
+
+/**
+ * Shared recursive walker behind {@link getReferencedAssets} and
+ * {@link collectAssetPrefixes}: invokes `visit` once for every file-like field
+ * (per {@link FILE_FIELDS_BY_ELEMENT_TYPE}) of every element in the tree, so
+ * both callers stay pinned to the same field source-of-truth.
+ */
+function visitFileFields(
   node: unknown,
   path: (string | number)[],
-  acc: ReferencedAsset[],
+  visit: (info: FileFieldVisit) => void,
 ): void {
   if (Array.isArray(node)) {
     node.forEach((item, i) => {
-      walk(item, [...path, i], acc);
+      visitFileFields(item, [...path, i], visit);
     });
     return;
   }
@@ -91,25 +156,20 @@ function walk(
     typeof type === "string" &&
     Object.hasOwn(FILE_FIELDS_BY_ELEMENT_TYPE, type)
   ) {
-    const fields = FILE_FIELDS_BY_ELEMENT_TYPE[type];
-    for (const field of fields) {
-      const value = record[field];
-      if (isCollectableLocalPath(value)) {
-        const asset: ReferencedAsset = {
-          path: value,
-          field,
-          elementType: type,
-          pathInTree: [...path, field],
-        };
-        if (typeof record.name === "string") {
-          asset.elementName = record.name;
-        }
-        acc.push(asset);
-      }
+    const elementName =
+      typeof record.name === "string" ? record.name : undefined;
+    for (const field of FILE_FIELDS_BY_ELEMENT_TYPE[type]) {
+      visit({
+        value: record[field],
+        field,
+        elementType: type,
+        elementName,
+        pathInTree: [...path, field],
+      });
     }
   }
 
   for (const [key, value] of Object.entries(record)) {
-    walk(value, [...path, key], acc);
+    visitFileFields(value, [...path, key], visit);
   }
 }
