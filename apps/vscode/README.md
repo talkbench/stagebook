@@ -38,6 +38,13 @@ To see the real media while authoring, **mount each prefix to a local folder**:
 - To re-point a folder you picked by mistake, or to clear all mounts, run
   **`Stagebook: Configure Asset Folders`** from the Command Palette.
 
+A mounted prefix resolves everywhere it's used: `<video>`/`<img>`/`<audio>`,
+caption tracks, `asset://` prompt files, and `asset://` images inside a prompt
+body. The **banner** only lists prefixes referenced directly in the treatment
+YAML — a prefix that appears only in a prompt body or a field value won't be
+offered there, but a folder you've configured (or picked for another reference)
+still resolves it.
+
 Prefer a **committable, shared convention** for a team? Set
 [`stagebook.assetRoots`](#settings) instead — but note the paths are only used
 by this preview, and machine-specific absolute paths won't be portable across

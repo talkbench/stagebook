@@ -4,6 +4,7 @@ import {
   mergeAssetMounts,
   splitAssetMounts,
   extraAssetRoots,
+  parseMountedAsset,
 } from "./assetMounts.js";
 
 // Build an OS-appropriate absolute path so these run on POSIX and Windows CI.
@@ -152,5 +153,45 @@ describe("extraAssetRoots (#192 — reload-free in-workspace mounts)", () => {
     expect(
       extraAssetRoots(["", good, undefined as unknown as string], [DIST, WS]),
     ).toEqual([good]);
+  });
+});
+
+describe("parseMountedAsset (#192 — asset:// prompt text via readFile)", () => {
+  const DIRS = { prompts: "/mnt/prompts", recordings: "/mnt/rec" };
+
+  it("resolves a mounted asset:// text ref to its dir + rest", () => {
+    expect(parseMountedAsset("asset://prompts/intro.prompt.md", DIRS)).toEqual({
+      dir: "/mnt/prompts",
+      rest: "intro.prompt.md",
+    });
+  });
+
+  it("resolves a nested rest path", () => {
+    expect(parseMountedAsset("asset://prompts/en/q.prompt.md", DIRS)).toEqual({
+      dir: "/mnt/prompts",
+      rest: "en/q.prompt.md",
+    });
+  });
+
+  it("matches the scheme case-insensitively, preserves prefix case", () => {
+    expect(parseMountedAsset("ASSET://prompts/x.md", DIRS)).toEqual({
+      dir: "/mnt/prompts",
+      rest: "x.md",
+    });
+    // A mixed-case prefix is a distinct mount key.
+    expect(parseMountedAsset("asset://Prompts/x.md", DIRS)).toBeNull();
+  });
+
+  it("returns null for an unmounted prefix", () => {
+    expect(parseMountedAsset("asset://unknown/x.md", DIRS)).toBeNull();
+  });
+
+  it("returns null for upward traversal (either separator)", () => {
+    expect(parseMountedAsset("asset://prompts/../../etc/x", DIRS)).toBeNull();
+    expect(parseMountedAsset("asset://prompts/..\\..\\x", DIRS)).toBeNull();
+  });
+
+  it("returns null for a non-asset path", () => {
+    expect(parseMountedAsset("prompts/intro.prompt.md", DIRS)).toBeNull();
   });
 });

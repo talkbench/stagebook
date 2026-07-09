@@ -45,6 +45,31 @@ export function mergeAssetMounts(
 }
 
 /**
+ * Resolve an `asset://<prefix>/<rest>` reference to its mounted directory and
+ * the relative rest path, for READING the file host-side (#192 — an
+ * `asset://…` prompt loads its markdown through the readFile bridge, not the
+ * webview `<img>/<video src>` path).
+ *
+ * Returns null when the prefix isn't mounted or `rest` traverses upward (`..`,
+ * either separator) — the caller then reports it unresolved so the #191
+ * placeholder fires. The rest is returned raw for the caller to join onto the
+ * mount dir (and re-check containment). Pure/testable; `asset:` scheme match is
+ * case-insensitive, prefix case preserved.
+ */
+export function parseMountedAsset(
+  assetPath: string,
+  mountDirs: Record<string, string>,
+): { dir: string; rest: string } | null {
+  const match = /^asset:\/\/([^/]+)(?:\/(.*))?$/i.exec(assetPath);
+  if (!match) return null;
+  const dir = mountDirs[match[1]];
+  if (typeof dir !== "string" || dir.length === 0) return null;
+  const rest = match[2] ?? "";
+  if (rest.split(/[/\\]/).some((seg) => seg === "..")) return null;
+  return { dir, rest };
+}
+
+/**
  * Reduce a set of mount directories to the minimal set that must be ADDED as
  * extra webview `localResourceRoots`, given the roots the webview already
  * covers (the extension dir + workspace folders).
