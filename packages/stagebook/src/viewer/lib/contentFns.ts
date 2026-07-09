@@ -27,6 +27,11 @@ export function createUrlContentFns(rawBaseUrl: string) {
     },
 
     getAssetURL(path: string): string {
+      // `asset://` refs are materialized by the deployment platform, not the
+      // viewer — return them unchanged rather than concatenating onto the base
+      // (which yields a nonsensical `<base>asset://…`). The renderer detects an
+      // unresolved `asset://` src and shows a labeled placeholder (#191).
+      if (path.startsWith("asset://")) return path;
       return rawBaseUrl + path;
     },
   };

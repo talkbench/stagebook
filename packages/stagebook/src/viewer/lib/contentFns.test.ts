@@ -82,4 +82,13 @@ describe("createUrlContentFns", () => {
       "https://raw.example.com/img/x.png",
     );
   });
+
+  it("returns an asset:// URI unchanged instead of concatenating (#191)", () => {
+    // The viewer can't resolve platform assets — it returns the URI as-is so
+    // the renderer shows a placeholder rather than fetching `<base>asset://…`.
+    const fns = createUrlContentFns("https://raw.example.com/");
+    expect(fns.getAssetURL("asset://group_recordings/session.mp4")).toBe(
+      "asset://group_recordings/session.mp4",
+    );
+  });
 });
