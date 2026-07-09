@@ -11,7 +11,7 @@
     "lint": "npm run lint --workspaces --if-present",
     "format": "npm run format --workspaces --if-present",
     "format:check": "npm run format:check --workspaces --if-present",
-    "validate:examples": "npm run build -w stagebook && node packages/stagebook/bin/stagebook.js validate 'examples/**/*.stagebook.yaml' 'examples/**/*.prompt.md'",
+    "validate:examples": "npm run build -w stagebook && node packages/stagebook/bin/stagebook.js validate \"examples/**/*.stagebook.yaml\" \"examples/**/*.prompt.md\"",
     "prepare": "husky"
   },
   "devDependencies": {
