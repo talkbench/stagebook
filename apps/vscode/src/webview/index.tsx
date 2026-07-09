@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import type { TreatmentFileType } from "stagebook";
 import { PreviewHost } from "stagebook/viewer";
-import { buildAssetURL } from "./resolveAsset.js";
+import { resolveAssetForRender } from "./resolveAsset.js";
+import { useAssetBanner } from "./useAssetBanner.js";
 
 // Declare the VS Code API injected by the webview
 declare function acquireVsCodeApi(): {
@@ -44,6 +45,7 @@ window.addEventListener("message", (event) => {
 function createWebviewContentFns(
   webviewBaseUri: string,
   assetRoots: Record<string, string>,
+  onUnresolvedAsset: (prefix: string) => void,
 ) {
   const cache = new Map<string, Promise<string>>();
 
@@ -66,10 +68,17 @@ function createWebviewContentFns(
     },
 
     getAssetURL(assetPath: string): string {
-      // Platform asset:// references resolve against the configured local
-      // mounts (#192); an unmapped or unsafe one passes through unchanged so
-      // the renderer shows the #191 placeholder rather than a broken URL.
-      return buildAssetURL(assetPath, webviewBaseUri, assetRoots);
+      // #524: report an asset:// ref whose prefix isn't mounted (including one
+      // that appears only in a prompt body or field value the host-side scan
+      // can't see) so the picker banner can offer it — then resolve/passthrough
+      // the URL (#192). onUnresolvedAsset is a ref write promoted to state after
+      // render (see App/useAssetBanner).
+      return resolveAssetForRender(
+        assetPath,
+        webviewBaseUri,
+        assetRoots,
+        onUnresolvedAsset,
+      );
     },
   };
 }
@@ -95,6 +104,16 @@ function App() {
   // Bumped on each treatment message so that `contentFns` is recreated
   // with a fresh cache, forcing prompt files to re-fetch from disk.
   const [contentVersion, setContentVersion] = useState(0);
+
+  // #524: the banner offers the host-side scan (`unmappedAssetPrefixes`, all
+  // arms) unioned with prefixes the webview saw unresolved at render time
+  // (prompt bodies, field values). `collectUnresolved` is what getAssetURL
+  // reports into.
+  const { bannerPrefixes, collectUnresolved } = useAssetBanner(
+    unmappedAssetPrefixes,
+    assetRoots,
+    contentVersion,
+  );
 
   // Tracks whether we've received any `treatment` message yet. On the
   // first load we honor `msg.{treatment,intro}Index` (today always 0;
@@ -162,8 +181,9 @@ function App() {
   // `contentVersion` is deliberately part of the deps so a refresh creates
   // a fresh cache — forcing prompt files to re-fetch from disk.
   const contentFns = useMemo(
-    () => createWebviewContentFns(webviewBaseUri, assetRoots),
-    [webviewBaseUri, assetRoots, contentVersion],
+    () =>
+      createWebviewContentFns(webviewBaseUri, assetRoots, collectUnresolved),
+    [webviewBaseUri, assetRoots, contentVersion, collectUnresolved],
   );
 
   if (error) {
@@ -195,9 +215,9 @@ function App() {
       onRefresh={() => vscode.postMessage({ type: "refresh" })}
       contentVersion={contentVersion}
       hostNotice={
-        unmappedAssetPrefixes.length > 0 ? (
+        bannerPrefixes.length > 0 ? (
           <AssetMountCard
-            prefixes={unmappedAssetPrefixes}
+            prefixes={bannerPrefixes}
             onPick={(prefix) =>
               vscode.postMessage({ type: "pickAssetFolder", prefix })
             }

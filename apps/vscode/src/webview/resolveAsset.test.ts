@@ -1,5 +1,12 @@
-import { describe, it, expect } from "vitest";
-import { resolveAssetUrl, buildAssetURL } from "./resolveAsset.js";
+import { describe, it, expect, vi } from "vitest";
+import {
+  resolveAssetUrl,
+  buildAssetURL,
+  assetPrefixOf,
+  reportUnresolvedAsset,
+  resolveAssetForRender,
+  mergeBannerPrefixes,
+} from "./resolveAsset.js";
 
 // #192: the webview resolves `asset://<prefix>/<rest>` against the mount map the
 // extension pre-computed (`{ prefix -> asWebviewUri(<local dir>) }`). A matched,
@@ -144,5 +151,130 @@ describe("buildAssetURL (#192 getAssetURL routing)", () => {
     expect(buildAssetURL("ASSET://unknown/x.mp4", BASE, ROOTS)).toBe(
       "ASSET://unknown/x.mp4",
     );
+  });
+});
+
+describe("assetPrefixOf (#524)", () => {
+  it("extracts the prefix from an asset:// URI", () => {
+    expect(assetPrefixOf("asset://diagrams/flow.png")).toBe("diagrams");
+    expect(assetPrefixOf("asset://recordings/a/b.mp4")).toBe("recordings");
+  });
+
+  it("matches case-insensitively but preserves prefix case", () => {
+    expect(assetPrefixOf("ASSET://Diagrams/x.png")).toBe("Diagrams");
+  });
+
+  it("handles a bare prefix with no rest", () => {
+    expect(assetPrefixOf("asset://diagrams")).toBe("diagrams");
+  });
+
+  it("returns null for a non-asset path", () => {
+    expect(assetPrefixOf("images/logo.png")).toBeNull();
+    expect(assetPrefixOf("https://cdn/x.png")).toBeNull();
+    expect(assetPrefixOf("asset:opaque.png")).toBeNull(); // no //host
+  });
+});
+
+describe("reportUnresolvedAsset (#524)", () => {
+  it("reports the prefix of an UNMOUNTED asset:// ref", () => {
+    const onUnresolved = vi.fn();
+    reportUnresolvedAsset("asset://diagrams/x.png", {}, onUnresolved);
+    expect(onUnresolved).toHaveBeenCalledWith("diagrams");
+  });
+
+  it("does NOT report a mounted prefix", () => {
+    const onUnresolved = vi.fn();
+    reportUnresolvedAsset(
+      "asset://diagrams/x.png",
+      { diagrams: "https://webview/x" },
+      onUnresolved,
+    );
+    expect(onUnresolved).not.toHaveBeenCalled();
+  });
+
+  it("does NOT report a non-asset path", () => {
+    const onUnresolved = vi.fn();
+    reportUnresolvedAsset("images/logo.png", {}, onUnresolved);
+    expect(onUnresolved).not.toHaveBeenCalled();
+  });
+
+  it("reports an unmounted prefix even for a traversal ref (prefix is still real)", () => {
+    const onUnresolved = vi.fn();
+    reportUnresolvedAsset("asset://clips/../../x", {}, onUnresolved);
+    expect(onUnresolved).toHaveBeenCalledWith("clips");
+  });
+});
+
+describe("mergeBannerPrefixes (#524)", () => {
+  it("unions the static scan with the render-collected set, sorted + deduped", () => {
+    expect(
+      mergeBannerPrefixes(
+        ["recordings", "diagrams"],
+        ["diagrams", "clips"],
+        {},
+      ),
+    ).toEqual(["clips", "diagrams", "recordings"]);
+  });
+
+  it("drops any prefix that is now mounted (from either source)", () => {
+    expect(
+      mergeBannerPrefixes(["recordings"], ["diagrams", "clips"], {
+        diagrams: "https://webview/d",
+      }),
+    ).toEqual(["clips", "recordings"]);
+  });
+
+  it("returns [] when everything is mounted or nothing is referenced", () => {
+    expect(mergeBannerPrefixes([], [], {})).toEqual([]);
+    expect(
+      mergeBannerPrefixes(["x"], ["x"], { x: "https://webview/x" }),
+    ).toEqual([]);
+  });
+
+  it("is order-independent (stable for change-detection)", () => {
+    const a = mergeBannerPrefixes(["b", "a"], ["c"], {});
+    const b = mergeBannerPrefixes(["a"], ["c", "b"], {});
+    expect(a).toEqual(b);
+    expect(a).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("resolveAssetForRender (#524 getAssetURL seam)", () => {
+  const BASE = "https://webview.example/study/";
+
+  it("returns the resolved URL AND reports an unmounted asset:// prefix", () => {
+    const onUnresolved = vi.fn();
+    const url = resolveAssetForRender(
+      "asset://diagrams/x.png",
+      BASE,
+      {},
+      onUnresolved,
+    );
+    // Passthrough (unmounted) so #191 placeholder fires...
+    expect(url).toBe("asset://diagrams/x.png");
+    // ...and the prefix is reported for the banner.
+    expect(onUnresolved).toHaveBeenCalledWith("diagrams");
+  });
+
+  it("resolves a mounted prefix and does NOT report it", () => {
+    const onUnresolved = vi.fn();
+    const url = resolveAssetForRender(
+      "asset://group_recordings/s.mp4",
+      BASE,
+      ROOTS,
+      onUnresolved,
+    );
+    expect(url).toBe(
+      "https://file+.vscode-resource.example/Users/me/videos/s.mp4",
+    );
+    expect(onUnresolved).not.toHaveBeenCalled();
+  });
+
+  it("base-joins a normal path and reports nothing", () => {
+    const onUnresolved = vi.fn();
+    expect(
+      resolveAssetForRender("images/logo.png", BASE, ROOTS, onUnresolved),
+    ).toBe("https://webview.example/study/images/logo.png");
+    expect(onUnresolved).not.toHaveBeenCalled();
   });
 });
