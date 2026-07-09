@@ -155,7 +155,7 @@ templates:
       # prompt file is checked against the same locale the arm declared up
       # top, no extra plumbing. In a real study the platform runs its
       # quality-control survey and issues the completion code after the
-      # exit sequence, so these trailing steps stay gated behind the code.
+      # exit sequence, so the completion code stays gated behind these steps.
       exitSequence:
         - name: debrief
           elements:

@@ -302,6 +302,27 @@ describe("safeParseTreatmentFile — stage / treatment / discussion / player", (
     );
   });
 
+  it("a stray retired `debrief` key errors and lists exitSequence as valid (#481)", () => {
+    const tf = makeBaseTreatmentFile();
+    (tf.treatments as Record<string, unknown>[])[0].debrief = [
+      { name: "d", elements: [{ type: "submitButton" }] },
+    ];
+
+    const result = safeParseTreatmentFile(tf);
+    if (result.success) {
+      throw new Error("expected failure");
+    }
+    const issue = result.error.issues.find(
+      (i) => i.path[i.path.length - 1] === "debrief",
+    );
+    expect(issue).toBeDefined();
+    // Debrief was folded into exitSequence (#481); the rich key error points
+    // authors at the valid keys, which include exitSequence — the migration
+    // target — rather than leaving them with a bare Zod message.
+    expect(issue!.message).toContain("Unrecognized key 'debrief' on treatment");
+    expect(issue!.message).toContain("exitSequence");
+  });
+
   it("labels discussion-level bad keys as 'discussion'", () => {
     const tf = makeBaseTreatmentFile();
     const stage = (tf.treatments as Record<string, unknown>[])[0]

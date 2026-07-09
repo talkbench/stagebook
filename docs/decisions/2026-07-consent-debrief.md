@@ -68,9 +68,9 @@ code). Consent is entirely unchanged.
    = the last steps of the exit sequence" is the whole rule.
 
 **The gate is positional.** There is no debrief-specific gate flag: because
-the completion code follows the exit sequence, the debrief is gated behind
-the code by construction. The host contract is simply "don't reveal the
-completion code until the exit sequence has completed."
+the completion code follows the exit sequence, the completion code is gated
+behind the debrief by construction. The host contract is simply "don't
+reveal the completion code until the exit sequence has completed."
 
 **Ethics floor is unchanged.** Whether a concealment/deception study _needs_
 a debrief remains the researcher's / IRB's call (the tool provides the
