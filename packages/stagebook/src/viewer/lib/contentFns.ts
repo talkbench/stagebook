@@ -9,6 +9,14 @@ export function createUrlContentFns(rawBaseUrl: string) {
 
   return {
     getTextContent(path: string): Promise<string> {
+      // `asset://` text is materialized by the platform, not the viewer.
+      // Reject fast (rather than fetching `<base>asset://…`) so the renderer
+      // falls back to the labeled placeholder for an asset:// prompt (#191).
+      if (/^asset:\/\//i.test(path)) {
+        return Promise.reject(
+          new Error(`asset:// content is resolved by the platform: ${path}`),
+        );
+      }
       const cached = cache.get(path);
       if (cached) return cached;
       const promise = fetch(rawBaseUrl + path)
@@ -31,7 +39,7 @@ export function createUrlContentFns(rawBaseUrl: string) {
       // viewer — return them unchanged rather than concatenating onto the base
       // (which yields a nonsensical `<base>asset://…`). The renderer detects an
       // unresolved `asset://` src and shows a labeled placeholder (#191).
-      if (path.startsWith("asset://")) return path;
+      if (/^asset:\/\//i.test(path)) return path;
       return rawBaseUrl + path;
     },
   };

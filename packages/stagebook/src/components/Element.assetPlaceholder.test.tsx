@@ -25,10 +25,10 @@ function makeContext(overrides?: Partial<StagebookContext>): StagebookContext {
     save: vi.fn(),
     getElapsedTime: vi.fn(() => 0),
     submit: vi.fn(),
-    // A preview host with no platform resolver: `asset://` passes through
-    // unchanged (the signal that it's unresolved); anything else gets a base.
+    // A preview host with no platform resolver: `asset://` (any case) passes
+    // through unchanged (the signal that it's unresolved); else gets a base.
     getAssetURL: vi.fn((p: string) =>
-      p.startsWith("asset://") ? p : `https://cdn.test/${p}`,
+      /^asset:\/\//i.test(p) ? p : `https://cdn.test/${p}`,
     ),
     getTextContent: vi.fn(() => Promise.resolve("mock")),
     progressLabel: "game_0_media",
@@ -58,6 +58,13 @@ function renderElement(
 const placeholder = (c: HTMLElement) =>
   c.querySelector('[data-testid="asset-placeholder"]');
 
+/** Drain the async prompt-content load (getTextContent → state → re-render). */
+async function flush(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 describe("Element asset:// placeholder (#191)", () => {
   test("mediaPlayer with an unresolved asset:// url renders a placeholder, not a <video>", () => {
     const uri = "asset://group_recordings/session.mp4";
@@ -84,17 +91,50 @@ describe("Element asset:// placeholder (#191)", () => {
     expect(placeholder(c)).not.toBeNull();
   });
 
-  test("prompt with an unresolved asset:// file renders a placeholder and never fetches it", () => {
-    const getTextContent = vi.fn(() => Promise.resolve("mock"));
+  test("asset:// prompt: placeholder when the host can't resolve it", async () => {
+    // The host IS given the chance (getTextContent is called); it rejects
+    // (preview host with no resolver), so we fall back to the placeholder.
+    const uri = "asset://private/intro.prompt.md";
+    const getTextContent = vi.fn(() =>
+      Promise.reject(new Error("no resolver")),
+    );
     const c = renderElement(
-      { type: "prompt", file: "asset://private/intro.prompt.md" },
+      { type: "prompt", file: uri },
       makeContext({ getTextContent }),
     );
-    expect(placeholder(c)).not.toBeNull();
-    // The asset:// prompt path must NOT be handed to getTextContent.
-    expect(getTextContent).not.toHaveBeenCalledWith(
-      "asset://private/intro.prompt.md",
+    await flush();
+    expect(getTextContent).toHaveBeenCalledWith(uri);
+    const p = placeholder(c);
+    expect(p).not.toBeNull();
+    expect(p?.textContent).toContain(uri);
+  });
+
+  test("asset:// prompt: renders the content when the host CAN resolve it", async () => {
+    // A production host serves the prompt markdown via getTextContent — the
+    // element must render it, not the placeholder (no regression for hosts
+    // that back prompts with platform storage).
+    const uri = "asset://private/intro.prompt.md";
+    const getTextContent = vi.fn(() =>
+      Promise.resolve("---\ntype: noResponse\n---\n\n# Platform prompt"),
     );
+    const c = renderElement(
+      { type: "prompt", file: uri },
+      makeContext({ getTextContent }),
+    );
+    await flush();
+    expect(getTextContent).toHaveBeenCalledWith(uri);
+    expect(placeholder(c)).toBeNull();
+    expect(c.textContent).toContain("Platform prompt");
+  });
+
+  test("mediaPlayer with an uppercase ASSET:// url still renders a placeholder", () => {
+    // fileSchema accepts `ASSET://` case-insensitively, so detection must too.
+    const uri = "ASSET://group_recordings/session.mp4";
+    const c = renderElement({ type: "mediaPlayer", file: uri });
+    expect(c.querySelector("video")).toBeNull();
+    const p = placeholder(c);
+    expect(p).not.toBeNull();
+    expect(p?.getAttribute("data-asset-uri")).toBe(uri);
   });
 
   test("a resolvable image file still renders the media (no placeholder)", () => {

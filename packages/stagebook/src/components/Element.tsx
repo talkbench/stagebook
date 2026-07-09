@@ -29,7 +29,9 @@ import { encodeAssetPath } from "../utils/encodeAssetPath.js";
 // placeholder instead of a broken <img>/<video> or a failed request (#191).
 // Production hosts resolve `asset://` to a real URL, so this never fires there.
 function isUnresolvedAsset(url: string): boolean {
-  return url.startsWith("asset://");
+  // Case-insensitive — `fileSchema`'s scheme check accepts `ASSET://` /
+  // `Asset://` too, so those valid inputs must be detected here as well.
+  return /^asset:\/\//i.test(url);
 }
 
 // Resolve element URL params using the StagebookProvider's resolve.
@@ -141,13 +143,15 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
     [save, progressLabel, getElapsedTime],
   );
 
-  // For prompt elements, load the file content — unless it's an `asset://`
-  // ref (platform-provided text the preview host can't fetch): skip the
-  // fetch and let the prompt branch render a placeholder (#191).
-  const promptFileRef = element.type === "prompt" ? element.file : undefined;
-  const promptIsUnresolvedAsset =
-    typeof promptFileRef === "string" && isUnresolvedAsset(promptFileRef);
-  const promptFile = promptIsUnresolvedAsset ? undefined : promptFileRef;
+  // For prompt elements, load the file content through the host resolver —
+  // including `asset://` refs, so a production host that serves prompt markdown
+  // via getTextContent still renders it. Only when the load fails (e.g. a
+  // preview host with no resolver) does an `asset://` prompt fall back to the
+  // placeholder — the same "try to resolve, then placeholder" contract the
+  // media fields follow (#191).
+  const promptFile = element.type === "prompt" ? element.file : undefined;
+  const promptFileIsAsset =
+    typeof promptFile === "string" && isUnresolvedAsset(promptFile);
   const {
     data: promptMarkdown,
     isLoading: promptLoading,
@@ -228,10 +232,13 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
     }
 
     case "prompt": {
-      if (promptIsUnresolvedAsset) {
-        return <AssetPlaceholder uri={promptFileRef ?? ""} kind="prompt" />;
-      }
       if (promptError) {
+        // An `asset://` prompt the host couldn't resolve → labeled placeholder
+        // rather than a raw fetch error (a production host that CAN resolve it
+        // renders above, since useTextContent succeeded).
+        if (promptFileIsAsset) {
+          return <AssetPlaceholder uri={promptFile ?? ""} kind="prompt" />;
+        }
         return (
           <p style={{ color: "#dc2626", fontSize: "0.875rem" }}>
             Error loading prompt{element.file ? ` "${element.file}"` : ""}:{" "}
