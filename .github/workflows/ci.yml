@@ -5,6 +5,13 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # Merge queue: GitHub tests each queued PR on a temporary `merge_group` ref
+  # (main + the PRs ahead of it). Without this trigger the required `CI Gate`
+  # check never runs in the queue and PRs hang. On this event every test job
+  # runs unconditionally (see the `|| github.event_name == 'merge_group'`
+  # guards below) — skipping via the paths-filter here would let `CI Gate` go
+  # green WITHOUT running the suite, merging the combined state untested.
+  merge_group:
 
 jobs:
   changes:
@@ -22,8 +29,12 @@ jobs:
         with:
           # Needed so dorny/paths-filter can diff base vs HEAD reliably on push events.
           fetch-depth: 0
+      # Skipped in the merge queue: there's no base/HEAD diff to compute, and
+      # every job runs unconditionally there anyway. Its outputs are then empty
+      # ('' != 'true'), so jobs run only via their `merge_group` guard.
       - uses: dorny/paths-filter@v3
         id: filter
+        if: github.event_name != 'merge_group'
         with:
           filters: |
             stagebook:
@@ -61,7 +72,7 @@ jobs:
   lint:
     name: Lint & Format
     needs: changes
-    if: needs.changes.outputs.lint == 'true'
+    if: needs.changes.outputs.lint == 'true' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -77,7 +88,7 @@ jobs:
   test-stagebook:
     name: Unit Tests (stagebook)
     needs: changes
-    if: needs.changes.outputs.stagebook == 'true'
+    if: needs.changes.outputs.stagebook == 'true' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
@@ -92,7 +103,7 @@ jobs:
   test-viewer:
     name: Unit Tests (viewer)
     needs: changes
-    if: needs.changes.outputs.viewer == 'true'
+    if: needs.changes.outputs.viewer == 'true' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -108,7 +119,7 @@ jobs:
   test-vscode:
     name: Unit Tests (vscode)
     needs: changes
-    if: needs.changes.outputs.vscode == 'true'
+    if: needs.changes.outputs.vscode == 'true' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
@@ -124,7 +135,7 @@ jobs:
   package-vscode:
     name: Package (vscode)
     needs: changes
-    if: needs.changes.outputs.vscode == 'true'
+    if: needs.changes.outputs.vscode == 'true' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 4
     steps:
@@ -154,7 +165,7 @@ jobs:
   test-ct:
     name: Component Tests (${{ matrix.browser }} ${{ matrix.shard }}/4)
     needs: changes
-    if: needs.changes.outputs.ct == 'true'
+    if: needs.changes.outputs.ct == 'true' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     # Each shard runs ~1/4 of the suite at `--workers=1`, so per-shard
     # wall clock should be ~1-2 min over the ~30s setup baseline. 10
