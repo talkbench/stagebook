@@ -951,7 +951,7 @@ function validateTimelineSources(
  * are skipped — they're checked after expansion against the resolved
  * shape, not pre-expansion.
  */
-function validateConditionRules(
+export function validateConditionRules(
   conditions: unknown,
   pathPrefix: (string | number)[],
   ctx: z.RefinementCtx,
@@ -1061,7 +1061,16 @@ function extractReferencePosition(
     (typeof (reference as { position: unknown }).position === "string" ||
       typeof (reference as { position: unknown }).position === "number")
   ) {
-    return (reference as { position: number | string }).position;
+    // Mirror the dotted-string path: only surface a position the grammar
+    // actually accepts. An unresolved (`${slot}`) or malformed (`player`)
+    // structured position is left to `referenceSchema` to report, so the
+    // caller's rules don't pile a misleading position-selector message on
+    // top of the reference-grammar error (#526 review). Coercing here also
+    // canonicalizes a quoted `"1"` to the numeric `1`, matching the parser.
+    const parsed = positionSelectorSchema.safeParse(
+      (reference as { position: number | string }).position,
+    );
+    return parsed.success ? parsed.data : undefined;
   }
   return undefined;
 }

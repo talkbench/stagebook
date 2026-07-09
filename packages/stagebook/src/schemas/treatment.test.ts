@@ -1668,6 +1668,32 @@ test("playerSchema require-self rule stays silent when the position is undetermi
   }
 });
 
+test("playerSchema require-self rule stays silent on an invalid/unresolved structured position (#526 review)", () => {
+  // Structured-object references whose `position` is not a valid selector
+  // (an unbound `${slot}` placeholder, or a `player` typo) must not draw a
+  // misleading cross-participant-selector error — the grammar error owns it,
+  // mirroring the dotted-string path.
+  for (const badPosition of ["${slot}", "player"]) {
+    const result = playerSchema.safeParse({
+      position: 0,
+      conditions: [
+        {
+          reference: { position: badPosition, source: "prompt", name: "role" },
+          comparator: "equals",
+          value: "buyer",
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const selfIssue = result.error.issues.find((i) =>
+        i.message.includes("must use the `self` position selector"),
+      );
+      expect(selfIssue).toBeUndefined();
+    }
+  }
+});
+
 test("playerSchema require-self rule recurses into operator branches (#526)", () => {
   // A `shared.` leaf nested inside an `any:` operator is still rejected —
   // the walker applies the self-only rule to every leaf, mirroring the

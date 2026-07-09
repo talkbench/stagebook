@@ -519,3 +519,46 @@ describe("resolvedTreatmentFileSchema schema is exported", () => {
     expect(resolvedTreatmentFileSchema.safeParse({}).success).toBe(true);
   });
 });
+
+describe("resolved groupComposition enforces the self-only rule (#526)", () => {
+  // The pre-fill `playerSchema` skips a `${field}` groupComposition, so a
+  // host-supplied composition is first validated here post-fill. The
+  // self-only rule must fire on this surface too, or a cross-participant
+  // selector slips through on the resolved/preview path (#526 review).
+  const treatmentWith = (reference: string) => ({
+    name: "t",
+    playerCount: 2,
+    compatibleIntroSequences: [],
+    groupComposition: [
+      {
+        position: 0,
+        conditions: [{ reference, comparator: "equals", value: "buyer" }],
+      },
+      { position: 1 },
+    ],
+    gameStages: [
+      { name: "s", duration: 60, elements: [{ type: "submitButton" }] },
+    ],
+  });
+
+  test("rejects a non-self position in a resolved groupComposition condition", () => {
+    const result = resolvedTreatmentSchema.safeParse(
+      treatmentWith("0.prompt.role"),
+    );
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find(
+        (i) => i.path.join(".") === "groupComposition.0.conditions.0.reference",
+      );
+      expect(issue?.message).toMatch(/must use the `self` position selector/);
+    }
+  });
+
+  test("accepts a `self` position in a resolved groupComposition condition", () => {
+    const result = resolvedTreatmentSchema.safeParse(
+      treatmentWith("self.prompt.role"),
+    );
+    if (!result.success) console.error(result.error.issues);
+    expect(result.success).toBe(true);
+  });
+});
