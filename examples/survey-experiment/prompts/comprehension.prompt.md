@@ -9,3 +9,7 @@ maxLength: 300
 
 A simple comprehension check — anything reasonable will do. (Required
 to advance.)
+
+---
+
+> e.g. "It described how remote work reshaped the way teams communicate."

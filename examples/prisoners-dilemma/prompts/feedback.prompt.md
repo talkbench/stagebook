@@ -9,3 +9,7 @@ maxLength: 400
 
 Was there a strategy you started with? Did your partner's behaviour
 change it? (Optional, 1–3 sentences.)
+
+---
+
+> e.g. "I opened by cooperating, then matched whatever my partner did."

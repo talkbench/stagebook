@@ -1,13 +1,17 @@
 {
   "private": true,
   "license": "MIT",
-  "workspaces": ["packages/*", "apps/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "format": "npm run format --workspaces --if-present",
     "format:check": "npm run format:check --workspaces --if-present",
+    "validate:examples": "npm run build -w stagebook && node packages/stagebook/bin/stagebook.js validate 'examples/**/*.stagebook.yaml' 'examples/**/*.prompt.md'",
     "prepare": "husky"
   },
   "devDependencies": {
