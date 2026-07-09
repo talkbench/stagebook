@@ -1,0 +1,54 @@
+name: Validate examples
+
+# Guards the treatment/prompt files under examples/ against the repo's OWN
+# current schema (not a published version), so a schema change and the examples
+# it affects must stay in sync in the same PR — the gap that let 4 example
+# prompts drift broken undetected.
+#
+# The job runs on every PR/push so it always reports a status (and can safely
+# be added to branch-protection required checks without hanging PRs that don't
+# touch the relevant paths). The expensive build+validate steps are gated
+# behind an internal paths-filter, so unrelated PRs finish in seconds.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate examples
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          # Needed so dorny/paths-filter can diff base vs HEAD on push events.
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            relevant:
+              - 'examples/**'
+              - 'packages/stagebook/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/validate-examples.yml'
+      - uses: actions/setup-node@v5
+        if: steps.filter.outputs.relevant == 'true'
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+        if: steps.filter.outputs.relevant == 'true'
+      # Builds stagebook, then validates every example treatment + prompt with
+      # the freshly-built CLI (expand-and-validate, so post-hydration/cross-file
+      # rules run too).
+      - run: npm run validate:examples
+        if: steps.filter.outputs.relevant == 'true'
