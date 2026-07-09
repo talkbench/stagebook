@@ -54,7 +54,11 @@ Never skip the red step. Tests document intent.
 
 ### Git Process
 
-- **Fast-forward only** merges (no merge commits, no squash)
+- **Squash and merge** via the GitHub merge queue — each PR lands as one
+  commit, keeping a linear history where every commit on `main` is a state
+  that passed CI. Don't use merge commits. (The queue tests each PR on the
+  real combined state — `main` + the PRs ahead of it — before it merges; CI
+  runs in the queue via the `merge_group` event, see `.github/workflows/ci.yml`.)
 - **Pre-commit hook:** lint-staged runs Prettier + ESLint on staged files
 - **Pre-push hook:** full lint + all tests across workspaces
 - **CI:** format check, lint, backend tests, frontend tests, Playwright e2e

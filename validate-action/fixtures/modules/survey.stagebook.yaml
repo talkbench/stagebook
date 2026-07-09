@@ -1,0 +1,11 @@
+# Reusable module: a one-question survey template with no treatments of
+# its own. The `${prefix}` field on the named element lets a consumer
+# invoke it more than once without storage-key collisions.
+
+templates:
+  - name: mini_survey
+    contentType: elements
+    content:
+      - type: prompt
+        name: ${prefix}_rating
+        file: rating.prompt.md

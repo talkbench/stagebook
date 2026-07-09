@@ -1,0 +1,37 @@
+# Fixture study for dogfooding the Stagebook validate GitHub Action.
+#
+# Kept intentionally small and on long-stable syntax: the dogfood job
+# exercises the ACTION mechanics (setup-node + npx + glob quoting +
+# import resolution + exit codes) end-to-end, not schema evolution. The
+# dogfood pins the published CLI (`stagebook@0.21.0` in ci.yml), so this
+# must stay valid against that release; bump both together when needed.
+#
+# Exercises: a treatment entry point, a referenced prompt file, and a
+# cross-file `imports:` module invoked with a `${prefix}` field.
+
+imports:
+  - ./modules/survey.stagebook.yaml
+
+introSequences:
+  - name: intro
+    introSteps:
+      - name: intake
+        elements:
+          - template: mini_survey
+            fields:
+              prefix: intake
+          - type: submitButton
+            buttonText: Continue
+
+treatments:
+  - name: fixture_demo
+    playerCount: 1
+    compatibleIntroSequences: [intro]
+    gameStages:
+      - name: main
+        duration: 60
+        elements:
+          - type: prompt
+            file: welcome.prompt.md
+          - type: submitButton
+            buttonText: Done
