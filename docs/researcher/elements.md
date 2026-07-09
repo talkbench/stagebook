@@ -136,6 +136,8 @@ Plays an audio file once when the stage loads.
   file: shared/chime.mp3
 ```
 
+Browsers often block autoplay until the participant has interacted with the page, so playback may not start if they land on the stage without a prior gesture (for example, after refreshing the page). Stagebook attempts to play on load and records a `playFailed` event if the browser blocks it, so don't rely on audio firing as the sole carrier of critical instructions.
+
 ## Image
 
 Displays an image.
@@ -463,7 +465,7 @@ Renders a pre-built survey from the `@watts-lab/surveys` package.
 
 ## Qualtrics
 
-Embeds an external Qualtrics survey in an iframe. The stage auto-submits when the participant completes the Qualtrics survey.
+Embeds an external Qualtrics survey in an iframe. When the participant reaches Qualtrics' standard end-of-survey screen, Stagebook receives Qualtrics' completion signal and **auto-submits the stage for that participant** — exactly like a submit button (in a multi-participant stage it marks that one participant done; the stage advances once everyone has submitted or the timer expires). The survey must therefore end on that standard screen, or the submission never fires.
 
 ```yaml
 - type: qualtrics
@@ -471,11 +473,22 @@ Embeds an external Qualtrics survey in an iframe. The stage auto-submits when th
   urlParams:
     - key: condition
       value: topicA
-    - key: prolificId
-      reference: self.entryUrl.params.PROLIFIC_PID # resolved per-participant
+    - key: role
+      reference: self.entryUrl.params.role # resolved per-participant
 ```
 
-Each `urlParams` entry has a `key` and either a literal `value` or a `reference` string (not both). The position selector in the reference (`self`, `0`, etc.) chooses which participant to read from. (`urlParams.<key>` was renamed to `entryUrl.params.<key>` in [#246](conditions.md#url-parameters).)
+`url` must be an `http(s)://` URL (other schemes are rejected by validation).
+
+**Linking responses back to the participant.** Stagebook automatically appends two query parameters to the survey URL:
+
+- `stableParticipantId` — the anonymized, release-safe participant id (sourced from `attributes.stableParticipantId`, **not** the internal `playerId`). Appended in every phase whenever it is available.
+- `sampleId` — the per-assignment data-row id. Only exists from the game phase onward, so it is omitted during intro stages.
+
+To join Qualtrics responses to your Stagebook data, add embedded-data fields named exactly `stableParticipantId` and `sampleId` in your Qualtrics survey flow. If `stableParticipantId` is unavailable when the stage renders, Stagebook logs a warning — the survey still loads, but its response can't be linked back to the participant.
+
+**Custom URL parameters.** Each `urlParams` entry has a `key` and either a literal `value` or a `reference` string (not both). The position selector in the reference (`self`, `0`, etc.) chooses which participant to read from. (`urlParams.<key>` as a _reference source_ was renamed to `entryUrl.params.<key>` in [#246](conditions.md#url-parameters); the `urlParams:` element field here, which sets _outgoing_ query parameters, is unchanged.)
+
+> **Privacy.** Forwarding a raw recruitment id (e.g. `PROLIFIC_PID`) sends identifying data to the external survey. Prefer the auto-appended anonymized `stableParticipantId`; only forward a raw id when platform-side reconciliation genuinely requires it, and treat the survey export as identifiable data if you do.
 
 ## Tracked Link
 
@@ -508,7 +521,7 @@ guidance, or set it to an empty string to hide the helper entirely:
 | Field         | Type   | Required | Description                                                                                                                               |
 | ------------- | ------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `name`        | string | yes      | Storage key for the tracking record                                                                                                       |
-| `url`         | string | yes      | Destination URL                                                                                                                           |
+| `url`         | string | yes      | Destination URL. Must be an `http(s)://` URL (other schemes are rejected by validation).                                                  |
 | `displayText` | string | yes      | Visible link text                                                                                                                         |
 | `helperText`  | string | no       | Text shown below the link. Defaults to "Link opens in a new tab. Return to this tab to complete the study." Pass an empty string to hide. |
 | `urlParams`   | list   | no       | Query parameters appended to the URL (see Qualtrics example)                                                                              |

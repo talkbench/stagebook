@@ -200,6 +200,7 @@ All schemas export corresponding TypeScript types (e.g., `TreatmentType`, `Stage
 - [Page Elements](docs/researcher/elements.md) — all element types and their options
 - [Prompt Files](docs/researcher/prompts.md) — markdown format for prompts, sliders, surveys
 - [Conditions & References](docs/researcher/conditions.md) — conditional display and data references
+- [Dispatchers](docs/researcher/dispatchers.md) — assigning groups to treatments (uniform, weighted, urn, softmax-knockdown)
 - [Discussions](docs/researcher/discussions.md) — text chat, video calls, breakout rooms, custom layouts
 - [Templates](docs/researcher/templates.md) — reusable structures with field substitution and broadcast
 - [Syntax Reference](docs/researcher/syntax-reference.md) — compact cheat sheet for the full language
