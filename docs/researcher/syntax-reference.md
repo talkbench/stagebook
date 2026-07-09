@@ -33,7 +33,7 @@ templates:
   broadcast: { d0: [...] }     # cartesian expansion
 ```
 
-Content types: `introSequence`, `introSequences`, `elements`, `element`, `stage`, `stages`, `treatment`, `treatments`, `reference`, `condition`, `conditions`, `player`, `groupComposition`, `introExitStep`, `introSteps`, `exitSteps`, `consentArm`, `consent`, `debriefSteps`, `discussion`, `broadcastAxisValues`.
+Content types: `introSequence`, `introSequences`, `elements`, `element`, `stage`, `stages`, `treatment`, `treatments`, `reference`, `condition`, `conditions`, `player`, `groupComposition`, `introExitStep`, `introSteps`, `exitSteps`, `consentArm`, `consent`, `discussion`, `broadcastAxisValues`.
 
 ## 4. References
 
@@ -151,7 +151,7 @@ discussion:
   conditions: [...] # optional
 ```
 
-## 9. Intro/Exit/Consent/Debrief Steps
+## 9. Intro/Exit/Consent Steps
 
 ```yaml
 introSequences:
@@ -180,11 +180,11 @@ consent: # top-level; sibling of introSequences/treatments
         elements: [...] # intro-step constraints apply
 ```
 
-Consent steps take the intro-step constraints (advancement element required, no `shared` prompts, no position fields). Consent keys are **audit-only**: referencing one from intro/game/exit/`groupComposition`/debrief is an error; within-arm references (the gated-submit pattern) are legal; consent steps can't reference later-phase data. Collision-checked against every intro sequence and treatment; arm × arm key reuse is legal.
+Consent steps take the intro-step constraints (advancement element required, no `shared` prompts, no position fields). Consent keys are **audit-only**: referencing one from intro/game/exit/`groupComposition` is an error; within-arm references (the gated-submit pattern) are legal; consent steps can't reference later-phase data. Collision-checked against every intro sequence and treatment; arm × arm key reuse is legal.
 
 ### Debrief (#481)
 
-`treatments[].debrief` (see §10) — post-study step list, rendered by the host after its own wrap-up (QC, completion code). Inherits the treatment's locale and key scope, like `exitSequence`; exit-step constraints apply. May reference any earlier phase (except consent — audit-only); nothing may forward-reference debrief keys.
+Debrief content is authored as the trailing steps of `exitSequence` — there is no separate `debrief:` field. The host renders the exit sequence before the completion code, so the trailing exit steps are the debrief and the code stays gated behind them. They are ordinary exit steps (exit-step constraints apply) and may reference any earlier phase except consent (audit-only).
 
 ## 10. Treatments
 
@@ -198,8 +198,7 @@ treatments:
         title: "Role A"
         conditions: [...]
     gameStages: [...] # required, nonempty
-    exitSequence: [...] # optional
-    debrief: [...] # optional — post-study steps (#481), exit-step rules
+    exitSequence: [...] # optional; trailing steps are the debrief (#481)
 ```
 
 Position indices in `showToPositions`, `hideFromPositions`, `groupComposition`, and discussion `rooms` must be < `playerCount`.

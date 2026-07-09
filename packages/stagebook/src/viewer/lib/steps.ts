@@ -4,7 +4,7 @@ import type {
   ConditionType,
 } from "../../schemas/index.js";
 
-export type Phase = "consent" | "intro" | "game" | "exit" | "debrief";
+export type Phase = "consent" | "intro" | "game" | "exit";
 
 export interface ViewerStep {
   index: number;
@@ -47,7 +47,7 @@ export interface ViewerUnit {
   steps: ViewerStep[];
 }
 
-/** The shared per-participant step shape (consent/intro/exit/debrief). */
+/** The shared per-participant step shape (consent/intro/exit). */
 interface StepShape {
   name: string;
   notes?: string;
@@ -80,14 +80,13 @@ interface Treatment {
     discussion?: DiscussionType;
   }[];
   exitSequence?: StepShape[];
-  debrief?: StepShape[];
 }
 
 /**
  * The participant-facing locale for a given phase. Consent steps render under
  * the consent arm's declared locale and intro steps under the intro
  * sequence's (both run before treatment assignment, so they carry their own);
- * game + exit + debrief steps under the treatment's. All default to English.
+ * game + exit steps under the treatment's. All default to English.
  * Which locale a real participant sees is the host's assignment decision —
  * this just reports what each phase declares.
  */
@@ -154,19 +153,6 @@ export function flattenSteps(
     }
   }
 
-  // Debrief renders last (#481): in a real study the platform runs quality
-  // checks and issues the completion code between exit and debrief.
-  for (const step of treatment.debrief ?? []) {
-    steps.push({
-      index: index++,
-      phase: "debrief",
-      name: step.name,
-      elements: step.elements,
-      notes: step.notes,
-      conditions: step.conditions,
-    });
-  }
-
   return steps;
 }
 
@@ -184,9 +170,6 @@ function transitionStep(
     hasPicker: boolean;
     hasIntroToPreview: boolean;
     hasTreatmentToPreview: boolean;
-    /** Treatment units only: the unit ends with debrief steps, so the
-     *  trailing transition follows the debrief rather than promising one. */
-    hasDebrief?: boolean;
   },
 ): ViewerStep {
   // Narrate the platform's between-phase behavior the preview can't simulate.
@@ -198,10 +181,8 @@ function transitionStep(
     base = `End of the consent arm “${name}”. In a real study, participants now complete attention and equipment checks, then begin the intro sequence.`;
   } else if (kind === "intro") {
     base = `End of the intro sequence “${name}”. In a real study, participants are now assigned to a condition and matched into a group.`;
-  } else if (opts.hasDebrief) {
-    base = `End of “${name}”. In a real study, the session is now complete.`;
   } else {
-    base = `End of “${name}”. In a real study, participants would now finish the session (and complete any debrief).`;
+    base = `End of “${name}”. In a real study, the platform now runs quality checks and issues the participant’s completion code.`;
   }
   let hint = "";
   if (kind === "consent" && opts.hasPicker) {
@@ -216,7 +197,7 @@ function transitionStep(
   let phase: Phase;
   if (kind === "consent") phase = "consent";
   else if (kind === "intro") phase = "intro";
-  else phase = opts.hasDebrief ? "debrief" : "exit";
+  else phase = "exit";
   return {
     index,
     phase,
@@ -301,37 +282,15 @@ export function buildUnits(treatmentFile: TreatmentFileShape): ViewerUnit[] {
   });
 
   treatments.forEach((t, i) => {
-    // Flatten without the debrief so a transition interstitial can sit
-    // between exit and debrief: in a real study the platform runs quality
-    // checks and issues the completion code at that boundary (#481).
-    const steps = flattenSteps(undefined, { ...t, debrief: undefined });
-    if (t.debrief) {
-      steps.push({
-        index: steps.length,
-        phase: "exit",
-        name: "→ transition",
-        elements: [],
-        isTransition: true,
-        transitionCopy:
-          "In a real study, the platform now runs quality checks and issues the participant’s completion code, then shows the debrief.",
-      });
-      for (const step of t.debrief) {
-        steps.push({
-          index: steps.length,
-          phase: "debrief",
-          name: step.name,
-          elements: step.elements,
-          notes: step.notes,
-          conditions: step.conditions,
-        });
-      }
-    }
+    // The exit sequence's trailing steps ARE the debrief (#481): they render
+    // inline, and the end-of-treatment transition narrates the platform's
+    // quality checks + completion code, which follow the exit sequence.
+    const steps = flattenSteps(undefined, t);
     steps.push(
       transitionStep(steps.length, "treatment", t.name, {
         hasPicker,
         hasIntroToPreview,
         hasTreatmentToPreview,
-        hasDebrief: Boolean(t.debrief),
       }),
     );
     units.push({

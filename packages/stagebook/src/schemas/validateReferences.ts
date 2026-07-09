@@ -173,14 +173,11 @@ export function validateTreatmentFileReferences(
     for (const step of toArray(treatment.exitSequence)) {
       for (const key of collectStepKeys(step)) laterPhaseKeys.add(key);
     }
-    for (const step of toArray(treatment.debrief)) {
-      for (const key of collectStepKeys(step)) laterPhaseKeys.add(key);
-    }
   }
 
   // Consent-produced keys (#481). Consent is a CLOSED scope: these keys
   // are audit-only and never enter any provides-set — a reference to one
-  // from intro/game/exit/debrief is an error (policy, not storage
+  // from intro/game/exit is an error (policy, not storage
   // isolation), and consent steps may not read later-phase data (consent
   // runs first). Union across arms is fine for the audit-only check: a
   // participant sees exactly one arm, and referencing ANY arm's key from
@@ -221,7 +218,7 @@ export function validateTreatmentFileReferences(
   }
 
   // Consent arms (#481): validate each arm in isolation. Later-phase
-  // keys for consent = EVERYTHING else (intro + game/exit/debrief) —
+  // keys for consent = EVERYTHING else (intro + game/exit) —
   // consent runs first, so any reference out of the arm is a cross-phase
   // forward reference.
   const postConsentKeys = new Set<string>([
@@ -446,7 +443,7 @@ function validateStepSequence({
               ? "consent step"
               : "exit step",
         laterPhasesDescription:
-          phase === "consent" ? "intro, game, exit, or debrief" : undefined,
+          phase === "consent" ? "intro, game, or exit" : undefined,
       });
     }
   });
@@ -485,7 +482,6 @@ function validateTreatment({
 }): void {
   const gameStages = toArray(treatment.gameStages);
   const exitSequence = toArray(treatment.exitSequence);
-  const debrief = toArray(treatment.debrief);
 
   // Per-treatment ranks: game stages 1..K, exit entries K+1…. Intro sits
   // at a single virtual rank (RANK_INTRO) before game stages; its produced
@@ -513,16 +509,6 @@ function validateTreatment({
         producedAt.set(key, RANK_GAME_BASE + gameStages.length + idx);
       if (!ownProducedAt.has(key))
         ownProducedAt.set(key, RANK_GAME_BASE + gameStages.length + idx);
-    }
-  });
-  // Debrief (#481) ranks after the exit sequence — last in the flow.
-  const debriefRankBase =
-    RANK_GAME_BASE + gameStages.length + exitSequence.length;
-  debrief.forEach((step, idx) => {
-    for (const key of collectStepKeys(step)) {
-      if (!producedAt.has(key)) producedAt.set(key, debriefRankBase + idx);
-      if (!ownProducedAt.has(key))
-        ownProducedAt.set(key, debriefRankBase + idx);
     }
   });
   const pairingContext: PairingContext | undefined = pairing
@@ -617,24 +603,6 @@ function validateTreatment({
         producedAt,
         issues,
         phaseLabel: "exit step",
-        pairing: pairingContext,
-        consentKeys,
-      });
-    }
-  });
-
-  // Debrief steps (#481) — same site enumeration as exit steps.
-  debrief.forEach((step, stepIdx) => {
-    if (!isRecord(step)) return;
-    const rank = debriefRankBase + stepIdx;
-    const stepPath = [...treatmentPath, "debrief", stepIdx];
-    for (const site of enumerateStepSites(step, stepPath)) {
-      applyRules({
-        site,
-        enclosingRank: rank,
-        producedAt,
-        issues,
-        phaseLabel: "debrief step",
         pairing: pairingContext,
         consentKeys,
       });
@@ -851,7 +819,7 @@ function applyRules({
     }
     // #481: consent is a closed scope. A key produced only by a consent
     // arm is audit-only — recorded with the data, never readable from
-    // intro, game, exit, or debrief.
+    // intro, game, or exit.
     if (consentKeys?.has(referenceKey)) {
       issues.push({
         path: site.path,

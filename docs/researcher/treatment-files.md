@@ -70,7 +70,7 @@ The live portion where participants move through stages simultaneously. Each tre
 
 Post-game follow-up at each participant's pace: surveys, quality checks, debriefing. Defined per-treatment, so different conditions can have different exit flows.
 
-Two optional bookends sit outside the three phases: study-level [`consent:`](#consent) runs before everything, and per-treatment [`debrief:`](#debrief) runs after everything (after the host's own wrap-up steps). Both are additive — a file without them gets the host platform's existing consent and debrief behavior.
+One optional bookend sits outside the three phases: study-level [`consent:`](#consent) runs before everything. It's additive — a file without it gets the host platform's existing consent behavior. Debrief content is authored as the trailing steps of the exit sequence — there is no separate `debrief:` field (see [Debrief](#debrief)).
 
 ## Complete Example
 
@@ -195,7 +195,7 @@ The example above is the sanctioned way to gate consent: an "I consent" submit b
 
 ### Consent responses are audit-only
 
-Consent responses join the same flat key namespace as everything else and ride the normal save/export machinery — but they are a **closed scope**. Referencing a consent key from anywhere outside consent (intro, game, exit, `groupComposition`, debrief) is a validation error. Within-arm references are legal (that's the gating pattern), and consent steps can't reference later-phase data (consent runs first). If a decision downstream should depend on something a participant tells you, ask it in an intro step, not in consent.
+Consent responses join the same flat key namespace as everything else and ride the normal save/export machinery — but they are a **closed scope**. Referencing a consent key from anywhere outside consent (intro, game, exit, `groupComposition`) is a validation error. Within-arm references are legal (that's the gating pattern), and consent steps can't reference later-phase data (consent runs first). If a decision downstream should depend on something a participant tells you, ask it in an intro step, not in consent.
 
 ### The responses are the record
 
@@ -211,9 +211,11 @@ Consent is a **site parameter, not part of the reproducible instrument**: a repl
 
 ## Debrief
 
-`debrief:` is an optional per-treatment step list, a sibling of `exitSequence:`. The host renders it **after** its own wrap-up steps (quality checks, completion code) — the very last thing a participant sees. Like `exitSequence`, it inherits the treatment's locale and key scope, and its steps follow the exit-step rules (advancement element required, no `shared` prompts). Absent `debrief:` means the host's existing debrief behavior.
+Debrief content — the study's purpose, any dehoaxing, and (where the IRB calls for it) a "may we use your data?" withdrawal choice — is authored as the **trailing steps of [`exitSequence`](#3-exit-sequence-asynchronous-solo)**. There is no separate `debrief:` field. The host renders the exit sequence before the completion code, so the trailing exit steps are the debrief and the code stays gated behind them — a participant can't grab the completion code and leave before seeing the debrief.
 
-Because debrief is per-treatment, **per-condition debriefs are just different treatment arms** — a deception arm carries a full-disclosure debrief the control arm doesn't need. For **per-participant** variation within a treatment, use step `conditions:`:
+The full exit order the host runs is: your `exitSequence` (whose trailing steps are the debrief) → the host's quality-control (QC) survey → the completion/return code. The completion code is the terminal "you're done" signal. Folding debrief into the exit sequence lets the QC survey measure the participant's post-debrief exit state, and drops a redundant construct that every consumer (viewer, host, validators) would otherwise carry.
+
+Because the exit sequence is per-treatment, **per-condition debriefs are just different treatment arms** — a deception arm's exit sequence ends with a full-disclosure debrief the control arm doesn't need. For **per-participant** variation within a treatment, gate a trailing exit step with `conditions:`:
 
 ```yaml
 treatments:
@@ -234,13 +236,12 @@ treatments:
             file: exit/distress_check.prompt.md
             name: distress_check
           - type: submitButton
-    debrief:
+      # Trailing steps are the debrief — rendered before the completion code:
       - name: full-disclosure
         elements:
           - type: prompt
-            file: debrief/full_disclosure.prompt.md
+            file: exit/full_disclosure.prompt.md
           - type: submitButton
-            buttonText: Finish
       - name: extra-support
         conditions: # per-participant: only shown to those who reported distress
           - reference: self.prompt.distress_check
@@ -248,11 +249,12 @@ treatments:
             value: "Yes"
         elements:
           - type: prompt
-            file: debrief/support_resources.prompt.md
+            file: exit/support_resources.prompt.md
           - type: submitButton
+            buttonText: Finish
 ```
 
-Debrief runs last, so its references may read data from any earlier phase — game, exit, or intro (intro references are subject to the [pairing rule](#pairing-treatments-with-intro-sequences), and consent keys stay off-limits per the audit-only rule). Nothing may reference a debrief key from an earlier phase — that's a forward reference.
+The debrief steps are ordinary exit steps, so their references may read data from any earlier phase — game, an earlier exit step, or intro (intro references are subject to the [pairing rule](#pairing-treatments-with-intro-sequences), and consent keys stay off-limits per the audit-only rule). What a debrief step collects is exit-phase data like anything else in the exit sequence — nothing in an earlier phase may reference it, which would be a forward reference.
 
 ## Stages
 

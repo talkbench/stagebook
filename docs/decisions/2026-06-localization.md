@@ -254,7 +254,7 @@ context is not a one-liner for every consumer — see
 ## Relationship to host i18n
 
 The host (Deliberation Lab, annotator) internationalizes its _own_ shell —
-consent, equipment check, lobby, debrief — with whatever machinery it likes
+consent, equipment check, lobby — with whatever machinery it likes
 (i18next, formatjs, or its own catalog). That system and stagebook's are **fully
 independent**: separate catalogs, separate keyspaces, no shared keys. Stagebook's
 `messages` prop carries _only_ stagebook's keys; host strings never flow through

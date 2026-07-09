@@ -406,7 +406,7 @@ consent:
                 comparator: exists
 ```
 
-References travel the other way only inside consent: a later consent step may read an earlier one in the same arm, but a reference **into** consent from anywhere else — intro, game, exit, `groupComposition`, or debrief — is an error. Consent responses are audit-only (see [Consent](treatment-files.md#consent)); if downstream logic needs an answer, collect it in an intro step instead.
+References travel the other way only inside consent: a later consent step may read an earlier one in the same arm, but a reference **into** consent from anywhere else — intro, game, exit, or `groupComposition` — is an error. Consent responses are audit-only (see [Consent](treatment-files.md#consent)); if downstream logic needs an answer, collect it in an intro step instead.
 
 ## Stage-level conditions
 

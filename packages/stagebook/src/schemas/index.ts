@@ -40,7 +40,6 @@ export {
   introStepsSchema,
   exitStepsSchema,
   consentStepsSchema,
-  debriefStepsSchema,
   consentArmSchema,
   consentSchema,
   introSequenceSchema,

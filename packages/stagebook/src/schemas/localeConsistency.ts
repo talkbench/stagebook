@@ -115,12 +115,7 @@ function walkPromptRefs(fileObj: unknown): PromptRef[] {
   if (Array.isArray(treatments)) {
     for (const t of treatments) {
       if (!isRecord(t)) continue;
-      refsFromStageLists(
-        t,
-        [t.gameStages, t.exitSequence, t.debrief],
-        "treatment",
-        refs,
-      );
+      refsFromStageLists(t, [t.gameStages, t.exitSequence], "treatment", refs);
     }
   }
 

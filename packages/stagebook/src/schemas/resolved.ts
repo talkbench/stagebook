@@ -339,8 +339,6 @@ export const resolvedTreatmentSchema = z.object({
     .optional(),
   gameStages: z.array(resolvedStageSchema).nonempty(),
   exitSequence: z.array(resolvedIntroExitStepSchema).optional(),
-  // Post-study debrief (#481) — same resolved step shape as exitSequence.
-  debrief: z.array(resolvedIntroExitStepSchema).optional(),
 });
 export type ResolvedTreatmentType = z.infer<typeof resolvedTreatmentSchema>;
 
