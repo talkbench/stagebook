@@ -118,7 +118,9 @@ export {
 export {
   collectReferencedPromptFiles,
   checkPromptLocaleConsistency,
+  checkConsentLocaleCoverage,
   type PromptLocaleMismatch,
+  type ConsentLocaleGap,
 } from "./localeConsistency.js";
 
 export {

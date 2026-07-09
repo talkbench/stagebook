@@ -12,6 +12,7 @@ import {
   checkPromptLocaleConsistencyWithLoader,
   checkUnsatisfiableConditionsWithLoader,
 } from "../validate/index.js";
+import { checkConsentLocaleCoverage } from "../schemas/index.js";
 import { load as loadYaml } from "js-yaml";
 
 export type Format = "text" | "json";
@@ -251,6 +252,7 @@ export async function run({
       diagnostics.push(
         ...(await checkLocaleConsistencyDiagnostics(result.fullYaml, dir)),
         ...(await checkUnsatisfiableConditionDiagnostics(result.fullYaml, dir)),
+        ...checkConsentLocaleCoverageDiagnostics(result.fullYaml),
       );
     }
     results.push({ path: displayPath, type: "treatment", diagnostics });
@@ -348,6 +350,31 @@ async function checkUnsatisfiableConditionDiagnostics(
   return issues.map((issue) => ({
     severity: "error" as const,
     message: issue.message,
+    range: null,
+  }));
+}
+
+/**
+ * Run the consent i18n-completeness rule (#529) over the expanded treatment: a
+ * treatment locale with no matching consent arm gets a WARNING (never an error
+ * — consent is deliberately not paired to treatments; see ADR
+ * docs/decisions/2026-07-consent-debrief.md decision #4). Pure over the
+ * hydrated tree — no file I/O — since both treatment and consent-arm locales
+ * live in the treatment file itself. Diagnostics carry `range: null` (top of
+ * file): the check runs on the *expanded* YAML, whose positions don't map to
+ * the source, and the message names the treatment and locale as the locator.
+ */
+function checkConsentLocaleCoverageDiagnostics(fullYaml: string): Diagnostic[] {
+  let fileObj: unknown;
+  try {
+    fileObj = loadYaml(fullYaml);
+  } catch {
+    return []; // YAML errors are already reported by the schema pass
+  }
+
+  return checkConsentLocaleCoverage(fileObj).map((gap) => ({
+    severity: "warning" as const,
+    message: gap.message,
     range: null,
   }));
 }
