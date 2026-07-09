@@ -16,6 +16,50 @@ Validation, syntax highlighting, and live preview for Stagebook treatment
   file with templates and imports expanded.
 - **Validate Workspace** — `Stagebook: Validate Workspace` checks every
   Stagebook file in the folder at once.
+- **Local asset mounts** — preview media referenced by `asset://` URIs by
+  pointing each prefix at a folder on your machine (see below).
+
+## Previewing local assets (`asset://`)
+
+Treatments can reference platform-hosted media with an `asset://<prefix>/<path>`
+URI (e.g. `asset://group_recordings/session_01.mp4`). In production the platform
+resolves these; in the preview there is no platform, so by default an
+`asset://` reference shows a labeled placeholder.
+
+To see the real media while authoring, **mount each prefix to a local folder**:
+
+- When a preview references an unmapped prefix, a banner appears above it with a
+  **Choose folder…** button per prefix. Pick the folder that contains that
+  prefix's files and the media loads in place — no reload needed for folders
+  inside your workspace.
+- Your choices are remembered **per workspace** (in VS Code's storage) and are
+  **never written to the study** — `asset://` stays platform-resolved and the
+  `.stagebook.yaml` stays portable.
+- To re-point a folder you picked by mistake, or to clear all mounts, run
+  **`Stagebook: Configure Asset Folders`** from the Command Palette.
+
+A mounted prefix resolves everywhere it's used: `<video>`/`<img>`/`<audio>`,
+caption tracks, `asset://` prompt files, and `asset://` images inside a prompt
+body. The **banner** only lists prefixes referenced directly in the treatment
+YAML — a prefix that appears only in a prompt body or a field value won't be
+offered there, but a folder you've configured (or picked for another reference)
+still resolves it.
+
+Prefer a **committable, shared convention** for a team? Set
+[`stagebook.assetRoots`](#settings) instead — but note the paths are only used
+by this preview, and machine-specific absolute paths won't be portable across
+teammates (which is exactly why the per-workspace picker is the default).
+
+Mounting a folder grants the preview read access to it (via the webview's
+`localResourceRoots`); the mapping is always your explicit choice, never set by
+a treatment, and paths that try to escape a mounted folder (`../…`) are
+rejected.
+
+### Settings
+
+| Setting | Description |
+| --- | --- |
+| `stagebook.assetRoots` | An object mapping each `asset://` prefix to a local folder (absolute, or relative to the workspace root), e.g. `{ "group_recordings": "/Users/me/pilot_videos", "diagrams": "./media/diagrams" }`. Preview-only; an interactive pick for the same prefix overrides it. |
 
 ## Install
 

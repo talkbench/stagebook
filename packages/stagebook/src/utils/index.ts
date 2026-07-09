@@ -13,6 +13,7 @@ export {
 } from "./evaluateConditions.js";
 export {
   getReferencedAssets,
+  collectAssetPrefixes,
   type ReferencedAsset,
 } from "./referencedAssets.js";
 export { sanitizeName, deriveStorageKeyName } from "./deriveStorageKeyName.js";

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import type { TreatmentFileType } from "stagebook";
 import { PreviewHost } from "stagebook/viewer";
+import { buildAssetURL } from "./resolveAsset.js";
 
 // Declare the VS Code API injected by the webview
 declare function acquireVsCodeApi(): {
@@ -40,7 +41,10 @@ window.addEventListener("message", (event) => {
   }
 });
 
-function createWebviewContentFns(webviewBaseUri: string) {
+function createWebviewContentFns(
+  webviewBaseUri: string,
+  assetRoots: Record<string, string>,
+) {
   const cache = new Map<string, Promise<string>>();
 
   return {
@@ -62,10 +66,10 @@ function createWebviewContentFns(webviewBaseUri: string) {
     },
 
     getAssetURL(assetPath: string): string {
-      const base = webviewBaseUri.endsWith("/")
-        ? webviewBaseUri
-        : webviewBaseUri + "/";
-      return base + assetPath.replace(/^\/+/, "");
+      // Platform asset:// references resolve against the configured local
+      // mounts (#192); an unmapped or unsafe one passes through unchanged so
+      // the renderer shows the #191 placeholder rather than a broken URL.
+      return buildAssetURL(assetPath, webviewBaseUri, assetRoots);
     },
   };
 }
@@ -79,6 +83,14 @@ function App() {
   const [introIndex, setIntroIndex] = useState(0);
   const [treatmentIndex, setTreatmentIndex] = useState(0);
   const [webviewBaseUri, setWebviewBaseUri] = useState("");
+  // #192: prefix → webview-URI base for each mounted asset root, plus the
+  // discovered prefixes that have no mount yet (drive the picker card).
+  // useState (not a fresh literal) keeps `assetRoots` referentially stable
+  // between treatment messages, which matters for the contentFns memo.
+  const [assetRoots, setAssetRoots] = useState<Record<string, string>>({});
+  const [unmappedAssetPrefixes, setUnmappedAssetPrefixes] = useState<string[]>(
+    [],
+  );
   const [error, setError] = useState<string | null>(null);
   // Bumped on each treatment message so that `contentFns` is recreated
   // with a fresh cache, forcing prompt files to re-fetch from disk.
@@ -126,6 +138,12 @@ function App() {
           );
         });
         setWebviewBaseUri(msg.webviewBaseUri ?? "");
+        setAssetRoots(
+          (msg.assetRoots as Record<string, string> | undefined) ?? {},
+        );
+        setUnmappedAssetPrefixes(
+          (msg.unmappedAssetPrefixes as string[] | undefined) ?? [],
+        );
         setContentVersion((v) => v + 1);
         setError(null);
       } else if (msg.type === "error") {
@@ -144,8 +162,8 @@ function App() {
   // `contentVersion` is deliberately part of the deps so a refresh creates
   // a fresh cache — forcing prompt files to re-fetch from disk.
   const contentFns = useMemo(
-    () => createWebviewContentFns(webviewBaseUri),
-    [webviewBaseUri, contentVersion],
+    () => createWebviewContentFns(webviewBaseUri, assetRoots),
+    [webviewBaseUri, assetRoots, contentVersion],
   );
 
   if (error) {
@@ -176,9 +194,121 @@ function App() {
       onIntroIndexChange={setIntroIndex}
       onRefresh={() => vscode.postMessage({ type: "refresh" })}
       contentVersion={contentVersion}
+      hostNotice={
+        unmappedAssetPrefixes.length > 0 ? (
+          <AssetMountCard
+            prefixes={unmappedAssetPrefixes}
+            onPick={(prefix) =>
+              vscode.postMessage({ type: "pickAssetFolder", prefix })
+            }
+          />
+        ) : undefined
+      }
     />
   );
 }
+
+// --- Asset-mount picker card (#192) ---
+//
+// A NON-BLOCKING notice rendered above the live preview (via PreviewHost's
+// `hostNotice` → Viewer's `notice` slot) listing every `asset://<prefix>/…`
+// reference with no local mount yet. Each row's button asks the extension to
+// open a folder picker for that prefix; the preview keeps rendering (unmapped
+// assets show the #191 placeholder) rather than gating on the pick.
+//
+// vscode-webview-only: local mounting is meaningless in the browser viewer or
+// TalkBench, so this lives here, not in the shared harness. Colors match the
+// preview's light chrome (cf. the locale-mismatch banner) rather than the
+// editor theme, since the preview emulates the participant experience.
+function AssetMountCard({
+  prefixes,
+  onPick,
+}: {
+  prefixes: string[];
+  onPick: (prefix: string) => void;
+}) {
+  return (
+    <div data-testid="asset-mount-card" role="region" style={cardWrapStyle}>
+      <strong style={cardTitleStyle}>
+        {prefixes.length === 1
+          ? "1 asset folder isn't mapped"
+          : `${prefixes.length} asset folders aren't mapped`}
+      </strong>
+      <p style={cardSubtitleStyle}>
+        These <code>asset://</code> references point at files on your machine.
+        Choose a local folder for each prefix to preview its media — until then
+        a placeholder is shown. Your choice is remembered for this workspace and
+        is never written to the study.
+      </p>
+      <ul style={cardListStyle}>
+        {prefixes.map((prefix) => (
+          <li key={prefix} style={cardRowStyle}>
+            <code style={cardPrefixStyle}>asset://{prefix}/</code>
+            <button
+              type="button"
+              style={cardButtonStyle}
+              onClick={() => onPick(prefix)}
+            >
+              Choose folder…
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const cardWrapStyle: React.CSSProperties = {
+  padding: "0.75rem 1rem",
+  borderBottom: "1px solid #bfdbfe",
+  backgroundColor: "#eff6ff",
+  color: "#1e3a8a",
+  fontFamily: "system-ui, sans-serif",
+  fontSize: "0.875rem",
+};
+
+const cardTitleStyle: React.CSSProperties = {
+  fontWeight: 600,
+};
+
+const cardSubtitleStyle: React.CSSProperties = {
+  margin: "0.25rem 0 0.5rem",
+  color: "#1e40af",
+};
+
+const cardListStyle: React.CSSProperties = {
+  listStyle: "none",
+  margin: 0,
+  padding: 0,
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.5rem",
+};
+
+const cardRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+  flexWrap: "wrap",
+};
+
+const cardPrefixStyle: React.CSSProperties = {
+  fontFamily: "monospace",
+  fontSize: "0.8125rem",
+};
+
+const cardButtonStyle: React.CSSProperties = {
+  padding: "0.375rem 0.75rem",
+  borderRadius: "0.375rem",
+  border: "none",
+  backgroundColor: "#3b82f6",
+  color: "#ffffff",
+  cursor: "pointer",
+  fontSize: "0.8125rem",
+  fontWeight: 500,
+  whiteSpace: "nowrap",
+};
 
 // Mount
 const root = document.getElementById("root");

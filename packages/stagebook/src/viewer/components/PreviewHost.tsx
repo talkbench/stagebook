@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { type TreatmentFileType } from "../../schemas/index.js";
 import { checkPromptLocaleConsistencyWithLoader } from "../../validate/localeConsistency.js";
 import {
@@ -43,6 +43,14 @@ export interface PreviewHostProps {
   onTreatmentIndexChange?: (index: number) => void;
   /** Forwarded to Viewer to drive its intro-sequence dropdown. */
   onIntroIndexChange?: (index: number) => void;
+  /**
+   * An optional host-supplied notice rendered above the live preview (below
+   * the Viewer header, non-blocking), stacked above any built-in banner. Used
+   * by the VS Code extension to surface its asset-mount picker (#192); other
+   * hosts (viewer app, TalkBench) omit it. Only shown once the Viewer renders
+   * — not during the FieldForm gate or an error screen.
+   */
+  hostNotice?: ReactNode;
 }
 
 /**
@@ -67,6 +75,7 @@ export function PreviewHost({
   contentVersion,
   onTreatmentIndexChange,
   onIntroIndexChange,
+  hostNotice,
 }: PreviewHostProps) {
   const [userValues, setUserValues] = useState<Record<string, string> | null>(
     null,
@@ -212,7 +221,14 @@ export function PreviewHost({
       contentVersion={contentVersion}
       onTreatmentIndexChange={onTreatmentIndexChange}
       onIntroIndexChange={onIntroIndexChange}
-      notice={localeBanner}
+      notice={
+        hostNotice || localeBanner ? (
+          <>
+            {hostNotice}
+            {localeBanner}
+          </>
+        ) : undefined
+      }
     />
   );
 }

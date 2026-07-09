@@ -28,7 +28,14 @@ import {
   buildCompletionGlob,
   parseFilePathCompletionContext,
 } from "./lib/filePathCompletion";
-import { getReferencedAssets } from "stagebook";
+import { getReferencedAssets, collectAssetPrefixes } from "stagebook";
+import {
+  ASSET_MOUNTS_STATE_KEY,
+  mergeAssetMounts,
+  splitAssetMounts,
+  extraAssetRoots,
+  parseMountedAsset,
+} from "./lib/assetMounts";
 
 const diagnosticCollection =
   vscode.languages.createDiagnosticCollection("stagebook");
@@ -1068,6 +1075,141 @@ export function activate(context: vscode.ExtensionContext): void {
   let currentTreatmentDir: vscode.Uri | undefined;
   let currentWorkspaceRootFsPath: string | undefined;
 
+  // --- #192: asset:// local mount resolution ---
+  //
+  // Merge the `stagebook.assetRoots` setting (a committable shared convention;
+  // relative paths resolve against the workspace root) with the user's
+  // interactive folder picks in workspaceState (which win on conflict), into
+  // prefix → absolute directory. The setting is `scope: resource`, so it's read
+  // with the treatment URI to honor per-folder overrides in a multi-root
+  // workspace (matching the relative-path base below).
+  //
+  // The mount map is chosen by a human — a folder picked via showOpenDialog, or
+  // a setting the person committed to their own trusted workspace (a treatment
+  // FILE can never set it). Even a repo-committed setting only widens the
+  // webview's read-only `localResourceRoots`, gated by Workspace Trust and a
+  // strict CSP (no script/connect back-channel), so it can't exfiltrate.
+  const getAssetMountDirs = (): Record<string, string> =>
+    mergeAssetMounts(
+      vscode.workspace
+        .getConfiguration("stagebook", currentTreatmentUri)
+        .get<Record<string, unknown>>("assetRoots", {}),
+      context.workspaceState.get<Record<string, unknown>>(
+        ASSET_MOUNTS_STATE_KEY,
+        {},
+      ),
+      currentWorkspaceRootFsPath,
+    );
+
+  // dist + every workspace folder + only those mount dirs NOT already covered
+  // by one of those roots. The webview can only load resources under these
+  // roots, so a mount OUTSIDE the workspace (the point of #192) must be listed;
+  // a mount INSIDE the workspace is already covered recursively, so we omit it
+  // — adding it would change the root set and force a spurious reload on pick.
+  const buildLocalResourceRoots = (
+    mountDirs: Record<string, string>,
+  ): vscode.Uri[] => {
+    const baseRoots = [
+      vscode.Uri.joinPath(context.extensionUri, "dist"),
+      ...(vscode.workspace.workspaceFolders?.map((f) => f.uri) ?? []),
+    ];
+    const extra = extraAssetRoots(
+      Object.values(mountDirs),
+      baseRoots.map((uri) => uri.fsPath),
+    );
+    return [...baseRoots, ...extra.map((dir) => vscode.Uri.file(dir))];
+  };
+
+  // Post the current treatment to the webview: the asset-mount map (prefix →
+  // webview URI) and the still-unmapped prefixes that drive the picker card.
+  const postTreatment = (panel: vscode.WebviewPanel): void => {
+    if (!currentTreatment || !currentTreatmentDir) return;
+    const mountDirs = getAssetMountDirs();
+    // Advertise EVERY configured/picked mount, not just the prefixes the
+    // treatment statically references — so a field-supplied `file: ${clipUrl}`
+    // bound to `asset://…`, or an `asset://` ref inside a loaded prompt body,
+    // also resolves when its prefix is configured. localResourceRoots already
+    // covers each of these dirs, so the webview URIs are loadable.
+    const assetRoots: Record<string, string> = {};
+    for (const [prefix, dir] of Object.entries(mountDirs)) {
+      assetRoots[prefix] = panel.webview
+        .asWebviewUri(vscode.Uri.file(dir))
+        .toString();
+    }
+    // The picker card lists prefixes the treatment STATICALLY references that
+    // aren't mounted yet. (A prefix appearing only in a field value or a prompt
+    // body can't be discovered host-side, but a configured mount still resolves
+    // it via the map above.)
+    const { unmapped } = splitAssetMounts(
+      collectAssetPrefixes(currentTreatment),
+      mountDirs,
+    );
+    panel.webview.postMessage({
+      type: "treatment",
+      treatmentFile: currentTreatment,
+      introIndex: 0,
+      treatmentIndex: 0,
+      webviewBaseUri: panel.webview
+        .asWebviewUri(currentTreatmentDir)
+        .toString(),
+      assetRoots,
+      unmappedAssetPrefixes: unmapped,
+    });
+  };
+
+  // Ensure the panel's localResourceRoots cover every mount dir, then refresh
+  // the webview's asset map. When the roots already cover the mounts, post
+  // directly — no reload. When they don't (a new out-of-workspace mount), the
+  // added root must take effect, which requires reloading the webview.
+  const syncAssetRoots = (panel: vscode.WebviewPanel): void => {
+    const desired = buildLocalResourceRoots(getAssetMountDirs());
+    const currentKeys = new Set(
+      (panel.webview.options.localResourceRoots ?? []).map((u) => u.toString()),
+    );
+    const desiredKeys = new Set(desired.map((u) => u.toString()));
+    const unchanged =
+      currentKeys.size === desiredKeys.size &&
+      [...desiredKeys].every((k) => currentKeys.has(k));
+    if (unchanged) {
+      postTreatment(panel);
+      return;
+    }
+    // Update localResourceRoots (a whole new options object — an in-place array
+    // mutation is ignored), then force the reload deterministically by
+    // re-setting the html rather than relying on the options reassignment alone
+    // to reload. The reloaded webview posts a fresh "ready" → postTreatment, so
+    // it picks up both the new CSP roots and the new assetRoots map.
+    panel.webview.options = {
+      ...panel.webview.options,
+      localResourceRoots: desired,
+    };
+    panel.webview.html = getWebviewContent(panel.webview, context.extensionUri);
+  };
+
+  // Prompt for a folder to mount at `prefix`, persist it (workspace-scoped),
+  // and refresh the preview. Shared by the picker card and the configure
+  // command. A cancelled dialog leaves the mount unchanged.
+  const pickFolderForPrefix = async (prefix: string): Promise<void> => {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      openLabel: "Mount as assets",
+      title: `Choose the folder for asset://${prefix}/`,
+      defaultUri: currentTreatmentDir,
+    });
+    if (!picked || picked.length === 0) return;
+    const next = {
+      ...context.workspaceState.get<Record<string, unknown>>(
+        ASSET_MOUNTS_STATE_KEY,
+        {},
+      ),
+      [prefix]: picked[0].fsPath,
+    };
+    await context.workspaceState.update(ASSET_MOUNTS_STATE_KEY, next);
+    if (previewPanel) syncAssetRoots(previewPanel);
+  };
+
   context.subscriptions.push(
     vscode.commands.registerCommand("stagebook.previewStage", async () => {
       const editor = vscode.window.activeTextEditor;
@@ -1105,7 +1247,20 @@ export function activate(context: vscode.ExtensionContext): void {
       currentTreatmentDir = vscode.Uri.joinPath(editor.document.uri, "..");
       currentWorkspaceRootFsPath = workspaceFolder.uri.fsPath;
 
+      // Pre-seed localResourceRoots with the configured/remembered asset
+      // mounts (#192) so an out-of-workspace mount is loadable up front — only
+      // a brand-new pick this session forces a reload (see syncAssetRoots).
+      const desiredRoots = buildLocalResourceRoots(getAssetMountDirs());
+
       if (previewPanel) {
+        // Keep the roots in sync with the current mounts (a setting edit or a
+        // prior pick may have changed them). Reassigning a new options object
+        // is required for the change to take effect; VS Code no-ops when the
+        // roots are unchanged.
+        previewPanel.webview.options = {
+          ...previewPanel.webview.options,
+          localResourceRoots: desiredRoots,
+        };
         previewPanel.reveal(vscode.ViewColumn.Beside);
       } else {
         previewPanel = vscode.window.createWebviewPanel(
@@ -1114,10 +1269,7 @@ export function activate(context: vscode.ExtensionContext): void {
           vscode.ViewColumn.Beside,
           {
             enableScripts: true,
-            localResourceRoots: [
-              vscode.Uri.joinPath(context.extensionUri, "dist"),
-              ...(vscode.workspace.workspaceFolders?.map((f) => f.uri) ?? []),
-            ],
+            localResourceRoots: desiredRoots,
           },
         );
         previewPanel.onDidDispose(() => {
@@ -1126,17 +1278,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
         // Handle messages from the webview
         previewPanel.webview.onDidReceiveMessage(async (msg) => {
-          if (msg.type === "ready" && currentTreatment && currentTreatmentDir) {
-            const baseUri = previewPanel!.webview
-              .asWebviewUri(currentTreatmentDir)
-              .toString();
-            previewPanel?.webview.postMessage({
-              type: "treatment",
-              treatmentFile: currentTreatment,
-              introIndex: 0,
-              treatmentIndex: 0,
-              webviewBaseUri: baseUri,
-            });
+          if (msg.type === "ready") {
+            if (previewPanel) postTreatment(previewPanel);
           } else if (msg.type === "refresh") {
             // Re-read the source file, re-parse, and push the updated
             // treatment. Viewer state (stageIndex, position, saved responses,
@@ -1165,24 +1308,64 @@ export function activate(context: vscode.ExtensionContext): void {
               currentTreatment = refreshResult.data;
               // Panel may have been disposed while we were awaiting above.
               if (!previewPanel) return;
-              const baseUri = panel.webview
-                .asWebviewUri(treatmentDir)
-                .toString();
-              panel.webview.postMessage({
-                type: "treatment",
-                treatmentFile: refreshResult.data,
-                introIndex: 0,
-                treatmentIndex: 0,
-                webviewBaseUri: baseUri,
-              });
+              // syncAssetRoots (not postTreatment) so a settings edit that
+              // added an out-of-workspace mount since the panel opened updates
+              // localResourceRoots too, not just the assetRoots map (#192).
+              syncAssetRoots(panel);
             } catch (err) {
               vscode.window.showErrorMessage(
                 `Refresh failed: ${err instanceof Error ? err.message : String(err)}`,
               );
             }
           } else if (msg.type === "readFile" && currentTreatmentDir) {
-            // Guard against path traversal
             const filePath = String(msg.path);
+            // #192: an asset:// prompt/text ref resolves against its local
+            // mount and is read from there — bounded by the mount dir, not the
+            // workspace (out-of-workspace is the point), mirroring the media
+            // path. Without this, a mounted asset:// prompt would still fail.
+            if (/^asset:\/\//i.test(filePath)) {
+              const resolved = parseMountedAsset(filePath, getAssetMountDirs());
+              if (!resolved) {
+                previewPanel?.webview.postMessage({
+                  type: "fileContent",
+                  requestId: msg.requestId,
+                  error: `Cannot resolve asset: ${filePath}`,
+                });
+                return;
+              }
+              try {
+                const assetUri = vscode.Uri.joinPath(
+                  vscode.Uri.file(resolved.dir),
+                  resolved.rest,
+                );
+                // Defense in depth: keep the resolved file within the mount dir
+                // (parseMountedAsset already rejects `..`). Does not resolve
+                // symlinks — same caveat as the workspace guard below.
+                if (!isWithinWorkspace(assetUri.fsPath, resolved.dir)) {
+                  previewPanel?.webview.postMessage({
+                    type: "fileContent",
+                    requestId: msg.requestId,
+                    error: `Path escapes mount: ${filePath}`,
+                  });
+                  return;
+                }
+                const assetContent =
+                  await vscode.workspace.fs.readFile(assetUri);
+                previewPanel?.webview.postMessage({
+                  type: "fileContent",
+                  requestId: msg.requestId,
+                  content: new TextDecoder().decode(assetContent),
+                });
+              } catch {
+                previewPanel?.webview.postMessage({
+                  type: "fileContent",
+                  requestId: msg.requestId,
+                  error: `Failed to read: ${filePath}`,
+                });
+              }
+              return;
+            }
+            // Guard against path traversal (workspace-relative reads)
             if (filePath.includes("..") || path.isAbsolute(filePath)) {
               previewPanel?.webview.postMessage({
                 type: "fileContent",
@@ -1225,6 +1408,13 @@ export function activate(context: vscode.ExtensionContext): void {
                 error: `Failed to read: ${filePath}`,
               });
             }
+          } else if (
+            msg.type === "pickAssetFolder" &&
+            typeof msg.prefix === "string"
+          ) {
+            // #192: the picker card asked to mount a local folder at this
+            // asset prefix. Prompt, persist, and refresh the preview.
+            await pickFolderForPrefix(msg.prefix);
           }
         });
       }
@@ -1234,6 +1424,52 @@ export function activate(context: vscode.ExtensionContext): void {
         context.extensionUri,
       );
     }),
+  );
+
+  // #192: manage the remembered asset-folder mounts — re-pick a wrong folder
+  // or clear them all (the recovery path when the picker card is gone because
+  // a prefix is already mapped to the wrong directory).
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "stagebook.configureAssetMounts",
+      async () => {
+        const picks = context.workspaceState.get<Record<string, unknown>>(
+          ASSET_MOUNTS_STATE_KEY,
+          {},
+        );
+        const entries = Object.entries(picks).filter(
+          ([, dir]) => typeof dir === "string" && dir.length > 0,
+        );
+        if (entries.length === 0) {
+          vscode.window.showInformationMessage(
+            "No asset folders are mounted for this workspace. Open a stage preview and use “Choose folder…” on the asset banner.",
+          );
+          return;
+        }
+        const CLEAR_ALL = "$(trash) Clear all asset mounts";
+        const selection = await vscode.window.showQuickPick(
+          [
+            ...entries.map(([prefix, dir]) => ({
+              label: `asset://${prefix}/`,
+              description: String(dir),
+              prefix: prefix as string | undefined,
+            })),
+            { label: CLEAR_ALL, description: "", prefix: undefined },
+          ],
+          {
+            title: "Stagebook asset mounts",
+            placeHolder: "Re-pick a folder for a prefix, or clear all mounts",
+          },
+        );
+        if (!selection) return;
+        if (selection.label === CLEAR_ALL) {
+          await context.workspaceState.update(ASSET_MOUNTS_STATE_KEY, {});
+          if (previewPanel) syncAssetRoots(previewPanel);
+          return;
+        }
+        if (selection.prefix) await pickFolderForPrefix(selection.prefix);
+      },
+    ),
   );
 
   // Validate the active document on activation (no debounce)

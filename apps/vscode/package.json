@@ -32,6 +32,10 @@
       {
         "command": "stagebook.validateWorkspace",
         "title": "Stagebook: Validate Workspace"
+      },
+      {
+        "command": "stagebook.configureAssetMounts",
+        "title": "Stagebook: Configure Asset Folders"
       }
     ],
     "menus": {
@@ -102,6 +106,21 @@
           "variable:stagebookYaml": "#9CDCFE",
           "string:stagebookYaml": "#DCDCAA",
           "property:stagebookYaml": "#569CD6"
+        }
+      }
+    },
+    "configuration": {
+      "title": "Stagebook",
+      "properties": {
+        "stagebook.assetRoots": {
+          "type": "object",
+          "scope": "resource",
+          "default": {},
+          "markdownDescription": "Map `asset://<prefix>/…` references to local folders so the stage preview can load them (#192). Each key is a prefix; each value is a folder path — absolute, or relative to the workspace root. This is a **preview-only** convenience: `asset://` is resolved by the platform at run time, so these paths are never part of the study.\n\nInteractive picks made from the preview's asset banner are remembered per-workspace and override an entry here for the same prefix. Prefer picking a folder from the banner unless you want a committable, shared convention.\n\nExample:\n```json\n{\n  \"group_recordings\": \"/Users/me/pilot_videos\",\n  \"diagrams\": \"./media/diagrams\"\n}\n```",
+          "additionalProperties": {
+            "type": "string",
+            "description": "A local folder path (absolute, or relative to the workspace root) to mount at this asset prefix."
+          }
         }
       }
     }

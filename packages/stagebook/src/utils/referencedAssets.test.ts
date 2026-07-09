@@ -1,6 +1,7 @@
 import { describe, test, expect } from "vitest";
 import {
   getReferencedAssets,
+  collectAssetPrefixes,
   type ReferencedAsset,
 } from "./referencedAssets.js";
 
@@ -402,5 +403,116 @@ describe("getReferencedAssets — malformed input safety", () => {
     ]);
     expect(() => getReferencedAssets(tree)).not.toThrow();
     expect(getReferencedAssets(tree)).toEqual([]);
+  });
+});
+
+describe("collectAssetPrefixes (#192)", () => {
+  test("returns [] for non-object / empty input", () => {
+    expect(collectAssetPrefixes(null)).toEqual([]);
+    expect(collectAssetPrefixes(undefined)).toEqual([]);
+    expect(collectAssetPrefixes("asset://x/y.mp4")).toEqual([]);
+    expect(collectAssetPrefixes({})).toEqual([]);
+  });
+
+  test("collects the prefix from a single asset:// reference", () => {
+    const tree = treatmentWithElements([
+      { type: "mediaPlayer", file: "asset://group_recordings/session.mp4" },
+    ]);
+    expect(collectAssetPrefixes(tree)).toEqual(["group_recordings"]);
+  });
+
+  test("collects across every asset://-bearing field/element type", () => {
+    const tree = treatmentWithElements([
+      { type: "prompt", file: "asset://prompts/intro.prompt.md" },
+      { type: "image", file: "asset://diagrams/flow.png" },
+      { type: "audio", file: "asset://clips/intro.mp3" },
+      {
+        type: "mediaPlayer",
+        file: "asset://videos/a.mp4",
+        captionsFile: "asset://captions/a.vtt",
+      },
+    ]);
+    expect(collectAssetPrefixes(tree).sort()).toEqual([
+      "captions",
+      "clips",
+      "diagrams",
+      "prompts",
+      "videos",
+    ]);
+  });
+
+  test("dedupes a prefix used by multiple references", () => {
+    const tree = treatmentWithElements([
+      { type: "mediaPlayer", file: "asset://recordings/a.mp4" },
+      { type: "mediaPlayer", file: "asset://recordings/b.mp4" },
+      { type: "audio", file: "asset://recordings/c.mp3" },
+    ]);
+    expect(collectAssetPrefixes(tree)).toEqual(["recordings"]);
+  });
+
+  test("preserves prefix case (mount key is looked up exactly)", () => {
+    const tree = treatmentWithElements([
+      { type: "image", file: "ASSET://Group_Recordings/x.png" },
+    ]);
+    // Scheme match is case-insensitive; the prefix case is preserved.
+    expect(collectAssetPrefixes(tree)).toEqual(["Group_Recordings"]);
+  });
+
+  test("ignores relative paths and http(s) URLs (only asset://)", () => {
+    const tree = treatmentWithElements([
+      { type: "image", file: "images/logo.png" },
+      { type: "audio", file: "https://cdn.example/clip.mp3" },
+      { type: "mediaPlayer", file: "//cdn.example/v.mp4" },
+    ]);
+    expect(collectAssetPrefixes(tree)).toEqual([]);
+  });
+
+  test("ignores an opaque asset: URI with no //host (not mountable)", () => {
+    const tree = treatmentWithElements([
+      { type: "image", file: "asset:clip.png" },
+    ]);
+    expect(collectAssetPrefixes(tree)).toEqual([]);
+  });
+
+  test("skips a prefix that is still a ${…} placeholder", () => {
+    const tree = treatmentWithElements([
+      { type: "mediaPlayer", file: "asset://${clipset}/x.mp4" },
+    ]);
+    expect(collectAssetPrefixes(tree)).toEqual([]);
+  });
+
+  test("collects a concrete prefix even when the REST holds a ${…}", () => {
+    // Only the prefix must be concrete to mount; the path can bind later.
+    const tree = treatmentWithElements([
+      { type: "mediaPlayer", file: "asset://recordings/${clip}.mp4" },
+    ]);
+    expect(collectAssetPrefixes(tree)).toEqual(["recordings"]);
+  });
+
+  test("does not treat a name-reference field (timeline.source) as an asset", () => {
+    const tree = treatmentWithElements([
+      { type: "timeline", source: "asset://x/y.mp4" },
+    ]);
+    expect(collectAssetPrefixes(tree)).toEqual([]);
+  });
+
+  test("finds prefixes in introSequences, not just game stages", () => {
+    const tree = {
+      introSequences: [
+        {
+          name: "intro",
+          introSteps: [
+            {
+              name: "welcome",
+              elements: [
+                { type: "image", file: "asset://onboarding/welcome.png" },
+              ],
+            },
+          ],
+        },
+      ],
+      treatments: [],
+    };
+    expect(collectAssetPrefixes(tree)).toEqual(["onboarding"]);
   });
 });
