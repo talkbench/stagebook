@@ -605,8 +605,8 @@ const stageContainerStyle: React.CSSProperties = {
 
 // Bottom-of-stage breathing room (#234). Without this, long stages end
 // at a hard scroll-stop and participants have no signal they've reached
-// the end. 8rem matches the annotator's spacer (deliberation-lab/
-// annotator#138) so the visual rhythm is consistent across hosts.
+// the end. 8rem matches the annotator's spacer (talkbench/annotator#138)
+// so the visual rhythm is consistent across hosts.
 const stageBottomSpacerStyle: React.CSSProperties = {
   flexShrink: 0,
   height: "8rem",
