@@ -15,7 +15,7 @@
 // different randomization claim worth a paper-defensible receipt.
 //
 // History: this harness is the generalization of
-// `dispatch.contract.test.js` from deliberation-lab, which was tightly
+// `dispatch.contract.test.js` from runner, which was tightly
 // coupled to a single algorithm's parameter shape. The scenario was
 // shrunk to just `{ players, treatments }`; algorithm-specific params
 // come from the registered factory (which can also generate them from

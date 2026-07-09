@@ -5,7 +5,7 @@ import type { StageConfig } from "./Stage";
 
 // Integration tests for the ScrollIndicator + useScrollAwareness wiring in
 // Stage.tsx — the three pieces work as a unit and were previously only
-// covered end-to-end via a cypress spec in the downstream deliberation-lab
+// covered end-to-end via a cypress spec in the downstream runner
 // repo. These tests exercise the four behavioral branches of the hook
 // (indicator on, dismiss via scroll, auto-peek at bottom, no re-fire after
 // dismiss) against the real Stage wrapper.

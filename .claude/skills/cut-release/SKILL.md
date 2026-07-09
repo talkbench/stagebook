@@ -45,7 +45,7 @@ The commit subject must follow the format `chore(release): bump stagebook to X.Y
 
 ## 3. Open the release PR
 
-Use this body shape (mirror what prior releases like [v0.10.4](https://github.com/deliberation-lab/stagebook/releases/tag/v0.10.4) and [v0.10.3](https://github.com/deliberation-lab/stagebook/releases/tag/v0.10.3) look like):
+Use this body shape (mirror what prior releases like [v0.10.4](https://github.com/talkbench/stagebook/releases/tag/v0.10.4) and [v0.10.3](https://github.com/talkbench/stagebook/releases/tag/v0.10.3) look like):
 
 ```
 Patch release picking up <one-line summary>.
@@ -131,7 +131,7 @@ gh issue view 360 --json state,closedAt
 For any that's still `OPEN`, close it with a reference to the PR + release tag:
 
 ```sh
-gh issue close <NNN> --comment "Fixed in #<PR> (released as [v<X.Y.Z>](https://github.com/deliberation-lab/stagebook/releases/tag/v<X.Y.Z>)). <one-line summary of what landed>"
+gh issue close <NNN> --comment "Fixed in #<PR> (released as [v<X.Y.Z>](https://github.com/talkbench/stagebook/releases/tag/v<X.Y.Z>)). <one-line summary of what landed>"
 ```
 
 ## What to avoid

@@ -145,7 +145,7 @@ exercises that path. See the ADR's "Right-to-left" section.
 
 - **No consumer changes.** The public `locale` prop stays an open `string` with
   a runtime registered-set check (unknown → `en` + a `console.warn`). Adding a
-  locale touches stagebook's catalog, never deliberation-lab / annotator types —
+  locale touches stagebook's catalog, never runner / annotator types —
   it's backward compatible by construction.
 - **No browser detection.** Stagebook never reads the browser locale; the active
   locale comes from the treatment / intro sequence declaration. Assignment of

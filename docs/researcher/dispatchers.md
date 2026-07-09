@@ -13,11 +13,11 @@ The first three are stateless or carry only a small piece of state (urn's remain
 
 > **Stagebook 0.14 breaking change.** `weighted-random`'s `weights` and `urn`'s `counts` and `decrements` are now **labeled objects** keyed by treatment name. The previous positional-array form (`counts: [10, 10, 10]`, `decrements: [[1,0,0], ...]`) was removed because it silently mis-mapped when treatments were renamed or reordered. The validator now rejects old positional configs with a migration hint pointing to this document; see [Why labels?](#why-labels) for the rationale.
 
-> **Stagebook 0.15 breaking change.** The `local-penalization` dispatcher (config-shape placeholder; implementation lived in deliberation-lab) was replaced by a simpler in-stagebook implementation with explicit state-in/state-out and softmax-based exploration. Batch configs using `type: "local-penalization"` need to be migrated; see [`softmax-knockdown` in detail](#softmax-knockdown-in-detail) below for the new shape.
+> **Stagebook 0.15 breaking change.** The `local-penalization` dispatcher (config-shape placeholder; implementation lived in runner) was replaced by a simpler in-stagebook implementation with explicit state-in/state-out and softmax-based exploration. Batch configs using `type: "local-penalization"` need to be migrated; see [`softmax-knockdown` in detail](#softmax-knockdown-in-detail) below for the new shape.
 >
 > **Stagebook 0.16 breaking change.** The dispatcher introduced in 0.15 was renamed from `weighted-knockdown` to `softmax-knockdown`. The original name was ambiguous — it could be read as "weighted-random with knockdowns" when the actual selection rule is softmax. The new name names the selection mechanism explicitly. Algorithm and config shape are unchanged; the only migration needed is `type: "weighted-knockdown"` → `type: "softmax-knockdown"`. Exported symbols follow the same rename: `weightedKnockdown` → `softmaxKnockdown`, `WeightedKnockdownDispatcherConfig` → `SoftmaxKnockdownDispatcherConfig`.
 >
-> **Stagebook 0.17 breaking change.** The file-reference key was renamed from `{ from: "..." }` to `{ file: "..." }` to match the manager + deliberation-lab convention. New shape: `counts: { file: "study1/counts.json" }`. The runtime check accepts both shapes during a one-release deprecation window; `{ from }` is removed in 0.18. (#466)
+> **Stagebook 0.17 breaking change.** The file-reference key was renamed from `{ from: "..." }` to `{ file: "..." }` to match the manager + runner convention. New shape: `counts: { file: "study1/counts.json" }`. The runtime check accepts both shapes during a one-release deprecation window; `{ from }` is removed in 0.18. (#466)
 
 ## `weighted-random` in detail
 
@@ -94,7 +94,7 @@ Three options, in increasing order of effort:
 
 ### Diagnostics
 
-The host (deliberation-lab in our deployment) gets the assignments back after every dispatch tick and can compute realized rates directly. If you're partway through a batch and the realized rate looks off relative to your target weights, the most likely cause is one of the two feasibility issues above. Check what fraction of your participants satisfy the constrained treatment's conditions; that fraction is roughly the ceiling on its realized rate.
+The host (runner in our deployment) gets the assignments back after every dispatch tick and can compute realized rates directly. If you're partway through a batch and the realized rate looks off relative to your target weights, the most likely cause is one of the two feasibility issues above. Check what fraction of your participants satisfy the constrained treatment's conditions; that fraction is roughly the ceiling on its realized rate.
 
 ## `urn` in detail
 
@@ -300,7 +300,7 @@ Every treatment with positive counts needs a row when you specify `decrements` �
 
 <a id="why-labels"></a>**Why labels?** Earlier versions of stagebook (≤ 0.13) accepted positional arrays here (`[30, 30, 30, 10, 10]`). That form silently mis-mapped if the treatment list got reordered or a treatment was renamed — the dispatcher would happily run with the wrong allocation. The labeled form makes the mapping explicit, so the validator catches drift instead of producing wrong assignments. If you have an old positional file, the validator at batch-creation time will refuse it with an error message pointing at this section; the dispatcher itself has a runtime guard for the same case, so even hand-constructed batches that bypass the validator will fail loudly rather than silently mis-route.
 
-File references are resolved by the host (deliberation-lab in our deployment), not by stagebook itself — stagebook's algorithm runs on already-resolved objects. The host enforces these path constraints: must be relative (no leading `/`), must not contain `..` segments, must not begin with a URL scheme (`https:`, `file:`, etc.), and is capped at 512 characters. The path is resolved against the same `assetBaseUrl` your treatment file is served from. The file is fetched at batch creation time and validated; a missing or malformed file fails batch creation rather than a later dispatch tick.
+File references are resolved by the host (runner in our deployment), not by stagebook itself — stagebook's algorithm runs on already-resolved objects. The host enforces these path constraints: must be relative (no leading `/`), must not contain `..` segments, must not begin with a URL scheme (`https:`, `file:`, etc.), and is capped at 512 characters. The path is resolved against the same `assetBaseUrl` your treatment file is served from. The file is fetched at batch creation time and validated; a missing or malformed file fails batch creation rather than a later dispatch tick.
 
 A typical workflow:
 
@@ -313,7 +313,7 @@ This keeps the offline computation auditable and the batch config readable.
 
 ### Exhaustion
 
-Once every bucket in the urn hits zero, no further assignments can be made. New arrivals to the lobby will sit until they hit the existing `lobbyTimeout`. A dedicated host-side admission gate — including a distinct `lobbyClosed` exit code — is proposed in deliberation-lab/deliberation-lab#269 but isn't shipped yet. For now: size your `counts` so the total matches or exceeds your recruitment target, plan for some over-recruitment slack to handle eligibility-tight conditions, and accept that any excess arrivals beyond `sum(counts)` will time out rather than be assigned.
+Once every bucket in the urn hits zero, no further assignments can be made. New arrivals to the lobby will sit until they hit the existing `lobbyTimeout`. A dedicated host-side admission gate — including a distinct `lobbyClosed` exit code — is proposed in talkbench/runner#269 but isn't shipped yet. For now: size your `counts` so the total matches or exceeds your recruitment target, plan for some over-recruitment slack to handle eligibility-tight conditions, and accept that any excess arrivals beyond `sum(counts)` will time out rather than be assigned.
 
 ### Realized vs. target Ns under eligibility constraints
 

@@ -3,12 +3,12 @@
   "displayName": "Stagebook",
   "description": "Validation, syntax highlighting, and preview for Stagebook treatment and prompt files",
   "version": "0.1.0",
-  "publisher": "deliberation-lab",
+  "publisher": "talkbench",
   "private": true,
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/deliberation-lab/stagebook.git",
+    "url": "https://github.com/talkbench/stagebook.git",
     "directory": "apps/vscode"
   },
   "engines": {

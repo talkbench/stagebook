@@ -289,7 +289,7 @@ treatments:
             style: thin
           - type: trackedLink
             name: gallery_outbound
-            url: https://github.com/deliberation-lab/stagebook
+            url: https://github.com/talkbench/stagebook
             displayText: View stagebook on GitHub
           - type: submitButton
 

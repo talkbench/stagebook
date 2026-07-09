@@ -130,7 +130,7 @@ If your file doesn't use `imports:`, the resolve step is a no-op (`importedTempl
 
 ### Diff orchestrator (for live editor diagnostics)
 
-The VS Code extension runs the same pipeline plus a [diff orchestrator](https://github.com/deliberation-lab/stagebook/issues/321) that distinguishes "real bug in both source and hydrated form" from "templating artifact that disappears after expansion." If your tooling needs the same fine-grained diagnostic routing (e.g., to display templating artifacts as warnings instead of errors), use `runValidationDiff`:
+The VS Code extension runs the same pipeline plus a [diff orchestrator](https://github.com/talkbench/stagebook/issues/321) that distinguishes "real bug in both source and hydrated form" from "templating artifact that disappears after expansion." If your tooling needs the same fine-grained diagnostic routing (e.g., to display templating artifacts as warnings instead of errors), use `runValidationDiff`:
 
 ```typescript
 import { runValidationDiff } from "stagebook";

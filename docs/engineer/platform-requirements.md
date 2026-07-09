@@ -307,7 +307,7 @@ through to the JSONL export next to the host's other per-stage fields.
 Stagebook intentionally owns none of this: at this granularity it knows nothing
 the host doesn't. (The richer "which condition fired, with what resolved
 values" record — the one thing only stagebook could compute — was scoped out;
-see deliberation-lab/stagebook#199.)
+see talkbench/stagebook#199.)
 
 ---
 

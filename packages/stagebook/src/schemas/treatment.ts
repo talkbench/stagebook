@@ -131,7 +131,7 @@ export const fileSchema = z
     (value) => {
       // Defer all content-shape checks to post-fill when the path
       // contains a `${field}` placeholder (#398). The host (annotator,
-      // deliberation-lab) binds the slot before the participant sees
+      // runner) binds the slot before the participant sees
       // the page; `resolvedTreatmentFileSchema` runs the strict checks
       // on the substituted value. A leak (placeholder still present
       // after fillTemplates) gets caught there with a clear message.

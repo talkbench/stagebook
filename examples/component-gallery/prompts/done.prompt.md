@@ -10,4 +10,4 @@ intro / game / exit sequences, conditional rendering, references —
 see the **Annotated walkthrough** example next door.
 
 The components themselves live in
-[`packages/stagebook/src/components/form/`](https://github.com/deliberation-lab/stagebook/tree/main/packages/stagebook/src/components/form).
+[`packages/stagebook/src/components/form/`](https://github.com/talkbench/stagebook/tree/main/packages/stagebook/src/components/form).

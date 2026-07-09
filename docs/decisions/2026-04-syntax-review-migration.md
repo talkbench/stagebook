@@ -508,14 +508,14 @@ synthesises the cross-cutting "why" patterns.
 
 Cross-cutting rationale: [`docs/decisions/principles.md`](principles.md).
 
-[#235]: https://github.com/deliberation-lab/stagebook/issues/235
-[#238]: https://github.com/deliberation-lab/stagebook/issues/238
-[#240]: https://github.com/deliberation-lab/stagebook/issues/240
-[#243]: https://github.com/deliberation-lab/stagebook/issues/243
-[#244]: https://github.com/deliberation-lab/stagebook/issues/244
-[#245]: https://github.com/deliberation-lab/stagebook/issues/245
-[#246]: https://github.com/deliberation-lab/stagebook/issues/246
-[#247]: https://github.com/deliberation-lab/stagebook/issues/247
-[#248]: https://github.com/deliberation-lab/stagebook/issues/248
-[#249]: https://github.com/deliberation-lab/stagebook/issues/249
-[#250]: https://github.com/deliberation-lab/stagebook/issues/250
+[#235]: https://github.com/talkbench/stagebook/issues/235
+[#238]: https://github.com/talkbench/stagebook/issues/238
+[#240]: https://github.com/talkbench/stagebook/issues/240
+[#243]: https://github.com/talkbench/stagebook/issues/243
+[#244]: https://github.com/talkbench/stagebook/issues/244
+[#245]: https://github.com/talkbench/stagebook/issues/245
+[#246]: https://github.com/talkbench/stagebook/issues/246
+[#247]: https://github.com/talkbench/stagebook/issues/247
+[#248]: https://github.com/talkbench/stagebook/issues/248
+[#249]: https://github.com/talkbench/stagebook/issues/249
+[#250]: https://github.com/talkbench/stagebook/issues/250

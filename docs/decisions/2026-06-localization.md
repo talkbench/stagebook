@@ -369,7 +369,7 @@ Consumer caveats (corrected after the consumer-integration review — the
 - **Frontmatter `locale`** must be added to the shared `baseMetadataFields` (not
   per-type), because each metadata schema is `.strict()`.
 - **Playwright fallout is small** — a re-check found near-zero literal-`aria-label`
-  selectors in deliberation-lab and none in stagebook's own CT. Where they
+  selectors in runner and none in stagebook's own CT. Where they
   exist, assert against `defaultMessages.en.*` to decouple from copy. (Note the
   viewer's own "Waiting for other participants…" overlay is host-owned, not a
   stagebook catalog string.)
@@ -415,9 +415,9 @@ it needed).
 9. **Agent checklist** — `docs/localization-review-checklist.md` (may later
    graduate into a `.claude/skills/` verify-skill).
 10. **Consumer wiring** — viewer (`createViewerContext` + memo dep) and the
-    deliberation-lab adapter (net-new `game.get("treatment").locale` read, memo
+    runner adapter (net-new `game.get("treatment").locale` read, memo
     dep) set `locale` from the treatment, **gated on the DL server-side
     treatment-field passthrough**; right-size any literal-aria-label selectors.
 
-[#438]: https://github.com/deliberation-lab/stagebook/issues/438
-[#479]: https://github.com/deliberation-lab/stagebook/issues/479
+[#438]: https://github.com/talkbench/stagebook/issues/438
+[#479]: https://github.com/talkbench/stagebook/issues/479
