@@ -33,6 +33,8 @@ export function AssetPlaceholder({ uri, kind }: AssetPlaceholderProps) {
   );
 }
 
+// Themeable via the same `--stagebook-*` CSS variables the rest of the
+// library uses; the fallbacks keep the default (host-unstyled) appearance.
 const container: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -40,39 +42,39 @@ const container: React.CSSProperties = {
   justifyContent: "center",
   gap: "0.5rem",
   padding: "2rem",
-  border: "2px dashed #d1d5db",
+  border: "2px dashed var(--stagebook-border, #d1d5db)",
   borderRadius: "0.5rem",
-  backgroundColor: "#f9fafb",
+  backgroundColor: "var(--stagebook-bg-muted, #f9fafb)",
   minHeight: "8rem",
 };
 
 const icon: React.CSSProperties = {
   fontSize: "1.75rem",
-  color: "#9ca3af",
+  color: "var(--stagebook-text-faint, #9ca3af)",
 };
 
 const label: React.CSSProperties = {
   fontSize: "0.8125rem",
   fontWeight: 600,
-  color: "#4b5563",
+  color: "var(--stagebook-text-secondary, #4b5563)",
   margin: 0,
   textAlign: "center",
 };
 
 const uriText: React.CSSProperties = {
   fontSize: "0.75rem",
-  color: "#6b7280",
-  backgroundColor: "white",
+  color: "var(--stagebook-text-muted, #6b7280)",
+  backgroundColor: "var(--stagebook-surface, #fff)",
   padding: "0.2rem 0.45rem",
   borderRadius: "0.25rem",
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--stagebook-border, #e5e7eb)",
   wordBreak: "break-all",
   maxWidth: "100%",
 };
 
 const hint: React.CSSProperties = {
   fontSize: "0.75rem",
-  color: "#9ca3af",
+  color: "var(--stagebook-text-faint, #9ca3af)",
   margin: 0,
   textAlign: "center",
 };
