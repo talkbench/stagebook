@@ -1,6 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { type TreatmentFileType } from "../../schemas/index.js";
-import { computePreviewState } from "../lib/previewResolution.js";
+import { checkPromptLocaleConsistencyWithLoader } from "../../validate/localeConsistency.js";
+import {
+  computePreviewState,
+  type PostFillIssue,
+} from "../lib/previewResolution.js";
 import { FieldForm } from "./FieldForm.js";
 import { Viewer } from "./Viewer.js";
 
@@ -9,6 +13,9 @@ export interface PreviewHostProps {
   /**
    * Pre-supplied values for `${field}` placeholders (e.g. from a sidecar
    * file). Any placeholders not covered here will surface as a FieldForm.
+   * Should be referentially stable (memoized) — its identity feeds the
+   * expansion memo and the post-fill locale re-check, so a fresh object each
+   * render would re-run both unnecessarily.
    */
   additionalFields?: Record<string, unknown>;
   selectedIntroIndex: number;
@@ -75,6 +82,51 @@ export function PreviewHost({
     [treatmentFile, additionalFields, userValues],
   );
 
+  // #492: re-run the prompt locale-consistency check on the FIELD-RESOLVED
+  // tree. The on-load check (loader.ts) runs before host `additionalFields` /
+  // FieldForm values bind, so when `locale` (or a prompt `file:` path) is a
+  // deferred `${field}` it's a no-op there — this is the first point the
+  // resolved tree exists. It's async (reads each prompt's frontmatter), so it
+  // can't live in the sync/pure computePreviewState. Non-blocking, matching
+  // the load path's treatment of locale mismatches: the preview still renders,
+  // with a banner above it.
+  const resolved = previewState.mode === "ready" ? previewState.resolved : null;
+  const [localeIssues, setLocaleIssues] = useState<PostFillIssue[]>([]);
+
+  useEffect(() => {
+    if (resolved === null) {
+      setLocaleIssues([]);
+      return;
+    }
+    // Clear eagerly before the async re-check so a tree change (ready→ready,
+    // e.g. rebinding a field) never leaves the previous tree's mismatch
+    // messages rendered above the new tree for a tick.
+    setLocaleIssues([]);
+    let cancelled = false;
+    void (async () => {
+      const mismatches = await checkPromptLocaleConsistencyWithLoader({
+        fileObj: resolved,
+        loadPrompt: async (relPath) => {
+          try {
+            return await getTextContent(relPath);
+          } catch {
+            // Unreadable prompt — a different error class with its own
+            // reporting; the locale check skips it (treats as unloaded).
+            return null;
+          }
+        },
+      });
+      if (!cancelled) {
+        setLocaleIssues(
+          mismatches.map((m) => ({ path: m.promptFile, message: m.message })),
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [resolved, getTextContent]);
+
   if (previewState.mode === "form") {
     // Keyed on the field set: after a post-fill failure the form can
     // gain fields (host-bound ones become editable), and FieldForm
@@ -128,6 +180,26 @@ export function PreviewHost({
     );
   }
 
+  const localeBanner =
+    localeIssues.length > 0 ? (
+      <div
+        data-testid="locale-mismatch-banner"
+        role="alert"
+        style={localeBannerStyle}
+      >
+        <strong style={localeBannerTitleStyle}>
+          {localeIssues.length === 1
+            ? "Prompt locale mismatch"
+            : `${localeIssues.length} prompt locale mismatches`}
+        </strong>
+        <ul style={localeBannerListStyle}>
+          {localeIssues.map((issue) => (
+            <li key={`${issue.path}:${issue.message}`}>{issue.message}</li>
+          ))}
+        </ul>
+      </div>
+    ) : undefined;
+
   return (
     <Viewer
       treatmentFile={previewState.resolved}
@@ -140,6 +212,28 @@ export function PreviewHost({
       contentVersion={contentVersion}
       onTreatmentIndexChange={onTreatmentIndexChange}
       onIntroIndexChange={onIntroIndexChange}
+      notice={localeBanner}
     />
   );
 }
+
+// Non-blocking notice rendered inside the Viewer (below its header, via the
+// `notice` prop) when the field-resolved tree references a prompt whose locale
+// doesn't match its container's (#492).
+const localeBannerStyle: React.CSSProperties = {
+  padding: "0.75rem 1rem",
+  borderBottom: "1px solid #fecaca",
+  backgroundColor: "#fef2f2",
+  color: "#991b1b",
+  fontFamily: "system-ui, sans-serif",
+  fontSize: "0.875rem",
+};
+
+const localeBannerTitleStyle: React.CSSProperties = {
+  fontWeight: 600,
+};
+
+const localeBannerListStyle: React.CSSProperties = {
+  margin: "0.25rem 0 0",
+  paddingLeft: "1.25rem",
+};

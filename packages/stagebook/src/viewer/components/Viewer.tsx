@@ -5,6 +5,7 @@ import {
   useMemo,
   useCallback,
   useSyncExternalStore,
+  type ReactNode,
 } from "react";
 import type { TreatmentFileType } from "../../schemas/index.js";
 import {
@@ -65,6 +66,13 @@ export interface ViewerProps {
    * initial unit when no treatment is selectable (e.g. an intro-only file).
    */
   onIntroIndexChange?: (index: number) => void;
+  /**
+   * Optional non-blocking notice rendered directly below the header, inside
+   * the viewer's flex column (so it consumes layout height rather than
+   * overlaying content). Used by PreviewHost for the post-fill locale-mismatch
+   * banner (#492).
+   */
+  notice?: ReactNode;
 }
 
 export function Viewer({
@@ -78,6 +86,7 @@ export function Viewer({
   contentVersion,
   onTreatmentIndexChange,
   onIntroIndexChange,
+  notice,
 }: ViewerProps) {
   // The viewer walks ONE selectable unit at a time — a consent arm, an intro
   // sequence, OR a treatment — rather than pairing them. A single <optgroup>
@@ -377,6 +386,8 @@ export function Viewer({
           </select>
         </div>
       </header>
+
+      {notice}
 
       <div style={bodyStyle}>
         <aside style={sidebarStyle}>
