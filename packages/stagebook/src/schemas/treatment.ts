@@ -951,11 +951,18 @@ function validateTimelineSources(
  * are skipped — they're checked after expansion against the resolved
  * shape, not pre-expansion.
  */
-function validateConditionRules(
+export function validateConditionRules(
   conditions: unknown,
   pathPrefix: (string | number)[],
   ctx: z.RefinementCtx,
-  options: { contextLabel: string; forbidSelfPosition: boolean },
+  options: {
+    contextLabel: string;
+    // Game-stage rule: reject `self` (would desync across clients).
+    forbidSelfPosition: boolean;
+    // Group-composition rule: reject anything *but* `self` (#526).
+    // Mutually exclusive with `forbidSelfPosition`.
+    requireSelfPosition?: boolean;
+  },
 ): void {
   if (conditions === undefined || conditions === null) return;
 
@@ -1012,6 +1019,25 @@ function validateConditionRules(
       });
     }
   }
+
+  // Group-composition (player-block) eligibility is decided per candidate
+  // *before* any group exists, so only the candidate's own responses can
+  // resolve. A cross-participant selector (`shared`, a numeric slot index,
+  // or `all`) has nothing to resolve against and silently misbehaves at
+  // dispatch — the slot becomes either never-eligible or vacuously eligible
+  // with no error at authoring or launch (#526). Require `self`. An
+  // undetermined position (invalid reference or template placeholder) is
+  // left to the reference/expansion validators, same as the forbid path.
+  if (options.requireSelfPosition) {
+    const refPosition = extractReferencePosition(c.reference);
+    if (refPosition !== undefined && refPosition !== "self") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [...pathPrefix, "reference"],
+        message: `${options.contextLabel} conditions must use the \`self\` position selector — eligibility is decided per candidate before any group exists, so cross-participant selectors (\`shared\`, a numeric slot index, or \`all\`) have nothing to resolve against. Got \`${refPosition}\`.`,
+      });
+    }
+  }
 }
 
 /**
@@ -1035,7 +1061,16 @@ function extractReferencePosition(
     (typeof (reference as { position: unknown }).position === "string" ||
       typeof (reference as { position: unknown }).position === "number")
   ) {
-    return (reference as { position: number | string }).position;
+    // Mirror the dotted-string path: only surface a position the grammar
+    // actually accepts. An unresolved (`${slot}`) or malformed (`player`)
+    // structured position is left to `referenceSchema` to report, so the
+    // caller's rules don't pile a misleading position-selector message on
+    // top of the reference-grammar error (#526 review). Coercing here also
+    // canonicalizes a quoted `"1"` to the numeric `1`, matching the parser.
+    const parsed = positionSelectorSchema.safeParse(
+      (reference as { position: number | string }).position,
+    );
+    return parsed.success ? parsed.data : undefined;
   }
   return undefined;
 }
@@ -1128,7 +1163,7 @@ export type ConditionType = z.infer<typeof conditionSchema>;
 
 // ------------------ Players ------------------ //
 
-export const playerSchema = z
+const playerBaseSchema = z
   .object({
     position: positionSchema,
     title: z.string().max(25).optional(),
@@ -1140,6 +1175,20 @@ export const playerSchema = z
     conditions: conditionsSchema.optional(),
   })
   .strict();
+
+export const playerSchema = playerBaseSchema.superRefine((data, ctx) => {
+  // Group-composition (player-block) conditions gate who is eligible for
+  // this slot. Eligibility is evaluated per candidate before any group is
+  // formed, so a cross-participant selector (`shared`, a numeric slot
+  // index, or `all`) resolves to nothing and silently misbehaves at
+  // dispatch. Enforce the documented `self`-only rule at validation time
+  // (#526) — the docs already describe it; this makes the validator match.
+  validateConditionRules(data.conditions, ["conditions"], ctx, {
+    contextLabel: "Group-composition",
+    forbidSelfPosition: false,
+    requireSelfPosition: true,
+  });
+});
 export type PlayerType = z.infer<typeof playerSchema>;
 
 // ------------------ Elements ------------------ //
@@ -1597,11 +1646,11 @@ export function getValidKeysForDiscussion(): string[] {
 
 /**
  * Return the list of valid keys allowed on a player block (an item in
- * a treatment's `groupComposition`). `playerSchema` is a plain
- * `ZodObject`, so we read `.shape` directly.
+ * a treatment's `groupComposition`). `playerSchema` wraps a refine, so
+ * we read `.shape` off the underlying `playerBaseSchema` object.
  */
 export function getValidKeysForPlayer(): string[] {
-  return Object.keys(playerSchema.shape);
+  return Object.keys(playerBaseSchema.shape);
 }
 
 export const elementSchema = altTemplateContext(

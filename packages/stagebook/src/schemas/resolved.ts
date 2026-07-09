@@ -22,6 +22,7 @@ import {
   discussionSchema,
   referenceSchema,
   promptFilePathSchema,
+  validateConditionRules,
 } from "./treatment.js";
 
 // Detects `${field}` placeholders that survived `fillTemplates` —
@@ -330,11 +331,27 @@ export const resolvedTreatmentSchema = z.object({
   locale: localeSchema.optional(),
   groupComposition: z
     .array(
-      z.object({
-        position: positionSchema,
-        title: z.string().max(25).optional(),
-        conditions: resolvedConditionsSchema,
-      }),
+      z
+        .object({
+          position: positionSchema,
+          title: z.string().max(25).optional(),
+          conditions: resolvedConditionsSchema,
+        })
+        .superRefine((data, ctx) => {
+          // Same `self`-only rule as the pre-fill `playerSchema` (#526).
+          // Unlike the cross-treatment checks this schema deliberately
+          // omits, this is a fillTemplates leak the resolved schema exists
+          // to catch: when `groupComposition` is a `${field}` placeholder,
+          // the pre-fill schema skips it entirely, so a host-supplied
+          // composition with a cross-participant selector (`shared`, a slot
+          // index, or `all`) is first seen post-fill — enforce it here too
+          // or it slips through on the resolved/preview path.
+          validateConditionRules(data.conditions, ["conditions"], ctx, {
+            contextLabel: "Group-composition",
+            forbidSelfPosition: false,
+            requireSelfPosition: true,
+          });
+        }),
     )
     .optional(),
   gameStages: z.array(resolvedStageSchema).nonempty(),

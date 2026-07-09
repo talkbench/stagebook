@@ -11,6 +11,7 @@ import {
   introStepsSchema,
   exitStepsSchema,
   mediaPlayerSchema,
+  playerSchema,
   stageSchema,
   timelineSchema,
   promptSchema,
@@ -1575,6 +1576,192 @@ test("game-stage forbid-self error message points at the boolean-tree migration 
     );
     expect(issue?.message).toMatch(/cross-client position prefix/);
     expect(issue?.message).toMatch(/`all:` or `any:` operator/);
+  }
+});
+
+// ----------- Group-composition require-self rule (#526) ------------
+//
+// Player-block (`groupComposition`) conditions gate slot eligibility,
+// which is decided per candidate *before* any group exists — so only the
+// candidate's own responses (`self`) can resolve. A cross-participant
+// selector (`shared`, a numeric slot index, or `all`) would otherwise
+// validate clean but silently misbehave at dispatch, so it's a validation
+// error. Mirrors the game-stage `forbidSelfPosition` tests above.
+
+test("playerSchema accepts a groupComposition condition with a `self` position", () => {
+  const result = playerSchema.safeParse({
+    position: 0,
+    conditions: [
+      { reference: "self.prompt.role", comparator: "equals", value: "buyer" },
+    ],
+  });
+  if (!result.success) console.log(result.error.issues);
+  expect(result.success).toBe(true);
+});
+
+for (const [badReference, got] of [
+  ["0.prompt.role", "0"], // numeric slot index
+  ["shared.prompt.role", "shared"], // group-shared state
+  ["all.prompt.role", "all"], // cross-participant list
+] as const) {
+  test(`playerSchema rejects a groupComposition condition with a non-self position (${badReference})`, () => {
+    const result = playerSchema.safeParse({
+      position: 0,
+      conditions: [
+        { reference: badReference, comparator: "equals", value: "buyer" },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find(
+        (i) => i.path.join(".") === "conditions.0.reference",
+      );
+      expect(issue?.message).toMatch(/must use the `self` position selector/);
+      // The message echoes the offending selector, so the three cases are
+      // actually distinguished (not all matching a shared prefix).
+      expect(issue?.message).toContain(`Got \`${got}\`.`);
+    }
+  });
+}
+
+test("playerSchema rejects a non-self position in the structured-object reference form (#526)", () => {
+  // References can be authored as `{ position, source, name }` objects, not
+  // just dotted strings. `extractReferencePosition` reads `.position` off
+  // the object form, so this must be rejected too.
+  const result = playerSchema.safeParse({
+    position: 0,
+    conditions: [
+      {
+        reference: { position: 0, source: "prompt", name: "role" },
+        comparator: "equals",
+        value: "buyer",
+      },
+    ],
+  });
+  expect(result.success).toBe(false);
+  if (!result.success) {
+    const issue = result.error.issues.find(
+      (i) => i.path.join(".") === "conditions.0.reference",
+    );
+    expect(issue?.message).toMatch(/must use the `self` position selector/);
+    expect(issue?.message).toContain("Got `0`.");
+  }
+});
+
+test("playerSchema require-self rule stays silent when the position is undetermined (#526)", () => {
+  // A reference with no determinable position (here: missing the required
+  // position prefix) is left to the reference validator — the require-self
+  // rule must NOT pile on a spurious position-selector error. The parse
+  // still fails on the reference grammar, but not for the self reason.
+  const result = playerSchema.safeParse({
+    position: 0,
+    conditions: [
+      { reference: "prompt.role", comparator: "equals", value: "buyer" },
+    ],
+  });
+  expect(result.success).toBe(false);
+  if (!result.success) {
+    const selfIssue = result.error.issues.find((i) =>
+      i.message.includes("must use the `self` position selector"),
+    );
+    expect(selfIssue).toBeUndefined();
+  }
+});
+
+test("playerSchema require-self rule stays silent on an invalid/unresolved structured position (#526 review)", () => {
+  // Structured-object references whose `position` is not a valid selector
+  // (an unbound `${slot}` placeholder, or a `player` typo) must not draw a
+  // misleading cross-participant-selector error — the grammar error owns it,
+  // mirroring the dotted-string path.
+  for (const badPosition of ["${slot}", "player"]) {
+    const result = playerSchema.safeParse({
+      position: 0,
+      conditions: [
+        {
+          reference: { position: badPosition, source: "prompt", name: "role" },
+          comparator: "equals",
+          value: "buyer",
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const selfIssue = result.error.issues.find((i) =>
+        i.message.includes("must use the `self` position selector"),
+      );
+      expect(selfIssue).toBeUndefined();
+    }
+  }
+});
+
+test("playerSchema require-self rule recurses into operator branches (#526)", () => {
+  // A `shared.` leaf nested inside an `any:` operator is still rejected —
+  // the walker applies the self-only rule to every leaf, mirroring the
+  // game-stage forbid-self recursion test.
+  const result = playerSchema.safeParse({
+    position: 1,
+    conditions: {
+      any: [
+        { reference: "self.prompt.role", comparator: "equals", value: "buyer" },
+        {
+          reference: "shared.prompt.role",
+          comparator: "equals",
+          value: "seller",
+        },
+      ],
+    },
+  });
+  expect(result.success).toBe(false);
+  if (!result.success) {
+    const issue = result.error.issues.find(
+      (i) => i.path.join(".") === "conditions.any.1.reference",
+    );
+    expect(issue?.message).toMatch(/must use the `self` position selector/);
+  }
+});
+
+test("groupComposition non-self condition errors through treatmentFileSchema (#526)", () => {
+  // Confirms the require-self rule fires on the full parse path shared by
+  // the CLI and diff validators (both go through `safeParseTreatmentFile`
+  // → `treatmentFileSchema` → `groupComposition: z.array(playerSchema)`),
+  // not only on a standalone `playerSchema.safeParse`.
+  const result = treatmentFileSchema.safeParse({
+    treatments: [
+      {
+        name: "t",
+        playerCount: 2,
+        compatibleIntroSequences: [],
+        groupComposition: [
+          {
+            position: 0,
+            conditions: [
+              {
+                reference: "0.prompt.role",
+                comparator: "equals",
+                value: "buyer",
+              },
+            ],
+          },
+          { position: 1 },
+        ],
+        gameStages: [
+          {
+            name: "stage1",
+            duration: 60,
+            elements: [{ type: "submitButton" }],
+          },
+        ],
+      },
+    ],
+  });
+  expect(result.success).toBe(false);
+  if (!result.success) {
+    const issue = result.error.issues.find(
+      (i) =>
+        i.path.join(".") ===
+        "treatments.0.groupComposition.0.conditions.0.reference",
+    );
+    expect(issue?.message).toMatch(/must use the `self` position selector/);
   }
 });
 
