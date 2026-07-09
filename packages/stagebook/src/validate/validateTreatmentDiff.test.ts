@@ -462,6 +462,77 @@ introSequences:
     });
   });
 
+  describe("consent i18n-completeness (#529)", () => {
+    const study = (opts: {
+      treatmentLocale?: string;
+      consentLocales?: string[] | null;
+    }): string => {
+      const lines: string[] = [
+        "treatments:",
+        "  - name: t",
+        "    playerCount: 1",
+        "    compatibleIntroSequences: []",
+        ...(opts.treatmentLocale
+          ? [`    locale: ${opts.treatmentLocale}`]
+          : []),
+        "    gameStages:",
+        "      - name: g",
+        "        duration: 10",
+        "        elements:",
+        "          - type: submitButton",
+      ];
+      if (opts.consentLocales != null) {
+        lines.push("consent:");
+        opts.consentLocales.forEach((loc, i) => {
+          lines.push(`  - name: arm${i}`);
+          lines.push(`    locale: ${loc}`);
+          lines.push("    steps:");
+          lines.push("      - name: c1");
+          lines.push("        elements:");
+          lines.push("          - type: submitButton");
+        });
+      }
+      return lines.join("\n") + "\n";
+    };
+
+    it("warns when a treatment locale has no matching consent arm", async () => {
+      const result = await validateTreatmentWithDiff({
+        source: study({ treatmentLocale: "he", consentLocales: ["en"] }),
+        loadImport: noImports,
+      });
+      // Fixture is otherwise schema-valid, so the warning is the ONLY
+      // diagnostic — no incidental errors masking or padding the result.
+      expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual(
+        [],
+      );
+      const gap = result.diagnostics.find((d) =>
+        d.message.includes("no consent arm is authored"),
+      );
+      expect(gap).toBeDefined();
+      expect(gap!.severity).toBe("warning");
+      expect(gap!.message).toContain('locale "he"');
+    });
+
+    it("is clean when a matching consent arm exists", async () => {
+      const result = await validateTreatmentWithDiff({
+        source: study({ treatmentLocale: "he", consentLocales: ["en", "he"] }),
+        loadImport: noImports,
+      });
+      // A fully valid, fully covered study produces no diagnostics at all —
+      // anchoring that the absence below isn't a vacuous pass over a fixture
+      // that errored out before the rule ran.
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("stays silent when the study declares no consent (opt-in)", async () => {
+      const result = await validateTreatmentWithDiff({
+        source: study({ treatmentLocale: "he", consentLocales: null }),
+        loadImport: noImports,
+      });
+      expect(result.diagnostics).toEqual([]);
+    });
+  });
+
   describe("unsatisfiable conditions (#480)", () => {
     const withGate = (comparator: string, value: string) => `treatments:
   - name: t

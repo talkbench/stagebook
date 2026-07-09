@@ -3,6 +3,7 @@ import {
   collectPreHydrationIssues,
   parseTreatmentYaml as parseStagebookYaml,
   validateResolvedTreatmentFile,
+  checkConsentLocaleCoverage,
   type PreHydrationIssue,
 } from "../index.js";
 import type { ZodIssue } from "zod";
@@ -251,6 +252,21 @@ export async function validateTreatmentWithDiff({
       diagnostics.push({
         message: mismatch.message,
         severity: "error",
+        range: null,
+      });
+    }
+
+    // Post-hydration consent i18n-completeness rule (#529): a treatment locale
+    // with no matching consent arm is a WARNING, not an error — consent is
+    // deliberately not paired to treatments (ADR 2026-07-consent-debrief #4),
+    // so a single-locale consent alongside multi-locale treatments is a
+    // legitimate choice, not a bug. Pure over the hydrated tree (both locales
+    // live in-file, no prompt loading). Top-of-file range (null): the rule
+    // reports per missing locale and the message names the treatment(s).
+    for (const gap of checkConsentLocaleCoverage(diff.hydrated)) {
+      diagnostics.push({
+        message: gap.message,
+        severity: "warning",
         range: null,
       });
     }

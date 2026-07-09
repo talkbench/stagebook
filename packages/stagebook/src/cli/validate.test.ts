@@ -501,6 +501,88 @@ describe("locale-consistency rule", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Consent i18n-completeness rule (#529): a treatment locale with no matching
+// consent arm is a WARNING (not an error — consent is not paired to
+// treatments). Runs on the expanded YAML, no prompt loading needed.
+// ---------------------------------------------------------------------------
+
+describe("consent i18n-completeness rule", () => {
+  let dir: string;
+
+  function studyYaml(opts: {
+    treatmentLocale?: string;
+    consentLocales?: (string | undefined)[] | null;
+  }): string {
+    const lines: string[] = [
+      "treatments:",
+      "  - name: t1",
+      ...(opts.treatmentLocale ? [`    locale: ${opts.treatmentLocale}`] : []),
+      "    playerCount: 1",
+      "    compatibleIntroSequences: []",
+      "    gameStages:",
+      "      - name: s1",
+      "        duration: 10",
+      "        elements:",
+      "          - type: submitButton",
+    ];
+    // `null` → no consent block at all (opt-in negative case).
+    if (opts.consentLocales != null) {
+      lines.push("consent:");
+      opts.consentLocales.forEach((loc, i) => {
+        lines.push(`  - name: arm${i}`);
+        if (loc) lines.push(`    locale: ${loc}`);
+        lines.push("    steps:");
+        lines.push("      - name: c1");
+        lines.push("        elements:");
+        lines.push("          - type: submitButton");
+      });
+    }
+    lines.push("");
+    return lines.join("\n");
+  }
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "stagebook-cli-consent-"));
+  });
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("warns (but does not error) when a treatment locale has no consent arm", async () => {
+    await writeFile(
+      join(dir, "study.stagebook.yaml"),
+      studyYaml({ treatmentLocale: "he", consentLocales: ["en"] }),
+    );
+    const r = await runCli([join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(0); // warning does not fail the build
+    expect(r.stdout).toContain("warning:");
+    expect(r.stdout).toContain('locale "he"');
+    expect(r.stdout).toContain("no consent arm is authored");
+  });
+
+  it("is clean when a matching consent arm exists", async () => {
+    await writeFile(
+      join(dir, "study.stagebook.yaml"),
+      studyYaml({ treatmentLocale: "he", consentLocales: ["en", "he"] }),
+    );
+    const r = await runCli([join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).not.toContain("no consent arm is authored");
+  });
+
+  it("does not warn when the study declares no consent (feature is opt-in)", async () => {
+    await writeFile(
+      join(dir, "study.stagebook.yaml"),
+      studyYaml({ treatmentLocale: "he", consentLocales: null }),
+    );
+    const r = await runCli([join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).not.toContain("no consent arm is authored");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Unsatisfiable-condition rule (#480): a condition reading a prompt's answer
 // whose comparator can never match any value the prompt produces (dead gate)
 // is flagged as an error, reading the referenced prompt's option domain from

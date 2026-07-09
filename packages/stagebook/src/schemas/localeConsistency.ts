@@ -199,3 +199,108 @@ export function checkPromptLocaleConsistency(
   }
   return mismatches;
 }
+
+/**
+ * One treatment locale for which the study declares NO matching consent arm.
+ * The cross-collection (treatments × consent arms) counterpart to the
+ * per-prompt locale-consistency rule above.
+ */
+export interface ConsentLocaleGap {
+  /** Effective treatment locale (primary subtag, defaulted to `en`) that no
+   *  consent arm covers. */
+  locale: string;
+  /** Names of the treatments declaring that locale, in first-seen order. */
+  treatments: string[];
+  message: string;
+}
+
+/**
+ * i18n-completeness check (#529, ADR docs/decisions/2026-07-consent-debrief.md
+ * "Phase 3"): warn when a treatment declares a `locale` for which the study has
+ * no consent arm — a participant assigned that treatment would have no consent
+ * content in their language.
+ *
+ * **Warning, not error, by design.** Consent has no treatment-level pairing
+ * (ADR decision #4): a study may legitimately run a single-locale consent while
+ * treatments span locales, or handle a locale's consent out-of-band. This is a
+ * completeness nudge, not a hard constraint — the caller renders it at warning
+ * severity.
+ *
+ * Semantics mirror `checkPromptLocaleConsistency`: locales compare by BCP-47
+ * primary subtag (`he-IL` ≡ `he`), both consent-arm and treatment `locale`
+ * default to `en` when absent, and a leaked `${…}` placeholder (in either) is
+ * skipped — that leak is a different problem with its own schema diagnostic.
+ *
+ * **Opt-in.** A file with no consent arms (absent or empty) is not using the
+ * feature, so nothing is flagged. Findings are deduplicated per locale: three
+ * `he` treatments with no `he` arm produce one gap naming all three.
+ *
+ * Pure function over the hydrated (post-fillTemplates) treatment file — no I/O.
+ * `consentArm` templates have already fanned out to concrete per-locale arms by
+ * the time this runs, which is why it belongs with the post-hydration rules.
+ */
+export function checkConsentLocaleCoverage(
+  fileObj: unknown,
+): ConsentLocaleGap[] {
+  if (!isRecord(fileObj)) return [];
+
+  const consent = fileObj.consent;
+  // Opt-in: no consent collection (absent or empty) means the feature isn't in
+  // use, so there is nothing to be complete about.
+  if (!Array.isArray(consent) || consent.length === 0) return [];
+
+  // Locales the study's consent arms cover. A leaked `${…}` arm locale is
+  // dropped (it covers nothing and is reported elsewhere).
+  const coveredLocales = new Set<string>();
+  for (const arm of consent) {
+    if (!isRecord(arm)) continue;
+    const raw = typeof arm.locale === "string" ? arm.locale : undefined;
+    if (raw?.includes("${")) continue;
+    coveredLocales.add(primarySubtag(raw));
+  }
+
+  const treatments = fileObj.treatments;
+  if (!Array.isArray(treatments)) return [];
+
+  // Uncovered locale → treatment names declaring it. Both the Map (keyed by
+  // locale) and each name Set preserve first-seen order for stable output while
+  // deduplicating in O(1) — the Set-based dedup `checkPromptLocaleConsistency`
+  // uses for its per-(container, file) reports.
+  const gaps = new Map<string, Set<string>>();
+  for (const t of treatments) {
+    if (!isRecord(t)) continue;
+    const raw = typeof t.locale === "string" ? t.locale : undefined;
+    // A leaked `${…}` placeholder in the treatment locale is a different
+    // problem with its own schema diagnostic — skip rather than double-report.
+    if (raw?.includes("${")) continue;
+    const locale = primarySubtag(raw);
+    if (coveredLocales.has(locale)) continue;
+    const name = typeof t.name === "string" ? t.name : "(unnamed)";
+    const names = gaps.get(locale);
+    if (names === undefined) {
+      gaps.set(locale, new Set([name]));
+    } else {
+      names.add(name);
+    }
+  }
+
+  return [...gaps].map(([locale, nameSet]) => {
+    const names = [...nameSet];
+    const nameList = names.map((n) => `"${n}"`).join(", ");
+    const clause =
+      names.length > 1
+        ? `Treatments ${nameList} declare`
+        : `Treatment ${nameList} declares`;
+    return {
+      locale,
+      treatments: names,
+      message:
+        `${clause} locale "${locale}", but no consent arm is authored in ` +
+        `that locale. Add a consent arm with \`locale: ${locale}\` so ` +
+        `participants assigned this treatment see consent in their language, ` +
+        `or run a single-locale consent deliberately — consent is not paired ` +
+        `to treatments, so this is a warning, not an error. A consent arm ` +
+        `with no \`locale\` counts as "en".`,
+    };
+  });
+}

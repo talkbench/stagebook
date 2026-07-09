@@ -2,6 +2,7 @@ import { describe, test, expect } from "vitest";
 import {
   collectReferencedPromptFiles,
   checkPromptLocaleConsistency,
+  checkConsentLocaleCoverage,
 } from "./localeConsistency.js";
 
 function treatmentFile(
@@ -287,5 +288,213 @@ describe("intro sequences (pre-assignment phase)", () => {
       ["prompts/he/q.prompt.md", "he"],
     ]);
     expect(checkPromptLocaleConsistency(file, locales)).toEqual([]);
+  });
+});
+
+describe("checkConsentLocaleCoverage (#529, i18n-completeness)", () => {
+  function fileWithConsent(spec: {
+    treatments?: { name: string; locale?: string }[];
+    consent?: { name: string; locale?: string }[];
+  }): Record<string, unknown> {
+    const obj: Record<string, unknown> = {
+      treatments: (spec.treatments ?? []).map((t) => ({
+        name: t.name,
+        playerCount: 1,
+        ...(t.locale !== undefined ? { locale: t.locale } : {}),
+        gameStages: [{ name: "g", duration: 5, elements: [] }],
+      })),
+    };
+    if (spec.consent !== undefined) {
+      obj.consent = spec.consent.map((a) => ({
+        name: a.name,
+        ...(a.locale !== undefined ? { locale: a.locale } : {}),
+        steps: [{ name: "s", elements: [] }],
+      }));
+    }
+    return obj;
+  }
+
+  test("treatment locale with no matching consent arm: warns", () => {
+    const file = fileWithConsent({
+      treatments: [{ name: "t-he", locale: "he" }],
+      consent: [{ name: "gdpr", locale: "en" }],
+    });
+    const gaps = checkConsentLocaleCoverage(file);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]).toMatchObject({ locale: "he", treatments: ["t-he"] });
+    expect(gaps[0]?.message).toContain('locale "he"');
+    expect(gaps[0]?.message).toContain("`locale: he`");
+    expect(gaps[0]?.message).toContain("warning, not an error");
+  });
+
+  test("matching consent arm present: clean", () => {
+    const file = fileWithConsent({
+      treatments: [{ name: "t-he", locale: "he" }],
+      consent: [
+        { name: "gdpr-en", locale: "en" },
+        { name: "gdpr-he", locale: "he" },
+      ],
+    });
+    expect(checkConsentLocaleCoverage(file)).toEqual([]);
+  });
+
+  test("omitted locales both default to en: clean", () => {
+    const file = fileWithConsent({
+      treatments: [{ name: "t" }],
+      consent: [{ name: "gdpr" }],
+    });
+    expect(checkConsentLocaleCoverage(file)).toEqual([]);
+  });
+
+  test("en treatment (locale omitted) uncovered by an he-only consent: warns for en", () => {
+    const file = fileWithConsent({
+      treatments: [{ name: "t" }],
+      consent: [{ name: "gdpr-he", locale: "he" }],
+    });
+    const gaps = checkConsentLocaleCoverage(file);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]).toMatchObject({ locale: "en", treatments: ["t"] });
+  });
+
+  test("repeated consent-arm locale is handled (arm locale may repeat)", () => {
+    const file = fileWithConsent({
+      treatments: [{ name: "t-he", locale: "he" }],
+      consent: [
+        { name: "gdpr-he", locale: "he" },
+        { name: "irb-he", locale: "he" },
+      ],
+    });
+    expect(checkConsentLocaleCoverage(file)).toEqual([]);
+  });
+
+  test("consent absent entirely: no warning (feature is opt-in)", () => {
+    const file = fileWithConsent({
+      treatments: [{ name: "t-he", locale: "he" }],
+    });
+    expect(checkConsentLocaleCoverage(file)).toEqual([]);
+  });
+
+  test("consent present but empty: no warning (feature is opt-in)", () => {
+    const file = fileWithConsent({
+      treatments: [{ name: "t-he", locale: "he" }],
+      consent: [],
+    });
+    expect(checkConsentLocaleCoverage(file)).toEqual([]);
+  });
+
+  test("per-locale dedup: two treatments share the missing locale, one warning", () => {
+    const file = fileWithConsent({
+      treatments: [
+        { name: "t-he-a", locale: "he" },
+        { name: "t-he-b", locale: "he" },
+      ],
+      consent: [{ name: "gdpr", locale: "en" }],
+    });
+    const gaps = checkConsentLocaleCoverage(file);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]?.locale).toBe("he");
+    expect(gaps[0]?.treatments).toEqual(["t-he-a", "t-he-b"]);
+    // Plural noun AND verb agreement pinned together (guards the plural branch
+    // against regressing to the singular "declares").
+    expect(gaps[0]?.message).toContain(
+      'Treatments "t-he-a", "t-he-b" declare locale "he"',
+    );
+  });
+
+  test("multiple uncovered locales each warn once, in first-seen order", () => {
+    const file = fileWithConsent({
+      treatments: [
+        { name: "t-he", locale: "he" },
+        { name: "t-ar", locale: "ar" },
+      ],
+      consent: [{ name: "gdpr", locale: "en" }],
+    });
+    const gaps = checkConsentLocaleCoverage(file);
+    // Not sorted: the gaps array preserves the order locales are first seen
+    // among the treatments (he before ar), for stable diagnostic output.
+    expect(gaps.map((g) => g.locale)).toEqual(["he", "ar"]);
+  });
+
+  test("compares by primary subtag: he-IL treatment covered by he arm", () => {
+    const file = fileWithConsent({
+      treatments: [{ name: "t", locale: "he-IL" }],
+      consent: [{ name: "gdpr", locale: "he" }],
+    });
+    expect(checkConsentLocaleCoverage(file)).toEqual([]);
+  });
+
+  test("compares by primary subtag: he treatment covered by he-IL arm", () => {
+    const file = fileWithConsent({
+      treatments: [{ name: "t", locale: "he" }],
+      consent: [{ name: "gdpr", locale: "he-IL" }],
+    });
+    expect(checkConsentLocaleCoverage(file)).toEqual([]);
+  });
+
+  test("a leaked ${...} treatment locale is skipped (schema reports the leak)", () => {
+    const file = fileWithConsent({
+      treatments: [{ name: "t", locale: "${locale}" }],
+      consent: [{ name: "gdpr", locale: "en" }],
+    });
+    expect(checkConsentLocaleCoverage(file)).toEqual([]);
+  });
+
+  test("a leaked ${...} consent-arm locale does not count as coverage", () => {
+    const file = fileWithConsent({
+      treatments: [{ name: "t-he", locale: "he" }],
+      consent: [{ name: "gdpr", locale: "${locale}" }],
+    });
+    const gaps = checkConsentLocaleCoverage(file);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]?.locale).toBe("he");
+  });
+
+  test("locale match is case-insensitive (HE arm covers he treatment)", () => {
+    const file = fileWithConsent({
+      treatments: [{ name: "t", locale: "he" }],
+      consent: [{ name: "gdpr", locale: "HE" }],
+    });
+    expect(checkConsentLocaleCoverage(file)).toEqual([]);
+  });
+
+  test("a malformed arm in a non-empty consent does not suppress a real gap", () => {
+    // consent is non-empty (opt-in fires), but the only arm is a non-record.
+    // It contributes no coverage, so the he treatment still warns — and the
+    // walk stays defensive (no throw) over the garbage arm.
+    const file = {
+      treatments: [
+        {
+          name: "t-he",
+          playerCount: 1,
+          locale: "he",
+          gameStages: [{ name: "g", duration: 5, elements: [] }],
+        },
+      ],
+      consent: [null],
+    };
+    const gaps = checkConsentLocaleCoverage(file);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]?.locale).toBe("he");
+  });
+
+  test("singular vs plural phrasing in the message", () => {
+    const file = fileWithConsent({
+      treatments: [{ name: "solo", locale: "he" }],
+      consent: [{ name: "gdpr", locale: "en" }],
+    });
+    const gaps = checkConsentLocaleCoverage(file);
+    expect(gaps[0]?.message).toContain('Treatment "solo" declares');
+  });
+
+  test("is defensive over malformed input", () => {
+    expect(checkConsentLocaleCoverage(null)).toEqual([]);
+    expect(checkConsentLocaleCoverage("nope")).toEqual([]);
+    expect(checkConsentLocaleCoverage({ consent: "nope" })).toEqual([]);
+    expect(
+      checkConsentLocaleCoverage({ treatments: "nope", consent: [null] }),
+    ).toEqual([]);
+    expect(
+      checkConsentLocaleCoverage({ treatments: [null], consent: [{}] }),
+    ).toEqual([]);
   });
 });
