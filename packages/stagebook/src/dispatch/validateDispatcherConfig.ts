@@ -576,7 +576,7 @@ function isNonNegativeFiniteNumber(v: unknown): boolean {
 
 /** Detect a host-side file reference that hasn't been resolved yet.
  *  Accepts both `{ file: "..." }` (the canonical 0.17 shape, matches
- *  manager + deliberation-lab) and `{ from: "..." }` (the deprecated
+ *  manager + runner) and `{ from: "..." }` (the deprecated
  *  shape, removed in 0.18). The validator's job is just to recognize
  *  the shape so it can emit a clear "host must resolve before calling"
  *  error rather than mis-parsing the object as inline data. (#466) */

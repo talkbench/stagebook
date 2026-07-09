@@ -38,7 +38,7 @@ cloud sessions) working issues in this repo.
 9. Once CI is green, **mark the PR ready for review**
    (`gh pr ready <number>`). This triggers Copilot review.
 10. Wait for Copilot review comments
-    (`gh api repos/deliberation-lab/stagebook/pulls/<number>/comments`).
+    (`gh api repos/talkbench/stagebook/pulls/<number>/comments`).
     Address each with a follow-up commit, push, and re-check CI.
 11. Once CI is green and all Copilot comments are addressed, comment on the
     PR: **"Ready for review — @jamesphoughton"** and stop.

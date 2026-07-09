@@ -2,7 +2,7 @@
 
 `InterVariable.woff2` is vendored (not fetched at runtime) so every participant
 sees the same font regardless of network, CSP, or CDN availability — the
-measurement-instrument guarantee. See deliberation-lab/stagebook#412.
+measurement-instrument guarantee. See talkbench/stagebook#412.
 
 | Field   | Value                                                                   |
 | ------- | ----------------------------------------------------------------------- |

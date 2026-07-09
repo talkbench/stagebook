@@ -494,6 +494,6 @@ If your repo has a `CLAUDE.md` (or any agent-instruction file), add this block s
 > npx --package=stagebook stagebook validate <file>
 > ```
 >
-> Resolve all errors. For machine-readable output use `--format=json`; the JSON schema is documented [here](https://github.com/deliberation-lab/stagebook/blob/main/docs/researcher/treatment-files.md#json-output-schema). Exit codes: `0` clean, `1` schema errors, `2` couldn't read.
+> Resolve all errors. For machine-readable output use `--format=json`; the JSON schema is documented [here](https://github.com/talkbench/stagebook/blob/main/docs/researcher/treatment-files.md#json-output-schema). Exit codes: `0` clean, `1` schema errors, `2` couldn't read.
 
 Without this hook agents can edit treatment files but have no way to check their own work — the only signal that something is wrong reaches them after you open VS Code, read the Problems panel, and paste the error back.

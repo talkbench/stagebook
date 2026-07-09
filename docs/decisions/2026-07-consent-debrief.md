@@ -3,13 +3,13 @@
 Status: **accepted** — design settled in the [#481] comment thread
 (2026-07-02/03); this ADR records the outcome. Phase 1 (stagebook library
 + viewer) is implemented by the PR that links here; Phase 2
-(deliberation-lab integration + boilerplate library) follows in the host
+(runner integration + boilerplate library) follows in the host
 repo. Builds on the intro-sequence pairing model of [#499]
 ([2026-07-intro-sequence-pairing.md](./2026-07-intro-sequence-pairing.md)).
 
-[#481]: https://github.com/deliberation-lab/stagebook/issues/481
-[#499]: https://github.com/deliberation-lab/stagebook/issues/499
-[#479]: https://github.com/deliberation-lab/stagebook/issues/479
+[#481]: https://github.com/talkbench/stagebook/issues/481
+[#499]: https://github.com/talkbench/stagebook/issues/499
+[#479]: https://github.com/talkbench/stagebook/issues/479
 
 ## Motivation
 
@@ -53,7 +53,7 @@ responses plus the version-controlled content ARE the consent record.**
 | 10  | Step rules          | Consent steps get intro-style restrictions (advancement element required, no `shared` prompts, no position fields — pre-assignment, single participant); debrief gets exit-style (advancement + no shared).                                              |
 | 11  | Locale              | Consent arms declare their **own** locale (pre-assignment, like intro sequences); debrief inherits the treatment's. The locale-consistency rule covers both (new "consent arm" container kind).                                                          |
 | 12  | Templates           | New content types `consentArm` / `consent` / `debriefSteps` — a single-source `consentArm` template with `${locale}` broadcasts to one arm per locale, same pattern as the i18n gallery's treatments.                                                    |
-| 13  | Boilerplate         | **Per-institution**, not one global library: institutions maintain their own importable consent modules (e.g. `imports: [@your-inst/consent-gdpr]`) carrying their jurisdiction/IRB language; studies compose those + a study-specific addendum. This is where the institution-defaulting responsibility lands once deliberation-lab's hardcoded US/UK/EU statements are retired. Collisions with study keys surface as design-time validation errors; module authors use distinctive key names.                             |
+| 13  | Boilerplate         | **Per-institution**, not one global library: institutions maintain their own importable consent modules (e.g. `imports: [@your-inst/consent-gdpr]`) carrying their jurisdiction/IRB language; studies compose those + a study-specific addendum. This is where the institution-defaulting responsibility lands once runner's hardcoded US/UK/EU statements are retired. Collisions with study keys surface as design-time validation errors; module authors use distinctive key names.                             |
 
 ## Alternatives considered
 
@@ -93,7 +93,7 @@ interstitials narrating the platform steps it can't simulate.
 
 - Purely additive at the schema level — no migration (the breaking
   change of this release cycle is [#499]'s, which ships first).
-- deliberation-lab Phase 2: `consentName` selector, render consent first
+- runner Phase 2: `consentName` selector, render consent first
   / debrief last via the existing `GenericIntroExitStep` seam, retire
   the hardcoded legal statements, keep the markdown fallback.
 - Phase 3 (later): i18n-completeness warning (treatment locale with no

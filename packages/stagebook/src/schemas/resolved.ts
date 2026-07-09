@@ -458,7 +458,7 @@ export interface ValidateResolvedOptions {
    * contexts (e.g. the VS Code extension's expansion preview)
    * where `${field}` placeholders are expected because the host
    * hasn't bound them yet. Production hosts (annotator,
-   * deliberation-lab) leave this off so unbound fields surface as
+   * runner) leave this off so unbound fields surface as
    * errors before the participant sees a broken page.
    */
   skipUnresolved?: boolean;

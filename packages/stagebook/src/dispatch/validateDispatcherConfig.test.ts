@@ -167,7 +167,7 @@ describe("validateDispatcherConfig", () => {
 
     test("also recognizes the deprecated `{ from }` file-ref shape (0.17 compat shim)", () => {
       // The key renamed from `from` to `file` in 0.17 to match the
-      // manager + deliberation-lab convention (#466). The runtime
+      // manager + runner convention (#466). The runtime
       // accepts both shapes for one release so existing configs keep
       // working; `{ from }` is removed in 0.18.
       const r = validateDispatcherConfig(

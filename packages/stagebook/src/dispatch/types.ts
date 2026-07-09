@@ -2,7 +2,7 @@
 //
 // Three concerns live here:
 //   - The structural Treatment / Assignment shapes the dispatchers consume
-//     and produce. They mirror the deliberation-lab dispatcher shapes so
+//     and produce. They mirror the runner dispatcher shapes so
 //     hosts can call into either without translating.
 //   - The EligibilityTable interface — a pre-computed lookup for "is
 //     player P eligible for treatment T's position p?" Decouples the
@@ -101,8 +101,8 @@ export type PlayerDataSnapshot = Record<string, Record<string, unknown>>;
  *  either form at the boundary.
  *
  *  Key renamed from `from` to `file` in stagebook 0.17 to match the
- *  manager + deliberation-lab convention that had already converged on
- *  `{ file }` (deliberation-lab#273, manager#305). The runtime check
+ *  manager + runner convention that had already converged on
+ *  `{ file }` (talkbench/runner#273, manager#305). The runtime check
  *  in `validateDispatcherConfig` accepts both shapes for one release
  *  as a compat shim; `{ from }` will be removed in 0.18. (#466) */
 export interface FileReference {

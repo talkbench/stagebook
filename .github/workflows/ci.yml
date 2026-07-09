@@ -206,7 +206,7 @@ jobs:
       #      `--no-sandbox`. Fix: set `container.options: --user 1001`
       #      (matches the runner's UID) OR add `args: ["--no-sandbox"]`
       #      to the chromium launch options in playwright-ct.config.ts.
-      #      deliberation-lab's playwright_component.yml uses the
+      #      runner's playwright_component.yml uses the
       #      `--user 1001` form.
       #   2. The image tag MUST track the `@playwright/experimental-
       #      ct-react` version in package-lock.json (two places to

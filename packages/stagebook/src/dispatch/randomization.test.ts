@@ -4,9 +4,9 @@
 // reviewer: assignment is unbiased w.r.t. arrival order, position
 // within a group, irrelevant player attributes, and pairwise co-
 // occurrence. Mirrors the 8-test reference suite that landed in
-// deliberation-lab#268 for the BO-style dispatcher.
+// talkbench/runner#268 for the BO-style dispatcher.
 //
-// Sizing rationale (same as deliberation-lab):
+// Sizing rationale (same as runner):
 //   - M chosen so binomial SE is small enough to catch ≥2% absolute
 //     deviations at α=1e-4, while staying within ~30s per test.
 //   - chi-square critical values pinned via lookup table — keeps the

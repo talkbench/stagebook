@@ -4,9 +4,9 @@ Status: **accepted** — design settled in [#499] (see its comment thread for
 the full discussion, including the relationship to consent/debrief in
 [#481]). Implemented by the PR that links here.
 
-[#499]: https://github.com/deliberation-lab/stagebook/issues/499
-[#481]: https://github.com/deliberation-lab/stagebook/issues/481
-[#480]: https://github.com/deliberation-lab/stagebook/issues/480
+[#499]: https://github.com/talkbench/stagebook/issues/499
+[#481]: https://github.com/talkbench/stagebook/issues/481
+[#480]: https://github.com/talkbench/stagebook/issues/480
 
 ## Motivation
 
@@ -96,7 +96,7 @@ Key semantics:
 
 - Major version bump; every consumer's treatment files add
   `compatibleIntroSequences:` to each treatment (see the consumer issues filed from
-  [#499] for deliberation-lab, manager, annotator).
+  [#499] for runner, manager, annotator).
 - Hosts gain a launch-time guard (`checkPairing`) at the point where
   batch config selects `introSequenceName` + `treatments`.
 - The unsatisfiable-conditions rule ([#480]) and future cross-phase

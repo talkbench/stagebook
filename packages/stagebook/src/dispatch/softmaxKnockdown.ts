@@ -43,7 +43,7 @@ export interface SoftmaxKnockdownResult {
  * State-in / state-out: callers thread `newState.payoffs` into the
  * next call's `payoffs`. The dispatcher itself is pure — no closure
  * mutation — which makes mirroring the dispatcher state to a host
- * heartbeat (deliberation-lab#275) and post-hoc replay both
+ * heartbeat (talkbench/runner#275) and post-hoc replay both
  * straightforward.
  *
  * Algorithm sketch (per call):

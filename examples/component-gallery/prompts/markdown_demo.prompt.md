@@ -7,7 +7,7 @@ name: markdown_demo
 
 Paragraphs flow normally. **Bold**, *italic*, ~~strikethrough~~, and
 `inline code` all work. So do
-[external links](https://github.com/deliberation-lab/stagebook).
+[external links](https://github.com/talkbench/stagebook).
 
 ### Heading hierarchy
 
