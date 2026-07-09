@@ -16,11 +16,14 @@ export function expandTreatmentFile(
   // Strip template definitions before expansion — they contain
   // placeholder syntax that would be falsely flagged as unresolved.
   const { templates, ...withoutTemplates } = treatmentFile;
+  // fillTemplates is a generic object walker (its `result` is `any`); receive
+  // it as `unknown` and re-assert the treatment-file shape on return rather
+  // than letting the `any` leak into this typed surface.
   const { result, unresolvedFields } = fillTemplates({
     obj: withoutTemplates,
     templates: templates ?? [],
     additionalFields,
     allowUnresolved: true,
-  });
+  }) as { result: unknown; unresolvedFields: string[] };
   return { result: result as TreatmentFileType, unresolvedFields };
 }

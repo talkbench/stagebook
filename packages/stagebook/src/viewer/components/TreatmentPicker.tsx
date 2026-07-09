@@ -1,5 +1,18 @@
 import type { TreatmentFileType } from "../../schemas/index.js";
 
+// The raw schema types `treatments`/`introSequences` as `any` (their runtime
+// schema accepts template invocations, so the inferred type is deliberately
+// left wide — real post-expansion types live in the resolved-schema layer).
+// The picker only needs each unit's label + a count, so narrow to those fields
+// locally. The Viewer only mounts this with a resolved tree, so the arrays are
+// concrete here.
+type TreatmentSummary = {
+  name: string;
+  playerCount: number;
+  gameStages: unknown[];
+};
+type IntroSequenceSummary = { name: string; introSteps: unknown[] };
+
 interface TreatmentPickerProps {
   treatmentFile: TreatmentFileType;
   onSelect: (introIndex: number, treatmentIndex: number) => void;
@@ -12,8 +25,9 @@ export function TreatmentPicker({
   // Both arrays are optional in the schema (treatments-only and intro-only
   // files are valid mid-development states); normalize to [] so the
   // .length/.map below never throw.
-  const introSequences = treatmentFile.introSequences ?? [];
-  const treatments = treatmentFile.treatments ?? [];
+  const introSequences = (treatmentFile.introSequences ??
+    []) as IntroSequenceSummary[];
+  const treatments = (treatmentFile.treatments ?? []) as TreatmentSummary[];
   const multipleIntros = introSequences.length > 1;
   const multipleTreatments = treatments.length > 1;
 
@@ -35,29 +49,20 @@ export function TreatmentPicker({
           <>
             <h2 style={sectionStyle}>Treatments</h2>
             <div style={listStyle}>
-              {treatments.map(
-                (
-                  t: {
-                    name: string;
-                    playerCount: number;
-                    gameStages: unknown[];
-                  },
-                  i: number,
-                ) => (
-                  <button
-                    key={t.name}
-                    onClick={() => handleTreatmentClick(i)}
-                    style={optionStyle}
-                  >
-                    <span style={optionNameStyle}>{t.name}</span>
-                    <span style={optionDetailStyle}>
-                      {t.playerCount} player{t.playerCount !== 1 ? "s" : ""},{" "}
-                      {t.gameStages.length} stage
-                      {t.gameStages.length !== 1 ? "s" : ""}
-                    </span>
-                  </button>
-                ),
-              )}
+              {treatments.map((t, i) => (
+                <button
+                  key={t.name}
+                  onClick={() => handleTreatmentClick(i)}
+                  style={optionStyle}
+                >
+                  <span style={optionNameStyle}>{t.name}</span>
+                  <span style={optionDetailStyle}>
+                    {t.playerCount} player{t.playerCount !== 1 ? "s" : ""},{" "}
+                    {t.gameStages.length} stage
+                    {t.gameStages.length !== 1 ? "s" : ""}
+                  </span>
+                </button>
+              ))}
             </div>
           </>
         )}
@@ -66,21 +71,19 @@ export function TreatmentPicker({
           <>
             <h2 style={sectionStyle}>Intro Sequences</h2>
             <div style={listStyle}>
-              {introSequences.map(
-                (intro: { name: string; introSteps: unknown[] }, i: number) => (
-                  <button
-                    key={intro.name}
-                    onClick={() => onSelect(i, 0)}
-                    style={optionStyle}
-                  >
-                    <span style={optionNameStyle}>{intro.name}</span>
-                    <span style={optionDetailStyle}>
-                      {intro.introSteps.length} step
-                      {intro.introSteps.length !== 1 ? "s" : ""}
-                    </span>
-                  </button>
-                ),
-              )}
+              {introSequences.map((intro, i) => (
+                <button
+                  key={intro.name}
+                  onClick={() => onSelect(i, 0)}
+                  style={optionStyle}
+                >
+                  <span style={optionNameStyle}>{intro.name}</span>
+                  <span style={optionDetailStyle}>
+                    {intro.introSteps.length} step
+                    {intro.introSteps.length !== 1 ? "s" : ""}
+                  </span>
+                </button>
+              ))}
             </div>
           </>
         )}
