@@ -186,7 +186,7 @@ export function TrackedLink({
           transition: color 120ms ease-out;
         }
         .${linkClass}:hover {
-          color: var(--stagebook-primary-hover, #2563eb);
+          color: var(--stagebook-primary-hover, #1d4ed8);
         }
         /* :focus-visible (keyboard-only) ring. Mouse clicks don't
            leave a lingering ring around the link after release. */

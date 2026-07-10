@@ -71,7 +71,7 @@ export function KitchenTimer({
   const isWarning = timerRemaining <= warnTimeRemaining;
   const barColor = isWarning
     ? "var(--stagebook-danger, #b91c1c)"
-    : "var(--stagebook-timer-fill, #60a5fa)"; // red-500 / blue-400
+    : "var(--stagebook-timer-fill, #60a5fa)"; // danger red-700 / blue-400
 
   return (
     <div

@@ -104,7 +104,7 @@ export function Button({
            with --stagebook-hover-bg, the same token Radio /
            Checkbox rows use for their hover. */
         .${buttonClass}[data-variant="primary"]:hover {
-          background-color: var(--stagebook-primary-hover, #2563eb);
+          background-color: var(--stagebook-primary-hover, #1d4ed8);
         }
         .${buttonClass}[data-variant="secondary"]:hover {
           background-color: var(--stagebook-hover-bg, #f3f4f6);
@@ -113,7 +113,7 @@ export function Button({
            tactile feedback during the click; without it the button
            feels unresponsive on slow clicks. */
         .${buttonClass}[data-variant="primary"]:active {
-          background-color: var(--stagebook-primary-active, #1d4ed8);
+          background-color: var(--stagebook-primary-active, #1e40af);
         }
         .${buttonClass}[data-variant="secondary"]:active {
           background-color: var(--stagebook-bg-track, #e5e7eb);

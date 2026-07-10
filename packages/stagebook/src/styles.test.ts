@@ -65,6 +65,17 @@ describe("styles.css custom property coverage", () => {
 
     expect(offenders).toEqual([]);
   });
+
+  it("no component references a private --sb-* primitive (theme via --stagebook-* only)", () => {
+    // Primitives are an internal implementation detail; components must only
+    // reference the public --stagebook-* semantic tokens so host overrides on
+    // those tokens are honored everywhere (#535).
+    const leaks: string[] = [];
+    for (const file of collectFiles(componentsDir)) {
+      if (/var\(\s*--sb-/.test(readFileSync(file, "utf8"))) leaks.push(file);
+    }
+    expect(leaks).toEqual([]);
+  });
 });
 
 // Issue #116: form resets, focus rings, and table styles previously
@@ -266,8 +277,15 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     const v = vars.get(name);
     if (!v) return null;
     if (/^#[0-9a-f]{3,8}$/i.test(v)) return v;
-    const ref = /var\(\s*(--[\w-]+)/.exec(v);
-    return ref ? resolveHex(ref[1], seen) : null; // color-mix/rgba → null
+    // Only follow a plain `var(--x)` alias to a solid hex. A color-mix()/rgba()
+    // value is a translucent/blended color with no single opaque hex, so a
+    // contrast assertion against it would be meaningless — return null (the
+    // caller asserts the token resolved) rather than the inner var's opaque hex.
+    if (/^var\(\s*--[\w-]+\s*\)$/.test(v)) {
+      const ref = /var\(\s*(--[\w-]+)/.exec(v);
+      return ref ? resolveHex(ref[1], seen) : null;
+    }
+    return null;
   }
 
   function relLum(hex: string): number {
@@ -302,6 +320,7 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     ["--stagebook-primary", "--stagebook-bg", AA, "link text / TrackedLink"],
     ["--stagebook-bg", "--stagebook-primary", AA, "button label on primary"],
     ["--stagebook-link", "--stagebook-bg", AA, "markdown link text"],
+    ["--stagebook-link-visited", "--stagebook-bg", AA, "visited link text"],
     ["--stagebook-danger", "--stagebook-danger-bg", AA, "danger pill/callout"],
     ["--stagebook-success", "--stagebook-success-bg", AA, "success pill"],
     ["--stagebook-warning", "--stagebook-warning-bg", AA, "warning pill"],
@@ -332,5 +351,14 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
 
   it("pins color-scheme: light so participant OS dark mode can't re-tint native controls", () => {
     expect(rootBody).toMatch(/color-scheme:\s*light/);
+  });
+
+  it("keeps --stagebook-playhead independent of --stagebook-primary (rose, not the accent)", () => {
+    // The playhead is deliberately its own hue — a host rebranding the accent
+    // (or danger) must not move the playhead marker (#535).
+    const playhead = resolveHex("--stagebook-playhead");
+    expect(playhead).toBe("#be123c"); // rose-700
+    expect(playhead).not.toBe(resolveHex("--stagebook-primary"));
+    expect(playhead).not.toBe(resolveHex("--stagebook-danger"));
   });
 });
