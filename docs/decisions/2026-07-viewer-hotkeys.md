@@ -63,13 +63,25 @@ Two points where the implementation refined the #534 sketch:
   layout-independent. Gate on `e.altKey && !e.ctrlKey && !e.metaKey` so Windows
   AltGr (reported as Ctrl+Alt) and Cmd/Ctrl accelerators still pass through.
 - **Scope the listener to the focused viewer**, not `window`: it lives on the
-  viewer root (`tabIndex=-1`, focus-on-click), so several embedded viewers and
-  the host page never cross-fire.
+  viewer root (`tabIndex=-1`), so several embedded viewers and the host page
+  never cross-fire. A `tabIndex=-1` root isn't reliably focused when a click
+  lands on non-focusable stage content, so a `mousedown` handler nudges focus
+  onto the root (skipping clicks on interactive controls, whose focus the study
+  needs) — otherwise the "click anywhere activates the hotkeys" promise breaks.
 - **Every shortcut mirrors an existing focusable control** (button or
   `<select>`) — never a keyboard-only action. Mirrored controls carry
   `aria-keyshortcuts` and key hints in their tooltips.
-- **`preventDefault()` only on handled keys** — suppresses the macOS
-  Option-symbol insertion and the one native overlap (see below).
+- **Consume handled keys in the capture phase** — the keydown listener is
+  attached with `capture: true`, and a handled shortcut is `preventDefault()`d
+  *and* `stopPropagation()`d, so it is routed before it reaches a focused study
+  widget deeper in the tree. Without this, `Alt+K` / `Alt+→` would drive both
+  the chrome *and* a focused MediaPlayer / Timeline (which act on bare `K` /
+  arrows without checking `altKey`) — the namespace only holds if Alt keys
+  never reach the content. `preventDefault` also suppresses the macOS
+  Option-symbol insertion and the one native overlap (below); bare and unmapped
+  keys are left untouched so participant input still flows. The cheatsheet's
+  Escape listener is likewise capture-phase, so it closes even when a focused
+  Timeline would otherwise swallow Escape first.
 
 ## Cross-OS / cross-host caveats
 

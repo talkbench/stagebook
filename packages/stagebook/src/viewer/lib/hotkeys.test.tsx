@@ -82,11 +82,15 @@ describe("dispatchViewerHotkey", () => {
     expect(h.onSelectPosition).toHaveBeenCalledWith(3);
   });
 
-  test("returns true and prevents default on a handled key", () => {
+  test("consumes a handled key: preventDefault + stopPropagation", () => {
     const h = makeHandlers();
     const e = key({ altKey: true, code: "ArrowRight" });
+    const stop = vi.spyOn(e, "stopPropagation");
     expect(dispatchViewerHotkey(e, h)).toBe(true);
     expect(e.defaultPrevented).toBe(true);
+    // stopPropagation keeps the same keydown from also reaching a focused study
+    // widget (which might act on the bare key without checking altKey).
+    expect(stop).toHaveBeenCalledTimes(1);
   });
 
   test("ignores bare keys (no modifier) — they pass through to the study", () => {
@@ -107,11 +111,15 @@ describe("dispatchViewerHotkey", () => {
     expect(h.onNextStep).not.toHaveBeenCalled();
   });
 
-  test("ignores an unmapped Alt+<key> without preventing default", () => {
+  test("ignores an unmapped Alt+<key> without consuming the event", () => {
     const h = makeHandlers();
     const e = key({ altKey: true, code: "KeyG" });
+    const stop = vi.spyOn(e, "stopPropagation");
     expect(dispatchViewerHotkey(e, h)).toBe(false);
     expect(e.defaultPrevented).toBe(false);
+    // Unhandled keys must keep flowing to the study content, so we neither
+    // preventDefault nor stopPropagation.
+    expect(stop).not.toHaveBeenCalled();
   });
 });
 
@@ -175,6 +183,89 @@ describe("useViewerHotkeys", () => {
     );
     expect(h.onNextStep).not.toHaveBeenCalled();
     cleanup();
+  });
+
+  // A handled Alt shortcut must be consumed before a focused study widget
+  // deeper in the tree sees the bare key. The capture-phase listener + the
+  // dispatcher's stopPropagation() enforce that.
+  test("consumes a handled key before a focused child handler runs", () => {
+    const h = makeHandlers();
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    let child!: HTMLButtonElement;
+    function Probe() {
+      const setRef = useViewerHotkeys(h);
+      return (
+        <div ref={setRef}>
+          <button
+            ref={(el) => {
+              if (el) child = el;
+            }}
+          />
+        </div>
+      );
+    }
+    act(() => root.render(<Probe />));
+
+    // Stands in for a study widget's own keydown handler (e.g. MediaPlayer).
+    const childHandler = vi.fn();
+    child.addEventListener("keydown", childHandler);
+    act(() => {
+      child.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          altKey: true,
+          code: "ArrowRight",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(h.onNextStep).toHaveBeenCalledTimes(1); // viewer routed it
+    expect(childHandler).not.toHaveBeenCalled(); // ...and the child never saw it
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  // A bare key must still reach the focused child — the namespace only consumes
+  // Alt-modified chrome keys.
+  test("lets a bare key reach a focused child handler", () => {
+    const h = makeHandlers();
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    let child!: HTMLButtonElement;
+    function Probe() {
+      const setRef = useViewerHotkeys(h);
+      return (
+        <div ref={setRef}>
+          <button
+            ref={(el) => {
+              if (el) child = el;
+            }}
+          />
+        </div>
+      );
+    }
+    act(() => root.render(<Probe />));
+
+    const childHandler = vi.fn();
+    child.addEventListener("keydown", childHandler);
+    act(() => {
+      child.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          code: "ArrowRight", // no altKey — belongs to the study content
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(childHandler).toHaveBeenCalledTimes(1);
+    expect(h.onNextStep).not.toHaveBeenCalled();
+
+    act(() => root.unmount());
+    container.remove();
   });
 
   // The hook tracks its node in state (not a plain ref) specifically so the

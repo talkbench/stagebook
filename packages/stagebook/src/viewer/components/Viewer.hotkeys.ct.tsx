@@ -119,6 +119,22 @@ test("step and treatment nav clamp at the bounds (no wrap-around)", async ({
   await expect(picker).toHaveValue("treatment:0");
 });
 
+test("a click on non-focusable content activates the hotkeys", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<MockViewer />);
+  const counter = component.getByText(/^\d+ \/ 3$/);
+  await expect(counter).toHaveText("1 / 3");
+
+  // Click a non-interactive element (the locale badge span), NOT via a hotkey
+  // helper that would auto-focus the root. Focus must land in the viewer so the
+  // next Alt shortcut — pressed through the page, with no explicit focus — works.
+  await component.locator('[data-testid="viewer-locale-badge"]').click();
+  await page.keyboard.press("Alt+ArrowRight");
+  await expect(counter).toHaveText("2 / 3");
+});
+
 test("bare keys pass through — no modifier means no chrome navigation", async ({
   mount,
 }) => {

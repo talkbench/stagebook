@@ -42,6 +42,18 @@ function digitFromCode(code: string): number | null {
 }
 
 /**
+ * Interactive controls whose click should keep focus (so we don't steal it
+ * from a study widget the researcher is operating). Everything else — plain
+ * Markdown, a Display, empty stage space — is non-focusable, and a click there
+ * should land focus on the viewer root so the scoped hotkeys still fire.
+ */
+const INTERACTIVE_SELECTOR =
+  'a[href],button,input,select,textarea,[contenteditable="true"],' +
+  '[tabindex]:not([tabindex="-1"]),' +
+  '[role="button"],[role="slider"],[role="radio"],[role="checkbox"],' +
+  '[role="textbox"],[role="link"],[role="menuitem"]';
+
+/**
  * Route one keydown to the matching researcher action. Returns `true` (and
  * calls `preventDefault`) when the event was one of ours, `false` otherwise.
  *
@@ -93,7 +105,14 @@ export function dispatchViewerHotkey(
     }
   }
 
-  if (handled) e.preventDefault();
+  if (handled) {
+    e.preventDefault();
+    // Consume the event so a focused study widget doesn't also act on the bare
+    // key — e.g. MediaPlayer treats `K` as play/pause and Timeline treats the
+    // arrows as nudge, neither filtering `altKey`. The namespace only holds if
+    // Alt keys never reach the content.
+    e.stopPropagation();
+  }
   return handled;
 }
 
@@ -121,8 +140,23 @@ export function useViewerHotkeys(
     if (!enabled || !node) return;
     const onKeyDown = (e: KeyboardEvent) =>
       dispatchViewerHotkey(e, handlersRef.current);
-    node.addEventListener("keydown", onKeyDown);
-    return () => node.removeEventListener("keydown", onKeyDown);
+    // A click anywhere in the viewer should land focus inside it, so the scoped
+    // hotkeys fire on the next keypress. A `tabIndex=-1` root isn't reliably
+    // focused when the click hits non-focusable stage content, so nudge it —
+    // but skip clicks on interactive controls, whose own focus the study needs.
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as Element | null;
+      if (target && !target.closest(INTERACTIVE_SELECTOR)) node.focus();
+    };
+    // Capture phase: a handled Alt shortcut is routed (and stopPropagation()d)
+    // before it can reach a focused study widget deeper in the tree. Unhandled
+    // and bare keys are left untouched, so participant input still flows.
+    node.addEventListener("keydown", onKeyDown, true);
+    node.addEventListener("mousedown", onMouseDown);
+    return () => {
+      node.removeEventListener("keydown", onKeyDown, true);
+      node.removeEventListener("mousedown", onMouseDown);
+    };
   }, [node, enabled]);
 
   return useCallback((n: HTMLElement | null) => setNode(n), []);

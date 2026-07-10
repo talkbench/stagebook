@@ -35,11 +35,18 @@ export function HotkeyHelp({ open, onClose }: HotkeyHelpProps) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
+        // Consume it: without focus moved into the dialog, Escape would also
+        // reach the previously focused study widget (e.g. a Timeline with an
+        // active selection deselects on Escape) if we let it propagate.
+        e.stopPropagation();
         onCloseRef.current();
       }
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    // Capture phase so this runs before a focused study widget's own Escape
+    // handler, which may stopPropagation() and otherwise leave the cheatsheet
+    // stuck open.
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
   }, [open]);
 
   if (!open) return null;
