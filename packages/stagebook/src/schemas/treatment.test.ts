@@ -738,13 +738,17 @@ test("image: rejects a non-positive width", () => {
   expect(result.success).toBe(false);
 });
 
-test("image: accepts a ${field} placeholder for width (templatable like siblings)", () => {
+test("image: rejects a ${field} placeholder for width (literal only — see #549 review)", () => {
+  // Unlike the sibling numeric fields, image width is NOT templatable: the
+  // resolved schema types it as a plain number with no unresolved-placeholder
+  // deferral, so a surviving `${...}` would hard-error post-fill. Keep the
+  // authoring schema literal-only until that resolved-path gap is fixed.
   const result = elementSchema.safeParse({
     type: "image",
     file: "shared/diagram.png",
     width: "${chartWidth}",
   });
-  expect(result.success).toBe(true);
+  expect(result.success).toBe(false);
 });
 
 // --- qualtrics.url / trackedLink.url stricter (#249) ---

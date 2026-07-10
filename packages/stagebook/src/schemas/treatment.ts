@@ -1241,9 +1241,16 @@ const imageSchema = elementBaseSchema
     // docs/researcher/elements.md and honored at runtime (Element.tsx image
     // case → ImageElement, resolved.ts:width), but previously absent from the
     // strict authoring schema, so `stagebook validate` rejected a field the
-    // runtime actually uses (docs/schema/runtime drift). `.or(placeholder)`
-    // keeps it templatable via `${field}` like the other numeric element
-    // fields (displayTime/hideTime, mediaPlayer.startAt/stopAt).
+    // runtime actually uses (docs/schema/runtime drift). A literal number only:
+    // NOT `.or(fieldPlaceholderSchema)`, even though the sibling numeric fields
+    // (displayTime/hideTime, mediaPlayer.startAt/stopAt) accept `${field}`.
+    // Those siblings share a latent gap — the resolved schema (`resolved.ts`)
+    // types them as plain numbers with no `unresolved-placeholder` tag, so a
+    // placeholder that survives hydration hard-errors under
+    // `validateResolvedTreatmentFile({ skipUnresolved: true })` instead of being
+    // deferred. Templatable width would inherit that (see PR #549 review); keep
+    // width literal until the numeric-placeholder resolved path is fixed for all
+    // of them together.
     width: z
       .number()
       .positive(
@@ -1253,7 +1260,6 @@ const imageSchema = elementBaseSchema
         100,
         "`width` is a percentage of the available width, so it can't exceed 100.",
       )
-      .or(fieldPlaceholderSchema)
       .optional(),
     // Todo: check that file exists
   })
