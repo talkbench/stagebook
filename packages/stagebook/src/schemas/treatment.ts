@@ -1232,6 +1232,35 @@ const imageSchema = elementBaseSchema
   .extend({
     type: z.literal("image"),
     file: fileSchema,
+    // Author-facing alt text (#536). Maps to the component `alt` prop /
+    // `<img alt>`. An explicit empty string marks the image decorative; an
+    // absent field triggers the missing-altText lint (a warning, not an
+    // error — see `collectMissingImageAltText`).
+    altText: z.string().optional(),
+    // Percentage of the available width (#537). Documented in
+    // docs/researcher/elements.md and honored at runtime (Element.tsx image
+    // case → ImageElement, resolved.ts:width), but previously absent from the
+    // strict authoring schema, so `stagebook validate` rejected a field the
+    // runtime actually uses (docs/schema/runtime drift). A literal number only:
+    // NOT `.or(fieldPlaceholderSchema)`, even though the sibling numeric fields
+    // (displayTime/hideTime, mediaPlayer.startAt/stopAt) accept `${field}`.
+    // Those siblings share a latent gap — the resolved schema (`resolved.ts`)
+    // types them as plain numbers with no `unresolved-placeholder` tag, so a
+    // placeholder that survives hydration hard-errors under
+    // `validateResolvedTreatmentFile({ skipUnresolved: true })` instead of being
+    // deferred. Templatable width would inherit that (see PR #549 review); keep
+    // width literal until the numeric-placeholder resolved path is fixed for all
+    // of them together.
+    width: z
+      .number()
+      .positive(
+        "`width` is a percentage of the available width, so it must be positive.",
+      )
+      .max(
+        100,
+        "`width` is a percentage of the available width, so it can't exceed 100.",
+      )
+      .optional(),
     // Todo: check that file exists
   })
   .strict();
@@ -2552,5 +2581,14 @@ export const treatmentFileSchema = z
         });
       }
     }
+    // NOTE: the missing-`altText` image lint (#536) is deliberately NOT emitted
+    // here. It is a *warning*, and any issue added in a superRefine makes
+    // `safeParse` return `success: false` — which non-diagnostic consumers
+    // (VS Code preview via `parseTreatmentSource`, the viewer example catalog,
+    // external manager/runner/annotator) read as a hard schema failure, blocking
+    // a common, harmless input (an un-annotated image). Instead it rides the
+    // separate post-validation channel (`collectMissingImageAltText`) wired into
+    // both validate surfaces, exactly like the consent i18n-completeness warning
+    // (#529) — so the schema's success/failure contract stays "errors only."
   });
 export type TreatmentFileType = z.infer<typeof treatmentFileSchema>;

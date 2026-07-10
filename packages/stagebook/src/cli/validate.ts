@@ -249,6 +249,10 @@ export async function run({
     // treatment's `locale` (both default `en`). Cross-file by nature, so it
     // runs here where the referenced prompt files are readable from disk.
     if (!result.expandError) {
+      // NOTE: the missing-`altText` image lint (#536) is NOT run here — it's
+      // emitted by `validateTreatmentSource`, which `expandAndValidateWithImports`
+      // runs over the expanded YAML (and which the `--no-expand`/stdin branch
+      // above runs over the raw source). Adding it here would double-report.
       diagnostics.push(
         ...(await checkLocaleConsistencyDiagnostics(result.fullYaml, dir)),
         ...(await checkUnsatisfiableConditionDiagnostics(result.fullYaml, dir)),

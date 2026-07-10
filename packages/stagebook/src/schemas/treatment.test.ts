@@ -682,6 +682,75 @@ test("mediaPlayer: malformed captionsFile (asset: with no //) is rejected", () =
   expect(result.success).toBe(false);
 });
 
+// --- image altText + width (#536, #537) ---
+
+test("image: accepts authorable altText", () => {
+  const result = elementSchema.safeParse({
+    type: "image",
+    file: "shared/diagram.png",
+    altText: "Bar chart: 2020 vs 2024 turnout",
+  });
+  expect(result.success).toBe(true);
+});
+
+test("image: accepts an explicit empty altText (decorative)", () => {
+  const result = elementSchema.safeParse({
+    type: "image",
+    file: "shared/divider.png",
+    altText: "",
+  });
+  expect(result.success).toBe(true);
+});
+
+test("image: accepts width (documented + honored at runtime, #537)", () => {
+  const result = elementSchema.safeParse({
+    type: "image",
+    file: "shared/diagram.png",
+    width: 50,
+  });
+  expect(result.success).toBe(true);
+});
+
+test("image: accepts width at the inclusive upper bound (100%)", () => {
+  const result = elementSchema.safeParse({
+    type: "image",
+    file: "shared/diagram.png",
+    width: 100,
+  });
+  expect(result.success).toBe(true);
+});
+
+test("image: rejects width above 100 (percentage of available width)", () => {
+  const result = elementSchema.safeParse({
+    type: "image",
+    file: "shared/diagram.png",
+    width: 150,
+  });
+  expect(result.success).toBe(false);
+});
+
+test("image: rejects a non-positive width", () => {
+  const result = elementSchema.safeParse({
+    type: "image",
+    file: "shared/diagram.png",
+    width: 0,
+  });
+  expect(result.success).toBe(false);
+});
+
+test("image: rejects a ${field} placeholder for width (literal only — see #549 review)", () => {
+  // Unlike the sibling numeric fields, image width is NOT templatable: the
+  // resolved schema types it as a plain number with no unresolved-placeholder
+  // deferral, so a surviving `${...}` would hard-error post-fill. Keep the
+  // authoring schema literal-only until that resolved-path gap is fixed.
+  const result = elementSchema.safeParse({
+    type: "image",
+    file: "shared/diagram.png",
+    width: "${chartWidth}",
+  });
+  expect(result.success).toBe(false);
+});
+
 // --- qualtrics.url / trackedLink.url stricter (#249) ---
 
 test("qualtrics: asset:// url is rejected (browser-direct only)", () => {

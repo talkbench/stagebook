@@ -4,6 +4,7 @@ import {
   parseTreatmentYaml as parseStagebookYaml,
   validateResolvedTreatmentFile,
   checkConsentLocaleCoverage,
+  collectMissingImageAltText,
   type PreHydrationIssue,
 } from "../index.js";
 import type { ZodIssue } from "zod";
@@ -99,6 +100,21 @@ export async function validateTreatmentWithDiff({
   // downstream "couldn't expand" / "schema rejected" noise that's
   // already explained by the parse failure.
   if (hasYamlParseError) return { diagnostics, parsedObj };
+
+  // Missing-alt-text image lint (#536). A WARNING (never blocks): `altText: ""`
+  // is the valid decorative escape hatch, so the lint only fires when the key
+  // is absent. Runs directly on the un-expanded source object so it squiggles
+  // the exact image element; a template-provided image (which lives under
+  // `templates:` here, not in a concrete stage yet) surfaces instead through
+  // the CLI / expanded-preview pass. Kept OUT of the schema on purpose — see
+  // `collectMissingImageAltText` — so it never flips `safeParse` to failure.
+  for (const issue of collectMissingImageAltText(parsedObj)) {
+    diagnostics.push({
+      message: issue.message,
+      severity: "warning",
+      range: resolveOrWalkUp(mapper, issue.path),
+    });
+  }
 
   // Load imports asynchronously.
   const loadResult = await loadAndMergeImports({ source, loadImport });

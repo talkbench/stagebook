@@ -31,6 +31,38 @@ treatments:
       );
       expect(result.yaml).toContain("name: stage1");
     });
+
+    it("warns on a template-authored image missing altText after expansion (#536)", () => {
+      // This is the path the VS Code expanded preview uses
+      // (expandAndValidateWithImports → finishExpandAndValidate →
+      // validateTreatmentSource(fullYaml)). The image lives only in a template
+      // body — never scanned raw — but once expanded into study1's game stage
+      // it's a concrete element, so the lint fires as a WARNING (not an error).
+      const src = `templates:
+  - name: imageStage
+    contentType: stage
+    content:
+      name: stage1
+      duration: 300
+      elements:
+        - type: image
+          file: shared/diagram.png
+        - type: submitButton
+treatments:
+  - name: study1
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - template: imageStage`;
+      const result = expandAndValidate(src);
+      expect(result.expandError).toBeNull();
+      expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual(
+        [],
+      );
+      const warn = result.diagnostics.find((d) => /altText/i.test(d.message));
+      expect(warn).toBeDefined();
+      expect(warn!.severity).toBe("warning");
+    });
   });
 
   describe("invalid expanded output from valid-looking source", () => {

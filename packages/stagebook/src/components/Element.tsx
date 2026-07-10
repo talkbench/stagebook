@@ -97,6 +97,7 @@ export interface ElementConfig {
     position?: string;
   }>;
   width?: number;
+  altText?: string;
   startTime?: number;
   endTime?: number;
   displayTime?: number;
@@ -228,7 +229,13 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
       if (isUnresolvedAsset(imageSrc)) {
         return <AssetPlaceholder uri={element.file ?? ""} kind="image" />;
       }
-      return <ImageElement src={imageSrc} width={element.width} />;
+      return (
+        <ImageElement
+          src={imageSrc}
+          width={element.width}
+          alt={element.altText}
+        />
+      );
     }
 
     case "prompt": {

@@ -145,8 +145,17 @@ Displays an image.
 ```yaml
 - type: image
   file: shared/diagram.png
+  altText: "Bar chart: 2020 vs 2024 turnout" # describe the image; "" = decorative
   width: 50 # optional — percentage of available width
 ```
+
+`altText` is the text screen readers announce in place of the image; it becomes
+the `<img alt>` attribute. Describe what the image conveys so a participant using
+assistive technology gets the same information a sighted participant does. Set
+`altText: ""` for a purely decorative image (a divider, a flourish) to hide it
+from screen readers — that's the correct choice only when the image carries no
+information. Omitting `altText` entirely raises a validation warning nudging you
+to make that choice explicitly.
 
 ## Media Player
 

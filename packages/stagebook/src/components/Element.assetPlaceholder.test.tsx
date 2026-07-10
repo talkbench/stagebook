@@ -145,6 +145,22 @@ describe("Element asset:// placeholder (#191)", () => {
     expect(img?.getAttribute("src")).toBe("https://cdn.test/images/logo.png");
   });
 
+  test("the router forwards an image element's altText to the <img alt> (#536)", () => {
+    const c = renderElement({
+      type: "image",
+      file: "images/chart.png",
+      altText: "Bar chart: 2020 vs 2024 turnout",
+    });
+    const img = c.querySelector("img");
+    expect(img?.getAttribute("alt")).toBe("Bar chart: 2020 vs 2024 turnout");
+  });
+
+  test('an image with no altText renders alt="" (#536)', () => {
+    const c = renderElement({ type: "image", file: "images/logo.png" });
+    const img = c.querySelector("img");
+    expect(img?.getAttribute("alt")).toBe("");
+  });
+
   test("mediaPlayer with a resolvable url + asset:// captions plays the video (captions dropped, not fetched)", () => {
     // Only the captions are unresolvable — the video itself resolves, so it
     // must still play; the asset:// track is dropped, never fetched (#191).

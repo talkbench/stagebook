@@ -116,6 +116,11 @@ export {
 } from "./storageKeyCollisions.js";
 
 export {
+  collectMissingImageAltText,
+  type MissingImageAltText,
+} from "./imageAltText.js";
+
+export {
   collectReferencedPromptFiles,
   checkPromptLocaleConsistency,
   checkConsentLocaleCoverage,
