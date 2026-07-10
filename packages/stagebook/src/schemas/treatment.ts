@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 import { z } from "zod";
 import { collectStorageKeyCollisions } from "./storageKeyCollisions.js";
+import { collectMissingImageAltText } from "./imageAltText.js";
 import { validateTreatmentFileReferences } from "./validateReferences.js";
 import { nameSchema, localeSchema, type NameType } from "./primitives.js";
 import {
@@ -1232,6 +1233,26 @@ const imageSchema = elementBaseSchema
   .extend({
     type: z.literal("image"),
     file: fileSchema,
+    // Author-facing alt text (#536). Maps to the component `alt` prop /
+    // `<img alt>`. An explicit empty string marks the image decorative; an
+    // absent field triggers the missing-altText lint (a warning, not an
+    // error — see `collectMissingImageAltText`).
+    altText: z.string().optional(),
+    // Percentage of the available width (#537). Documented in
+    // docs/researcher/elements.md and honored at runtime (Element.tsx image
+    // case → ImageElement, resolved.ts:width), but previously absent from the
+    // strict authoring schema, so `stagebook validate` rejected a field the
+    // runtime actually uses (docs/schema/runtime drift).
+    width: z
+      .number()
+      .positive(
+        "`width` is a percentage of the available width, so it must be positive.",
+      )
+      .max(
+        100,
+        "`width` is a percentage of the available width, so it can't exceed 100.",
+      )
+      .optional(),
     // Todo: check that file exists
   })
   .strict();
@@ -2551,6 +2572,20 @@ export const treatmentFileSchema = z
           message: collision.message,
         });
       }
+    }
+    // Missing-alt-text lint for `image` elements (#536). A warning, not an
+    // error: `alt=""` is valid for genuinely-decorative images, so the lint
+    // nudges ("describe it, or explicitly mark it decorative") rather than
+    // hard-failing. `params.severity` marks it a warning so the diagnostic
+    // layers read it back (same round-trip as #499). Baked into the schema so
+    // it flows through both validate surfaces without per-path wiring.
+    for (const issue of collectMissingImageAltText(data)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: issue.path,
+        message: issue.message,
+        params: { severity: issue.severity },
+      });
     }
   });
 export type TreatmentFileType = z.infer<typeof treatmentFileSchema>;

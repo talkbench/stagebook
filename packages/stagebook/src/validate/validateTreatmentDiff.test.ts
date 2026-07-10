@@ -533,6 +533,56 @@ introSequences:
     });
   });
 
+  describe("image missing-altText lint (#536)", () => {
+    const study = (imageBody: string) => `treatments:
+  - name: t
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+${imageBody}
+          - type: submitButton
+`;
+
+    it("warns (not errors) when an image element has no altText", async () => {
+      const result = await validateTreatmentWithDiff({
+        source: study(`          - type: image
+            file: shared/diagram.png`),
+        loadImport: noImports,
+      });
+      // Fixture is otherwise schema-valid, so no error masks the warning.
+      expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual(
+        [],
+      );
+      const warn = result.diagnostics.find((d) => /altText/i.test(d.message));
+      expect(warn).toBeDefined();
+      expect(warn!.severity).toBe("warning");
+    });
+
+    it("is clean when the image explicitly marks itself decorative", async () => {
+      const result = await validateTreatmentWithDiff({
+        source: study(`          - type: image
+            file: shared/divider.png
+            altText: ""`),
+        loadImport: noImports,
+      });
+      expect(result.diagnostics).toEqual([]);
+    });
+
+    it("is clean when the image carries altText", async () => {
+      const result = await validateTreatmentWithDiff({
+        source: study(`          - type: image
+            file: shared/diagram.png
+            altText: "A labeled bar chart"
+            width: 50`),
+        loadImport: noImports,
+      });
+      expect(result.diagnostics).toEqual([]);
+    });
+  });
+
   describe("unsatisfiable conditions (#480)", () => {
     const withGate = (comparator: string, value: string) => `treatments:
   - name: t

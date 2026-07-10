@@ -148,6 +148,8 @@ const resolvedElementBaseSchema = z.object({
   warnTimeRemaining: z.number().optional(),
   style: z.enum(["thin", "regular", "thick", ""]).optional(),
   width: z.number().optional(),
+  // image alt text (#536) — the resolved (post-fill) form the runtime reads.
+  altText: z.string().optional(),
   urlParams: z
     .array(
       z.object({
