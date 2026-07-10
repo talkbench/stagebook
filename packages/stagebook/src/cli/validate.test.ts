@@ -583,6 +583,78 @@ describe("consent i18n-completeness rule", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Image missing-altText lint (#536): an `image` element with no `altText` key
+// is a WARNING (not an error). This exercises the CLI's default expand-and-
+// validate path (`expandAndValidateWithImports`) end-to-end, codifying that
+// the schema-level lint survives template expansion and reaches the CLI
+// surface — the other half of the "two wiring paths" guarantee.
+// ---------------------------------------------------------------------------
+
+describe("image missing-altText lint (#536)", () => {
+  let dir: string;
+
+  function studyYaml(imageBody: string): string {
+    return `treatments:
+  - name: t1
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: s1
+        duration: 10
+        elements:
+${imageBody}
+          - type: submitButton
+`;
+  }
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "stagebook-cli-image-"));
+  });
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("warns (but does not error) when an image has no altText", async () => {
+    await writeFile(
+      join(dir, "study.stagebook.yaml"),
+      studyYaml(`          - type: image
+            file: shared/diagram.png`),
+    );
+    const r = await runCli([join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(0); // warning does not fail the build
+    expect(r.stdout).toContain("warning:");
+    expect(r.stdout).toContain("altText");
+  });
+
+  it("is clean when the image explicitly marks itself decorative", async () => {
+    await writeFile(
+      join(dir, "study.stagebook.yaml"),
+      studyYaml(`          - type: image
+            file: shared/divider.png
+            altText: ""`),
+    );
+    const r = await runCli([join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).not.toContain("altText");
+  });
+
+  it("accepts an authored altText and a width (#537) with no diagnostics", async () => {
+    await writeFile(
+      join(dir, "study.stagebook.yaml"),
+      studyYaml(`          - type: image
+            file: shared/chart.png
+            altText: "A labeled bar chart"
+            width: 50`),
+    );
+    const r = await runCli([join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).not.toContain("warning:");
+    expect(r.stdout).not.toContain("width");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Unsatisfiable-condition rule (#480): a condition reading a prompt's answer
 // whose comparator can never match any value the prompt produces (dead gate)
 // is flagged as an error, reading the referenced prompt's option domain from
