@@ -652,6 +652,36 @@ ${imageBody}
     expect(r.stdout).not.toContain("warning:");
     expect(r.stdout).not.toContain("width");
   });
+
+  it("lints a template-authored image once it expands into a concrete stage", async () => {
+    // The image lives only in a template body — never scanned raw — but the
+    // CLI validates the EXPANDED tree, so it surfaces once the invocation
+    // becomes a real element. This is the wiring path study-repo CI relies on.
+    await writeFile(
+      join(dir, "study.stagebook.yaml"),
+      `templates:
+  - name: imageStage
+    contentType: stage
+    content:
+      name: stage1
+      duration: 300
+      elements:
+        - type: image
+          file: shared/diagram.png
+        - type: submitButton
+treatments:
+  - name: study1
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - template: imageStage
+`,
+    );
+    const r = await runCli([join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("warning:");
+    expect(r.stdout).toContain("altText");
+  });
 });
 
 // ---------------------------------------------------------------------------

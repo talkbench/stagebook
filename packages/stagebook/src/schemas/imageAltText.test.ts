@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { collectMissingImageAltText } from "./imageAltText.js";
 import { validateTreatmentSource } from "../validate/validateTreatment.js";
+import { safeParseTreatmentFile } from "./safeParseTreatmentFile.js";
 
 describe("collectMissingImageAltText", () => {
   it("returns nothing for empty/invalid input", () => {
@@ -133,9 +134,14 @@ describe("collectMissingImageAltText", () => {
   });
 });
 
-describe("missing-altText lint through validateTreatmentSource", () => {
-  it("surfaces a WARNING (not an error) for an image without altText", () => {
-    const src = `
+describe("a missing altText is NOT a schema failure (stays out of the schema)", () => {
+  // The lint is a warning, wired through a SEPARATE post-validation channel —
+  // deliberately not the schema superRefine, because any superRefine issue
+  // flips `safeParse` to `success: false`, which non-diagnostic consumers
+  // (VS Code preview, viewer example catalog, external manager/runner) read as
+  // a blocking failure. These guard that contract: an un-annotated image is a
+  // clean parse, so those consumers keep working.
+  const src = `
 treatments:
   - name: t
     playerCount: 1
@@ -148,47 +154,34 @@ treatments:
             file: shared/diagram.png
           - type: submitButton
 `;
-    const { diagnostics } = validateTreatmentSource(src);
-    const alt = diagnostics.find((d) => /altText/i.test(d.message));
-    expect(alt).toBeDefined();
-    expect(alt?.severity).toBe("warning");
+
+  it("safeParseTreatmentFile succeeds for a treatment whose image lacks altText", () => {
+    // js-yaml the source the way callers do, then parse.
+    const parsed = safeParseTreatmentFile({
+      treatments: [
+        {
+          name: "t",
+          playerCount: 1,
+          compatibleIntroSequences: [],
+          gameStages: [
+            {
+              name: "s1",
+              duration: 60,
+              elements: [
+                { type: "image", file: "shared/diagram.png" },
+                { type: "submitButton" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(parsed.success).toBe(true);
   });
 
-  it("does not warn when the image explicitly marks itself decorative", () => {
-    const src = `
-treatments:
-  - name: t
-    playerCount: 1
-    compatibleIntroSequences: []
-    gameStages:
-      - name: s1
-        duration: 60
-        elements:
-          - type: image
-            file: shared/divider.png
-            altText: ""
-          - type: submitButton
-`;
-    const { diagnostics } = validateTreatmentSource(src);
-    expect(diagnostics.find((d) => /altText/i.test(d.message))).toBeUndefined();
-  });
-
-  it("does not warn when altText is authored", () => {
-    const src = `
-treatments:
-  - name: t
-    playerCount: 1
-    compatibleIntroSequences: []
-    gameStages:
-      - name: s1
-        duration: 60
-        elements:
-          - type: image
-            file: shared/diagram.png
-            altText: "A labeled bar chart"
-            width: 50
-          - type: submitButton
-`;
+  it("validateTreatmentSource reports no error AND no altText warning (the schema pass is silent)", () => {
+    // The schema pass alone doesn't run the lint — only the two wired surfaces
+    // (CLI `cli/validate.ts` + editor `validateTreatmentDiff.ts`) do.
     const { diagnostics } = validateTreatmentSource(src);
     expect(diagnostics.some((d) => d.severity === "error")).toBe(false);
     expect(diagnostics.find((d) => /altText/i.test(d.message))).toBeUndefined();

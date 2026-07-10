@@ -708,7 +708,15 @@ test("image: accepts width (documented + honored at runtime, #537)", () => {
     file: "shared/diagram.png",
     width: 50,
   });
-  if (!result.success) console.log(result.error);
+  expect(result.success).toBe(true);
+});
+
+test("image: accepts width at the inclusive upper bound (100%)", () => {
+  const result = elementSchema.safeParse({
+    type: "image",
+    file: "shared/diagram.png",
+    width: 100,
+  });
   expect(result.success).toBe(true);
 });
 
@@ -728,6 +736,15 @@ test("image: rejects a non-positive width", () => {
     width: 0,
   });
   expect(result.success).toBe(false);
+});
+
+test("image: accepts a ${field} placeholder for width (templatable like siblings)", () => {
+  const result = elementSchema.safeParse({
+    type: "image",
+    file: "shared/diagram.png",
+    width: "${chartWidth}",
+  });
+  expect(result.success).toBe(true);
 });
 
 // --- qualtrics.url / trackedLink.url stricter (#249) ---

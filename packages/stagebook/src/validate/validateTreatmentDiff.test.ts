@@ -547,9 +547,10 @@ ${imageBody}
 `;
 
     it("warns (not errors) when an image element has no altText", async () => {
+      const source = study(`          - type: image
+            file: shared/diagram.png`);
       const result = await validateTreatmentWithDiff({
-        source: study(`          - type: image
-            file: shared/diagram.png`),
+        source,
         loadImport: noImports,
       });
       // Fixture is otherwise schema-valid, so no error masks the warning.
@@ -559,6 +560,12 @@ ${imageBody}
       const warn = result.diagnostics.find((d) => /altText/i.test(d.message));
       expect(warn).toBeDefined();
       expect(warn!.severity).toBe("warning");
+      // Editor path runs on the source object → the warning squiggles the
+      // image element itself, not a generic top-of-file range.
+      const imageLine = source
+        .split("\n")
+        .findIndex((l) => l.includes("- type: image"));
+      expect(warn!.range?.startLine).toBe(imageLine);
     });
 
     it("is clean when the image explicitly marks itself decorative", async () => {

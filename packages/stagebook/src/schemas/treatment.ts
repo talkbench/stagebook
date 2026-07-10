@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 import { z } from "zod";
 import { collectStorageKeyCollisions } from "./storageKeyCollisions.js";
-import { collectMissingImageAltText } from "./imageAltText.js";
 import { validateTreatmentFileReferences } from "./validateReferences.js";
 import { nameSchema, localeSchema, type NameType } from "./primitives.js";
 import {
@@ -1242,7 +1241,9 @@ const imageSchema = elementBaseSchema
     // docs/researcher/elements.md and honored at runtime (Element.tsx image
     // case → ImageElement, resolved.ts:width), but previously absent from the
     // strict authoring schema, so `stagebook validate` rejected a field the
-    // runtime actually uses (docs/schema/runtime drift).
+    // runtime actually uses (docs/schema/runtime drift). `.or(placeholder)`
+    // keeps it templatable via `${field}` like the other numeric element
+    // fields (displayTime/hideTime, mediaPlayer.startAt/stopAt).
     width: z
       .number()
       .positive(
@@ -1252,6 +1253,7 @@ const imageSchema = elementBaseSchema
         100,
         "`width` is a percentage of the available width, so it can't exceed 100.",
       )
+      .or(fieldPlaceholderSchema)
       .optional(),
     // Todo: check that file exists
   })
@@ -2573,19 +2575,14 @@ export const treatmentFileSchema = z
         });
       }
     }
-    // Missing-alt-text lint for `image` elements (#536). A warning, not an
-    // error: `alt=""` is valid for genuinely-decorative images, so the lint
-    // nudges ("describe it, or explicitly mark it decorative") rather than
-    // hard-failing. `params.severity` marks it a warning so the diagnostic
-    // layers read it back (same round-trip as #499). Baked into the schema so
-    // it flows through both validate surfaces without per-path wiring.
-    for (const issue of collectMissingImageAltText(data)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: issue.path,
-        message: issue.message,
-        params: { severity: issue.severity },
-      });
-    }
+    // NOTE: the missing-`altText` image lint (#536) is deliberately NOT emitted
+    // here. It is a *warning*, and any issue added in a superRefine makes
+    // `safeParse` return `success: false` — which non-diagnostic consumers
+    // (VS Code preview via `parseTreatmentSource`, the viewer example catalog,
+    // external manager/runner/annotator) read as a hard schema failure, blocking
+    // a common, harmless input (an un-annotated image). Instead it rides the
+    // separate post-validation channel (`collectMissingImageAltText`) wired into
+    // both validate surfaces, exactly like the consent i18n-completeness warning
+    // (#529) — so the schema's success/failure contract stays "errors only."
   });
 export type TreatmentFileType = z.infer<typeof treatmentFileSchema>;
