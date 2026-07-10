@@ -17,6 +17,8 @@ export function StageNav({ steps, currentIndex, onSelect }: StageNavProps) {
         disabled={!hasPrev}
         style={arrowStyle}
         aria-label="Previous stage"
+        aria-keyshortcuts="Alt+ArrowLeft"
+        title="Previous step (⌥←)"
       >
         &#9664;
       </button>
@@ -38,6 +40,8 @@ export function StageNav({ steps, currentIndex, onSelect }: StageNavProps) {
         disabled={!hasNext}
         style={arrowStyle}
         aria-label="Next stage"
+        aria-keyshortcuts="Alt+ArrowRight"
+        title="Next step (⌥→)"
       >
         &#9654;
       </button>
