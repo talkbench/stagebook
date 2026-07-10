@@ -2,6 +2,61 @@ import { test, expect } from "@playwright/experimental-ct-react";
 import { TextArea } from "./TextArea";
 import { MockTextArea } from "../testing/MockTextArea";
 
+// -- Standalone accessible name (#538) --
+// TextArea is a public export (stagebook/components) that hosts drop into
+// their own participant UI, outside Prompt (which otherwise names the
+// textarea). A bare <textarea> carries only an `id` — no aria-label /
+// <label> / aria-labelledby — so standalone it has no programmatic
+// accessible name, a WCAG 1.3.1 / 4.1.2 gap axe flags as `label`
+// (critical). These cover the three affordances that close it.
+
+test("standalone baseline: a bare textarea has no accessible name (the gap #538 closes)", async ({
+  mount,
+}) => {
+  // Pins the defect: with no label/aria affordance and no placeholder,
+  // the textarea's accessible name is empty. Also guards against a
+  // regression that hands it some unintended name.
+  const component = await mount(<TextArea />);
+  await expect(component.locator("textarea")).toHaveAccessibleName("");
+});
+
+test("standalone: ariaLabel gives the textarea an accessible name (#538)", async ({
+  mount,
+}) => {
+  const component = await mount(<TextArea ariaLabel="Your answer" />);
+  await expect(
+    component.getByRole("textbox", { name: "Your answer" }),
+  ).toBeVisible();
+});
+
+test("standalone: visible label prop names the textarea and associates via htmlFor (#538)", async ({
+  mount,
+}) => {
+  const component = await mount(<TextArea id="essay" label="Your answer" />);
+  // Accessible name resolves from the <label htmlFor> association.
+  await expect(
+    component.getByRole("textbox", { name: "Your answer" }),
+  ).toBeVisible();
+  // The visible <label> is rendered and points at the textarea's id.
+  const label = component.locator("label");
+  await expect(label).toHaveText("Your answer");
+  await expect(label).toHaveAttribute("for", "essay");
+});
+
+test("standalone: ariaLabelledBy names the textarea from an external element (#538)", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <div>
+      <span id="q1">Describe your reasoning</span>
+      <TextArea ariaLabelledBy="q1" />
+    </div>,
+  );
+  await expect(
+    component.getByRole("textbox", { name: "Describe your reasoning" }),
+  ).toBeVisible();
+});
+
 // -- Basic rendering --
 
 test("renders with placeholder text", async ({ mount }) => {

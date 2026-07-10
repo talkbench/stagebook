@@ -44,6 +44,21 @@ export interface TextAreaProps {
   maxLength?: number;
   debounceDelay?: number;
   id?: string;
+  // Accessible-name affordances for standalone use (#538). Inside a
+  // Prompt the surrounding markup names the field, but TextArea is a
+  // public export (`stagebook/components`) that hosts drop in on their
+  // own — a bare <textarea> carries only an `id`, so without one of
+  // these it has no programmatic accessible name (WCAG 1.3.1 / 4.1.2).
+  // Mirrors the `label` prop on RadioGroup / CheckboxGroup / Select.
+  //
+  // `label` renders a visible <label htmlFor={id}>. `ariaLabel` /
+  // `ariaLabelledBy` pass through to the textarea for the invisible-
+  // label / external-element cases. If more than one is supplied the
+  // accessible-name spec resolves it deterministically
+  // (aria-labelledby > aria-label > <label for>).
+  label?: string;
+  ariaLabel?: string;
+  ariaLabelledBy?: string;
 }
 
 const CURSOR_KEYS = new Set([
@@ -70,6 +85,9 @@ export function TextArea({
   maxLength,
   debounceDelay = 500,
   id,
+  label = "",
+  ariaLabel,
+  ariaLabelledBy,
 }: TextAreaProps) {
   const messages = useMessages();
   const isRTL = useIsRTL();
@@ -382,9 +400,32 @@ export function TextArea({
       dir={isRTL ? "rtl" : "ltr"}
       style={{ position: "relative", width: "100%", boxSizing: "border-box" }}
     >
+      {label && (
+        // Visible label, associated via htmlFor. Styling matches the
+        // `label` on Select / RadioGroup / CheckboxGroup so a host mixing
+        // form components gets a consistent look (#538).
+        <label
+          htmlFor={textAreaId}
+          style={{
+            display: "block",
+            fontSize: "1rem",
+            fontWeight: 500,
+            color: "var(--stagebook-text, #1f2937)",
+            marginBottom: "0.5rem",
+          }}
+        >
+          {label}
+        </label>
+      )}
       <textarea
         id={textAreaId}
         className={textareaClass}
+        // Pass-throughs for the invisible-label / external-element cases.
+        // Undefined renders no attribute, so the Prompt-wrapped path is
+        // unchanged; when a visible `label` is used its htmlFor link
+        // supplies the name and these stay absent (#538).
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledBy}
         autoComplete="off"
         rows={rows}
         placeholder={defaultText}
