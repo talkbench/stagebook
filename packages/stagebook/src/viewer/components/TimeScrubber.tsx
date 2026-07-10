@@ -1,4 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import { extractTimeBreakpoints } from "../lib/timeBreakpoints.js";
 import type { ViewerStep } from "../lib/steps.js";
 
@@ -6,6 +13,12 @@ interface TimeScrubberProps {
   currentStep: ViewerStep;
   elapsedTime: number;
   onTimeChange: (seconds: number) => void;
+}
+
+/** Imperative handle so the viewer's `Alt+K` hotkey can drive playback. */
+export interface TimeScrubberHandle {
+  /** Play/pause; restarts from 0 if at the end. Mirrors the ▶/⏸ button. */
+  toggle: () => void;
 }
 
 const SPEEDS = [1, 2, 5, 10];
@@ -16,40 +29,50 @@ function formatTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export function TimeScrubber({
-  currentStep,
-  elapsedTime,
-  onTimeChange,
-}: TimeScrubberProps) {
-  const duration = currentStep.duration;
-  if (duration === undefined) return null;
+export const TimeScrubber = forwardRef<TimeScrubberHandle, TimeScrubberProps>(
+  function TimeScrubber({ currentStep, elapsedTime, onTimeChange }, ref) {
+    const duration = currentStep.duration;
+    if (duration === undefined) return null;
 
-  return (
-    <TimeScrubberInner
-      duration={duration}
-      elements={currentStep.elements as Record<string, unknown>[]}
-      elapsedTime={elapsedTime}
-      onTimeChange={onTimeChange}
-    />
-  );
-}
+    return (
+      <TimeScrubberInner
+        ref={ref}
+        duration={duration}
+        elements={currentStep.elements as Record<string, unknown>[]}
+        elapsedTime={elapsedTime}
+        onTimeChange={onTimeChange}
+      />
+    );
+  },
+);
 
-function TimeScrubberInner({
-  duration,
-  elements,
-  elapsedTime,
-  onTimeChange,
-}: {
-  duration: number;
-  elements: Record<string, unknown>[];
-  elapsedTime: number;
-  onTimeChange: (seconds: number) => void;
-}) {
+const TimeScrubberInner = forwardRef<
+  TimeScrubberHandle,
+  {
+    duration: number;
+    elements: Record<string, unknown>[];
+    elapsedTime: number;
+    onTimeChange: (seconds: number) => void;
+  }
+>(function TimeScrubberInner(
+  { duration, elements, elapsedTime, onTimeChange },
+  ref,
+) {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const trackRef = useRef<HTMLDivElement>(null);
   const elapsedRef = useRef(elapsedTime);
   elapsedRef.current = elapsedTime;
+
+  // Play/pause, shared by the ▶/⏸ button and the viewer's Alt+K hotkey (via the
+  // imperative handle). Reads elapsed from a ref + a functional setState so it
+  // stays correct without re-binding on every tick.
+  const toggle = useCallback(() => {
+    if (elapsedRef.current >= duration) onTimeChange(0);
+    setPlaying((p) => !p);
+  }, [duration, onTimeChange]);
+
+  useImperativeHandle(ref, () => ({ toggle }), [toggle]);
 
   // Playback — interval reads elapsed from ref to avoid teardown every tick
   useEffect(() => {
@@ -87,12 +110,11 @@ function TimeScrubberInner({
   return (
     <div style={containerStyle}>
       <button
-        onClick={() => {
-          if (elapsedTime >= duration) onTimeChange(0);
-          setPlaying(!playing);
-        }}
+        onClick={toggle}
         style={playButtonStyle}
         aria-label={playing ? "Pause" : "Play"}
+        aria-keyshortcuts="Alt+K"
+        title="Play/pause (⌥K)"
       >
         {playing ? "⏸" : "▶"}
       </button>
@@ -146,7 +168,7 @@ function TimeScrubberInner({
       <span style={timeStyle}>{formatTime(duration)}</span>
     </div>
   );
-}
+});
 
 // --- Styles ---
 
