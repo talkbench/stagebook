@@ -117,6 +117,7 @@
     }
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@hello-pangea/dnd": "^18.0.1",
     "@playwright/experimental-ct-react": "^1.58.2",
     "@types/js-yaml": "^4.0.9",
