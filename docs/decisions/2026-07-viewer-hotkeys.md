@@ -108,7 +108,17 @@ macOS / Windows / Linux (full citations in #534). Residual, accepted gaps:
 
 ## Non-goals
 
-- Participant-facing accessibility — that lives in the runner and its a11y
-  work, not this researcher-only chrome. (These modifier-plus-single-key
-  shortcuts are exempt from WCAG 2.1.4 Character Key Shortcuts anyway.)
+- **Full accessibility semantics are not the goal of the _shortcuts_** — they
+  are researcher ergonomics, additive to (never a replacement for) the mouse
+  and focus controls they mirror, and exempt from WCAG 2.1.4 Character Key
+  Shortcuts because they require a non-text modifier. Note that the viewer
+  chrome these live in _is_ committed to WCAG 2.2 AA per the
+  [accessibility ADR](2026-07-accessibility.md); the one known gap introduced
+  here is that the `Alt+/` cheatsheet dialog does not yet move focus into
+  itself on open or trap Tab (Escape-to-close works via a capture-phase
+  listener). That is a researcher-facing item to close under the [#20] audit,
+  which the accessibility ADR prioritises by facing × fix-cost rather than
+  fixing inline.
 - A user-configurable keybinding UI.
+
+[#20]: https://github.com/talkbench/stagebook/issues/20
