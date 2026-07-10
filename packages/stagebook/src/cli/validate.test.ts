@@ -653,6 +653,18 @@ ${imageBody}
     expect(r.stdout).not.toContain("width");
   });
 
+  it("still warns under --no-expand (raw source path also runs the lint)", async () => {
+    await writeFile(
+      join(dir, "study.stagebook.yaml"),
+      studyYaml(`          - type: image
+            file: shared/diagram.png`),
+    );
+    const r = await runCli(["--no-expand", join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("warning:");
+    expect(r.stdout).toContain("altText");
+  });
+
   it("lints a template-authored image once it expands into a concrete stage", async () => {
     // The image lives only in a template body — never scanned raw — but the
     // CLI validates the EXPANDED tree, so it surfaces once the invocation

@@ -12,10 +12,7 @@ import {
   checkPromptLocaleConsistencyWithLoader,
   checkUnsatisfiableConditionsWithLoader,
 } from "../validate/index.js";
-import {
-  checkConsentLocaleCoverage,
-  collectMissingImageAltText,
-} from "../schemas/index.js";
+import { checkConsentLocaleCoverage } from "../schemas/index.js";
 import { load as loadYaml } from "js-yaml";
 
 export type Format = "text" | "json";
@@ -252,11 +249,14 @@ export async function run({
     // treatment's `locale` (both default `en`). Cross-file by nature, so it
     // runs here where the referenced prompt files are readable from disk.
     if (!result.expandError) {
+      // NOTE: the missing-`altText` image lint (#536) is NOT run here — it's
+      // emitted by `validateTreatmentSource`, which `expandAndValidateWithImports`
+      // runs over the expanded YAML (and which the `--no-expand`/stdin branch
+      // above runs over the raw source). Adding it here would double-report.
       diagnostics.push(
         ...(await checkLocaleConsistencyDiagnostics(result.fullYaml, dir)),
         ...(await checkUnsatisfiableConditionDiagnostics(result.fullYaml, dir)),
         ...checkConsentLocaleCoverageDiagnostics(result.fullYaml),
-        ...checkMissingImageAltTextDiagnostics(result.fullYaml),
       );
     }
     results.push({ path: displayPath, type: "treatment", diagnostics });
@@ -381,39 +381,6 @@ function checkConsentLocaleCoverageDiagnostics(fullYaml: string): Diagnostic[] {
     message: gap.message,
     range: null,
   }));
-}
-
-/**
- * Run the missing-alt-text image lint (#536) over the expanded treatment: an
- * `image` element with no `altText` key gets a WARNING (never an error —
- * `altText: ""` is the valid decorative escape hatch, so the lint nudges rather
- * than blocks). Runs on the *expanded* tree so template-provided images are
- * linted once they land in a concrete stage; because expanded positions don't
- * map to the source, diagnostics carry `range: null` (top of file) with the
- * element path appended to the message as the locator.
- */
-function checkMissingImageAltTextDiagnostics(fullYaml: string): Diagnostic[] {
-  let fileObj: unknown;
-  try {
-    fileObj = loadYaml(fullYaml);
-  } catch {
-    return []; // YAML errors are already reported by the schema pass
-  }
-
-  return collectMissingImageAltText(fileObj).map((issue) => ({
-    severity: "warning" as const,
-    message: `${issue.message} (${formatIssuePath(issue.path)})`,
-    range: null,
-  }));
-}
-
-function formatIssuePath(path: (string | number)[]): string {
-  let out = "";
-  for (const segment of path) {
-    if (typeof segment === "number") out += `[${segment}]`;
-    else out += out ? `.${segment}` : segment;
-  }
-  return out;
 }
 
 function hasGlobChars(s: string): boolean {

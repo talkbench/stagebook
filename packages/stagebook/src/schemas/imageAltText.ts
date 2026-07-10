@@ -24,22 +24,30 @@
  * i18n-completeness warning, #529), NOT inside the `treatmentFileSchema`
  * superRefine. That's deliberate: a superRefine issue — even a self-marked
  * "warning" — makes `safeParse` return `success: false`, which non-diagnostic
- * consumers (VS Code preview, the viewer example catalog, external
- * manager/runner/annotator) read as a hard schema failure and use to BLOCK a
- * common, harmless input. Keeping it out of the schema preserves the
- * success/failure contract as "errors only." The caller wires it into both
- * validate surfaces (CLI `cli/validate.ts` + editor `validateTreatmentDiff.ts`)
- * and assigns `warning` severity there.
+ * consumers (VS Code preview via `parseTreatmentSource`, the viewer example
+ * catalog, external manager/runner/annotator) read as a hard schema failure and
+ * use to BLOCK a common, harmless input. Keeping it out of the schema preserves
+ * the success/failure contract as "errors only."
+ *
+ * Wiring — two diagnostic surfaces, both of which return diagnostics (never a
+ * pass/fail boolean), so `warning` severity flows through without blocking:
+ *   - `validateTreatmentSource` appends it after the schema pass. That's the
+ *     shared chokepoint for the CLI (raw source AND the expanded YAML, via
+ *     `expandAndValidate`) and the VS Code expanded preview — one wiring point
+ *     covers all of them, positioned via the same mapper.
+ *   - `validateTreatmentDiff` runs it over the un-expanded source object for the
+ *     inline editor squiggle (that path doesn't go through
+ *     `validateTreatmentSource`).
  *
  * The walk mirrors `collectStorageKeyCollisions`: every element-bearing
  * container a participant can traverse (treatment game stages + exit
  * sequences, intro-sequence steps, consent-arm steps). Like that walker it
  * deliberately does NOT scan `templates:` bodies — only the concrete
  * containers above. An image authored inside a template body is still linted
- * once it lands in a real stage: the CLI runs the check over the *expanded*
- * tree, where the invocation has become a concrete element. The editor diff
- * runs it over the un-expanded source object (for precise squiggle positions),
- * so a template-provided image surfaces in the CLI / expanded preview rather
+ * once it lands in a real stage: `validateTreatmentSource` runs over the
+ * *expanded* tree in the CLI / expanded-preview paths, where the invocation has
+ * become a concrete element. The inline editor diff runs over the un-expanded
+ * source, so a template-provided image surfaces in the expanded preview rather
  * than on the invocation line — the same treatment every post-hydration rule
  * gets. Scanning raw template bodies would instead mis-position warnings at
  * `${placeholder}`-bearing partial elements.

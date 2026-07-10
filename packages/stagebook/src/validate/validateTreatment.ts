@@ -1,4 +1,7 @@
-import { safeParseTreatmentFile } from "../index.js";
+import {
+  safeParseTreatmentFile,
+  collectMissingImageAltText,
+} from "../index.js";
 import { createPositionMapper, extractYamlErrors } from "./yamlPositionMap.js";
 import type { Diagnostic } from "./types.js";
 
@@ -97,6 +100,28 @@ export function validateTreatmentSource(source: string): ValidationResult {
         range,
       });
     }
+  }
+
+  // Step 4: Missing-alt-text image lint (#536). A WARNING (never a schema
+  // failure — see collectMissingImageAltText), appended here rather than inside
+  // the schema so it reaches every surface that runs validateTreatmentSource
+  // without flipping `safeParse` for consumers that gate on it: the CLI (raw
+  // source, and the expanded YAML via expandAndValidate) and the VS Code
+  // expanded preview. The inline editor diff runs its own copy over the
+  // un-expanded source (validateTreatmentDiff) for a precise squiggle. Uses the
+  // same mapper + walk-up as the schema issues above.
+  for (const issue of collectMissingImageAltText(parsedObj)) {
+    let range = mapper.resolve(issue.path);
+    let ancestorPath = issue.path;
+    while (!range && ancestorPath.length > 0) {
+      ancestorPath = ancestorPath.slice(0, -1);
+      range = mapper.resolve(ancestorPath);
+    }
+    diagnostics.push({
+      message: `${issue.message} (${formatPath(issue.path)})`,
+      severity: "warning",
+      range,
+    });
   }
 
   return { diagnostics, parsedObj };

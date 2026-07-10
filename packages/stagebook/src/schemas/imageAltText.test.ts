@@ -134,13 +134,7 @@ describe("collectMissingImageAltText", () => {
   });
 });
 
-describe("a missing altText is NOT a schema failure (stays out of the schema)", () => {
-  // The lint is a warning, wired through a SEPARATE post-validation channel —
-  // deliberately not the schema superRefine, because any superRefine issue
-  // flips `safeParse` to `success: false`, which non-diagnostic consumers
-  // (VS Code preview, viewer example catalog, external manager/runner) read as
-  // a blocking failure. These guard that contract: an un-annotated image is a
-  // clean parse, so those consumers keep working.
+describe("missing altText is a WARNING, never a schema failure", () => {
   const src = `
 treatments:
   - name: t
@@ -155,8 +149,12 @@ treatments:
           - type: submitButton
 `;
 
-  it("safeParseTreatmentFile succeeds for a treatment whose image lacks altText", () => {
-    // js-yaml the source the way callers do, then parse.
+  it("safeParseTreatmentFile SUCCEEDS for a treatment whose image lacks altText", () => {
+    // The load-bearing regression guard: the lint lives OUTSIDE the schema, so
+    // it never flips `safeParse` to `success: false`. Consumers that gate on
+    // that boolean (VS Code preview via parseTreatmentSource, the viewer example
+    // catalog, external manager/runner/annotator) keep working on a common,
+    // harmless input — an un-annotated image.
     const parsed = safeParseTreatmentFile({
       treatments: [
         {
@@ -179,11 +177,20 @@ treatments:
     expect(parsed.success).toBe(true);
   });
 
-  it("validateTreatmentSource reports no error AND no altText warning (the schema pass is silent)", () => {
-    // The schema pass alone doesn't run the lint — only the two wired surfaces
-    // (CLI `cli/validate.ts` + editor `validateTreatmentDiff.ts`) do.
+  it("validateTreatmentSource surfaces it as a WARNING (the shared CLI / expanded-preview chokepoint)", () => {
     const { diagnostics } = validateTreatmentSource(src);
     expect(diagnostics.some((d) => d.severity === "error")).toBe(false);
+    const warn = diagnostics.find((d) => /altText/i.test(d.message));
+    expect(warn).toBeDefined();
+    expect(warn?.severity).toBe("warning");
+  });
+
+  it("validateTreatmentSource is silent when the image is explicitly decorative", () => {
+    const decorative = src.replace(
+      "            file: shared/diagram.png",
+      '            file: shared/diagram.png\n            altText: ""',
+    );
+    const { diagnostics } = validateTreatmentSource(decorative);
     expect(diagnostics.find((d) => /altText/i.test(d.message))).toBeUndefined();
   });
 });
