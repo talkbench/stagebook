@@ -28,8 +28,10 @@ export interface SelectProps {
    * `aria-labelledby`. Use when the accessible name lives in existing
    * visible content (e.g. a prompt body) rather than the `label` prop —
    * naming the control without rendering a duplicate visible label.
-   * When set, no visible `<label>` is emitted for it; supply `label`
-   * instead if a visible caption is wanted. See #545.
+   * Pass this *instead of* `label`, not alongside it: the visible
+   * `<label>` is gated solely on `label`, so if both are set a caption
+   * still renders and `aria-labelledby` wins the accessible name. See
+   * #545.
    */
   ariaLabelledBy?: string;
   "data-testid"?: string;

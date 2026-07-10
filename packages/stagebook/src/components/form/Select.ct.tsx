@@ -33,6 +33,32 @@ test.describe("Select", () => {
     await expect(component).toContainText("Pick one");
   });
 
+  test("forwards ariaLabelledBy so the select is named by external content", async ({
+    mount,
+  }) => {
+    // Mirrors the RadioGroup/CheckboxGroup aria-labelledby tests: the
+    // accessible name can live in existing visible content (e.g. a
+    // prompt body) rather than a duplicate visible <label>. This is
+    // the path Prompt's dropdown variant uses (#545). Guards the
+    // component's own public API so a refactor dropping the forward
+    // fails here, not only in the Prompt integration test.
+    const component = await mount(
+      <div>
+        <div id="ext-label">Which Hogwarts house?</div>
+        <Select
+          options={options}
+          onChange={() => {}}
+          ariaLabelledBy="ext-label"
+        />
+      </div>,
+    );
+    // getByRole filters by accessible name — this only matches if
+    // aria-labelledby resolves to the visible text.
+    await expect(
+      component.getByRole("combobox", { name: "Which Hogwarts house?" }),
+    ).toBeVisible();
+  });
+
   test("renders placeholder as a leading disabled option", async ({
     mount,
   }) => {
