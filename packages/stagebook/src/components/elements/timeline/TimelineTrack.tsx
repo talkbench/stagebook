@@ -63,7 +63,7 @@ export function TimelineTrack({
       <style>{`
         .${muteClass}:focus-visible {
           outline: none;
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
         }
         .${muteClass}:hover {
           background: var(--stagebook-hover-bg, #f3f4f6);
@@ -78,7 +78,7 @@ export function TimelineTrack({
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          borderRight: "1px solid var(--stagebook-border, #e5e7eb)",
+          borderRight: "1px solid var(--stagebook-border, #d1d5db)",
         }}
       >
         <button
@@ -108,8 +108,8 @@ export function TimelineTrack({
             borderRadius: "0.25rem",
             cursor: "pointer",
             color: muted
-              ? "var(--stagebook-danger, #dc2626)"
-              : "var(--stagebook-text-faint, #9ca3af)",
+              ? "var(--stagebook-danger, #b91c1c)"
+              : "var(--stagebook-decoration, #9ca3af)",
           }}
         >
           {muted ? <SpeakerMutedIcon /> : <SpeakerIcon />}
@@ -135,10 +135,10 @@ export function TimelineTrack({
             padding: "1px 6px",
             fontSize: "0.7rem",
             lineHeight: 1.4,
-            color: "var(--stagebook-text-faint, #6b7280)",
+            color: "var(--stagebook-text-muted, #6b7280)",
             background:
               "var(--stagebook-timeline-track-label-bg, rgba(255, 255, 255, 0.85))",
-            border: "1px solid var(--stagebook-border, #e5e7eb)",
+            border: "1px solid var(--stagebook-border, #d1d5db)",
             borderRadius: "0.25rem",
             userSelect: "none",
             pointerEvents: "none",

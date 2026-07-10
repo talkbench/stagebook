@@ -138,12 +138,12 @@ describe("styles.css uses theme variables for hardcoded values (#116)", () => {
     ],
     [
       "--stagebook-table-text",
-      "var(--stagebook-table-text, #4a5568)",
+      "var(--stagebook-table-text, #374151)",
       "table cell text color",
     ],
     [
       "--stagebook-table-header-text",
-      "var(--stagebook-table-header-text, #1a202c)",
+      "var(--stagebook-table-header-text, #1f2937)",
       "table header text color",
     ],
   ])("Markdown.tsx references %s via %s (%s)", (name, needle) => {
@@ -239,5 +239,98 @@ describe("styles.css uses theme variables for hardcoded values (#116)", () => {
     expect(stripVarCalls(outsideRoot)).not.toMatch(
       /rgba\(\s*59\s*,\s*130\s*,\s*246/,
     );
+  });
+});
+
+// Issue #535: the palette is accessible *by construction* — every documented
+// foreground/background pairing meets WCAG 2.2 AA. These tests resolve each
+// --stagebook-* token through the two-tier alias graph (semantic → primitive)
+// to a hex and assert the contrast ratio, so a future value edit that breaks
+// contrast fails CI instead of shipping.
+describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
+  const css = readFileSync(stylesPath, "utf8");
+  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // The main :root block (custom-property values use parens, never braces,
+  // so the first close-brace ends the block).
+  const rootBody = /:root\s*\{([\s\S]*?)\}/.exec(noComments)?.[1] ?? "";
+  const vars = new Map<string, string>();
+  for (const m of rootBody.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
+    vars.set(m[1], m[2].trim());
+  }
+
+  /** Resolve a token through var() aliases to a solid hex, or null. */
+  function resolveHex(name: string, seen = new Set<string>()): string | null {
+    if (seen.has(name)) return null;
+    seen.add(name);
+    const v = vars.get(name);
+    if (!v) return null;
+    if (/^#[0-9a-f]{3,8}$/i.test(v)) return v;
+    const ref = /var\(\s*(--[\w-]+)/.exec(v);
+    return ref ? resolveHex(ref[1], seen) : null; // color-mix/rgba → null
+  }
+
+  function relLum(hex: string): number {
+    const h = hex.replace("#", "");
+    const n =
+      h.length === 3
+        ? h
+            .split("")
+            .map((c) => c + c)
+            .join("")
+        : h;
+    const ch = [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16) / 255);
+    const lin = ch.map((c) =>
+      c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4),
+    );
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  }
+
+  function contrast(a: string, b: string): number {
+    const la = relLum(a);
+    const lb = relLum(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  }
+
+  // [foreground token, background token, min ratio, label]
+  const AA = 4.5; // normal text
+  const UI = 3.0; // UI components / large text
+  const pairings: [string, string, number, string][] = [
+    ["--stagebook-text", "--stagebook-bg", AA, "body text on page"],
+    ["--stagebook-text-secondary", "--stagebook-bg", AA, "secondary text"],
+    ["--stagebook-text-muted", "--stagebook-bg", AA, "muted text"],
+    ["--stagebook-primary", "--stagebook-bg", AA, "link text / TrackedLink"],
+    ["--stagebook-bg", "--stagebook-primary", AA, "button label on primary"],
+    ["--stagebook-link", "--stagebook-bg", AA, "markdown link text"],
+    ["--stagebook-danger", "--stagebook-danger-bg", AA, "danger pill/callout"],
+    ["--stagebook-success", "--stagebook-success-bg", AA, "success pill"],
+    ["--stagebook-warning", "--stagebook-warning-bg", AA, "warning pill"],
+    ["--stagebook-danger", "--stagebook-bg", AA, "danger text on white"],
+    // NOTE: --stagebook-border (gray-300, 1.47:1 on white) is a deliberately
+    // subtle input border and predates #535 — the WCAG 1.4.11 question for
+    // form-control boundaries is a separate a11y decision, not asserted here.
+    ["--stagebook-playhead", "--stagebook-bg", UI, "playhead marker (UI)"],
+  ];
+
+  it.each(pairings)("%s on %s meets its contrast floor (%s)", (fg, bg, min) => {
+    const fgHex = resolveHex(fg);
+    const bgHex = resolveHex(bg);
+    expect(fgHex, `${fg} should resolve to a hex`).not.toBeNull();
+    expect(bgHex, `${bg} should resolve to a hex`).not.toBeNull();
+    const ratio = contrast(fgHex as string, bgHex as string);
+    expect(
+      ratio,
+      `${fg} (${String(fgHex)}) on ${bg} (${String(bgHex)}) = ${ratio.toFixed(2)}:1, need ${String(min)}`,
+    ).toBeGreaterThanOrEqual(min);
+  });
+
+  it("keeps --stagebook-text-faint as a deprecated alias of --stagebook-decoration", () => {
+    expect(vars.get("--stagebook-text-faint")).toContain(
+      "var(--stagebook-decoration)",
+    );
+  });
+
+  it("pins color-scheme: light so participant OS dark mode can't re-tint native controls", () => {
+    expect(rootBody).toMatch(/color-scheme:\s*light/);
   });
 });

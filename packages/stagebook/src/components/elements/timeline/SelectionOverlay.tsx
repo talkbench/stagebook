@@ -627,11 +627,11 @@ export function SelectionOverlay({
             width: `${String(rangeWidth)}px`,
             height: `${String(rangeHeight)}px`,
             background: isActive
-              ? "var(--stagebook-timeline-range-active, rgba(59, 130, 246, 0.35))"
-              : "var(--stagebook-timeline-range-inactive, rgba(59, 130, 246, 0.18))",
+              ? "var(--stagebook-timeline-range-active, rgba(37, 99, 235, 0.35))"
+              : "var(--stagebook-timeline-range-inactive, rgba(37, 99, 235, 0.18))",
             border: isActive
               ? "1px solid var(--stagebook-timeline-range-active-border, rgba(37, 99, 235, 1))"
-              : "1px solid var(--stagebook-timeline-range-inactive-border, rgba(59, 130, 246, 0.6))",
+              : "1px solid var(--stagebook-timeline-range-inactive-border, rgba(37, 99, 235, 0.6))",
             boxSizing: "border-box",
             cursor: "pointer",
             pointerEvents: "auto",
@@ -677,7 +677,7 @@ export function SelectionOverlay({
               color={
                 isActive && activeHandle === "start"
                   ? "var(--stagebook-timeline-handle-active, rgba(37, 99, 235, 1))"
-                  : "var(--stagebook-timeline-handle-inactive, rgba(59, 130, 246, 0.7))"
+                  : "var(--stagebook-timeline-handle-inactive, rgba(37, 99, 235, 0.7))"
               }
             />
             {hoveredHandle?.index === i &&
@@ -719,7 +719,7 @@ export function SelectionOverlay({
               color={
                 isActive && activeHandle === "end"
                   ? "var(--stagebook-timeline-handle-active, rgba(37, 99, 235, 1))"
-                  : "var(--stagebook-timeline-handle-inactive, rgba(59, 130, 246, 0.7))"
+                  : "var(--stagebook-timeline-handle-inactive, rgba(37, 99, 235, 0.7))"
               }
             />
             {hoveredHandle?.index === i && hoveredHandle?.handle === "end" && (
@@ -777,7 +777,7 @@ export function SelectionOverlay({
               height: "100%",
               background: isActive
                 ? "var(--stagebook-timeline-handle-active, rgba(37, 99, 235, 1))"
-                : "var(--stagebook-timeline-handle-inactive, rgba(59, 130, 246, 0.7))",
+                : "var(--stagebook-timeline-handle-inactive, rgba(37, 99, 235, 0.7))",
             }}
           />
           <div
@@ -790,7 +790,7 @@ export function SelectionOverlay({
               borderRadius: "50%",
               background: isActive
                 ? "var(--stagebook-timeline-handle-active, rgba(37, 99, 235, 1))"
-                : "var(--stagebook-timeline-handle-inactive, rgba(59, 130, 246, 0.7))",
+                : "var(--stagebook-timeline-handle-inactive, rgba(37, 99, 235, 0.7))",
             }}
           />
         </div>
@@ -845,9 +845,9 @@ export function SelectionOverlay({
           width: `${String(previewWidth)}px`,
           height: `${String(previewHeight)}px`,
           background:
-            "var(--stagebook-timeline-preview-bg, rgba(59, 130, 246, 0.25))",
+            "var(--stagebook-timeline-preview-bg, rgba(37, 99, 235, 0.25))",
           border:
-            "1px dashed var(--stagebook-timeline-preview-border, rgba(59, 130, 246, 0.6))",
+            "1px dashed var(--stagebook-timeline-preview-border, rgba(37, 99, 235, 0.6))",
           boxSizing: "border-box",
           pointerEvents: "none",
         }}
@@ -946,9 +946,9 @@ export function SelectionOverlay({
           width: `${String(previewWidth)}px`,
           height: `${String(previewHeight)}px`,
           background:
-            "var(--stagebook-timeline-preview-bg, rgba(59, 130, 246, 0.25))",
+            "var(--stagebook-timeline-preview-bg, rgba(37, 99, 235, 0.25))",
           border:
-            "1px dashed var(--stagebook-timeline-preview-border, rgba(59, 130, 246, 0.6))",
+            "1px dashed var(--stagebook-timeline-preview-border, rgba(37, 99, 235, 0.6))",
           boxSizing: "border-box",
           pointerEvents: "none",
         }}
@@ -998,9 +998,9 @@ export function SelectionOverlay({
     >
       <style>{`
         @keyframes stagebookRangeBlockedPulse {
-          0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
-          30% { box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.55); }
-          100% { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0); }
+          0% { box-shadow: 0 0 0 0 transparent; }
+          30% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--stagebook-danger, #b91c1c) 55%, transparent); }
+          100% { box-shadow: 0 0 0 8px transparent; }
         }
         .stagebook-range-blocked-pulse {
           animation: stagebookRangeBlockedPulse 600ms ease-out;

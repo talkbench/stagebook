@@ -128,7 +128,7 @@ export function HelpPopover({
         right: `${String(position.right)}px`,
         zIndex: 1000,
         background: "var(--stagebook-bg, #ffffff)",
-        border: "1px solid var(--stagebook-border, #e5e7eb)",
+        border: "1px solid var(--stagebook-border, #d1d5db)",
         borderRadius: "0.375rem",
         padding: "0.5rem 0.75rem",
         fontSize: "0.75rem",
@@ -140,7 +140,7 @@ export function HelpPopover({
         style={{
           fontWeight: 600,
           marginBottom: "0.375rem",
-          color: "var(--stagebook-text, #111827)",
+          color: "var(--stagebook-text, #1f2937)",
         }}
       >
         {messages.timelineShortcutsTitle}
@@ -158,7 +158,7 @@ export function HelpPopover({
                 style={{
                   paddingRight: "0.75rem",
                   fontFamily: "monospace",
-                  color: "var(--stagebook-text, #111827)",
+                  color: "var(--stagebook-text, #1f2937)",
                   whiteSpace: "nowrap",
                   verticalAlign: "top",
                 }}

@@ -134,7 +134,7 @@ export function Select({
       <style>{`
         .${triggerClass}:focus-visible {
           outline: none;
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
         }
         @media (prefers-reduced-motion: reduce) {
           .${triggerClass} {

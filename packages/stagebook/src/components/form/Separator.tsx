@@ -23,7 +23,7 @@ const baseStyle: React.CSSProperties = {
 };
 
 // Three sizes, three colors. Thin and regular share the gray-400
-// `--stagebook-text-faint` token; thick steps up to the heavier
+// `--stagebook-decoration` token; thick steps up to the heavier
 // `--stagebook-text-muted` to read as a strong separator. Researchers
 // pick the style via the prompt-file frontmatter; the default ("")
 // resolves to regular.
@@ -34,12 +34,12 @@ const VARIANT_STYLES: Record<
   thin: {
     ...baseStyle,
     height: "1px",
-    backgroundColor: "var(--stagebook-text-faint, #9ca3af)",
+    backgroundColor: "var(--stagebook-decoration, #9ca3af)",
   },
   regular: {
     ...baseStyle,
     height: "3px",
-    backgroundColor: "var(--stagebook-text-faint, #9ca3af)",
+    backgroundColor: "var(--stagebook-decoration, #9ca3af)",
   },
   thick: {
     ...baseStyle,

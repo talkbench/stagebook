@@ -82,9 +82,9 @@ class ElementErrorBoundaryInner extends React.Component<
           data-testid="element-error-fallback"
           style={{
             padding: "0.75rem 1rem",
-            border: "1px solid var(--stagebook-danger, #dc2626)",
+            border: "1px solid var(--stagebook-danger, #b91c1c)",
             borderRadius: "0.375rem",
-            color: "var(--stagebook-danger, #dc2626)",
+            color: "var(--stagebook-danger, #b91c1c)",
             backgroundColor: "var(--stagebook-danger-bg, #fef2f2)",
             fontSize: "0.875rem",
           }}

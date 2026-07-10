@@ -182,7 +182,7 @@ export function TrackedLink({
            outrank the :hover class selector on specificity (same
            trap as Slider / Button / TextArea). */
         .${linkClass} {
-          color: var(--stagebook-primary, #3b82f6);
+          color: var(--stagebook-primary, #2563eb);
           transition: color 120ms ease-out;
         }
         .${linkClass}:hover {
@@ -192,7 +192,7 @@ export function TrackedLink({
            leave a lingering ring around the link after release. */
         .${linkClass}:focus-visible {
           outline: none;
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
           border-radius: 0.125rem;
         }
         @media (prefers-reduced-motion: reduce) {

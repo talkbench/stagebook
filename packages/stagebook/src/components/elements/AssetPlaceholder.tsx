@@ -50,13 +50,13 @@ const container: React.CSSProperties = {
 
 const icon: React.CSSProperties = {
   fontSize: "1.75rem",
-  color: "var(--stagebook-text-faint, #9ca3af)",
+  color: "var(--stagebook-decoration, #9ca3af)",
 };
 
 const label: React.CSSProperties = {
   fontSize: "0.8125rem",
   fontWeight: 600,
-  color: "var(--stagebook-text-secondary, #4b5563)",
+  color: "var(--stagebook-text-secondary, #374151)",
   margin: 0,
   textAlign: "center",
 };
@@ -67,14 +67,14 @@ const uriText: React.CSSProperties = {
   backgroundColor: "var(--stagebook-surface, #fff)",
   padding: "0.2rem 0.45rem",
   borderRadius: "0.25rem",
-  border: "1px solid var(--stagebook-border, #e5e7eb)",
+  border: "1px solid var(--stagebook-border, #d1d5db)",
   wordBreak: "break-all",
   maxWidth: "100%",
 };
 
 const hint: React.CSSProperties = {
   fontSize: "0.75rem",
-  color: "var(--stagebook-text-faint, #9ca3af)",
+  color: "var(--stagebook-decoration, #9ca3af)",
   margin: 0,
   textAlign: "center",
 };

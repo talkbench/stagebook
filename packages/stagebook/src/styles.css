@@ -12,11 +12,6 @@
  * become available at :root for the host to override in one place, and
  * the Inter webfont is registered.
  *
- * Provides:
- * - Inter font
- * - Stagebook CSS custom properties at :root (default values)
- * - Form input resets
- *
  * Customizing typography / colors: override the --stagebook-* variables on
  * any parent element (or :root). For example, to scale headings down on
  * a particular platform:
@@ -29,6 +24,12 @@
  *   }
  *
  * No selector-based CSS, no specificity battles.
+ *
+ * Color architecture (two tiers): a PRIVATE primitive ramp (`--sb-*`) holds
+ * the raw color values; the PUBLIC semantic tokens (`--stagebook-*`) alias
+ * those primitives. Theme by overriding the semantic tokens — never the
+ * `--sb-*` primitives, which are an internal implementation detail. See
+ * issue #535 and docs/decisions for the "why these colors" rationale.
  */
 
 /* ------------------------------------------------------------------ */
@@ -60,121 +61,203 @@
 /* ------------------------------------------------------------------ */
 
 :root {
-  /* Primary action color (buttons, slider thumb, focus rings) */
-  --stagebook-primary: #3b82f6;
-  --stagebook-primary-hover: #2563eb;
-  /* One step darker than --stagebook-primary-hover for the
-   * `:active` (pressed) state on primary buttons. The
-   * hover→active progression telegraphs "the click registered"
-   * during slow clicks. */
-  --stagebook-primary-active: #1d4ed8;
+  /* Pin the color scheme so a participant's OS dark mode can't re-tint
+   * native controls (select, range, textarea, scrollbars) out from under
+   * the study. Stagebook is a measurement instrument: every participant
+   * must see the same stimulus (#535). An explicit OS accessibility
+   * override (forced-colors / high-contrast) is deliberately NOT
+   * suppressed — that's the participant's need, not a theme preference. */
+  color-scheme: light;
 
-  /* Status colors */
-  --stagebook-success: #16a34a;
-  --stagebook-danger: #ef4444;
-  --stagebook-danger-bg: #fef2f2;
-  --stagebook-warning: #dc2626;
+  /* ---------------------------------------------------------------- */
+  /* Primitives — the raw color ramp (PRIVATE).                        */
+  /* Not part of the public override API. Theme via the semantic        */
+  /* --stagebook-* tokens below, which alias these. Steps are named     */
+  /* points on a widely used, perceptually even scale — the color       */
+  /* analog of choosing Inter: robust and standard, not bespoke.        */
+  /* ---------------------------------------------------------------- */
 
-  /* Timeline playhead */
-  --stagebook-playhead: #e11d48;
+  /* Accent — one blue scale */
+  --sb-blue-400: #60a5fa;
+  --sb-blue-600: #2563eb;
+  --sb-blue-700: #1d4ed8;
+  --sb-blue-800: #1e40af;
+
+  /* Neutrals — one gray ramp */
+  --sb-white: #ffffff;
+  --sb-gray-50: #f9fafb;
+  --sb-gray-100: #f3f4f6;
+  --sb-gray-200: #e5e7eb;
+  --sb-gray-300: #d1d5db;
+  --sb-gray-400: #9ca3af;
+  --sb-gray-500: #6b7280;
+  --sb-gray-700: #374151;
+  --sb-gray-800: #1f2937;
+
+  /* Semantic hues */
+  --sb-green-700: #15803d;
+  --sb-green-50: #f0fdf4;
+  /* red-700, not red-600: red-600 (#dc2626) on red-50 is only 4.41:1 —
+   * below AA for the danger pill/callout text. red-700 passes on both
+   * white and the red-50 tint. */
+  --sb-red-700: #b91c1c;
+  --sb-red-50: #fef2f2;
+  --sb-amber-700: #b45309;
+  --sb-amber-50: #fffbeb;
+  --sb-rose-700: #be123c;
+  --sb-violet-600: #7c3aed;
+
+  /* ---------------------------------------------------------------- */
+  /* Semantic tokens — the PUBLIC override surface. Each aliases a      */
+  /* primitive (or another semantic token). Override these to retheme.  */
+  /* ---------------------------------------------------------------- */
+
+  /* Primary action (buttons, links, focus ring, slider thumb).
+   * blue-600 passes WCAG 2.2 AA as both button fill (white-on-it) and as
+   * link text on white (#535). The hover → active progression telegraphs
+   * "the click registered" during slow clicks. */
+  --stagebook-primary: var(--sb-blue-600);
+  --stagebook-primary-hover: var(--sb-blue-700);
+  --stagebook-primary-active: var(--sb-blue-800);
+
+  /* Status — each ships as a {fg, bg} pair so status messages render as
+   * dark text on a soft tint (comfortably AA) rather than small colored
+   * text. The fg is the ramp step that passes AA as text on its own bg
+   * (perceptual, so the step differs by hue: red-600, green-700,
+   * amber-700). Warning is amber — a distinct hue from danger so
+   * "caution" never blurs into "error". */
+  --stagebook-success: var(--sb-green-700);
+  --stagebook-success-bg: var(--sb-green-50);
+  --stagebook-danger: var(--sb-red-700);
+  --stagebook-danger-bg: var(--sb-red-50);
+  --stagebook-warning: var(--sb-amber-700);
+  --stagebook-warning-bg: var(--sb-amber-50);
+
+  /* Timeline playhead — a deliberately distinct marker hue: it must stay
+   * distinct from the blue selection ranges AND must not read as
+   * "danger", so it is neither the accent nor the danger color and never
+   * aliases them (a host rebranding errors shouldn't move the playhead). */
+  --stagebook-playhead: var(--sb-rose-700);
 
   /* Timer */
-  --stagebook-timer-fill: #60a5fa;
-  --stagebook-timer-warn: #ef4444;
-  --stagebook-timer-track: #e5e7eb;
+  --stagebook-timer-fill: var(--sb-blue-400);
+  --stagebook-timer-warn: var(--stagebook-danger);
+  --stagebook-timer-track: var(--sb-gray-200);
 
   /* Text */
-  --stagebook-text: #1f2937;
-  --stagebook-text-secondary: #374151;
-  --stagebook-text-muted: #6b7280;
-  --stagebook-text-faint: #9ca3af;
+  --stagebook-text: var(--sb-gray-800);
+  --stagebook-text-secondary: var(--sb-gray-700);
+  --stagebook-text-muted: var(--sb-gray-500);
+  /* Non-text decoration (slider ticks, placeholder, spinner arc, quote
+   * rail). NOT readable text — it intentionally doesn't meet text
+   * contrast. Renamed from --stagebook-text-faint, which mislabeled it as
+   * text; the old name is kept just below as a deprecated alias. */
+  --stagebook-decoration: var(--sb-gray-400);
+  /* @deprecated — alias for --stagebook-decoration; remove next release. */
+  --stagebook-text-faint: var(--stagebook-decoration);
 
   /* Borders and backgrounds */
-  --stagebook-border: #d1d5db;
-  --stagebook-bg: #ffffff;
-  --stagebook-bg-muted: #f9fafb;
-  --stagebook-bg-track: #e5e7eb;
-  /* Hover-state background fill for interactive rows (radio /
-   * checkbox option labels, sortable items, etc.). Sits between
-   * --stagebook-bg-muted (page-level subdued surface) and the
-   * primary-tinted focus ring so the hover affordance reads as
-   * "this row is interactive" without competing with selection
-   * indicators. */
-  --stagebook-hover-bg: #f3f4f6;
-  /* Minimum height for interactive rows (radio / checkbox option
-   * labels). Default 2.25rem (36px) balances HIG's 44px touch-target
-   * recommendation against vertical density on long Likert-style
-   * scales. Mobile-first deployments can override to "2.75rem" to
-   * hit 44px without forking. */
+  --stagebook-border: var(--sb-gray-300);
+  --stagebook-bg: var(--sb-white);
+  --stagebook-bg-muted: var(--sb-gray-50);
+  --stagebook-bg-track: var(--sb-gray-200);
+  /* Hover-state background fill for interactive rows (radio / checkbox
+   * labels, sortable items). Sits between --stagebook-bg-muted and the
+   * primary-tinted focus ring so hover reads as "interactive" without
+   * competing with selection indicators. */
+  --stagebook-hover-bg: var(--sb-gray-100);
+  /* Minimum height for interactive rows. 2.25rem (36px) balances HIG's
+   * 44px touch target against vertical density on long Likert scales;
+   * mobile-first deployments can override to "2.75rem". */
   --stagebook-row-min-height: 2.25rem;
 
-  /* Form control surface (input, textarea, select, checkbox, radio). Kept
-   * distinct from --stagebook-bg so hosts can tint form controls separately
-   * from the page background (e.g., darker cards on a white page). */
-  --stagebook-surface: #fff;
+  /* Form control surface — kept distinct from --stagebook-bg so hosts can
+   * tint controls separately from the page (e.g. darker cards on white). */
+  --stagebook-surface: var(--sb-white);
 
-  /* Focus ring. Default is a static rgba tint of the primary color so
-   * browsers without color-mix support still get a visible focus ring.
-   * In browsers that support color-mix, the @supports block below upgrades
-   * the token to a live 25% mix of --stagebook-primary, so overriding the
-   * primary token automatically retunes the focus ring. Hosts can always
-   * override this token directly for a fully custom ring color.
-   *
-   * Why not define it as color-mix() unconditionally: custom-property
-   * substitution is validated at computed-value time, so if color-mix()
-   * isn't supported the whole box-shadow declaration becomes invalid and
-   * the var() fallback at the usage site does NOT apply — the focus ring
-   * would just disappear. */
-  --stagebook-focus-ring: rgba(59, 130, 246, 0.25);
+  /* Focus ring. Static rgba default (blue-600 @25%) so browsers without
+   * color-mix still get a visible ring; the @supports block below
+   * upgrades it to a live mix of --stagebook-primary so overriding the
+   * accent retunes the ring automatically. color-mix can't be the
+   * unconditional value: it's validated at computed-value time, so on an
+   * unsupported browser the whole declaration (and the var fallback at
+   * the usage site) would be dropped and the ring would vanish. */
+  --stagebook-focus-ring: rgba(37, 99, 235, 0.25);
 
-  /* Timeline waveform bars */
-  --stagebook-waveform-color: #6b7280;
-  /* Track-lane background behind the waveform — subtle so the waveform
-     remains visually dominant, but enough to frame the track area. */
+  /* Timeline waveform bars + subtle track lane behind them. The track is
+   * a neutral translucent so the waveform stays visually dominant. */
+  --stagebook-waveform-color: var(--sb-gray-500);
   --stagebook-waveform-track-bg: rgba(128, 128, 128, 0.15);
 
   /* Loading spinner */
-  --stagebook-spinner-track: #e5e7eb;
-  --stagebook-spinner-arc: #9ca3af;
+  --stagebook-spinner-track: var(--sb-gray-200);
+  --stagebook-spinner-arc: var(--stagebook-decoration);
 
-  /* Scroll-indicator pill (the "more content below" chevron at the
-   * bottom of an internally-scrolling Stage column). Lives behind a
-   * `pointer-events: none` div so it never intercepts clicks; the
-   * pill itself is a rounded button-like background with a chevron
-   * icon. Defaults are tuned to read on white backgrounds. */
+  /* Scroll-indicator pill (the "more content below" chevron). */
   --stagebook-scroll-indicator-bg: rgba(229, 231, 235, 0.8);
-  --stagebook-scroll-indicator-fg: #4b5563;
+  --stagebook-scroll-indicator-fg: var(--stagebook-text-secondary);
 
-  /* Timeline (#382): selection overlay + minimap chrome. Defaults are
-   * all primary-blue-derived; hosts can override per-token if their
-   * brand wants a different accent for annotations.
-   *
-   * Ranges have two intensities — `active` (the range the keyboard
-   * shortcuts will act on) and `inactive` (saved-but-not-focused). The
-   * `preview` pair is used during click-drag and keyboard press-and-
-   * hold range creation. Handles are the small grab indicators at the
-   * start/end of an active range.
-   *
-   * Tooltip background lives here too so the playhead time box and
-   * range-handle hover tooltips theme together. */
-  --stagebook-timeline-range-active: rgba(59, 130, 246, 0.35);
-  --stagebook-timeline-range-active-border: rgba(37, 99, 235, 1);
-  --stagebook-timeline-range-inactive: rgba(59, 130, 246, 0.18);
-  --stagebook-timeline-range-inactive-border: rgba(59, 130, 246, 0.6);
-  --stagebook-timeline-handle-active: rgba(37, 99, 235, 1);
-  --stagebook-timeline-handle-inactive: rgba(59, 130, 246, 0.7);
-  --stagebook-timeline-preview-bg: rgba(59, 130, 246, 0.25);
-  --stagebook-timeline-preview-border: rgba(59, 130, 246, 0.6);
-  --stagebook-timeline-tooltip-bg: rgba(30, 64, 175, 0.9);
+  /* Timeline (#382): selection overlay + minimap chrome. All derived from
+   * the accent so overriding --stagebook-primary retints the whole
+   * timeline. Alpha variants use color-mix; on browsers without color-mix
+   * the declaration drops and each component's inline rgba fallback
+   * applies. Ranges have two intensities — `active` (keyboard shortcuts
+   * act on it) and `inactive` (saved-but-not-focused); `preview` is the
+   * click-drag / press-and-hold creation state; handles are the grab
+   * indicators. Tooltip is the deeper blue-800 for the time boxes. */
+  --stagebook-timeline-range-active: color-mix(
+    in srgb,
+    var(--stagebook-primary) 35%,
+    transparent
+  );
+  --stagebook-timeline-range-active-border: var(--stagebook-primary);
+  --stagebook-timeline-range-inactive: color-mix(
+    in srgb,
+    var(--stagebook-primary) 18%,
+    transparent
+  );
+  --stagebook-timeline-range-inactive-border: color-mix(
+    in srgb,
+    var(--stagebook-primary) 60%,
+    transparent
+  );
+  --stagebook-timeline-handle-active: var(--stagebook-primary);
+  --stagebook-timeline-handle-inactive: color-mix(
+    in srgb,
+    var(--stagebook-primary) 70%,
+    transparent
+  );
+  --stagebook-timeline-preview-bg: color-mix(
+    in srgb,
+    var(--stagebook-primary) 25%,
+    transparent
+  );
+  --stagebook-timeline-preview-border: color-mix(
+    in srgb,
+    var(--stagebook-primary) 60%,
+    transparent
+  );
+  --stagebook-timeline-tooltip-bg: color-mix(
+    in srgb,
+    var(--sb-blue-800) 90%,
+    transparent
+  );
   --stagebook-timeline-track-label-bg: rgba(255, 255, 255, 0.85);
-  /* Minimap chrome — viewport rect (the draggable indicator of where
-   * the main timeline window sits in the full duration) plus the
-   * miniaturized range / point marks. Tuned a touch brighter than the
-   * main-timeline range tokens because the minimap is small and needs
-   * its marks to pop. */
-  --stagebook-timeline-minimap-viewport-border: rgba(59, 130, 246, 0.9);
-  --stagebook-timeline-minimap-range: rgba(59, 130, 246, 0.4);
-  --stagebook-timeline-minimap-point: rgba(59, 130, 246, 0.7);
+  --stagebook-timeline-minimap-viewport-border: color-mix(
+    in srgb,
+    var(--stagebook-primary) 90%,
+    transparent
+  );
+  --stagebook-timeline-minimap-range: color-mix(
+    in srgb,
+    var(--stagebook-primary) 40%,
+    transparent
+  );
+  --stagebook-timeline-minimap-point: color-mix(
+    in srgb,
+    var(--stagebook-primary) 70%,
+    transparent
+  );
 
   /* Markdown / prompt typography (used by the Markdown component) */
   --stagebook-prompt-max-width: 36rem;
@@ -192,40 +275,33 @@
   --stagebook-prompt-h4-weight: 600;
   --stagebook-prompt-h5-weight: 600;
   --stagebook-prompt-h6-weight: 600;
-  --stagebook-link: #2563eb;
-  /* One step darker than --stagebook-link for the `:hover` state on
-   * markdown links. The hover → base progression telegraphs "I'm
-   * hovering this" without inventing a new hue. */
-  --stagebook-link-hover: #1d4ed8;
-  /* Purple for `:visited`, the established convention since 1993.
-   * Researcher prompts sometimes link back to consent / instructions
-   * pages — distinguishing visited tells participants they've already
-   * been there. */
-  --stagebook-link-visited: #7c3aed;
+  /* Links default to the accent; override --stagebook-link to make prose
+   * links differ from buttons. Visited is a distinct violet — the
+   * established convention — so participants can tell they've already
+   * visited a linked consent / instructions page. */
+  --stagebook-link: var(--stagebook-primary);
+  --stagebook-link-hover: var(--stagebook-primary-hover);
+  --stagebook-link-visited: var(--sb-violet-600);
   --stagebook-code-bg: rgba(0, 0, 0, 0.06);
   --stagebook-code-font:
     ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  /* Body font stack. Baked into all stagebook form components so a
+  /* Body font stack — baked into all stagebook form components so a
    * <textarea> / <select> / <input> never picks up the browser UA
    * default (Chrome's textarea default is monospace, Safari's is
-   * sans-serif — without this token the same TextArea would render
-   * different fonts cross-browser, drifting from the measurement-
-   * instrument goal). Hosts override at :root to opt into a different
-   * font; the fallback inside each var() call lets the component
-   * render correctly even when styles.css isn't loaded. */
+   * sans-serif). Hosts override at :root to opt into a different font. */
   --stagebook-font: "Inter", ui-sans-serif, system-ui, sans-serif;
 
-  /* Markdown GFM tables (used by the Markdown component, issue #214) */
-  --stagebook-table-text: #4a5568;
-  --stagebook-table-header-text: #1a202c;
+  /* Markdown GFM tables (#214). Snapped onto the gray ramp — previously
+   * Tailwind-v1 grays (#4a5568 / #1a202c) that didn't sit on the rest of
+   * the palette's scale. */
+  --stagebook-table-text: var(--stagebook-text-secondary);
+  --stagebook-table-header-text: var(--stagebook-text);
 
-  /* Blockquote (used by Display element and markdown blockquotes).
-   * Border bumped from #d1d5db (gray-300) → #9ca3af (gray-400) so the
-   * quote rail actually reads against the page background — at #d1d5db
-   * the rail and the body text contrast was indistinguishable from
-   * "softly highlighted box" rather than "quote." */
-  --stagebook-blockquote-border: #9ca3af;
-  --stagebook-blockquote-bg: #f9fafb;
+  /* Blockquote (Display element + markdown blockquotes). The rail is the
+   * decoration gray — enough weight to read as a quote rail without
+   * becoming a distinct UI element. */
+  --stagebook-blockquote-border: var(--stagebook-decoration);
+  --stagebook-blockquote-bg: var(--stagebook-bg-muted);
 }
 
 /* Upgrade the focus ring to a live mix of --stagebook-primary only on
@@ -321,8 +397,8 @@ input[type="tel"]:focus,
 textarea:focus,
 select:focus {
   outline: none;
-  border-color: var(--stagebook-primary, #3b82f6);
-  box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+  border-color: var(--stagebook-primary, #2563eb);
+  box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
 }
 
 /* Checkbox + radio styling (base, :checked, :focus) moved to inline

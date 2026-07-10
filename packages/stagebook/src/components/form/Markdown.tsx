@@ -273,14 +273,14 @@ const tableCellBase: React.CSSProperties = {
   padding: "0.5rem 0.75rem",
   textAlign: "start",
   fontSize: "0.875rem",
-  color: "var(--stagebook-table-text, #4a5568)",
+  color: "var(--stagebook-table-text, #374151)",
 };
 
 const thStyle: React.CSSProperties = {
   ...tableCellBase,
   backgroundColor: "var(--stagebook-bg-muted, #f9fafb)",
   fontWeight: 500,
-  color: "var(--stagebook-table-header-text, #1a202c)",
+  color: "var(--stagebook-table-header-text, #1f2937)",
 };
 
 const tdStyle: React.CSSProperties = tableCellBase;
@@ -312,8 +312,8 @@ const TASKLIST_CHECK_SVG =
   "url(\"data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3e%3c/svg%3e\")";
 
 const taskListCheckboxCheckedStyle: React.CSSProperties = {
-  backgroundColor: "var(--stagebook-primary, #3b82f6)",
-  borderColor: "var(--stagebook-primary, #3b82f6)",
+  backgroundColor: "var(--stagebook-primary, #2563eb)",
+  borderColor: "var(--stagebook-primary, #2563eb)",
   backgroundImage: TASKLIST_CHECK_SVG,
 };
 
@@ -377,7 +377,7 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
           color: var(--stagebook-link-visited, #7c3aed);
         }
         .${rootClass} a:focus-visible {
-          outline: 2px solid var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+          outline: 2px solid var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
           outline-offset: 2px;
           border-radius: 0.125rem;
         }
@@ -386,7 +386,7 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
            long lines (WCAG 2.1.1); the focus-visible ring tells
            them it's selected. */
         .${rootClass} pre:focus-visible {
-          outline: 2px solid var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+          outline: 2px solid var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
           outline-offset: 2px;
         }
         /* List markers — muted so the bullet/number reads as

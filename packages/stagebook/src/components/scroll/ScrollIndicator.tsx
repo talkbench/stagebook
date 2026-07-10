@@ -90,7 +90,7 @@ export function ScrollIndicator({ visible }: ScrollIndicatorProps) {
           style={{
             backgroundColor:
               "var(--stagebook-scroll-indicator-bg, rgba(229, 231, 235, 0.8))",
-            color: "var(--stagebook-scroll-indicator-fg, #4b5563)",
+            color: "var(--stagebook-scroll-indicator-fg, #374151)",
             borderRadius: "9999px",
             padding: "0.5rem",
             boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",

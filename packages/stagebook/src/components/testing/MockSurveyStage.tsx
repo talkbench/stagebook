@@ -116,7 +116,7 @@ export function MockSurveyStage() {
           onClick={() => onComplete(mockSurveyResults)}
           style={{
             padding: "0.5rem 1rem",
-            backgroundColor: "var(--stagebook-primary, #3b82f6)",
+            backgroundColor: "var(--stagebook-primary, #2563eb)",
             color: "#fff",
             border: "none",
             borderRadius: "0.375rem",

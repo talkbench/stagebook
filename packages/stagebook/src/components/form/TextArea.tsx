@@ -327,13 +327,13 @@ export function TextArea({
       // Hitting maxLength is "you're at the upper limit" — a fact, not an
       // error. Attempts to type past it pulse red via isOverflowing (#333).
       if (currentLength >= minLength && currentLength <= maxLength) {
-        countColor = "var(--stagebook-success, #16a34a)";
+        countColor = "var(--stagebook-success, #15803d)";
         countState = "valid";
       }
     } else if (minLength) {
       countText = messages.charCount(currentLength, minLength);
       if (currentLength >= minLength) {
-        countColor = "var(--stagebook-success, #16a34a)";
+        countColor = "var(--stagebook-success, #15803d)";
         countState = "valid";
       }
     } else if (maxLength) {
@@ -352,7 +352,7 @@ export function TextArea({
     const animationStyle = !isOverflowing
       ? {}
       : prefersReducedMotion
-        ? { boxShadow: "0 0 0 4px var(--stagebook-warning, #dc2626)" }
+        ? { boxShadow: "0 0 0 4px var(--stagebook-warning, #b45309)" }
         : { animation: "stagebook-char-counter-pulse 300ms ease-out" };
     const overflowState = isOverflowing ? "overflow" : countState;
 
@@ -445,7 +445,7 @@ export function TextArea({
            under the ring. */
         .${textareaClass}:focus-visible {
           outline: none;
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25)), 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25)), 0 1px 2px 0 rgba(0, 0, 0, 0.05);
         }
 
         /* Animate a box-shadow glow instead of the text color, so the
@@ -457,13 +457,13 @@ export function TextArea({
            orange (etc.) propagates through the pulse. */
         @keyframes stagebook-char-counter-pulse {
           0% {
-            box-shadow: 0 0 0 0 var(--stagebook-warning, #dc2626);
+            box-shadow: 0 0 0 0 var(--stagebook-warning, #b45309);
           }
           30% {
-            box-shadow: 0 0 0 4px var(--stagebook-warning, #dc2626);
+            box-shadow: 0 0 0 4px var(--stagebook-warning, #b45309);
           }
           100% {
-            box-shadow: 0 0 0 0 var(--stagebook-warning, #dc2626);
+            box-shadow: 0 0 0 0 var(--stagebook-warning, #b45309);
           }
         }
 

@@ -89,7 +89,7 @@ export function Button({
            background-color and box-shadow. */
         .${buttonClass} {
           color: #fff;
-          background-color: var(--stagebook-primary, #3b82f6);
+          background-color: var(--stagebook-primary, #2563eb);
           border-color: transparent;
           box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
         }
@@ -124,7 +124,7 @@ export function Button({
         .${buttonClass}:focus-visible {
           outline: none;
           box-shadow:
-            0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25)),
+            0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25)),
             0 1px 2px 0 rgba(0, 0, 0, 0.05);
         }
         @media (prefers-reduced-motion: reduce) {

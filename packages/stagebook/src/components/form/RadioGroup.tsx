@@ -61,8 +61,8 @@ const RADIO_DOT_SVG =
   "url(\"data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3ccircle cx='8' cy='8' r='3'/%3e%3c/svg%3e\")";
 
 const radioCheckedStyle: React.CSSProperties = {
-  backgroundColor: "var(--stagebook-primary, #3b82f6)",
-  borderColor: "var(--stagebook-primary, #3b82f6)",
+  backgroundColor: "var(--stagebook-primary, #2563eb)",
+  borderColor: "var(--stagebook-primary, #2563eb)",
   backgroundImage: RADIO_DOT_SVG,
 };
 
@@ -133,7 +133,7 @@ export function RadioGroup({
         }
         .${inputClass}:focus-visible {
           outline: none;
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
         }
         @media (prefers-reduced-motion: reduce) {
           .${rowClass} {
