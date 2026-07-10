@@ -23,6 +23,17 @@ export interface SelectProps {
    */
   placeholder?: string;
   id?: string;
+  /**
+   * Space-separated id list forwarded to the `<select>`'s
+   * `aria-labelledby`. Use when the accessible name lives in existing
+   * visible content (e.g. a prompt body) rather than the `label` prop —
+   * naming the control without rendering a duplicate visible label.
+   * Pass this *instead of* `label`, not alongside it: the visible
+   * `<label>` is gated solely on `label`, so if both are set a caption
+   * still renders and `aria-labelledby` wins the accessible name. See
+   * #545.
+   */
+  ariaLabelledBy?: string;
   "data-testid"?: string;
 }
 
@@ -97,6 +108,7 @@ export function Select({
   label = "",
   placeholder,
   id,
+  ariaLabelledBy,
   "data-testid": dataTestId,
 }: SelectProps) {
   // Generate a unique id when the caller doesn't provide one — multiple
@@ -161,6 +173,7 @@ export function Select({
         className={triggerClass}
         value={currentValue}
         onChange={handleChange}
+        aria-labelledby={ariaLabelledBy}
         style={selectBaseStyle}
       >
         {placeholder !== undefined && (

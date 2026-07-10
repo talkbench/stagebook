@@ -373,6 +373,66 @@ test.describe("List Sorter", () => {
 });
 
 // ================================================================
+// Dropdown
+// ================================================================
+//
+// Inline fixture (mirrors the pattern used by the shuffle fixtures
+// below) so this file stays self-contained and doesn't touch the
+// shared fixtures module. The dropdown variant renders the prompt
+// body as a `<select>`.
+
+const dropdown = {
+  metadata: {
+    name: "projects/example/dropdownHouse.md",
+    type: "dropdown" as const,
+  },
+  body: `# Which Hogwarts house do you belong to?
+
+_Choose the house that fits you best._`,
+  responseItems: ["Gryffindor", "Hufflepuff", "Ravenclaw", "Slytherin"],
+  responsePoints: [],
+  sliderPoints: [],
+};
+
+test.describe("Dropdown", () => {
+  test("renders a select with each option", async ({ mount }) => {
+    const component = await mount(
+      <Prompt
+        {...dropdown}
+        name="testDropdown"
+        value={undefined}
+        save={() => {}}
+      />,
+    );
+    await expect(component.locator("select")).toHaveCount(1);
+    await expect(component).toContainText("Gryffindor");
+    await expect(component).toContainText("Slytherin");
+  });
+
+  // #545 — the dropdown `<select>` was rendered with no accessible name
+  // (axe `select-name`, WCAG 4.1.2 / 1.3.1). It must be named by the
+  // visible prompt body so screen-reader users know what the picker is
+  // for. `getByRole("combobox", { name })` resolves the accessible name
+  // (here via aria-labelledby → the rendered body text), so this pins
+  // the name to what the participant sees, not just any attribute.
+  test("select has an accessible name from the prompt body (#545)", async ({
+    mount,
+  }) => {
+    const component = await mount(
+      <Prompt
+        {...dropdown}
+        name="testDropdownName"
+        value={undefined}
+        save={() => {}}
+      />,
+    );
+    await expect(
+      component.getByRole("combobox", { name: /which hogwarts house/i }),
+    ).toBeVisible();
+  });
+});
+
+// ================================================================
 // Multiple Choice option order (shuffle vs source order)
 // ================================================================
 //
