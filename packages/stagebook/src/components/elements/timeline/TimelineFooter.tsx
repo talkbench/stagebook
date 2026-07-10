@@ -57,7 +57,7 @@ const buttonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  border: "1px solid var(--stagebook-border, #e5e7eb)",
+  border: "1px solid var(--stagebook-border, #d1d5db)",
   borderRadius: "0.25rem",
   background: "var(--stagebook-bg, #ffffff)",
   cursor: "pointer",
@@ -92,7 +92,7 @@ export function TimelineFooter({
         alignItems: "center",
         justifyContent: "space-between",
         padding: "0.25rem 0.5rem",
-        borderTop: "1px solid var(--stagebook-border, #e5e7eb)",
+        borderTop: "1px solid var(--stagebook-border, #d1d5db)",
         fontSize: "0.75rem",
         color: "var(--stagebook-text-muted, #6b7280)",
         userSelect: "none",
@@ -101,7 +101,7 @@ export function TimelineFooter({
       <style>{`
         .${btnClass}:focus-visible {
           outline: none;
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
         }
         .${btnClass}:hover {
           background: var(--stagebook-hover-bg, #f3f4f6);

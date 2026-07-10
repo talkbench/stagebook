@@ -36,7 +36,7 @@ export interface MinimapProps {
 
 const HEIGHT = 32;
 const VIEWPORT_RECT_BORDER =
-  "1.5px solid var(--stagebook-timeline-minimap-viewport-border, rgba(59, 130, 246, 0.9))";
+  "1.5px solid var(--stagebook-timeline-minimap-viewport-border, rgba(37, 99, 235, 0.9))";
 
 function isRangeArray(
   s: TimelineValue,
@@ -169,7 +169,7 @@ export function Minimap({
             width: `${String(Math.max(x2 - x1, 1))}px`,
             height: HEIGHT - 8,
             background:
-              "var(--stagebook-timeline-minimap-range, rgba(59, 130, 246, 0.4))",
+              "var(--stagebook-timeline-minimap-range, rgba(37, 99, 235, 0.4))",
             borderRadius: "1px",
             pointerEvents: "none",
           }}
@@ -190,7 +190,7 @@ export function Minimap({
             width: 2,
             height: HEIGHT - 8,
             background:
-              "var(--stagebook-timeline-minimap-point, rgba(59, 130, 246, 0.7))",
+              "var(--stagebook-timeline-minimap-point, rgba(37, 99, 235, 0.7))",
             pointerEvents: "none",
           }}
         />,
@@ -279,7 +279,8 @@ export function Minimap({
           height: "100%",
           border: VIEWPORT_RECT_BORDER,
           boxSizing: "border-box",
-          background: "rgba(59, 130, 246, 0.06)",
+          background:
+            "var(--stagebook-timeline-minimap-viewport-bg, rgba(37, 99, 235, 0.06))",
           pointerEvents: "none",
         }}
       />

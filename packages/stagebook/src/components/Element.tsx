@@ -240,7 +240,12 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           return <AssetPlaceholder uri={promptFile ?? ""} kind="prompt" />;
         }
         return (
-          <p style={{ color: "#dc2626", fontSize: "0.875rem" }}>
+          <p
+            style={{
+              color: "var(--stagebook-danger, #b91c1c)",
+              fontSize: "0.875rem",
+            }}
+          >
             Error loading prompt{element.file ? ` "${element.file}"` : ""}:{" "}
             {promptError.message}
           </p>
@@ -254,7 +259,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
         return (
           <p
             style={{
-              color: "var(--stagebook-danger, #dc2626)",
+              color: "var(--stagebook-danger, #b91c1c)",
               fontSize: "0.875rem",
             }}
           >

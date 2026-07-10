@@ -248,7 +248,7 @@ test.describe("Open Response", () => {
       />,
     );
     const counter = component.locator('[data-testid="char-counter"]');
-    await expect(counter).toHaveCSS("color", "rgb(22, 163, 74)");
+    await expect(counter).toHaveCSS("color", "rgb(21, 128, 61)");
   });
 
   test("counter is green at maximum (#333 — upper bound is valid, not error)", async ({
@@ -266,7 +266,7 @@ test.describe("Open Response", () => {
       />,
     );
     const counter = component.locator('[data-testid="char-counter"]');
-    await expect(counter).toHaveCSS("color", "rgb(22, 163, 74)");
+    await expect(counter).toHaveCSS("color", "rgb(21, 128, 61)");
   });
 
   test("shared mode hides textarea (notepad slot)", async ({ mount }) => {

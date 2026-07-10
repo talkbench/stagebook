@@ -172,7 +172,7 @@ export function Playhead({
           left: "50%",
           transform: "translateX(-50%)",
           pointerEvents: "auto",
-          background: "var(--stagebook-playhead, #e11d48)",
+          background: "var(--stagebook-playhead, #be123c)",
           cursor: "ew-resize",
           userSelect: "none",
         }}
@@ -190,7 +190,7 @@ export function Playhead({
             height: 0,
             borderLeft: "5px solid transparent",
             borderRight: "5px solid transparent",
-            borderTop: "5px solid var(--stagebook-playhead, #e11d48)",
+            borderTop: "5px solid var(--stagebook-playhead, #be123c)",
             // Inherit auto pointer events so clicks bubble up to the box.
             pointerEvents: "auto",
             cursor: "ew-resize",
@@ -207,7 +207,7 @@ export function Playhead({
           transform: "translateX(-50%)",
           width: "2px",
           height: "100%",
-          background: "var(--stagebook-playhead, #e11d48)",
+          background: "var(--stagebook-playhead, #be123c)",
           pointerEvents: "none",
         }}
       />

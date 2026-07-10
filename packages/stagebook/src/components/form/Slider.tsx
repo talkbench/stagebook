@@ -175,7 +175,7 @@ export function Slider({
            this. The primary-tint reads as "interactive / selected"
            and keeps the gray ticks visible against it. */
         .${trackClass}-wrapper:hover .${trackClass} {
-          background-color: var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+          background-color: var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
         }
         /* Base thumb elevation. Kept in CSS (not inline) so the
            focus-ring rule below can stack on top of it — inline
@@ -189,7 +189,7 @@ export function Slider({
            sibling selector — the actual focused element is the
            invisible range input, but the user sees the thumb. */
         .${inputClass}:focus-visible ~ [data-testid="slider-thumb"] {
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25)), 0 2px 4px rgba(0, 0, 0, 0.2);
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25)), 0 2px 4px rgba(0, 0, 0, 0.2);
         }
         @media (prefers-reduced-motion: reduce) {
           .${trackClass},
@@ -342,7 +342,7 @@ export function Slider({
                     transform: `translate(${isRTL ? "50%" : "-50%"}, -50%)`,
                     width: "2px",
                     height: `${TRACK_HEIGHT - 2}px`,
-                    backgroundColor: "var(--stagebook-text-faint, #9ca3af)",
+                    backgroundColor: "var(--stagebook-decoration, #9ca3af)",
                     opacity: 0.4,
                     pointerEvents: "none",
                   }}
@@ -437,7 +437,7 @@ export function Slider({
                   width: THUMB_SIZE,
                   height: THUMB_SIZE,
                   borderRadius: "50%",
-                  background: "var(--stagebook-primary, #3b82f6)",
+                  background: "var(--stagebook-primary, #2563eb)",
                   borderWidth: "2px",
                   borderStyle: "solid",
                   borderColor: "white",

@@ -1175,7 +1175,7 @@ export function MediaPlayer({
           .${containerClass}:focus-within {
             box-shadow:
               0 0 0 2px var(--stagebook-bg, #fff),
-              0 0 0 5px var(--stagebook-primary, #3b82f6);
+              0 0 0 5px var(--stagebook-primary, #2563eb);
           }
         `}</style>
         <div data-testid="mediaPlayer-viewport" style={VIEWPORT_STYLE}>
@@ -1279,7 +1279,7 @@ export function MediaPlayer({
         .${containerClass}:focus-within {
           box-shadow:
             0 0 0 2px var(--stagebook-bg, #fff),
-            0 0 0 5px var(--stagebook-primary, #3b82f6);
+            0 0 0 5px var(--stagebook-primary, #2563eb);
         }
       `}</style>
       {/* Audio-only: hidden video element (no viewport div) */}

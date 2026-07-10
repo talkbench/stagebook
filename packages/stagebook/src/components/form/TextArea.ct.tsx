@@ -101,7 +101,7 @@ test("min only: shows green when at minimum", async ({ mount }) => {
   );
   await expect(component).toContainText("50+ characters required");
   const counter = component.locator('[data-testid="char-counter"]');
-  await expect(counter).toHaveCSS("color", "rgb(22, 163, 74)");
+  await expect(counter).toHaveCSS("color", "rgb(21, 128, 61)");
 });
 
 // -- Character counter: max only --
@@ -157,7 +157,7 @@ test("min+max: green when in range", async ({ mount }) => {
   );
   await expect(component).toContainText("(13 / 10-50 characters)");
   const counter = component.locator('[data-testid="char-counter"]');
-  await expect(counter).toHaveCSS("color", "rgb(22, 163, 74)");
+  await expect(counter).toHaveCSS("color", "rgb(21, 128, 61)");
 });
 
 test("min+max: at maximum is valid green (#333)", async ({ mount }) => {
@@ -173,7 +173,7 @@ test("min+max: at maximum is valid green (#333)", async ({ mount }) => {
   );
   await expect(component).toContainText("(10 / 5-10 characters)");
   const counter = component.locator('[data-testid="char-counter"]');
-  await expect(counter).toHaveCSS("color", "rgb(22, 163, 74)");
+  await expect(counter).toHaveCSS("color", "rgb(21, 128, 61)");
   await expect(counter).toHaveAttribute("data-state", "valid");
 });
 
@@ -190,7 +190,7 @@ test("min+max: exact-length input (e.g. birth year 4/4-4) is valid (#333)", asyn
   );
   await expect(component).toContainText("(4 / 4-4 characters)");
   const counter = component.locator('[data-testid="char-counter"]');
-  await expect(counter).toHaveCSS("color", "rgb(22, 163, 74)");
+  await expect(counter).toHaveCSS("color", "rgb(21, 128, 61)");
   await expect(counter).toHaveAttribute("data-state", "valid");
 });
 

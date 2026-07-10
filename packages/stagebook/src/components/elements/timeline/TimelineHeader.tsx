@@ -21,7 +21,7 @@ const buttonStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  border: "1px solid var(--stagebook-border, #e5e7eb)",
+  border: "1px solid var(--stagebook-border, #d1d5db)",
   borderRadius: "0.25rem",
   background: "var(--stagebook-bg, #ffffff)",
   cursor: "pointer",
@@ -58,14 +58,14 @@ export function TimelineHeader({
       style={{
         display: "flex",
         alignItems: "center",
-        borderBottom: "1px solid var(--stagebook-border, #e5e7eb)",
+        borderBottom: "1px solid var(--stagebook-border, #d1d5db)",
         userSelect: "none",
       }}
     >
       <style>{`
         .${btnClass}:focus-visible {
           outline: none;
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
         }
         .${btnClass}:not(:disabled):hover {
           background: var(--stagebook-hover-bg, #f3f4f6);

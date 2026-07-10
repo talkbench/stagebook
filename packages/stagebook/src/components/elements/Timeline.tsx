@@ -785,7 +785,7 @@ export function Timeline({
       <p
         data-testid="timeline-error"
         style={{
-          color: "var(--stagebook-danger, #dc2626)",
+          color: "var(--stagebook-danger, #b91c1c)",
           fontSize: "0.875rem",
         }}
       >
@@ -861,7 +861,7 @@ export function Timeline({
       }}
       className={containerClass}
       style={{
-        border: "1px solid var(--stagebook-border, #e5e7eb)",
+        border: "1px solid var(--stagebook-border, #d1d5db)",
         borderRadius: "0.5rem",
         overflow: "hidden",
         // `outline: none` removes the browser default; the scoped
@@ -893,7 +893,7 @@ export function Timeline({
            only fire on Space/Enter and most users don't expect a
            click-then-spacebar pattern on a button. */
         .${containerClass}:focus {
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(59, 130, 246, 0.25));
+          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
         }
       `}</style>
       {/* Header: zoom controls (always) + minimap (when zoomed in) — puts
