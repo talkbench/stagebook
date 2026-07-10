@@ -93,6 +93,7 @@ Stagebook components are **measurement instruments**, not general-purpose UI. Th
 - **Reproducibility over composability.** Baked-in behavior (keystroke stats, paste detection, debounce timing, unanchored slider) is intentional — it's what makes experiments standardized. Don't separate it out.
 - **No external UI library dependencies.** Don't import Radix, shadcn, etc. Use them as references to audit our implementations for accessibility and edge cases, but keep full ownership so upstream changes can't alter experiment behavior.
 - **Slider initializes without a visible thumb** to avoid anchoring participants' responses.
+- **New participant-facing components** must meet WCAG 2.2 AA — run the [accessibility checklist](docs/a11y-checklist.md) and add the component to the axe gate (`packages/stagebook/src/components/a11y.gate.ct.tsx`). See the [ADR](docs/decisions/2026-07-accessibility.md).
 - **Two tiers of components:**
   - **Standalone** (Markdown, Button, Separator, form components) — no StagebookProvider needed, usable anywhere
   - **Context-dependent** (Element, Prompt, Display, conditionals) — require StagebookProvider, error clearly without one
