@@ -18,9 +18,11 @@ import {
 import { buildUnits, initialUnitKey, type ViewerUnit } from "../lib/steps.js";
 import { ViewerStateStore } from "../lib/store.js";
 import { createViewerContext } from "../lib/context.js";
+import { useViewerHotkeys } from "../lib/hotkeys.js";
 import { StageNav } from "./StageNav.js";
 import { StateInspector } from "./StateInspector.js";
-import { TimeScrubber } from "./TimeScrubber.js";
+import { TimeScrubber, type TimeScrubberHandle } from "./TimeScrubber.js";
+import { HotkeyHelp } from "./HotkeyHelp.js";
 import { NotesIconsOverlay } from "./NotesIconsOverlay.js";
 import { createSkeletonRenderers } from "./SkeletonPlaceholder.js";
 
@@ -196,6 +198,67 @@ export function Viewer({
     [store, stageIndex],
   );
 
+  // --- Researcher hotkeys (Alt/Option namespace) — see issue #534 ---
+  // Selecting a unit also syncs the host's persisted index (so the VS Code
+  // preview restores the right unit after a refresh). Extracted so the header
+  // <select> and the Alt+↑/↓ hotkey share one path.
+  const selectUnit = useCallback(
+    (key: string) => {
+      setSelectedUnitKey(key);
+      if (key.startsWith("treatment:")) {
+        onTreatmentIndexChange?.(Number(key.slice("treatment:".length)));
+      } else if (key.startsWith("intro:")) {
+        onIntroIndexChange?.(Number(key.slice("intro:".length)));
+      }
+    },
+    [onTreatmentIndexChange, onIntroIndexChange],
+  );
+
+  // Unit keys in the order the <optgroup> picker shows them, so Alt+↑/↓ walks
+  // the visible list (Consent → Intro → Treatments), not internal array order.
+  const orderedUnitKeys = useMemo(() => {
+    const keysOf = (kind: ViewerUnit["kind"]) =>
+      units.filter((u) => u.kind === kind).map((u) => u.key);
+    return [...keysOf("consent"), ...keysOf("intro"), ...keysOf("treatment")];
+  }, [units]);
+
+  const cycleUnit = useCallback(
+    (delta: number) => {
+      const i = orderedUnitKeys.indexOf(selectedUnitKey);
+      if (i === -1) return;
+      const clamped = Math.min(
+        orderedUnitKeys.length - 1,
+        Math.max(0, i + delta),
+      );
+      const nextKey = orderedUnitKeys[clamped];
+      if (nextKey && nextKey !== selectedUnitKey) selectUnit(nextKey);
+    },
+    [orderedUnitKeys, selectedUnitKey, selectUnit],
+  );
+
+  const [showHelp, setShowHelp] = useState(false);
+  const scrubberRef = useRef<TimeScrubberHandle>(null);
+  const treatmentSelectRef = useRef<HTMLSelectElement>(null);
+
+  // Plain inline handlers: the hook reads the latest set on each keystroke via
+  // a ref, so these don't need memoizing (and aren't passed to memoized
+  // children). Step nav uses functional setState to stay correct at the bounds.
+  const hotkeyRootRef = useViewerHotkeys({
+    onPrevStep: () => setStageIndex((i) => Math.max(0, i - 1)),
+    onNextStep: () => setStageIndex((i) => Math.min(steps.length - 1, i + 1)),
+    onPrevTreatment: () => cycleUnit(-1),
+    onNextTreatment: () => cycleUnit(1),
+    onSelectPosition: (n) => {
+      if (n >= 0 && n < playerCount) setPosition(n);
+    },
+    onToggleTimer: () => scrubberRef.current?.toggle(),
+    onToggleHelp: () => setShowHelp((s) => !s),
+    // Alt+↑/↓ cycles adjacent treatments (good for A/B toggling); Alt+P focuses
+    // the picker so the researcher can see the whole list and jump by name —
+    // treatments are unordered, so cycling alone can't surface all options.
+    onFocusPicker: () => treatmentSelectRef.current?.focus(),
+  });
+
   const ctx = useMemo(
     () =>
       createViewerContext({
@@ -281,32 +344,22 @@ export function Viewer({
   };
 
   return (
-    <div style={layoutStyle}>
+    // tabIndex makes the viewer root focusable so a click anywhere in it
+    // activates the researcher hotkeys, which are scoped to this element (not
+    // window) — polite when the viewer is embedded among other page content.
+    <div style={layoutStyle} ref={hotkeyRootRef} tabIndex={-1}>
       {/* Header */}
       <header style={headerStyle}>
         <div style={headerLeftStyle}>
           {hostControls}
           {units.length > 1 ? (
             <select
+              ref={treatmentSelectRef}
               aria-label="Part to preview"
-              title="Part of the study to preview"
+              title="Part of the study to preview (⌥↑ / ⌥↓; ⌥P to focus)"
+              aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown Alt+P"
               value={unit.key}
-              onChange={(e) => {
-                const key = e.target.value;
-                setSelectedUnitKey(key);
-                // Keep the host's persisted selection in sync so the VS Code
-                // preview restores this unit (not the previous treatment) after
-                // a refresh (#485 review).
-                if (key.startsWith("treatment:")) {
-                  onTreatmentIndexChange?.(
-                    Number(key.slice("treatment:".length)),
-                  );
-                } else if (key.startsWith("intro:")) {
-                  onIntroIndexChange?.(Number(key.slice("intro:".length)));
-                }
-                // Consent keys have no host-persisted index (yet) — the
-                // local selection alone drives the preview.
-              }}
+              onChange={(e) => selectUnit(e.target.value)}
               style={treatmentSelectStyle}
             >
               {consentUnits.length > 0 && (
@@ -348,6 +401,7 @@ export function Viewer({
           />
         </div>
         <TimeScrubber
+          ref={scrubberRef}
           currentStep={currentStep}
           elapsedTime={store.getElapsedTime(stageIndex)}
           onTimeChange={handleTimeChange}
@@ -374,6 +428,8 @@ export function Viewer({
           </label>
           <select
             id="position-select"
+            title="Player position (⌥0–⌥9)"
+            aria-keyshortcuts="Alt+0 Alt+1 Alt+2 Alt+3 Alt+4 Alt+5 Alt+6 Alt+7 Alt+8 Alt+9"
             value={clampedPosition}
             onChange={(e) => setPosition(Number(e.target.value))}
             style={positionSelectStyle}
@@ -453,6 +509,8 @@ export function Viewer({
           )}
         </main>
       </div>
+
+      <HotkeyHelp open={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   );
 }
@@ -483,6 +541,14 @@ const layoutStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   height: "100vh",
+  // Focusable for hotkey scoping (tabIndex -1); it's a container, not a
+  // tab-stop, so suppress the focus ring a click would otherwise draw.
+  outline: "none",
+  // Containing block for the HotkeyHelp backdrop (position: absolute), so the
+  // cheatsheet dims only this viewer, not the whole host page when embedded.
+  // Safe: no descendant currently positions against the viewport (TimeScrubber
+  // scopes to its track, NotesIconsOverlay to <main>).
+  position: "relative",
 };
 
 const headerStyle: React.CSSProperties = {
