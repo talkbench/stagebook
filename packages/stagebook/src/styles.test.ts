@@ -343,9 +343,12 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     ).toBeGreaterThanOrEqual(min);
   });
 
-  it("keeps --stagebook-text-faint as a deprecated alias of --stagebook-decoration", () => {
-    expect(vars.get("--stagebook-text-faint")).toContain(
-      "var(--stagebook-decoration)",
+  it("honors a deprecated --stagebook-text-faint override through --stagebook-decoration", () => {
+    // Back-compat: components read --stagebook-decoration, so it must fall
+    // through the old --stagebook-text-faint token first (a host that still
+    // overrides the old name must keep working).
+    expect(vars.get("--stagebook-decoration")).toMatch(
+      /var\(\s*--stagebook-text-faint\b/,
     );
   });
 

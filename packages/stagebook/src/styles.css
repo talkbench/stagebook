@@ -149,12 +149,14 @@
   --stagebook-text-secondary: var(--sb-gray-700);
   --stagebook-text-muted: var(--sb-gray-500);
   /* Non-text decoration (slider ticks, placeholder, spinner arc, quote
-   * rail). NOT readable text — it intentionally doesn't meet text
-   * contrast. Renamed from --stagebook-text-faint, which mislabeled it as
-   * text; the old name is kept just below as a deprecated alias. */
-  --stagebook-decoration: var(--sb-gray-400);
-  /* @deprecated — alias for --stagebook-decoration; remove next release. */
-  --stagebook-text-faint: var(--stagebook-decoration);
+   * rail). NOT readable text — it intentionally doesn't meet text contrast.
+   * Renamed from --stagebook-text-faint, which mislabeled it as text.
+   * @deprecated back-compat: decoration falls THROUGH a host's old
+   * --stagebook-text-faint override first (components read --decoration, so
+   * without this an existing text-faint override would silently stop
+   * working), then the gray-400 default. Drop the text-faint fallthrough
+   * next release. */
+  --stagebook-decoration: var(--stagebook-text-faint, var(--sb-gray-400));
 
   /* Borders and backgrounds */
   --stagebook-border: var(--sb-gray-300);
@@ -197,67 +199,33 @@
   --stagebook-scroll-indicator-bg: rgba(229, 231, 235, 0.8);
   --stagebook-scroll-indicator-fg: var(--stagebook-text-secondary);
 
-  /* Timeline (#382): selection overlay + minimap chrome. All derived from
-   * the accent so overriding --stagebook-primary retints the whole
-   * timeline. Alpha variants use color-mix; on browsers without color-mix
-   * the declaration drops and each component's inline rgba fallback
-   * applies. Ranges have two intensities — `active` (keyboard shortcuts
-   * act on it) and `inactive` (saved-but-not-focused); `preview` is the
-   * click-drag / press-and-hold creation state; handles are the grab
-   * indicators. Tooltip is the deeper blue-800 for the time boxes. */
-  --stagebook-timeline-range-active: color-mix(
-    in srgb,
-    var(--stagebook-primary) 35%,
-    transparent
-  );
+  /* Timeline (#382): selection overlay + minimap chrome. These are STATIC
+   * rgba defaults (blue-600 based) so browsers without color-mix still
+   * render the selection; the @supports block below upgrades the alpha
+   * tokens to live mixes of --stagebook-primary, so a root-level accent
+   * override retints the whole timeline. color-mix() can't be the
+   * unconditional value: on an unsupported browser the custom property is
+   * still *defined* (as an invalid token stream), so the component's var()
+   * fallback is skipped and the fill/border would vanish — the same trap
+   * the focus ring avoids. The solid border/handle tokens are plain
+   * var(--primary), which is valid everywhere. Ranges: `active` (keyboard
+   * target) vs `inactive` (saved-but-unfocused); `preview` is the drag /
+   * press-hold creation state; handles are the grab indicators; tooltip is
+   * the deeper time-box background. */
+  --stagebook-timeline-range-active: rgba(37, 99, 235, 0.35);
   --stagebook-timeline-range-active-border: var(--stagebook-primary);
-  --stagebook-timeline-range-inactive: color-mix(
-    in srgb,
-    var(--stagebook-primary) 18%,
-    transparent
-  );
-  --stagebook-timeline-range-inactive-border: color-mix(
-    in srgb,
-    var(--stagebook-primary) 60%,
-    transparent
-  );
+  --stagebook-timeline-range-inactive: rgba(37, 99, 235, 0.18);
+  --stagebook-timeline-range-inactive-border: rgba(37, 99, 235, 0.6);
   --stagebook-timeline-handle-active: var(--stagebook-primary);
-  --stagebook-timeline-handle-inactive: color-mix(
-    in srgb,
-    var(--stagebook-primary) 70%,
-    transparent
-  );
-  --stagebook-timeline-preview-bg: color-mix(
-    in srgb,
-    var(--stagebook-primary) 25%,
-    transparent
-  );
-  --stagebook-timeline-preview-border: color-mix(
-    in srgb,
-    var(--stagebook-primary) 60%,
-    transparent
-  );
-  --stagebook-timeline-tooltip-bg: color-mix(
-    in srgb,
-    var(--sb-blue-800) 90%,
-    transparent
-  );
+  --stagebook-timeline-handle-inactive: rgba(37, 99, 235, 0.7);
+  --stagebook-timeline-preview-bg: rgba(37, 99, 235, 0.25);
+  --stagebook-timeline-preview-border: rgba(37, 99, 235, 0.6);
+  --stagebook-timeline-tooltip-bg: rgba(30, 64, 175, 0.9);
   --stagebook-timeline-track-label-bg: rgba(255, 255, 255, 0.85);
-  --stagebook-timeline-minimap-viewport-border: color-mix(
-    in srgb,
-    var(--stagebook-primary) 90%,
-    transparent
-  );
-  --stagebook-timeline-minimap-range: color-mix(
-    in srgb,
-    var(--stagebook-primary) 40%,
-    transparent
-  );
-  --stagebook-timeline-minimap-point: color-mix(
-    in srgb,
-    var(--stagebook-primary) 70%,
-    transparent
-  );
+  --stagebook-timeline-minimap-viewport-border: rgba(37, 99, 235, 0.9);
+  --stagebook-timeline-minimap-viewport-bg: rgba(37, 99, 235, 0.06);
+  --stagebook-timeline-minimap-range: rgba(37, 99, 235, 0.4);
+  --stagebook-timeline-minimap-point: rgba(37, 99, 235, 0.7);
 
   /* Markdown / prompt typography (used by the Markdown component) */
   --stagebook-prompt-max-width: 36rem;
@@ -312,6 +280,66 @@
     --stagebook-focus-ring: color-mix(
       in srgb,
       var(--stagebook-primary) 25%,
+      transparent
+    );
+
+    /* Timeline: live mixes of the accent (see the static defaults above).
+     * The tooltip derives from --primary too — a darker, opaque accent —
+     * so a themed timeline's time boxes follow the brand instead of staying
+     * blue. */
+    --stagebook-timeline-range-active: color-mix(
+      in srgb,
+      var(--stagebook-primary) 35%,
+      transparent
+    );
+    --stagebook-timeline-range-inactive: color-mix(
+      in srgb,
+      var(--stagebook-primary) 18%,
+      transparent
+    );
+    --stagebook-timeline-range-inactive-border: color-mix(
+      in srgb,
+      var(--stagebook-primary) 60%,
+      transparent
+    );
+    --stagebook-timeline-handle-inactive: color-mix(
+      in srgb,
+      var(--stagebook-primary) 70%,
+      transparent
+    );
+    --stagebook-timeline-preview-bg: color-mix(
+      in srgb,
+      var(--stagebook-primary) 25%,
+      transparent
+    );
+    --stagebook-timeline-preview-border: color-mix(
+      in srgb,
+      var(--stagebook-primary) 60%,
+      transparent
+    );
+    --stagebook-timeline-tooltip-bg: color-mix(
+      in srgb,
+      var(--stagebook-primary) 80%,
+      #000
+    );
+    --stagebook-timeline-minimap-viewport-border: color-mix(
+      in srgb,
+      var(--stagebook-primary) 90%,
+      transparent
+    );
+    --stagebook-timeline-minimap-viewport-bg: color-mix(
+      in srgb,
+      var(--stagebook-primary) 6%,
+      transparent
+    );
+    --stagebook-timeline-minimap-range: color-mix(
+      in srgb,
+      var(--stagebook-primary) 40%,
+      transparent
+    );
+    --stagebook-timeline-minimap-point: color-mix(
+      in srgb,
+      var(--stagebook-primary) 70%,
       transparent
     );
   }

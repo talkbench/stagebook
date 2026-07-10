@@ -279,7 +279,8 @@ export function Minimap({
           height: "100%",
           border: VIEWPORT_RECT_BORDER,
           boxSizing: "border-box",
-          background: "rgba(37, 99, 235, 0.06)",
+          background:
+            "var(--stagebook-timeline-minimap-viewport-bg, rgba(37, 99, 235, 0.06))",
           pointerEvents: "none",
         }}
       />
