@@ -90,6 +90,27 @@ test("Escape closes the cheatsheet", async ({ mount }) => {
   await expect(help).toHaveCount(0);
 });
 
+test("shortcuts stay live while the cheatsheet is open; Escape always clears it", async ({
+  mount,
+}) => {
+  const component = await mount(<MockViewer />);
+  const help = component.locator('[data-testid="hotkey-help"]');
+  const counter = component.getByText(/^\d+ \/ 3$/);
+
+  await component.press("Alt+Slash");
+  await expect(help).toBeVisible();
+
+  // The cheatsheet deliberately doesn't trap focus, so a researcher can try a
+  // shortcut with it still open — the step advances and the sheet stays up.
+  await component.press("Alt+ArrowRight");
+  await expect(counter).toHaveText("2 / 3");
+  await expect(help).toBeVisible();
+
+  // ...and Escape still clears it regardless of what's been pressed.
+  await component.press("Escape");
+  await expect(help).toHaveCount(0);
+});
+
 test("⌥P focuses the part picker so the whole list is reachable", async ({
   mount,
 }) => {
