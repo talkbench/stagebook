@@ -40,13 +40,16 @@ universal legal and practical target — what "accessible" means in every law.
 
 **Why 2.2 (not 2.1):** 2.2 (2023) is a strict _superset_ of 2.1 — conforming to
 2.2 AA automatically satisfies 2.1 AA. Most laws cite 2.1 AA today but are
-migrating to 2.2, so this is free future-proofing. Two new 2.2 AA criteria land
-directly on our components:
+migrating to 2.2, so this is free future-proofing. Three new 2.2 AA criteria
+land directly on our components:
 
 - **2.5.8 Target Size (Minimum)** — button / radio / slider hit-targets ≥ 24px.
 - **2.5.7 Dragging Movements** — anything drag-operated needs a non-drag
   alternative. Direct hits: **ListSorter** (drag-to-reorder) and **Slider**;
   both need keyboard/click equivalents.
+- **2.4.11 Focus Not Obscured (Minimum)** — a keyboard-focused element must not
+  be fully hidden by sticky/fixed content. Check the sticky **ScrollIndicator**
+  and the **Timeline** help popover.
 
 **i18n synergy (a reason this is the right frame, not a side note):** good
 accessibility _is_ good internationalization — same discipline. 3.1.1 / 3.1.2
@@ -99,9 +102,12 @@ distinguishes what we control:
    Captions (Live)) is impractical for synchronous multi-party media we don't
    own. Documented exception, not a gap.
 
-The published conformance statement is therefore _scoped_: "Stagebook components
-conform to WCAG 2.2 AA; here is how we help authors make their content
-accessible; here is what is explicitly out of scope and why."
+The published conformance statement is therefore _scoped_ — and worded with care,
+because a formal WCAG conformance claim attaches to **pages/processes, not
+isolated components**: "Stagebook's components **meet the applicable WCAG 2.2 AA
+success criteria**; a formal conformance claim attaches to the host's rendered
+study pages; here is how we help authors make their content accessible; here is
+what is explicitly out of scope and why."
 
 ## Remaining work
 
@@ -116,9 +122,12 @@ and become subtasks once the audit runs:
 - [ ] **Testing strategy** — per-component axe smoke tests (CT / vitest),
       keyboard-navigation e2e through a full study in the viewer, CI integration
       and flake budget.
-- [ ] **Validator a11y lint** — Image `alt`, Audio/Video transcript, etc.
-      (Decision 3, surface 2). Wire into **both** validate paths
-      (`cli/validate.ts` and `validateTreatmentDiff.ts`).
+- [ ] **Authorable alt + validator a11y lint** — the Image `alt` work is a
+      _coordinated_ schema field → router → component prop → lint, **not
+      lint-only** (otherwise authors have no valid syntax to satisfy the
+      warning); tracked in #536. Audio/Video transcript is analogous. Wire the
+      lints into **both** validate paths (`cli/validate.ts` and
+      `validateTreatmentDiff.ts`).
 - [ ] **Per-new-component a11y checklist** — a short "how to ship an accessible
       component" list to prevent regression.
 - [ ] **Subtask breakdown** — each gap (or cluster) becomes its own issue with
