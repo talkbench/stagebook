@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, useId } from "react";
 import { Markdown } from "../form/Markdown.js";
 import { RadioGroup } from "../form/RadioGroup.js";
 import { CheckboxGroup } from "../form/CheckboxGroup.js";
@@ -80,6 +80,13 @@ export function Prompt({
   const debounceInteractiveRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+
+  // Stable id for the wrapper around the rendered prompt body. The
+  // dropdown's `<select>` points its `aria-labelledby` here so the
+  // control is named by the question the participant reads, rather
+  // than shipping a duplicate visible label (#545). `useId()` keeps
+  // it unique when multiple Prompts share a page.
+  const bodyId = useId();
 
   const promptType = metadata.type;
   // Per-type fields only exist on the discriminated-union branch where
@@ -228,7 +235,9 @@ export function Prompt({
 
   return (
     <>
-      <Markdown text={body} resolveURL={resolveURL} />
+      <div id={bodyId}>
+        <Markdown text={body} resolveURL={resolveURL} />
+      </div>
 
       {promptType === "multipleChoice" &&
         (metadata.select === "single" || metadata.select === undefined) &&
@@ -296,6 +305,11 @@ export function Prompt({
           }))}
           value={value as string | undefined}
           placeholder={metadata.placeholder}
+          // Name the <select> by the visible prompt body so it isn't an
+          // unnamed control (axe `select-name`, WCAG 4.1.2 / 1.3.1) — see
+          // #545. Preferred over a visible `label`, which would duplicate
+          // the body the participant already reads.
+          ariaLabelledBy={bodyId}
           onChange={(e) =>
             debouncedSaveInteractive(e.target.value, record, e.target.value)
           }
