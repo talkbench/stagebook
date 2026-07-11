@@ -3,15 +3,15 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-// Drift guard (#535 / #494). The VS Code webview hand-maintains a copy of the
-// stagebook design tokens (extension.ts `getWebviewContent`) plus a few inline
-// chrome styles. Because the bundled styles.css is loaded as text (not
-// auto-injected), that hand-copy is the webview's ONLY source of :root tokens —
-// so a stale value overrides the whole preview. Pre-#535 it pinned
-// `--stagebook-primary` to the retired blue-500 (#3b82f6), which is why every
-// `var(--stagebook-primary)` rendered old-blue while the (absent) playhead
-// correctly fell back to rose-700. Keep #3b82f6 out of the extension source;
-// chrome must use `var(--stagebook-primary, #2563eb)`.
+// Drift guard (#535). `#3b82f6` is the retired blue-500 that used to be
+// `--stagebook-primary`. Since #560 the webview injects the library's real
+// styles.css for tokens + component styling, so this guard covers only the
+// webview's own inline chrome styles: they must reference
+// `var(--stagebook-primary, #2563eb)` (or a deliberate non-accent color), never
+// the retired literal. (Before #560 the extension also hand-copied the token
+// block, and pinning it to blue-500 there is what drove the original preview
+// drift — see webviewUsesLibraryStyles.test.ts for the invariant that killed
+// the copy.)
 const srcDir = dirname(fileURLToPath(import.meta.url));
 
 function walk(dir: string): string[] {

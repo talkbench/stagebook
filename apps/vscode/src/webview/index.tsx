@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import type { TreatmentFileType } from "stagebook";
 import { PreviewHost } from "stagebook/viewer";
+import stagebookStyles from "stagebook/styles";
 import { buildAssetURL } from "./resolveAsset.js";
 
 // Declare the VS Code API injected by the webview
@@ -235,10 +236,10 @@ function AssetMountCard({
           : `${prefixes.length} asset folders aren't mapped`}
       </strong>
       <p style={cardSubtitleStyle}>
-        These <code>asset://</code> references point at files on your machine.
-        Choose a local folder for each prefix to preview its media — until then
-        a placeholder is shown. Your choice is remembered for this workspace and
-        is never written to the study.
+        These <code style={codeChipStyle}>asset://</code> references point at
+        files on your machine. Choose a local folder for each prefix to preview
+        its media — until then a placeholder is shown. Your choice is remembered
+        for this workspace and is never written to the study.
       </p>
       <ul style={cardListStyle}>
         {prefixes.map((prefix) => (
@@ -293,8 +294,21 @@ const cardRowStyle: React.CSSProperties = {
   flexWrap: "wrap",
 };
 
-const cardPrefixStyle: React.CSSProperties = {
+// `<code>` chips in the webview's own chrome. The extension used to style bare
+// `<code>` globally; that rule was removed with the hand-copied CSS (#560), and
+// styles.css has no bare `code` rule (library code styling is inline in the
+// Markdown component), so this chrome must style its own chips.
+const codeChipStyle: React.CSSProperties = {
   fontFamily: "monospace",
+  backgroundColor: "rgba(0, 0, 0, 0.06)",
+  // Inherit the card's text color rather than VS Code's amber `code` default.
+  color: "inherit",
+  padding: "0.125rem 0.25rem",
+  borderRadius: "0.25rem",
+};
+
+const cardPrefixStyle: React.CSSProperties = {
+  ...codeChipStyle,
   fontSize: "0.8125rem",
 };
 
@@ -311,6 +325,23 @@ const cardButtonStyle: React.CSSProperties = {
   fontWeight: 500,
   whiteSpace: "nowrap",
 };
+
+// Render previewed components with stagebook's REAL stylesheet: inject the
+// library's styles.css (bundled as text) so every token + reset comes from the
+// library itself, never a hand-maintained copy in the extension that can drift
+// from what participants actually see. The preview is a development inspection
+// surface — it must mirror the library exactly (#560). Injected before mount so
+// tokens are present when components render. The @font-face is stripped: its
+// relative asset URL can't resolve in the webview, so Inter falls back to the
+// system stack (as it already did); wiring the bundled font via asWebviewUri is
+// a follow-up.
+const stagebookStyleEl = document.createElement("style");
+stagebookStyleEl.dataset.stagebookStyles = "";
+stagebookStyleEl.textContent = stagebookStyles.replace(
+  /@font-face\s*\{[^}]*\}/g,
+  "",
+);
+document.head.appendChild(stagebookStyleEl);
 
 // Mount
 const root = document.getElementById("root");

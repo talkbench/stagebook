@@ -2,7 +2,7 @@
   "name": "stagebook-vscode",
   "displayName": "Stagebook",
   "description": "Validation, syntax highlighting, and preview for Stagebook treatment and prompt files",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "talkbench",
   "private": true,
   "license": "MIT",
