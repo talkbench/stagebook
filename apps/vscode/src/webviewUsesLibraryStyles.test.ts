@@ -26,12 +26,16 @@ describe("webview renders with the library's real styles.css (#560)", () => {
     expect(tokenDefs).toEqual([]);
   });
 
-  it("the webview entry imports and injects the library stylesheet", () => {
+  it("the webview entry imports and injects the library stylesheet before mount", () => {
     expect(webviewEntry).toMatch(
       /import\s+\w+\s+from\s+["']stagebook\/styles["']/,
     );
-    // Appended to <head> before mount so tokens are present when components
-    // render.
-    expect(webviewEntry).toMatch(/document\.head\.appendChild/);
+    // Injected into <head> BEFORE createRoot so tokens are present when
+    // components render (avoids a flash of unstyled/untokenized content).
+    const injectAt = webviewEntry.indexOf("document.head.appendChild");
+    const mountAt = webviewEntry.indexOf("createRoot(root)");
+    expect(injectAt).toBeGreaterThan(-1);
+    expect(mountAt).toBeGreaterThan(-1);
+    expect(injectAt).toBeLessThan(mountAt);
   });
 });

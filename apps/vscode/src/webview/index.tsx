@@ -236,10 +236,10 @@ function AssetMountCard({
           : `${prefixes.length} asset folders aren't mapped`}
       </strong>
       <p style={cardSubtitleStyle}>
-        These <code>asset://</code> references point at files on your machine.
-        Choose a local folder for each prefix to preview its media — until then
-        a placeholder is shown. Your choice is remembered for this workspace and
-        is never written to the study.
+        These <code style={codeChipStyle}>asset://</code> references point at
+        files on your machine. Choose a local folder for each prefix to preview
+        its media — until then a placeholder is shown. Your choice is remembered
+        for this workspace and is never written to the study.
       </p>
       <ul style={cardListStyle}>
         {prefixes.map((prefix) => (
@@ -294,8 +294,19 @@ const cardRowStyle: React.CSSProperties = {
   flexWrap: "wrap",
 };
 
-const cardPrefixStyle: React.CSSProperties = {
+// `<code>` chips in the webview's own chrome. The extension used to style bare
+// `<code>` globally; that rule was removed with the hand-copied CSS (#560), and
+// styles.css has no bare `code` rule (library code styling is inline in the
+// Markdown component), so this chrome must style its own chips.
+const codeChipStyle: React.CSSProperties = {
   fontFamily: "monospace",
+  backgroundColor: "rgba(0, 0, 0, 0.06)",
+  padding: "0.125rem 0.25rem",
+  borderRadius: "0.25rem",
+};
+
+const cardPrefixStyle: React.CSSProperties = {
+  ...codeChipStyle,
   fontSize: "0.8125rem",
 };
 
