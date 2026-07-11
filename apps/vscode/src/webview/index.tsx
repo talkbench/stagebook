@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import type { TreatmentFileType } from "stagebook";
 import { PreviewHost } from "stagebook/viewer";
+import stagebookStyles from "stagebook/styles";
 import { buildAssetURL } from "./resolveAsset.js";
 
 // Declare the VS Code API injected by the webview
@@ -311,6 +312,23 @@ const cardButtonStyle: React.CSSProperties = {
   fontWeight: 500,
   whiteSpace: "nowrap",
 };
+
+// Render previewed components with stagebook's REAL stylesheet: inject the
+// library's styles.css (bundled as text) so every token + reset comes from the
+// library itself, never a hand-maintained copy in the extension that can drift
+// from what participants actually see. The preview is a development inspection
+// surface — it must mirror the library exactly (#560). Injected before mount so
+// tokens are present when components render. The @font-face is stripped: its
+// relative asset URL can't resolve in the webview, so Inter falls back to the
+// system stack (as it already did); wiring the bundled font via asWebviewUri is
+// a follow-up.
+const stagebookStyleEl = document.createElement("style");
+stagebookStyleEl.dataset.stagebookStyles = "";
+stagebookStyleEl.textContent = stagebookStyles.replace(
+  /@font-face\s*\{[^}]*\}/g,
+  "",
+);
+document.head.appendChild(stagebookStyleEl);
 
 // Mount
 const root = document.getElementById("root");

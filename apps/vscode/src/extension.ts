@@ -813,90 +813,23 @@ function getWebviewContent(
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src ${webview.cspSource} data:; font-src ${webview.cspSource}; media-src ${webview.cspSource} data:;">
   <style>
+    /* Webview-chrome styling ONLY. The stagebook design tokens and every
+     * component reset (form controls, code/pre, tables, prompt typography) are
+     * injected at runtime from the library's real styles.css by the webview
+     * bundle (see src/webview/index.tsx), so the preview mirrors the library
+     * exactly and can't drift from a hand-maintained copy (#560). Do NOT
+     * reintroduce --stagebook-* token definitions here. */
     :root {
       --viewer-sidebar-width: 280px;
-      /* Keep these token values in sync with packages/stagebook/src/styles.css
-       * (:root). This block is the webview's only source of :root tokens
-       * (the bundled styles.css is loaded as text, not auto-injected), so a
-       * stale value here overrides the whole preview: pre-#535 this pinned
-       * --stagebook-primary to the retired blue-500, which is why every
-       * var(--stagebook-primary) rendered old-blue while the (absent-here)
-       * playhead correctly fell back to rose-700. Tracked for a durable fix
-       * (inject the real styles.css) in #494. */
-      --stagebook-primary: #2563eb;
-      --stagebook-primary-hover: #1d4ed8;
-      --stagebook-primary-active: #1e40af;
-      --stagebook-text: #1f2937;
-      --stagebook-text-secondary: #374151;
-      --stagebook-text-muted: #6b7280;
-      --stagebook-decoration: #9ca3af;
-      --stagebook-border: #d1d5db;
-      --stagebook-bg-muted: #f9fafb;
-      --stagebook-bg-track: #e5e7eb;
-      --stagebook-prompt-max-width: 36rem;
-      --stagebook-prompt-text-size: 1rem;
-      --stagebook-prompt-line-height: 1.5;
-      --stagebook-prompt-h1-size: 1.875rem;
-      --stagebook-prompt-h2-size: 1.5rem;
-      --stagebook-prompt-h3-size: 1.25rem;
-      --stagebook-prompt-h1-weight: 700;
-      --stagebook-prompt-h2-weight: 600;
-      --stagebook-prompt-h3-weight: 600;
-      --stagebook-link: #2563eb;
-      --stagebook-code-bg: rgba(0, 0, 0, 0.06);
-      --stagebook-code-font: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      --stagebook-blockquote-border: #9ca3af;
-      --stagebook-blockquote-bg: #f9fafb;
     }
     body {
       margin: 0;
       padding: 0;
       background-color: #ffffff;
       color: var(--stagebook-text);
-      font-family: ui-sans-serif, system-ui, sans-serif;
-      -webkit-font-smoothing: antialiased;
       font-size: 14px;
       line-height: 1.5;
     }
-    /* Reset VS Code webview defaults */
-    code, pre {
-      font-family: var(--stagebook-code-font);
-      background-color: var(--stagebook-code-bg);
-      color: var(--stagebook-text);
-    }
-    pre {
-      padding: 0.75rem 1rem;
-      border-radius: 0.375rem;
-      overflow-x: auto;
-    }
-    code {
-      padding: 0.125rem 0.25rem;
-      border-radius: 0.25rem;
-      font-size: 0.875em;
-    }
-    /* Form resets */
-    input[type="checkbox"], input[type="radio"] {
-      appearance: none;
-      width: 1rem; height: 1rem;
-      border: 1px solid var(--stagebook-border);
-      border-radius: 0.125rem;
-      background-color: #fff;
-      vertical-align: middle;
-      cursor: pointer;
-    }
-    input[type="radio"] { border-radius: 9999px; }
-    input[type="checkbox"]:checked, input[type="radio"]:checked {
-      background-color: var(--stagebook-primary);
-      border-color: var(--stagebook-primary);
-      background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3e%3c/svg%3e");
-      background-size: 100% 100%; background-position: center; background-repeat: no-repeat;
-    }
-    input[type="radio"]:checked {
-      background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3ccircle cx='8' cy='8' r='3'/%3e%3c/svg%3e");
-    }
-    table { border-collapse: collapse; margin: 1rem 0; width: 100%; max-width: var(--stagebook-prompt-max-width); }
-    th, td { border: 1px solid var(--stagebook-border); padding: 0.5rem 0.75rem; text-align: left; font-size: 0.875rem; }
-    th { background-color: var(--stagebook-bg-muted); font-weight: 500; }
   </style>
 </head>
 <body>
