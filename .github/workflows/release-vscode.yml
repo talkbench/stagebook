@@ -7,9 +7,10 @@ name: Release VS Code Extension
 #
 # Two assets are uploaded per release:
 #   - stagebook-vscode-<tag>.vsix — named for the release tag, so each
-#     release has a distinct archival artifact (the extension's own
-#     package.json version is decoupled from the library release and does
-#     not advance, so the tag is what makes the name unique).
+#     release has a distinct archival artifact. The extension's own
+#     package.json version is derived from the stagebook version at package
+#     time (the `prepackage` → sync-vscode-version.mjs hook, #562), so it
+#     matches the tag; the tag-named copy is kept for a stable archival name.
 #   - stagebook-vscode.vsix — stable name, so
 #     https://github.com/talkbench/stagebook/releases/latest/download/stagebook-vscode.vsix
 #     always resolves to the newest release. Install with:

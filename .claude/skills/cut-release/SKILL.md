@@ -33,6 +33,10 @@ Note: prior versions are not strictly sequential — `0.10.2` was skipped. Don't
 git checkout main && git pull origin main
 git checkout -b release/X.Y.Z
 # edit packages/stagebook/package.json: bump "version" field only
+# Mirror the version onto the VS Code extension so the installed extension
+# reports which stagebook it bundles (#562). This is derived, not typed:
+node scripts/sync-vscode-version.mjs   # sets apps/vscode/package.json to X.Y.Z
+npm install --package-lock-only        # reflect both bumps in the lockfile
 git commit -am "chore(release): bump stagebook to X.Y.Z
 
 <release notes — same shape as the PR body in step 3>
@@ -41,7 +45,7 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 git push -u origin release/X.Y.Z
 ```
 
-The commit subject must follow the format `chore(release): bump stagebook to X.Y.Z` — the GitHub Action keys off this.
+The commit subject must follow the format `chore(release): bump stagebook to X.Y.Z` — the GitHub Action keys off this. The diff is version bumps only (stagebook + the derived extension version + the lockfile) — still no code to review.
 
 ## 3. Open the release PR
 
@@ -88,7 +92,7 @@ gh pr merge <PR#> --squash
 
 Run the `until` loop via Bash's `run_in_background: true` so the user isn't blocked.
 
-Auto-merge (when available) is safe **only** for release PRs (single-line version bump on a `release/X.Y.Z` branch, no other changes). If the PR diff touches anything else, do not auto-merge — wait for the user. The merge style is `--squash` to match the project convention (recent main has the squash-style `<message> (#N)` commits).
+Auto-merge (when available) is safe **only** for release PRs (version bumps on a `release/X.Y.Z` branch — `packages/stagebook/package.json`, the derived `apps/vscode/package.json` from `sync-vscode-version.mjs`, and the lockfile — with no other changes). If the PR diff touches anything beyond those version fields, do not auto-merge — wait for the user. The merge style is `--squash` to match the project convention (recent main has the squash-style `<message> (#N)` commits).
 
 If the user is around, you can either merge automatically (auto or poll-then-merge) and notify them, or wait for them to merge manually — their call. If they're away, proceed automatically.
 
@@ -141,4 +145,5 @@ gh issue close <NNN> --comment "Fixed in #<PR> (released as [v<X.Y.Z>](https://g
 - Don't run `npm publish` manually — the GH Action owns this. Manual publish would race with the Action and may use the wrong credentials.
 - Don't skip the `chore(release):` prefix on the bump commit — automation may rely on it.
 - Don't infer the version from `git tag` alone — check `packages/stagebook/package.json` since the tag sequence has gaps (0.10.2 skipped).
-- Don't use `gh pr merge --auto` for anything other than a release PR. Auto-merge is safe here because the diff is a single-line version bump with no code; for normal PRs the user reviews and merges.
+- Don't use `gh pr merge --auto` for anything other than a release PR. Auto-merge is safe here because the diff is version bumps only (stagebook + the derived extension version + lockfile) with no code; for normal PRs the user reviews and merges.
+- Don't hand-edit `apps/vscode/package.json`'s version — it's derived from stagebook by `scripts/sync-vscode-version.mjs` (#562). Run that script, don't type a number.
