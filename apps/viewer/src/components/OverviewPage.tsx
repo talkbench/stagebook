@@ -223,7 +223,9 @@ const optionStyle = (active: boolean): React.CSSProperties => ({
   gap: "0.625rem",
   padding: "0.625rem 0.75rem",
   borderRadius: "0.375rem",
-  border: active ? "1px solid #3b82f6" : "1px solid #e5e7eb",
+  border: active
+    ? "1px solid var(--stagebook-primary, #2563eb)"
+    : "1px solid #e5e7eb",
   backgroundColor: active ? "#eff6ff" : "white",
   cursor: "pointer",
 });
@@ -256,7 +258,8 @@ const viewButtonStyle: React.CSSProperties = {
   padding: "0.625rem 1rem",
   borderRadius: "0.375rem",
   border: "none",
-  backgroundColor: "#3b82f6",
+  // Accent token (fallback = blue-600) so app chrome tracks the palette.
+  backgroundColor: "var(--stagebook-primary, #2563eb)",
   color: "white",
   cursor: "pointer",
   fontSize: "0.875rem",

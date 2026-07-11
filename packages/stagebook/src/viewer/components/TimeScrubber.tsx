@@ -231,7 +231,8 @@ const fillStyle: React.CSSProperties = {
   top: "50%",
   transform: "translateY(-50%)",
   height: "0.25rem",
-  backgroundColor: "#3b82f6",
+  // Accent token (fallback = blue-600) so the scrubber tracks the palette.
+  backgroundColor: "var(--stagebook-primary, #2563eb)",
   borderRadius: "0.125rem",
 };
 
@@ -255,7 +256,7 @@ const thumbStyle: React.CSSProperties = {
   width: "0.75rem",
   height: "0.75rem",
   borderRadius: "50%",
-  backgroundColor: "#3b82f6",
+  backgroundColor: "var(--stagebook-primary, #2563eb)",
   border: "2px solid white",
   boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
   zIndex: 2,

@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stagebook color system — audit + proposal (#535)</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    margin: 0; background: #f4f5f7; color: #1f2937;
+    line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 24px 80px; }
+  h1 { font-size: 1.75rem; margin: 0 0 4px; }
+  h2 { font-size: 1.2rem; margin: 40px 0 10px; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px; }
+  h3 { font-size: 0.95rem; margin: 18px 0 8px; color: #334155; }
+  .sub { color: #6b7280; margin: 0 0 8px; max-width: 780px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em;
+         background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 4px; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.8rem; background: #fff;
+          border-radius: 8px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #eef0f2; vertical-align: middle; }
+  th { background: #fafbfc; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: #6b7280; }
+  tr:last-child td { border-bottom: 0; }
+  .sw { display: inline-block; width: 24px; height: 24px; border-radius: 5px; border: 1px solid rgba(0,0,0,0.12); vertical-align: middle; }
+  .swsm { width: 15px; height: 15px; border-radius: 4px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.76rem; }
+  .use { color: #6b7280; font-size: 0.74rem; }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; white-space: nowrap; }
+  .pass { background: #dcfce7; color: #166534; }
+  .large { background: #fef9c3; color: #854d0e; }
+  .fail { background: #fee2e2; color: #991b1b; }
+  .na   { background: #f1f5f9; color: #64748b; }
+  .ratio { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .arrow { color: #94a3b8; padding: 0 2px; }
+  .strike { color: #b91c1c; text-decoration: line-through; opacity: 0.7; }
+  /* change-type chips */
+  .chg { display:inline-block; padding:1px 7px; border-radius:5px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; }
+  .keep   { background:#f1f5f9; color:#64748b; }
+  .alias  { background:#dbeafe; color:#1e40af; }
+  .snap   { background:#ccfbf1; color:#0f766e; }
+  .bump   { background:#ffedd5; color:#9a3412; }
+  .rename { background:#f3e8ff; color:#6b21a8; }
+  .derive { background:#dcfce7; color:#166534; }
+  .prim-grid { display:flex; flex-wrap:wrap; gap:10px; }
+  .prim { background:#fff; border-radius:8px; box-shadow:0 1px 2px rgba(0,0,0,0.06); padding:10px 12px; width: 250px; display:flex; gap:10px; align-items:flex-start; }
+  .prim .big { width:40px; height:40px; border-radius:6px; border:1px solid rgba(0,0,0,0.12); flex:0 0 auto; }
+  .prim .n { font-weight:700; font-size:0.82rem; }
+  .prim .h { font-family: ui-monospace, monospace; font-size:0.72rem; color:#64748b; }
+  .prim .u { font-size:0.7rem; color:#94a3b8; margin-top:2px; }
+  .render-strip { display:flex; flex-wrap:wrap; gap:16px; align-items:stretch; }
+  .render-box { background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 2px rgba(0,0,0,0.06); width: 260px; }
+  .render-box .label { font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em; color:#6b7280; margin-bottom:10px; }
+  .row2 { display:flex; gap:10px; align-items:center; margin:6px 0; }
+  .tag { font-size:0.66rem; color:#94a3b8; width:38px; flex:0 0 auto; }
+  .btn { color:#fff; border:0; border-radius:6px; padding:7px 15px; font-size:0.88rem; font-family:inherit; cursor:default; }
+  .lk { text-decoration:underline; font-size:0.88rem; }
+  .errbox { border-radius:6px; padding:8px 10px; font-size:0.82rem; }
+  .legend { font-size:0.76rem; color:#6b7280; margin:6px 0 0; }
+  .card { background:#fff; border-radius:10px; padding:16px 18px; box-shadow:0 1px 2px rgba(0,0,0,0.06); margin:12px 0; }
+  .dec { border-left:4px solid #f59e0b; }
+  .dec h3 { margin:0 0 4px; }
+  .dec p { margin:3px 0; font-size:0.86rem; }
+  .keylist { font-size:0.8rem; color:#475569; }
+  .keylist li { margin:3px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Stagebook color system — audit &amp; proposal</h1>
+  <p class="sub">Issue&nbsp;#535. <b>Public token names are unchanged</b> (one exception, flagged) — the proposal only makes every default resolve to a small primitive ramp. Contrast is computed live (WCAG&nbsp;2.2). Values you lock by eye are marked <span class="chg bump">bump</span>/<span class="chg rename">rename</span>.</p>
+  <p class="legend">
+    <span class="chg keep">keep</span> value already on-ramp &nbsp;
+    <span class="chg alias">alias</span> points at a shared primitive/token, no visual change &nbsp;
+    <span class="chg snap">snap</span> off-ramp → nearest ramp step (tiny change) &nbsp;
+    <span class="chg bump">bump</span> value changed to pass contrast &nbsp;
+    <span class="chg rename">rename</span> public name changes (deprecated alias kept) &nbsp;
+    <span class="chg derive">derive</span> becomes opacity/mix of another
+  </p>
+
+  <h2>1 · Proposed primitives — the actual colors (≈21, down from ~25 scattered values)</h2>
+  <p class="sub">Private internal layer. Consumers never override these; they override the semantic tokens below, which point here.</p>
+
+  <h3>Accent (one blue scale — everything blue resolves here)</h3>
+  <div class="prim-grid" id="prim-blue"></div>
+  <h3>Neutrals (one gray ramp)</h3>
+  <div class="prim-grid" id="prim-gray"></div>
+  <h3>Semantic hues</h3>
+  <div class="prim-grid" id="prim-sem"></div>
+
+  <h2>2 · How they render — before → after</h2>
+  <div class="render-strip">
+    <div class="render-box">
+      <div class="label">Button / SubmitButton — #fff on --primary</div>
+      <div class="row2"><span class="tag">now</span><button class="btn" style="background:#3b82f6">Continue</button><span class="badge fail" id="b1"></span></div>
+      <div class="row2"><span class="tag">prop</span><button class="btn" style="background:#2563eb">Continue</button><span class="badge pass" id="b2"></span></div>
+      <p class="legend">blue-500 → blue-600</p>
+    </div>
+    <div class="render-box">
+      <div class="label">TrackedLink — --primary text on #fff</div>
+      <div class="row2"><span class="tag">now</span><a class="lk" style="color:#3b82f6">instructions</a><span class="badge fail" id="l1"></span></div>
+      <div class="row2"><span class="tag">prop</span><a class="lk" style="color:#2563eb">instructions</a><span class="badge pass" id="l2"></span></div>
+      <p class="legend">link now = --primary</p>
+    </div>
+    <div class="render-box">
+      <div class="label">Element error — --danger on --danger-bg</div>
+      <div class="row2"><span class="tag">now</span><span class="errbox" style="background:#fef2f2;color:#ef4444">render failed</span><span class="badge fail" id="e1"></span></div>
+      <div class="row2"><span class="tag">prop</span><span class="errbox" style="background:#fef2f2;color:#dc2626">render failed</span><span class="badge pass" id="e2"></span></div>
+      <p class="legend">red-500 → red-600 (tokenized)</p>
+    </div>
+    <div class="render-box" style="width:300px">
+      <div class="label">Status pills — from the {fg,bg} pairs</div>
+      <div class="row2"><span class="tag">now</span><span style="font-size:0.75rem;color:#dc2626">112 / 100</span><span class="legend">colored text</span></div>
+      <div class="row2"><span class="tag">prop</span>
+        <span style="font-size:0.75rem;background:#f0fdf4;color:#15803d;border:1px solid #15803d;padding:2px 9px;border-radius:999px;font-weight:600">100 / 100 ✓</span>
+        <span class="badge" id="pill-s"></span></div>
+      <div class="row2"><span class="tag"></span>
+        <span style="font-size:0.75rem;background:#fffbeb;color:#b45309;border:1px solid #b45309;padding:2px 9px;border-radius:999px;font-weight:600">112 / 100</span>
+        <span class="badge" id="pill-w"></span></div>
+      <div class="row2"><span class="tag"></span>
+        <span style="font-size:0.75rem;background:#fef2f2;color:#dc2626;border:1px solid #dc2626;padding:2px 9px;border-radius:999px;font-weight:600">field required</span>
+        <span class="badge" id="pill-d"></span></div>
+      <p class="legend">success · warning · danger — soft tint + fg border + fg text</p>
+    </div>
+  </div>
+
+  <h2>3 · Semantic tokens → primitive (all public names kept)</h2>
+  <table id="tbl"><thead><tr>
+    <th></th><th>Public token</th><th>Now</th><th></th><th>Resolves to</th><th>Change</th><th>On</th><th>After</th>
+  </tr></thead><tbody></tbody></table>
+
+  <h2>4 · Timeline selections — anatomy of point / range / handles</h2>
+  <p class="sub">Everything blue below is <code>--primary</code> at an opacity → <span class="chg derive">derive</span> via <code>color-mix(in srgb, var(--stagebook-primary) N%, transparent)</code> (like <code>--focus-ring</code>), so the whole selection UI tracks one accent and follows the blue-500→600 bump.</p>
+  <table id="tl"><thead><tr>
+    <th>Selection part</th><th>Active token</th><th>Inactive token</th><th>= --primary @</th>
+  </tr></thead><tbody>
+    <tr><td><b>Range</b> — body fill</td><td class="mono">timeline-range-active</td><td class="mono">timeline-range-inactive</td><td>35% / 18%</td></tr>
+    <tr><td><b>Range</b> — body border</td><td class="mono">timeline-range-active-border</td><td class="mono">timeline-range-inactive-border</td><td>100% (600) / 60%</td></tr>
+    <tr><td><b>Handles</b> (start/end)</td><td class="mono">timeline-handle-active</td><td class="mono">timeline-handle-inactive</td><td>100% (600) / 70%</td></tr>
+    <tr style="background:#fffbeb"><td><b>Point</b> (stem + dot)</td><td class="mono" colspan="2">↳ <b>reuses the handle tokens</b> — no dedicated <code>timeline-point</code> exists</td><td>100% / 70%</td></tr>
+    <tr><td><b>Preview</b> (drag + kbd)</td><td class="mono" colspan="2">timeline-preview-bg (fill) + timeline-preview-border (dashed)</td><td>25% / 60%</td></tr>
+    <tr><td><b>Tooltip</b> (handle+playhead)</td><td class="mono" colspan="2">timeline-tooltip-bg · white text</td><td>90% (800)</td></tr>
+    <tr><td><b>Minimap</b> range / point / viewport</td><td class="mono" colspan="2">timeline-minimap-range / -point / -viewport-border</td><td>40% / 70% / 90%</td></tr>
+  </tbody></table>
+  <div class="card" style="margin-top:12px">
+    <h3 style="margin-top:0">Decisions & hardcodes this section forces</h3>
+    <ul class="keylist">
+      <li><b>Point reuse is a choice to ratify.</b> A point can't currently be themed apart from range handles. Fine if intended (a point = a zero-width range) — but document it, or add <code>--stagebook-timeline-point*</code> if points should ever look distinct.</li>
+      <li><span class="chg bump">hardcode</span> <b>blocked-range pulse</b> uses literal <code>rgba(220,38,38,…)</code> (danger red) in its <code>@keyframes</code> → should derive from <code>--danger</code>.</li>
+      <li><span class="chg keep">decor</span> handle <b>grip bars</b> are white <code>rgba(255,255,255,.75)</code> — decorative "on-accent" foreground; leave or tokenize.</li>
+      <li><span class="chg keep">keep</span> <code>--stagebook-playhead</code> #e11d48 (rose-600) — <b>the one media hue that earns its own value</b>: distinct from blue selection, must not read as "danger", must not alias it.</li>
+    </ul>
+  </div>
+
+  <h2>4b · Other media (timer / waveform / spinner)</h2>
+  <div class="card">
+    <ul class="keylist" style="margin:0">
+      <li><span class="chg alias">alias</span> <code>timer-fill</code> → blue-400 · <code>timer-warn</code> → <code>--danger</code> · <code>timer-track / bg-track / spinner-track</code> → gray-200</li>
+      <li><span class="chg alias">alias</span> <code>waveform-color</code> → gray-500 · <code>spinner-arc</code> → gray-400</li>
+      <li><span class="chg snap">snap</span> <code>waveform-track-bg</code> <code>rgba(128,128,128,…)</code> → gray-200 α · <code>scroll-indicator-fg</code> #4b5563 → <code>--text-secondary</code></li>
+    </ul>
+  </div>
+
+  <h2>4c · Playhead hue — why rose "sticks out"</h2>
+  <p class="sub">The palette's chromatic hues at equal size. Rose is actually a <i>smart</i> pick — it's the one warm slot <b>not</b> claimed by danger-red or warning-amber, so it stays distinct from both. What you can't put a finger on is that rose-600 is the <b>highest-chroma and lightest</b> swatch here, so it reads "louder" than its neighbors. It's a saturation/brightness mismatch, <b>not</b> the hue — so the fix is to tune it to the same weight as the other steps (e.g. rose-700), not to change the color.</p>
+  <div class="render-box" style="width:auto;max-width:640px">
+    <div style="display:flex;gap:2px;flex-wrap:wrap;align-items:flex-start">
+      <div style="text-align:center"><div style="width:64px;height:50px;background:#2563eb;border-radius:4px 0 0 4px"></div><div class="use">blue-600<br>accent</div></div>
+      <div style="text-align:center"><div style="width:64px;height:50px;background:#15803d"></div><div class="use">green-700<br>success</div></div>
+      <div style="text-align:center"><div style="width:64px;height:50px;background:#b45309"></div><div class="use">amber-700<br>warning</div></div>
+      <div style="text-align:center"><div style="width:64px;height:50px;background:#dc2626"></div><div class="use">red-600<br>danger</div></div>
+      <div style="text-align:center"><div style="width:64px;height:50px;background:#7c3aed"></div><div class="use">violet-600<br>visited</div></div>
+      <div style="text-align:center"><div style="width:64px;height:50px;background:#e11d48"></div><div class="use">rose-600<br>was (neon)</div></div>
+      <div style="text-align:center;margin-left:14px"><div style="width:64px;height:50px;background:#be123c;border-radius:0 4px 4px 0;box-shadow:inset 0 0 0 3px #111"></div><div class="use"><b>rose-700</b> ✓<br>picked</div></div>
+    </div>
+    <div style="margin-top:16px">
+      <div class="label" style="margin-bottom:6px">In context — playhead over gray waveform + blue selection</div>
+      <div style="position:relative;height:46px;background:#e5e7eb;border-radius:4px;overflow:hidden;max-width:460px">
+        <div style="position:absolute;left:28%;top:0;bottom:0;width:24%;background:rgba(37,99,235,0.30);border:1px solid rgba(37,99,235,0.8);box-sizing:border-box"></div>
+        <div style="position:absolute;left:50%;top:0;bottom:0;width:2px;background:#e11d48"></div>
+        <div style="position:absolute;left:72%;top:0;bottom:0;width:2px;background:#be123c"></div>
+      </div>
+      <p class="legend">left line = rose-600 (was, more neon) · right = rose-700 ✓ (picked — sits at the palette's weight). Both stay clearly distinct from gray+blue — the hue was never the problem.</p>
+    </div>
+  </div>
+
+  <h2>5 · Status counters — colored text vs pill</h2>
+  <p class="sub">The TextArea char counter (0.75rem) encodes state as text <i>color</i> today — exactly where small-text contrast bites: valid-green is only ~3.3:1 <b>and already fails AA</b>. A pill flips it to dark text on a soft tint (contrast trivial), makes it more visible, and — if the fill only appears off-default — signals state by <i>shape</i> too, not color alone (WCAG 1.4.1). Needs a <code>{fg,bg}</code> pair per state, like <code>--danger</code>/<code>--danger-bg</code> already are.</p>
+  <div class="render-strip">
+    <div class="render-box">
+      <div class="label">Today — colored text (0.75rem)</div>
+      <div style="text-align:right;line-height:2">
+        <div style="font-size:0.75rem;color:#6b7280">80 / 100</div>
+        <div style="font-size:0.75rem;color:#16a34a">100 / 100 <span class="badge" id="ct-v"></span></div>
+        <div style="font-size:0.75rem;color:#b45309">112 / 100 <span class="badge" id="ct-o"></span></div>
+      </div>
+      <p class="legend">color is the least legible thing at 12px; valid-green <b>fails</b> as text</p>
+    </div>
+    <div class="render-box">
+      <div class="label">Proposed — pill</div>
+      <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+        <span style="font-size:0.75rem;color:#6b7280">80 / 100</span>
+        <div style="display:flex;gap:6px;align-items:center"><span class="badge" id="cp-v"></span><span style="font-size:0.75rem;background:#f0fdf4;color:#15803d;border:1px solid #15803d;padding:2px 9px;border-radius:999px;font-weight:600">100 / 100 ✓</span></div>
+        <div style="display:flex;gap:6px;align-items:center"><span class="badge" id="cp-o"></span><span style="font-size:0.75rem;background:#fffbeb;color:#b45309;border:1px solid #b45309;padding:2px 9px;border-radius:999px;font-weight:600">112 / 100</span></div>
+      </div>
+      <p class="legend">soft tint + dark text; number kept for 1.4.1; fill = shape signal</p>
+    </div>
+  </div>
+
+  <h2>5b · Status-surface inventory — one concept, 4 renderings</h2>
+  <p class="sub">Every place we render semantic status. The finding isn't "pills are prettier" — it's that <b>"an error message" renders 4 different ways</b> depending on the code path (a styled box, bare red text, hardcoded red text, or unstyled). That inconsistency is the argument for one shared component drawing from the <code>{fg,bg}</code> triplets.</p>
+  <table id="inv"><thead><tr>
+    <th>Surface</th><th>Tone</th><th>Renders today</th><th>Shape</th><th></th>
+  </tr></thead><tbody>
+    <tr><td class="mono">TextArea counter</td><td>success / warning</td><td>0.75rem colored <b>text</b> + red pulse</td><td>inline</td><td><span class="chg bump">→ pill</span></td></tr>
+    <tr><td class="mono">ElementErrorBoundary</td><td>danger</td><td>proper box: <code>--danger</code> + <code>--danger-bg</code> + border</td><td><b>block callout</b></td><td><span class="chg keep">is the pattern</span></td></tr>
+    <tr><td class="mono">Element.tsx:243</td><td>danger</td><td>bare red <code>&lt;p&gt;</code> — <b>hardcoded #dc2626</b></td><td>inline text</td><td><span class="chg bump">tokenize + unify</span></td></tr>
+    <tr><td class="mono">Element.tsx:257</td><td>danger</td><td>bare red <code>&lt;p&gt;</code> — <code>--danger</code> token</td><td>inline text</td><td><span class="chg bump">unify</span></td></tr>
+    <tr><td class="mono">MediaPlayer:1104</td><td>danger</td><td><code>role="alert"</code> — <b>no styling at all</b></td><td>unstyled</td><td><span class="chg bump">unify</span></td></tr>
+    <tr style="color:#94a3b8"><td class="mono">helperText / hints</td><td>neutral</td><td>muted gray secondary text</td><td>—</td><td><span class="chg keep">not a pill</span></td></tr>
+    <tr style="color:#94a3b8"><td class="mono">MediaPlayer load-fail frame</td><td>—</td><td>dark <code>#1c1c1e</code> media placeholder</td><td>—</td><td><span class="chg keep">not a pill</span></td></tr>
+  </tbody></table>
+  <div class="card" style="margin-top:12px">
+    <p style="margin:0;font-size:0.86rem"><b>Generalization =</b> one <code>StatusMessage</code> component, two shapes (inline <b>chip</b> · block <b>callout</b>) × <code>tone</code> (success / warning / danger), all drawing from semantic <code>{fg,bg}</code> pairs. <code>ElementErrorBoundary</code> is already the callout at block size — the pattern is proven; generalizing is "make success/warning match danger, then delete the four ad-hoc renderings." Tracked as a follow-up issue; <b>#535 ships the token triplets it needs.</b></p>
+  </div>
+
+  <h2>5c · Semantic {fg, bg} pairs — completing the set</h2>
+  <p class="sub">danger already ships as a pair; success &amp; warning need a tint added so pills/callouts have dark-text-on-soft-tint for every tone. Each <b>fg</b> is the smallest ramp step that still passes ≥4.5:1 as text on its own <b>bg</b> — perceptual, so the step differs by hue (red-600, green-700, amber-700). <b>danger got lucky</b>: red-600 is dark enough to be both accent and text; green-600 wasn't, hence the bump.</p>
+  <table id="pairs"><thead><tr>
+    <th>Tone</th><th>fg (text / accent)</th><th>bg (tint)</th><th>fg on bg</th><th>status</th>
+  </tr></thead><tbody>
+    <tr>
+      <td><b>danger</b></td>
+      <td><span class="sw swsm" style="background:#dc2626"></span> <code>--danger</code> red-600</td>
+      <td><span class="sw swsm" style="background:#fef2f2"></span> <code>--danger-bg</code> red-50</td>
+      <td><span class="badge" id="p-d"></span></td>
+      <td><span class="chg keep">both exist</span></td>
+    </tr>
+    <tr>
+      <td><b>success</b></td>
+      <td><span class="sw swsm" style="background:#15803d"></span> <code>--success</code> green-700 <span class="chg bump">← 600</span></td>
+      <td><span class="sw swsm" style="background:#f0fdf4"></span> <code>--success-bg</code> green-50</td>
+      <td><span class="badge" id="p-s"></span></td>
+      <td><span class="chg bump">add bg</span></td>
+    </tr>
+    <tr>
+      <td><b>warning</b></td>
+      <td><span class="sw swsm" style="background:#b45309"></span> <code>--warning</code> amber-700 <span class="chg bump">← red</span></td>
+      <td><span class="sw swsm" style="background:#fffbeb"></span> <code>--warning-bg</code> amber-50</td>
+      <td><span class="badge" id="p-w"></span></td>
+      <td><span class="chg bump">add bg</span></td>
+    </tr>
+  </tbody></table>
+  <p class="legend">These three <code>{fg,bg}</code> pairs are exactly what a <code>StatusMessage</code> (chip + callout) consumes — the follow-up issue's dependency on this palette work.</p>
+
+  <h2>5d · Colorblindness (CVD) — a separate axis from contrast</h2>
+  <p class="sub">Passing WCAG contrast (a <i>luminance</i> ratio) says nothing about <i>hue</i> discriminability. Each key color below is simulated under the three color-vision deficiencies (Machado 2009 matrices, full severity). Watch the semantic trio: under red-green CVD, success-green / warning-amber / danger-red drift toward each other. That's why meaning is never carried by color alone (WCAG 1.4.1) — the counter keeps its number, pills keep text, errors keep a message, the playhead is a shape+position.</p>
+  <table id="cvd"><thead><tr>
+    <th>Token</th><th>Normal</th><th>Deuteranopia<br><span class="tw">red-green, ~6% ♂</span></th><th>Protanopia<br><span class="tw">red-green</span></th><th>Tritanopia<br><span class="tw">blue-yellow, rare</span></th>
+  </tr></thead><tbody></tbody></table>
+  <div class="card" style="margin-top:12px">
+    <h3 style="margin-top:0">The traffic-light collapse</h3>
+    <p style="margin:2px 0 10px;font-size:0.9rem">success · warning · danger, side by side, per vision type:</p>
+    <div id="cvd-trio"></div>
+    <p class="legend">If success and danger are hard to tell apart in the Deuteranopia / Protanopia rows, so are they for ~8% of men — which is exactly why every semantic color in the components is paired with a non-color cue. The blue accent, gray neutrals, and the blue-vs-rose playhead/selection pairing stay distinct across all three.</p>
+  </div>
+
+  <h2>6 · Decisions — resolved</h2>
+  <p class="sub">All locked (2026-07-10). One implementation note remains for the worktree. Follow-up component work tracked in <b>#543</b>.</p>
+  <div id="decisions"></div>
+</div>
+
+<script>
+function lin(c){ c/=255; return c<=0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); }
+function lum(hex){ const n=hex.replace('#',''); const h=n.length===3?n.split('').map(x=>x+x).join(''):n;
+  const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
+  return 0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b); }
+function ratio(a,b){ const L1=lum(a),L2=lum(b),hi=Math.max(L1,L2),lo=Math.min(L1,L2); return (hi+0.05)/(lo+0.05); }
+function badge(r,uiOnly){ if(r>=4.5) return['pass','AA ✓']; if(r>=3.0) return['large',uiOnly?'UI ✓':'Large only']; return['fail','FAIL']; }
+const rr=(a,b)=>ratio(a,b).toFixed(2)+':1';
+
+// ---- primitives ----
+const PRIM = {
+  blue: [
+    {n:'blue-400', h:'#60a5fa', u:'timer fill'},
+    {n:'blue-600', h:'#2563eb', u:'primary · link · focus (base accent)'},
+    {n:'blue-700', h:'#1d4ed8', u:'primary-hover · link-hover'},
+    {n:'blue-800', h:'#1e40af', u:'primary-active · tl tooltip'},
+  ],
+  gray: [
+    {n:'white',   h:'#ffffff', u:'bg · surface'},
+    {n:'gray-50', h:'#f9fafb', u:'bg-muted · blockquote-bg'},
+    {n:'gray-100',h:'#f3f4f6', u:'hover-bg'},
+    {n:'gray-200',h:'#e5e7eb', u:'tracks · scroll pill'},
+    {n:'gray-300',h:'#d1d5db', u:'border'},
+    {n:'gray-400',h:'#9ca3af', u:'decoration · spinner · quote rail'},
+    {n:'gray-500',h:'#6b7280', u:'text-muted · waveform'},
+    {n:'gray-700',h:'#374151', u:'text-secondary · table cells'},
+    {n:'gray-800',h:'#1f2937', u:'text · table header'},
+  ],
+  sem: [
+    {n:'red-600',  h:'#dc2626', u:'danger (fg)'},
+    {n:'red-50',   h:'#fef2f2', u:'danger-bg'},
+    {n:'green-700',h:'#15803d', u:'success (fg) — bump ←600'},
+    {n:'green-50', h:'#f0fdf4', u:'success-bg (new)'},
+    {n:'amber-700',h:'#b45309', u:'warning (fg)'},
+    {n:'amber-50', h:'#fffbeb', u:'warning-bg (new)'},
+    {n:'rose-700', h:'#be123c', u:'playhead (unique) — picked'},
+    {n:'violet-600',h:'#7c3aed',u:'link-visited'},
+    {n:'black α6', h:'rgba(0,0,0,.06)', u:'code-bg', raw:true},
+  ],
+};
+function primCard(p){
+  const bg = p.raw ? p.h : p.h;
+  return `<div class="prim"><span class="big" style="background:${bg}"></span>
+    <div><div class="n">${p.n}</div><div class="h">${p.h}</div><div class="u">${p.u}</div></div></div>`;
+}
+document.getElementById('prim-blue').innerHTML = PRIM.blue.map(primCard).join('');
+document.getElementById('prim-gray').innerHTML = PRIM.gray.map(primCard).join('');
+document.getElementById('prim-sem').innerHTML  = PRIM.sem.map(primCard).join('');
+
+// ---- render strip badges ----
+document.getElementById('b1').textContent = rr('#fff','#3b82f6');
+document.getElementById('b2').textContent = rr('#fff','#2563eb');
+document.getElementById('l1').textContent = rr('#3b82f6','#fff');
+document.getElementById('l2').textContent = rr('#2563eb','#fff');
+document.getElementById('e1').textContent = rr('#ef4444','#fef2f2');
+document.getElementById('e2').textContent = rr('#dc2626','#fef2f2');
+// ---- status pills (§2) — token-pair values ----
+(()=>{ const set=(id,fg,bg)=>{const el=document.getElementById(id); if(!el)return; const r=ratio(fg,bg); const[c]=badge(r,false); el.className='badge '+c; el.textContent=r.toFixed(2);};
+  set('pill-s','#15803d','#f0fdf4');  // success green-700 on green-50
+  set('pill-w','#b45309','#fffbeb');  // warning amber-700 on amber-50
+  set('pill-d','#dc2626','#fef2f2');  // danger  red-600  on red-50
+})();
+
+// ---- counter: text vs pill ----
+(()=>{ const set=(id,fg,bg)=>{const el=document.getElementById(id); if(!el)return; const r=ratio(fg,bg); const[c]=badge(r,false); el.className='badge '+c; el.textContent=r.toFixed(2);};
+  set('ct-v','#16a34a','#fff');     // valid green as TEXT on white — fails
+  set('ct-o','#b45309','#fff');     // amber-700 as text on white
+  set('cp-v','#15803d','#f0fdf4');  // success green-700 on green-50 (token pair)
+  set('cp-o','#b45309','#fffbeb');  // warning amber-700 on amber-50 (token pair)
+})();
+
+// ---- semantic {fg,bg} pairs ----
+(()=>{ const set=(id,fg,bg)=>{const el=document.getElementById(id); if(!el)return; const r=ratio(fg,bg); const[c]=badge(r,false); el.className='badge '+c; el.textContent=r.toFixed(2);};
+  set('p-d','#dc2626','#fef2f2');   // danger fg on danger-bg
+  set('p-s','#15803d','#f0fdf4');   // success green-700 on green-50
+  set('p-w','#b45309','#fffbeb');   // warning amber-700 on amber-50
+})();
+
+// ---- semantic mapping table ----
+// cur=current hex, prop=resolved hex after, to=primitive/token label, chg, on=bg for contrast (null=surface), uiOnly
+const M = [
+ {grp:'Text'},
+ {t:'text',            cur:'#1f2937', prop:'#1f2937', to:'gray-800',   chg:'keep',  on:'#fff'},
+ {t:'text-secondary',  cur:'#374151', prop:'#374151', to:'gray-700',   chg:'keep',  on:'#fff'},
+ {t:'text-muted',      cur:'#6b7280', prop:'#6b7280', to:'gray-500',   chg:'keep',  on:'#fff'},
+ {t:'text-faint → decoration', cur:'#9ca3af', prop:'#9ca3af', to:'gray-400', chg:'rename', on:'#fff', uiOnly:true, decor:true},
+ {grp:'Interactive'},
+ {t:'primary',         cur:'#3b82f6', prop:'#2563eb', to:'blue-600',   chg:'bump',  on:'#fff'},
+ {t:'primary-hover',   cur:'#2563eb', prop:'#1d4ed8', to:'blue-700',   chg:'bump',  on:'#fff'},
+ {t:'primary-active',  cur:'#1d4ed8', prop:'#1e40af', to:'blue-800',   chg:'bump',  on:'#fff'},
+ {t:'link',            cur:'#2563eb', prop:'#2563eb', to:'var(--primary)',       chg:'alias', on:'#fff'},
+ {t:'link-hover',      cur:'#1d4ed8', prop:'#1d4ed8', to:'var(--primary-hover)', chg:'alias', on:'#fff'},
+ {t:'link-visited',    cur:'#7c3aed', prop:'#7c3aed', to:'violet-600', chg:'keep',  on:'#fff'},
+ {t:'focus-ring',      cur:'primary@25%', prop:'primary@25%', to:'mix(--primary)', chg:'derive', on:null},
+ {grp:'Semantic'},
+ {t:'success',         cur:'#16a34a', prop:'#15803d', to:'green-700',  chg:'bump',  on:'#fff'},
+ {t:'success-bg',      cur:'— (none)', prop:'#f0fdf4', to:'green-50 · new', chg:'bump', on:null},
+ {t:'danger',          cur:'#ef4444', prop:'#dc2626', to:'red-600',    chg:'bump',  on:'#fff'},
+ {t:'danger-bg',       cur:'#fef2f2', prop:'#fef2f2', to:'red-50',     chg:'keep',  on:null},
+ {t:'warning',         cur:'#dc2626', prop:'#b45309', to:'amber-700',  chg:'bump',  on:'#fff', flag:true},
+ {t:'warning-bg',      cur:'— (none)', prop:'#fffbeb', to:'amber-50 · new', chg:'bump', on:null},
+ {t:'timer-warn',      cur:'#ef4444', prop:'#dc2626', to:'var(--danger)', chg:'alias', on:'#fff', uiOnly:true},
+ {grp:'Surfaces & borders'},
+ {t:'bg / surface',    cur:'#ffffff', prop:'#ffffff', to:'white',      chg:'keep',  on:null},
+ {t:'bg-muted',        cur:'#f9fafb', prop:'#f9fafb', to:'gray-50',    chg:'keep',  on:null},
+ {t:'hover-bg',        cur:'#f3f4f6', prop:'#f3f4f6', to:'gray-100',   chg:'keep',  on:null},
+ {t:'bg-track',        cur:'#e5e7eb', prop:'#e5e7eb', to:'gray-200',   chg:'keep',  on:null},
+ {t:'border',          cur:'#d1d5db', prop:'#d1d5db', to:'gray-300',   chg:'keep',  on:'#fff', uiOnly:true},
+ {grp:'Markdown extras'},
+ {t:'link (markdown)', cur:'#2563eb', prop:'#2563eb', to:'var(--link)', chg:'alias', on:'#fff'},
+ {t:'table-text',      cur:'#4a5568', prop:'#374151', to:'var(--text-secondary)', chg:'snap', on:'#fff'},
+ {t:'table-header-text',cur:'#1a202c',prop:'#1f2937', to:'var(--text)',           chg:'snap', on:'#fff'},
+ {t:'blockquote-border',cur:'#9ca3af',prop:'#9ca3af', to:'gray-400',   chg:'alias', on:'#f9fafb', decor:true},
+ {t:'blockquote-bg',   cur:'#f9fafb', prop:'#f9fafb', to:'gray-50',    chg:'alias', on:null},
+ {t:'code-bg',         cur:'rgba(0,0,0,.06)', prop:'rgba(0,0,0,.06)', to:'black α6', chg:'keep', on:null},
+ {grp:'Media & timeline'},
+ {t:'playhead',        cur:'#e11d48', prop:'#be123c', to:'rose-700',   chg:'bump',  on:'#fff', uiOnly:true},
+ {t:'timer-fill',      cur:'#60a5fa', prop:'#60a5fa', to:'blue-400',   chg:'keep',  on:'#fff', uiOnly:true},
+ {t:'timer-track / spinner-track', cur:'#e5e7eb', prop:'#e5e7eb', to:'gray-200', chg:'alias', on:null},
+ {t:'waveform-color',  cur:'#6b7280', prop:'#6b7280', to:'gray-500',   chg:'alias', on:'#fff', uiOnly:true},
+ {t:'waveform-track-bg',cur:'#808080 α', prop:'gray-200 α', to:'gray-200', chg:'snap', on:null},
+ {t:'spinner-arc',     cur:'#9ca3af', prop:'#9ca3af', to:'gray-400',   chg:'alias', on:'#fff', uiOnly:true},
+ {t:'scroll-indicator-fg', cur:'#4b5563', prop:'#374151', to:'var(--text-secondary)', chg:'snap', on:'#e5e7eb', uiOnly:true},
+ {t:'timeline-* (×12)',cur:'blue-500 α', prop:'primary α', to:'mix(--primary)', chg:'derive', on:null},
+];
+const tb = document.querySelector('#tbl tbody');
+for(const m of M){
+  if(m.grp){ const r=document.createElement('tr');
+    r.innerHTML=`<td colspan="8" style="background:#f8fafc;font-weight:700;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.05em;color:#475569">${m.grp}</td>`;
+    tb.appendChild(r); continue; }
+  const tr=document.createElement('tr');
+  const isHex = /^#|α|blue|primary|gray/.test(m.prop);
+  const swProp = /^#[0-9a-f]{3,8}$/i.test(m.prop) ? m.prop : (/^#[0-9a-f]{3,8}$/i.test(m.cur)?m.prop:'#e2e8f0');
+  // after contrast
+  let after='<span class="badge na">—</span>';
+  if(m.on && /^#[0-9a-f]{3,8}$/i.test(m.prop)){
+    const r=ratio(m.prop, m.on); const [c,t]=badge(r, m.decor?true:m.uiOnly);
+    const label = m.decor ? 'decor' : t;
+    after=`<span class="badge ${m.decor?'na':c}">${label}</span> <span class="ratio" style="font-size:0.72rem;color:#64748b">${r.toFixed(2)}</span>`;
+  }
+  const changed = m.cur!==m.prop && /^#/.test(m.cur) && /^#/.test(m.prop);
+  const curCell = changed ? `<span class="strike mono">${m.cur}</span>` : `<span class="mono">${m.cur}</span>`;
+  const swCur = /^#[0-9a-f]{3,8}$/i.test(m.cur)? m.cur : '#e2e8f0';
+  tr.innerHTML = `
+    <td><span class="sw swsm" style="background:${swProp}"></span></td>
+    <td class="mono">--stagebook-${m.t}</td>
+    <td>${curCell}</td>
+    <td class="arrow">→</td>
+    <td class="mono">${m.to}</td>
+    <td><span class="chg ${m.chg}">${m.chg}</span>${m.flag?' <span class="badge large">open</span>':''}</td>
+    <td class="mono" style="color:#94a3b8">${m.on?('on '+m.on):'—'}</td>
+    <td>${after}</td>`;
+  tb.appendChild(tr);
+}
+
+// ---- open decisions ----
+const D = [
+ {t:'Status pills ✓ (picked: yes, soft chip)', b:`<span class="chg keep">resolved</span> <b>Yes</b> — soft-chip recipe (-50 tint + 1px fg border + fg text), rendered in §2 / §5. Needs <code>--success-bg</code> + <code>--warning-bg</code> added (§5c). Palette work (#535) ships the pairs; <b>#543</b> builds the shared component that consumes them.`},
+ {t:'Warning hue ✓ (picked: amber)', b:`<span class="chg keep">resolved</span> <b>Amber</b> — <code>--warning</code> = amber-700 #b45309 (${rr('#b45309','#fff')} on white ✓), distinct from danger-red so warning ≠ error. Pill uses amber-50 tint. Amber-as-text is contrast-tight (amber-600 is only ${rr('#d97706','#fff')}), so it stays at amber-700.`},
+ {t:'Primary step ✓ (picked: blue-600)', b:`<span class="chg keep">resolved</span> <b>blue-600 #2563eb</b> — passes as both button-fill and link text (${rr('#2563eb','#fff')}). Hover → blue-700, active → blue-800. One notch deeper than today's blue-500.`},
+ {t:'success as text ✓ (resolved by bump)', b:`<span class="chg keep">resolved</span> <code>--success</code> bumps green-600 → <b>green-700 #15803d</b> (${rr('#15803d','#fff')} on white ✓), so it's text-safe as well as pill-safe. Its only usage (the counter) becomes a pill anyway.`},
+ {t:'Playhead — rose-700 ✓ (picked)', b:`See §4c. Rose is the right <i>hue</i> (the one warm slot not owned by danger or warning), so <code>--playhead</code> stays its own token — <b>not</b> aliased to <code>--danger</code>. <b>Picked rose-700 #be123c</b> over the neon rose-600 #e11d48 to match the other steps' weight while staying just as distinct against gray+blue. <span class="chg keep">resolved</span>`},
+ {t:'Semantic vs coincidental aliasing', b:`For pairs like <code>waveform-color</code>→gray-500: alias to the <i>primitive</i> (they just happen to match) or to <code>--text-muted</code> (they're <i>defined</i> to track it)? Latter means one host override moves both. Decide per pair; default to primitive unless coupling is intended.`},
+];
+const dc=document.getElementById('decisions');
+for(const d of D){ const el=document.createElement('div'); el.className='card dec';
+  el.innerHTML=`<h3>${d.t}</h3><p>${d.b}</p>`; dc.appendChild(el); }
+
+// ---- CVD simulation (Machado 2009 matrices, full severity, applied to sRGB) ----
+const CVD = {
+  Deuteranopia: [[0.367322,0.860646,-0.227968],[0.280085,0.672501,0.047413],[-0.011820,0.042940,0.968881]],
+  Protanopia:   [[0.152286,1.052583,-0.204868],[0.114503,0.786281,0.099216],[-0.003882,-0.048116,1.051998]],
+  Tritanopia:   [[1.255528,-0.076749,-0.178779],[-0.078411,0.930809,0.147602],[0.004733,0.691367,0.303900]],
+};
+function hx2(hex){ const n=hex.replace('#',''); return [parseInt(n.slice(0,2),16),parseInt(n.slice(2,4),16),parseInt(n.slice(4,6),16)]; }
+function toHex2(rgb){ return '#'+rgb.map(c=>Math.max(0,Math.min(255,Math.round(c))).toString(16).padStart(2,'0')).join(''); }
+function sim(hex,M){ const [r,g,b]=hx2(hex); return toHex2([
+  M[0][0]*r+M[0][1]*g+M[0][2]*b, M[1][0]*r+M[1][1]*g+M[1][2]*b, M[2][0]*r+M[2][1]*g+M[2][2]*b]); }
+function cvdChip(hex){ return `<div style="display:inline-flex;flex-direction:column;align-items:center;gap:3px">
+  <span class="sw" style="background:${hex};width:46px;height:30px"></span>
+  <span class="mono" style="font-size:0.66rem;color:#94a3b8">${hex}</span></div>`; }
+
+const CVD_ROWS = [
+  {n:'primary (accent)'}, {n:'success'}, {n:'warning'}, {n:'danger'}, {n:'playhead'}, {n:'link-visited'},
+];
+// pull each token's resolved hex from the primitives table above
+const HEXOF = {primary:'#2563eb', success:'#15803d', warning:'#b45309', danger:'#b91c1c', playhead:'#be123c', 'link-visited':'#7c3aed'};
+const cvdBody = document.querySelector('#cvd tbody');
+for(const row of CVD_ROWS){
+  const key = row.n.split(' ')[0];
+  const h = HEXOF[key];
+  const tr=document.createElement('tr');
+  tr.innerHTML = `<td class="mono">--stagebook-${key}</td>
+    <td>${cvdChip(h)}</td>
+    <td>${cvdChip(sim(h,CVD.Deuteranopia))}</td>
+    <td>${cvdChip(sim(h,CVD.Protanopia))}</td>
+    <td>${cvdChip(sim(h,CVD.Tritanopia))}</td>`;
+  cvdBody.appendChild(tr);
+}
+
+const TRIO = [['success','#15803d'],['warning','#b45309'],['danger','#b91c1c']];
+const trioEl = document.getElementById('cvd-trio');
+for(const [vname,M] of [['Normal',null],['Deuteranopia',CVD.Deuteranopia],['Protanopia',CVD.Protanopia],['Tritanopia',CVD.Tritanopia]]){
+  const rowdiv=document.createElement('div');
+  rowdiv.style.cssText='display:flex;align-items:center;gap:8px;margin:6px 0';
+  const sw = TRIO.map(([,hex])=>{ const h=M?sim(hex,M):hex; return `<span class="sw" style="background:${h};width:88px;height:26px"></span>`; }).join('');
+  rowdiv.innerHTML = `<span class="use" style="width:104px;flex:0 0 auto">${vname}</span>${sw}`;
+  trioEl.appendChild(rowdiv);
+}
+</script>
+</body>
+</html>

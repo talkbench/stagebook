@@ -57,7 +57,7 @@ export interface TimelineProps {
   trackLabels?: string[];
   /**
    * Previously saved selections to restore on mount. Element.tsx resolves
-   * this from `timeline.<name>` so participants who reload the stage see
+   * this from `self.timeline.<name>` so participants who reload the stage see
    * their existing marks. Untrusted shape — validated before use.
    */
   initialSelections?: unknown;

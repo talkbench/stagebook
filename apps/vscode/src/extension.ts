@@ -815,12 +815,21 @@ function getWebviewContent(
   <style>
     :root {
       --viewer-sidebar-width: 280px;
-      --stagebook-primary: #3b82f6;
-      --stagebook-primary-hover: #2563eb;
+      /* Keep these token values in sync with packages/stagebook/src/styles.css
+       * (:root). This block is the webview's only source of :root tokens
+       * (the bundled styles.css is loaded as text, not auto-injected), so a
+       * stale value here overrides the whole preview: pre-#535 this pinned
+       * --stagebook-primary to the retired blue-500, which is why every
+       * var(--stagebook-primary) rendered old-blue while the (absent-here)
+       * playhead correctly fell back to rose-700. Tracked for a durable fix
+       * (inject the real styles.css) in #494. */
+      --stagebook-primary: #2563eb;
+      --stagebook-primary-hover: #1d4ed8;
+      --stagebook-primary-active: #1e40af;
       --stagebook-text: #1f2937;
       --stagebook-text-secondary: #374151;
       --stagebook-text-muted: #6b7280;
-      --stagebook-text-faint: #9ca3af;
+      --stagebook-decoration: #9ca3af;
       --stagebook-border: #d1d5db;
       --stagebook-bg-muted: #f9fafb;
       --stagebook-bg-track: #e5e7eb;

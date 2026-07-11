@@ -302,7 +302,9 @@ const cardButtonStyle: React.CSSProperties = {
   padding: "0.375rem 0.75rem",
   borderRadius: "0.375rem",
   border: "none",
-  backgroundColor: "#3b82f6",
+  // Accent token (fallback = blue-600) so this webview chrome tracks the
+  // palette instead of pinning the retired blue-500.
+  backgroundColor: "var(--stagebook-primary, #2563eb)",
   color: "#ffffff",
   cursor: "pointer",
   fontSize: "0.8125rem",
