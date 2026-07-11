@@ -49,7 +49,10 @@ export function FieldForm({
             <ul style={errorListStyle}>
               {errors.map((issue) => (
                 <li key={`${issue.path}:${issue.message}`}>
-                  <code>{issue.path}</code>: {issue.message}
+                  {/* Inherit rather than a host `code` default (VS Code's
+                      webview tints bare <code> amber). */}
+                  <code style={{ color: "inherit" }}>{issue.path}</code>:{" "}
+                  {issue.message}
                 </li>
               ))}
             </ul>

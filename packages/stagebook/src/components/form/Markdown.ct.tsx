@@ -18,15 +18,15 @@ test("renders links", async ({ mount }) => {
   );
 });
 
-test("code sets an explicit color that beats a host `code` default (#560)", async ({
+test("code beats a host `code` default and reads as the study text color (#560)", async ({
   mount,
 }) => {
   // A host can ship a `code { color: … }` rule — the VS Code webview tints bare
-  // <code> with an amber theme color. Stagebook styles inline so code renders
-  // in the study's text color regardless of host CSS. Inject a competing (plain,
-  // non-!important) red `code`/`pre` rule and assert the stagebook color wins
-  // for inline code, the <pre>, and the fenced inner <code>. Without an explicit
-  // inline color these inherit the host rule and go red.
+  // <code> with an amber theme color. Stagebook code styles inline, so its color
+  // beats the host rule; in plain prose it inherits the Markdown root's
+  // --stagebook-text. Inject a competing (plain, non-!important) red `code`/`pre`
+  // rule and assert the study color wins for inline code, the <pre>, and the
+  // fenced inner <code>.
   const component = await mount(
     <div>
       <style>{"code, pre { color: rgb(255, 0, 0); }"}</style>
@@ -37,6 +37,26 @@ test("code sets an explicit color that beats a host `code` default (#560)", asyn
   await expect(component.locator("code").first()).toHaveCSS("color", text);
   await expect(component.locator("pre")).toHaveCSS("color", text);
   await expect(component.locator("pre code")).toHaveCSS("color", text);
+});
+
+test("code used as link text keeps the link color, not body gray (#560 review)", async ({
+  mount,
+}) => {
+  // `[`code`](url)` renders <a><code>. Because the code color is `inherit`
+  // (not a hard-coded gray), the chip keeps the link color so code-formatted
+  // links stay discoverable — while still beating a host `code { color }`
+  // default. A hard-coded color would flatten it to body gray in every host.
+  const component = await mount(
+    <div>
+      <style>{"code { color: rgb(255, 0, 0); }"}</style>
+      <Markdown text={"[`npm test`](https://example.com)"} />
+    </div>,
+  );
+  // --stagebook-link (blue-600 #2563eb), NOT the red host rule or body gray.
+  await expect(component.locator("a code")).toHaveCSS(
+    "color",
+    "rgb(37, 99, 235)",
+  );
 });
 
 test("passes through relative image paths without resolveURL", async ({

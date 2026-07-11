@@ -155,11 +155,12 @@ const inlineCodeStyle: React.CSSProperties = {
     "var(--stagebook-code-font, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace)",
   fontSize: "0.9em",
   background: "var(--stagebook-code-bg, rgba(0,0,0,0.06))",
-  // Explicit text color so code doesn't inherit a host's `code {…}` default
-  // (e.g. the VS Code webview tints bare <code> with an amber theme color).
-  // Inline style beats any host stylesheet — the reason stagebook styles
-  // inline (see file header).
-  color: "var(--stagebook-text, #1f2937)",
+  // `inherit`, not an explicit color: an inline style still beats a host's
+  // `code {…}` default (e.g. the amber the VS Code webview tints bare <code>
+  // with), but inheriting lets code used AS link text keep the link color
+  // instead of being forced to body gray. The Markdown root sets the base text
+  // color, so prose code still reads as --stagebook-text (#560 review).
+  color: "inherit",
   padding: "0.1em 0.3em",
   borderRadius: "0.25rem",
 };
@@ -180,9 +181,10 @@ const inlineCodeStyle: React.CSSProperties = {
 // ring is in the scoped <style> block.
 const preStyle: React.CSSProperties = {
   background: "var(--stagebook-code-bg, rgba(0,0,0,0.06))",
-  // Explicit text color so the block doesn't inherit a host's `code`/`pre`
-  // default (e.g. the VS Code webview's amber `--vscode-textPreformat-*`).
-  color: "var(--stagebook-text, #1f2937)",
+  // `inherit` so the block defeats a host `code`/`pre` default (the VS Code
+  // webview's amber `--vscode-textPreformat-*`) without hard-coding a color;
+  // the Markdown root supplies the base text color.
+  color: "inherit",
   padding: "0.75rem 1rem",
   borderRadius: "0.375rem",
   overflowX: "auto",

@@ -301,6 +301,8 @@ const cardRowStyle: React.CSSProperties = {
 const codeChipStyle: React.CSSProperties = {
   fontFamily: "monospace",
   backgroundColor: "rgba(0, 0, 0, 0.06)",
+  // Inherit the card's text color rather than VS Code's amber `code` default.
+  color: "inherit",
   padding: "0.125rem 0.25rem",
   borderRadius: "0.25rem",
 };
