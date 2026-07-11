@@ -18,6 +18,27 @@ test("renders links", async ({ mount }) => {
   );
 });
 
+test("code sets an explicit color that beats a host `code` default (#560)", async ({
+  mount,
+}) => {
+  // A host can ship a `code { color: … }` rule — the VS Code webview tints bare
+  // <code> with an amber theme color. Stagebook styles inline so code renders
+  // in the study's text color regardless of host CSS. Inject a competing (plain,
+  // non-!important) red `code`/`pre` rule and assert the stagebook color wins
+  // for inline code, the <pre>, and the fenced inner <code>. Without an explicit
+  // inline color these inherit the host rule and go red.
+  const component = await mount(
+    <div>
+      <style>{"code, pre { color: rgb(255, 0, 0); }"}</style>
+      <Markdown text={"inline `snippet`\n\n```\nfenced block\n```"} />
+    </div>,
+  );
+  const text = "rgb(31, 41, 55)"; // --stagebook-text (gray-800)
+  await expect(component.locator("code").first()).toHaveCSS("color", text);
+  await expect(component.locator("pre")).toHaveCSS("color", text);
+  await expect(component.locator("pre code")).toHaveCSS("color", text);
+});
+
 test("passes through relative image paths without resolveURL", async ({
   mount,
 }) => {

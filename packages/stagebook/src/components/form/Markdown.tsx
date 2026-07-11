@@ -141,6 +141,8 @@ const emStyle: React.CSSProperties = {
 const fencedInnerCodeStyle: React.CSSProperties = {
   background: "transparent",
   padding: 0,
+  // Inherit the <pre>'s explicit color rather than a host `code {…}` default.
+  color: "inherit",
 };
 
 // Inline code only — `like this`. Fenced code blocks (```...```) get
@@ -153,6 +155,11 @@ const inlineCodeStyle: React.CSSProperties = {
     "var(--stagebook-code-font, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace)",
   fontSize: "0.9em",
   background: "var(--stagebook-code-bg, rgba(0,0,0,0.06))",
+  // Explicit text color so code doesn't inherit a host's `code {…}` default
+  // (e.g. the VS Code webview tints bare <code> with an amber theme color).
+  // Inline style beats any host stylesheet — the reason stagebook styles
+  // inline (see file header).
+  color: "var(--stagebook-text, #1f2937)",
   padding: "0.1em 0.3em",
   borderRadius: "0.25rem",
 };
@@ -173,6 +180,9 @@ const inlineCodeStyle: React.CSSProperties = {
 // ring is in the scoped <style> block.
 const preStyle: React.CSSProperties = {
   background: "var(--stagebook-code-bg, rgba(0,0,0,0.06))",
+  // Explicit text color so the block doesn't inherit a host's `code`/`pre`
+  // default (e.g. the VS Code webview's amber `--vscode-textPreformat-*`).
+  color: "var(--stagebook-text, #1f2937)",
   padding: "0.75rem 1rem",
   borderRadius: "0.375rem",
   overflowX: "auto",
