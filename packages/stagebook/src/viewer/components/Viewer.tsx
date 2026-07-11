@@ -708,7 +708,10 @@ const nextButtonStyle: React.CSSProperties = {
   padding: "0.5rem 1.5rem",
   borderRadius: "0.375rem",
   border: "none",
-  backgroundColor: "#3b82f6",
+  // Track the accent token (fallback = blue-600) rather than a literal hex,
+  // so this chrome doesn't drift off the palette when --stagebook-primary
+  // changes — it silently kept the retired blue-500 through the #535 bump.
+  backgroundColor: "var(--stagebook-primary, #2563eb)",
   color: "white",
   cursor: "pointer",
   fontSize: "0.875rem",

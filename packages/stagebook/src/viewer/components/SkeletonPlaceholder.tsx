@@ -203,7 +203,9 @@ const discussionTitleStyle: React.CSSProperties = {
 
 const discussionSubtitleStyle: React.CSSProperties = {
   fontSize: "0.8125rem",
-  color: "#3b82f6",
+  // Accent token (fallback = blue-600). blue-500 as text also failed AA at
+  // this size; blue-600 passes.
+  color: "var(--stagebook-primary, #2563eb)",
   margin: 0,
   textAlign: "center",
 };

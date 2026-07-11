@@ -411,8 +411,11 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
       const timelineName = String(element.name ?? "");
       // Read previously saved selections so participants who reload the
       // stage see their existing marks. Matches the form-input convention
-      // (Prompt reads `prompt.<name>`, Timeline reads `timeline.<name>`).
-      const savedSelections = resolve(`timeline.${timelineName}`)[0];
+      // (Prompt reads `self.prompt.<name>`, Timeline reads
+      // `self.timeline.<name>`). The `self.` position prefix is mandatory
+      // after #298 — without it `resolve` rejects the reference, logs
+      // "Invalid reference", and the saved marks silently vanish on reload.
+      const savedSelections = resolve(`self.timeline.${timelineName}`)[0];
       return (
         <Timeline
           source={String(element.source ?? "")}
