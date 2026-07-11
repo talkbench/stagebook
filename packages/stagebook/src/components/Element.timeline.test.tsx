@@ -98,11 +98,18 @@ describe("Element → Timeline saved-selection read-back (#298 prefix)", () => {
     );
   });
 
-  test("does not log an invalid-reference error for the read-back", () => {
-    renderTimelineElement(makeContext());
+  test("first load (no saved value) passes no marks and logs no error", () => {
+    // Default context: get() → [], so resolve() → [] and savedSelections is
+    // undefined. The read must stay silent (no invalid-reference error) and
+    // hand the Timeline nothing rather than garbage.
+    const container = renderTimelineElement(makeContext());
+
     const loggedInvalidRef = consoleError.mock.calls.some((args) =>
       String(args[0]).includes("Invalid reference"),
     );
     expect(loggedInvalidRef).toBe(false);
+
+    const stub = container.querySelector('[data-testid="timeline-stub"]');
+    expect(stub?.getAttribute("data-initial")).toBe("null");
   });
 });

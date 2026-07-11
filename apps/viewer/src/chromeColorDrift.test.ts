@@ -4,13 +4,14 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 // Drift guard (#535). `#3b82f6` is the retired blue-500 that used to be
-// `--stagebook-primary`. Viewer chrome hardcoded it in inline styles and
-// silently kept it through the #535 bump to blue-600 (#2563eb), so the preview
-// rendered a mix of old and new blue: participant components tracked the token,
-// the chrome didn't. styles.test.ts already guards the stylesheet, but the
-// chrome lives in inline `.tsx` styles it never scanned — this closes that gap.
-// Chrome must reference `var(--stagebook-primary, #2563eb)` (or a deliberate
-// non-accent color), never the retired literal.
+// `--stagebook-primary`. The standalone viewer app is a third chrome surface
+// (alongside the reusable harness in packages/stagebook and the VS Code
+// webview) that hardcoded the retired blue-500 in inline styles and kept it
+// through the #535 bump to blue-600. App chrome must reference
+// `var(--stagebook-primary, #2563eb)` (the app imports stagebook/styles, so the
+// token is defined; the fallback is blue-600 too), never the retired literal.
+const srcDir = dirname(fileURLToPath(import.meta.url));
+
 function walk(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const p = join(dir, entry.name);
@@ -21,11 +22,9 @@ function walk(dir: string): string[] {
   });
 }
 
-describe("viewer chrome color drift guard (#535)", () => {
-  const dir = dirname(fileURLToPath(import.meta.url));
-
+describe("viewer app chrome color drift guard (#535)", () => {
   it("uses the accent token, not the retired blue-500 (#3b82f6)", () => {
-    const offenders = walk(dir).filter((p) =>
+    const offenders = walk(srcDir).filter((p) =>
       /#3b82f6\b/i.test(readFileSync(p, "utf8")),
     );
     expect(offenders).toEqual([]);

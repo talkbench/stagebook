@@ -128,7 +128,8 @@ const buttonStyle: React.CSSProperties = {
   padding: "0.5rem 1rem",
   borderRadius: "0.375rem",
   border: "none",
-  backgroundColor: "#3b82f6",
+  // Accent token (fallback = blue-600) so app chrome tracks the palette.
+  backgroundColor: "var(--stagebook-primary, #2563eb)",
   color: "white",
   cursor: "pointer",
   fontSize: "0.875rem",
