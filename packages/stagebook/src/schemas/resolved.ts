@@ -243,6 +243,20 @@ const resolvedDiscussionSchema = discussionSchema.superRefine((data, ctx) => {
       params: { reason: "unresolved-placeholder" },
     });
   }
+  // `showNickname` / `showTitle` accept a `${field}` placeholder pre-fill
+  // (#565). A string reaching the resolved shape means the template field was
+  // never bound — flag it instead of letting the widened `boolean | string`
+  // type carry a placeholder into a runtime component.
+  for (const flag of ["showNickname", "showTitle"] as const) {
+    if (typeof data[flag] === "string") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [flag],
+        message: `discussion.${flag} is an unresolved \`${data[flag]}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row or additionalFields.`,
+        params: { reason: "unresolved-placeholder" },
+      });
+    }
+  }
   if (data.layout && typeof data.layout === "object") {
     for (const [seat, layoutDef] of Object.entries(data.layout)) {
       if (

@@ -460,8 +460,16 @@ const discussionRoomSchema = z
 export const discussionSchema = z
   .object({
     chatType: z.enum(["text", "audio", "video"]),
-    showNickname: z.boolean(),
-    showTitle: z.boolean(),
+    // `showNickname` / `showTitle` accept a `${field}` placeholder (#565) so a
+    // single `treatment` template can vary the per-arm nickname/title
+    // visibility manipulation via a broadcast-row field. Unlike the numeric
+    // slots (displayTime/startAt/width), booleans round-trip cleanly through
+    // fillTemplates — a quoted `"${field}"` is replaced by an unquoted JSON
+    // boolean, so the resolved value is a real boolean, not the string
+    // "true". `resolvedDiscussionSchema` in resolved.ts flags any placeholder
+    // that survives substitution (unbound field), matching `rooms`/`feeds`.
+    showNickname: z.boolean().or(fieldPlaceholderSchema),
+    showTitle: z.boolean().or(fieldPlaceholderSchema),
     showSelfView: z.boolean().optional().default(true),
     showReportMissing: z.boolean().optional().default(true),
     showAudioMute: z.boolean().optional().default(true),

@@ -2424,6 +2424,64 @@ test("discussion.layout.feeds accepts a ${field} placeholder (#284)", () => {
   expect(result.success).toBe(true);
 });
 
+test("discussion.showTitle accepts a ${field} placeholder pre-fill (#565)", () => {
+  // A single `treatment` template can vary the per-arm title-visibility
+  // manipulation by binding showTitle to a broadcast-row field. The pre-fill
+  // schema accepts the placeholder string; the boolean arrives at fill time.
+  const result = discussionSchema.safeParse({
+    chatType: "video",
+    showNickname: true,
+    showTitle: "${showTitle}",
+    rooms: [{ includePositions: [0, 1] }],
+  });
+  expect(result.success).toBe(true);
+});
+
+test("discussion.showNickname accepts a ${field} placeholder pre-fill (#565)", () => {
+  const result = discussionSchema.safeParse({
+    chatType: "video",
+    showNickname: "${showNickname}",
+    showTitle: true,
+    rooms: [{ includePositions: [0, 1] }],
+  });
+  expect(result.success).toBe(true);
+});
+
+test("discussion.showTitle still accepts a literal boolean (no regression)", () => {
+  const result = discussionSchema.safeParse({
+    chatType: "video",
+    showNickname: true,
+    showTitle: false,
+    rooms: [{ includePositions: [0, 1] }],
+  });
+  expect(result.success).toBe(true);
+});
+
+test("discussion.showTitle rejects a non-placeholder string (#565)", () => {
+  // A plain string that doesn't match the ${...} pattern must be rejected —
+  // accepting it would let typos like `showTitle: "yes"` (or a stringified
+  // "true") slip through pre-fill validation.
+  const result = discussionSchema.safeParse({
+    chatType: "video",
+    showNickname: true,
+    showTitle: "yes",
+    rooms: [{ includePositions: [0, 1] }],
+  });
+  expect(result.success).toBe(false);
+});
+
+test("discussion.showNickname rejects a non-placeholder string (#565)", () => {
+  // Same typo protection as showTitle — the two flags share the placeholder
+  // escape hatch, so both must reject a bare non-placeholder string.
+  const result = discussionSchema.safeParse({
+    chatType: "video",
+    showNickname: "yes",
+    showTitle: true,
+    rooms: [{ includePositions: [0, 1] }],
+  });
+  expect(result.success).toBe(false);
+});
+
 test("conditions.all accepts a ${field} placeholder (#284)", () => {
   const result = conditionsSchema.safeParse({
     all: "${ruleSet}",
@@ -2573,6 +2631,89 @@ test("end-to-end: rooms placeholder resolves through fillTemplates and re-valida
   // produced strict, placeholder-free values.
   const filledTreatments = (result as { treatments: unknown[] }).treatments;
   for (const t of filledTreatments) {
+    const resolved = resolvedTreatmentSchema.safeParse(t);
+    expect(resolved.success).toBe(true);
+  }
+});
+
+test("end-to-end: showTitle boolean placeholder resolves through fillTemplates to a real boolean and re-validates (#565)", () => {
+  const templates = [
+    {
+      name: "sessionTreatment",
+      contentType: "treatment",
+      content: {
+        name: "session_${sessionType}",
+        playerCount: 2,
+        compatibleIntroSequences: [],
+        gameStages: [
+          {
+            name: "discuss_${sessionType}",
+            duration: 180,
+            discussion: {
+              chatType: "video",
+              showNickname: "${showNickname}",
+              showTitle: "${showTitle}",
+              rooms: [{ includePositions: [0, 1] }],
+            },
+            elements: [{ type: "submitButton" }],
+          },
+        ],
+      },
+    },
+  ];
+
+  // Bind the two flags to OPPOSITE values per arm so the test proves each
+  // resolves independently and in both directions — and, critically, that a
+  // `false` binding lands as boolean `false` (a naive string substitution
+  // would leave the truthy string "false", inverting the manipulation).
+  const obj = {
+    treatments: [
+      {
+        template: "sessionTreatment",
+        broadcast: {
+          d0: [
+            { sessionType: "A", showTitle: true, showNickname: false },
+            { sessionType: "C", showTitle: false, showNickname: true },
+          ],
+        },
+      },
+    ],
+  };
+
+  // Pre-fill validation passes (placeholders accepted in both boolean slots).
+  const preFill = treatmentFileSchema.safeParse(obj);
+  expect(preFill.success).toBe(true);
+
+  // fillTemplates substitutes each broadcast row's boolean into the slot — the
+  // quoted placeholder `"${showTitle}"` becomes an unquoted JSON boolean, so
+  // it round-trips to a *real* boolean, not the string "true"/"false".
+  const filled = fillTemplates({ obj, templates });
+  const result: unknown = filled.result;
+  const treatments = (
+    result as {
+      treatments: {
+        gameStages: {
+          discussion: { showTitle: unknown; showNickname: unknown };
+        }[];
+      }[];
+    }
+  ).treatments;
+  expect(treatments).toHaveLength(2);
+
+  const d0 = treatments[0].gameStages[0].discussion;
+  const d1 = treatments[1].gameStages[0].discussion;
+  // Strict identity (`.toBe` is Object.is) — a stringified "true"/"false"
+  // would fail these, and the explicit typeof guards the intent.
+  expect(typeof d0.showTitle).toBe("boolean");
+  expect(typeof d0.showNickname).toBe("boolean");
+  expect(d0.showTitle).toBe(true);
+  expect(d0.showNickname).toBe(false);
+  expect(d1.showTitle).toBe(false);
+  expect(d1.showNickname).toBe(true);
+
+  // The resolved-shape schema is the safety net: each filled treatment must
+  // carry placeholder-free booleans.
+  for (const t of treatments) {
     const resolved = resolvedTreatmentSchema.safeParse(t);
     expect(resolved.success).toBe(true);
   }
