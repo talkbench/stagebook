@@ -569,6 +569,262 @@ describe("validateResolvedTreatmentFile (#398)", () => {
   });
 });
 
+// =====================================================================
+// #568 — resolved placeholder-leak sweep. Before this, a surviving
+// `${field}` in a *string-typed* slot (condition `value`, `buttonText`,
+// `url`, `displayText`, …) passed the resolved schema silently, because
+// `"${x}"` is a structurally valid string. A global scan now flags any
+// surviving `${…}` in any post-fill string, tagged `unresolved-placeholder`.
+// =====================================================================
+
+describe("resolved placeholder-leak sweep — string-typed slots (#568)", () => {
+  const base = {
+    treatments: [
+      {
+        name: "t",
+        playerCount: 1,
+        compatibleIntroSequences: [],
+        gameStages: [
+          {
+            name: "stage1",
+            duration: 60,
+            elements: [
+              { type: "prompt", file: "prompts/welcome.prompt.md" },
+              { type: "submitButton" },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const clone = () => JSON.parse(JSON.stringify(base)) as typeof base;
+
+  test("rejects a surviving `${field}` in a condition value", () => {
+    const tree = clone();
+    (tree.treatments[0].gameStages[0].elements[1] as Record<string, unknown>) =
+      {
+        type: "submitButton",
+        conditions: [
+          {
+            reference: "0.prompt.welcome.value",
+            comparator: "equals",
+            value: "${leak}",
+          },
+        ],
+      };
+    const result = validateResolvedTreatmentFile(tree);
+    expect(result.success).toBe(false);
+    const issue = result.issues.find(
+      (i) => i.reason === "unresolved-placeholder",
+    );
+    expect(issue).toBeDefined();
+    expect(issue?.message).toContain("unresolved");
+  });
+
+  test("rejects a surviving `${field}` in submitButton buttonText", () => {
+    const tree = clone();
+    (
+      tree.treatments[0].gameStages[0].elements[1] as Record<string, unknown>
+    ).buttonText = "${leak}";
+    const result = validateResolvedTreatmentFile(tree);
+    expect(result.success).toBe(false);
+    expect(
+      result.issues.some((i) => i.reason === "unresolved-placeholder"),
+    ).toBe(true);
+  });
+
+  test("rejects an embedded/partial placeholder in a string slot", () => {
+    const tree = clone();
+    (
+      tree.treatments[0].gameStages[0].elements[1] as Record<string, unknown>
+    ).buttonText = "Click ${leak} to continue";
+    const result = validateResolvedTreatmentFile(tree);
+    expect(result.success).toBe(false);
+    expect(
+      result.issues.some((i) => i.reason === "unresolved-placeholder"),
+    ).toBe(true);
+  });
+
+  test("skipUnresolved filters a leaked buttonText (authoring context)", () => {
+    const tree = clone();
+    (
+      tree.treatments[0].gameStages[0].elements[1] as Record<string, unknown>
+    ).buttonText = "${leak}";
+    const result = validateResolvedTreatmentFile(tree, {
+      skipUnresolved: true,
+    });
+    expect(result.success).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
+  test("does NOT flag a literal `$` that isn't a `${...}` placeholder", () => {
+    const tree = clone();
+    (
+      tree.treatments[0].gameStages[0].elements[1] as Record<string, unknown>
+    ).buttonText = "Pay $5 to continue";
+    const result = validateResolvedTreatmentFile(tree);
+    expect(result.success).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
+  test("deduped against per-field guards: a prompt.file leak reports once", () => {
+    // The prompt.file guard (resolvedElementSchema) and the global sweep both
+    // see the same leaked string at the same path — it must be reported once,
+    // preferring the guard's specific message.
+    const tree = clone();
+    (
+      tree.treatments[0].gameStages[0].elements[0] as Record<string, unknown>
+    ).file = "${unbound}";
+    const result = validateResolvedTreatmentFile(tree);
+    expect(result.success).toBe(false);
+    const leakIssues = result.issues.filter(
+      (i) =>
+        i.reason === "unresolved-placeholder" &&
+        JSON.stringify(i.path) ===
+          JSON.stringify([
+            "treatments",
+            0,
+            "gameStages",
+            0,
+            "elements",
+            0,
+            "file",
+          ]),
+    );
+    expect(leakIssues).toHaveLength(1);
+    // The guard's specific message wins, not the generic sweep message.
+    expect(leakIssues[0]?.message).toContain("prompt.file");
+  });
+
+  test("dedup vs a numeric-slot schema error: reported once, and NOT tagged unresolved-placeholder", () => {
+    // A numeric slot (`displayTime`) with a leaked `${x}` fails the resolved
+    // schema as "Expected number, received string" (reason undefined). The
+    // sweep sees the same string at the same path but must NOT add a second
+    // issue. Corollary: because the surviving issue isn't tagged, a numeric
+    // leak is NOT filtered by skipUnresolved (it hard-errors even in authoring
+    // — the pre-existing numeric-placeholder behavior, unchanged here).
+    const tree = clone();
+    (
+      tree.treatments[0].gameStages[0].elements[1] as Record<string, unknown>
+    ).displayTime = "${x}";
+    const path = JSON.stringify([
+      "treatments",
+      0,
+      "gameStages",
+      0,
+      "elements",
+      1,
+      "displayTime",
+    ]);
+    const result = validateResolvedTreatmentFile(tree);
+    expect(result.success).toBe(false);
+    const atPath = result.issues.filter((i) => JSON.stringify(i.path) === path);
+    expect(atPath).toHaveLength(1);
+    expect(atPath[0]?.reason).toBeUndefined();
+
+    // skipUnresolved does NOT filter it (untagged), so it still errors.
+    const skipped = validateResolvedTreatmentFile(tree, {
+      skipUnresolved: true,
+    });
+    expect(skipped.success).toBe(false);
+  });
+
+  test("catches a leak nested in urlParams[].value (recursive walk into array-of-objects)", () => {
+    const tree = clone();
+    (tree.treatments[0].gameStages[0].elements[1] as Record<string, unknown>) =
+      {
+        type: "qualtrics",
+        url: "https://survey.example.com/s",
+        urlParams: [
+          { key: "ok", value: "literal" },
+          { key: "pid", value: "${leak}" },
+        ],
+      };
+    const result = validateResolvedTreatmentFile(tree);
+    expect(result.success).toBe(false);
+    const issue = result.issues.find(
+      (i) =>
+        i.reason === "unresolved-placeholder" &&
+        JSON.stringify(i.path) ===
+          JSON.stringify([
+            "treatments",
+            0,
+            "gameStages",
+            0,
+            "elements",
+            1,
+            "urlParams",
+            1,
+            "value",
+          ]),
+    );
+    expect(issue).toBeDefined();
+  });
+
+  test("catches a leak nested in a condition operator tree (all: [...])", () => {
+    const tree = clone();
+    (
+      tree.treatments[0].gameStages[0].elements[1] as Record<string, unknown>
+    ).conditions = {
+      all: [
+        {
+          reference: "0.prompt.welcome.value",
+          comparator: "equals",
+          value: "${leak}",
+        },
+      ],
+    };
+    const result = validateResolvedTreatmentFile(tree);
+    expect(result.success).toBe(false);
+    const issue = result.issues.find(
+      (i) =>
+        i.reason === "unresolved-placeholder" &&
+        JSON.stringify(i.path) ===
+          JSON.stringify([
+            "treatments",
+            0,
+            "gameStages",
+            0,
+            "elements",
+            1,
+            "conditions",
+            "all",
+            0,
+            "value",
+          ]),
+    );
+    expect(issue).toBeDefined();
+  });
+
+  test("does NOT flag a non-identifier `${...}` body (matches fillTemplates grammar)", () => {
+    // `${form.id}` (dot body) is never substituted by fillTemplates (narrow
+    // identifier grammar), so it's a literal string, not a leak. Using the
+    // loose `${...}` regex here would falsely reject a previously-valid study
+    // (#568 review).
+    const tree = clone();
+    (
+      tree.treatments[0].gameStages[0].elements[1] as Record<string, unknown>
+    ).buttonText = "Submit ${form.id}";
+    const result = validateResolvedTreatmentFile(tree);
+    expect(result.success).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
+  test("does NOT scan the file-level templates: block (definitions keep placeholders)", () => {
+    // A not-yet-stripped `templates:` block legitimately contains `${field}`
+    // placeholders; the resolved schema tolerates it (`z.unknown()`), so the
+    // sweep must skip it rather than false-positive on every definition
+    // (#568 review).
+    const tree = clone() as Record<string, unknown>;
+    tree.templates = [
+      { name: "greeting", content: { buttonText: "${unbound}" } },
+    ];
+    const result = validateResolvedTreatmentFile(tree);
+    expect(result.success).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+});
+
 describe("resolvedTreatmentFileSchema schema is exported", () => {
   // Quick sanity check that the new schema is wired through the
   // module's exports (matches the test in promptFile.test for
