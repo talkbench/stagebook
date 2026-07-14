@@ -2482,6 +2482,39 @@ test("discussion.showNickname rejects a non-placeholder string (#565)", () => {
   expect(result.success).toBe(false);
 });
 
+// A boolean slot may ONLY carry a whole-field placeholder — the entire value
+// is `${field}` with nothing around it. A partial/embedded placeholder can
+// never resolve to a boolean and, worse, would silently fill to a truthy
+// string (`"${showTitle} "` bound to `false` → `"false "`), so it must be
+// rejected at pre-fill rather than caught downstream (#566 review).
+test.each([
+  ["trailing space", "${showTitle} "],
+  ["leading text", "show ${showTitle}"],
+  ["adjacent prefix", "pre${showTitle}"],
+  ["two placeholders", "${a}${b}"],
+])(
+  "discussion.showTitle rejects an embedded/partial placeholder (%s) (#566)",
+  (_label, value) => {
+    const result = discussionSchema.safeParse({
+      chatType: "video",
+      showNickname: true,
+      showTitle: value,
+      rooms: [{ includePositions: [0, 1] }],
+    });
+    expect(result.success).toBe(false);
+  },
+);
+
+test("discussion.showNickname rejects an embedded/partial placeholder (#566)", () => {
+  const result = discussionSchema.safeParse({
+    chatType: "video",
+    showNickname: "${showNickname} ",
+    showTitle: true,
+    rooms: [{ includePositions: [0, 1] }],
+  });
+  expect(result.success).toBe(false);
+});
+
 test("conditions.all accepts a ${field} placeholder (#284)", () => {
   const result = conditionsSchema.safeParse({
     all: "${ruleSet}",
