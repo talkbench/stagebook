@@ -59,6 +59,26 @@ const fieldPlaceholderSchema = z.string().regex(FIELD_PLACEHOLDER_PATTERN, {
     "Field placeholder must be in the format `${fieldKey}` (alphanumeric and underscores only)",
 });
 
+// Anchored variant: the ENTIRE value must be a single `${field}` placeholder,
+// with no surrounding text. Required by *scalar* slots whose bound value is a
+// boolean/number — where a substring placeholder can never resolve to the
+// target type and, worse, partially substitutes at fill time into a
+// plausible-but-wrong value. e.g. `showTitle: "${showTitle} "` bound to
+// `false` becomes the truthy string `"false "` with no surviving `${}` marker,
+// so `fillTemplates` reports nothing unresolved and only the resolved-shape
+// guard could catch it. Rejecting at pre-fill is stricter and fail-fast. The
+// *structured* slots (rooms/feeds/conditions) don't need this: their bound
+// value is an array, which the fill's scalar pass never touches, so an
+// embedded placeholder survives verbatim and is always flagged. (#566 review)
+const WHOLE_FIELD_PLACEHOLDER_PATTERN = /^\$\{[a-zA-Z0-9_]+\}$/;
+
+const wholeFieldPlaceholderSchema = z
+  .string()
+  .regex(WHOLE_FIELD_PLACEHOLDER_PATTERN, {
+    message:
+      "Field placeholder must be exactly `${fieldKey}` as the whole value (no surrounding text), with alphanumeric and underscores only",
+  });
+
 /**
  * True if `value` contains any `${field}` placeholder. Used by cross-field
  * refinements that should skip validation until templates are filled.
@@ -460,8 +480,20 @@ const discussionRoomSchema = z
 export const discussionSchema = z
   .object({
     chatType: z.enum(["text", "audio", "video"]),
-    showNickname: z.boolean(),
-    showTitle: z.boolean(),
+    // `showNickname` / `showTitle` accept a whole-field `${field}` placeholder
+    // (#565) so a single `treatment` template can vary the per-arm
+    // nickname/title visibility manipulation via a broadcast-row field. A bound
+    // boolean round-trips cleanly through fillTemplates — a quoted `"${field}"`
+    // is whole-value-replaced with an unquoted JSON boolean, so the resolved
+    // value is a real boolean, not the string "true"/"false". We use the
+    // *anchored* `wholeFieldPlaceholderSchema` (not the substring matcher) so a
+    // partial placeholder like `"${showTitle} "` — which would silently
+    // fill to the truthy string `"false "` — is rejected up front (#566
+    // review). `resolvedDiscussionSchema` in resolved.ts is the defense-in-depth
+    // guard for a whole-field placeholder that survives unbound, matching
+    // `rooms`/`feeds`.
+    showNickname: z.boolean().or(wholeFieldPlaceholderSchema),
+    showTitle: z.boolean().or(wholeFieldPlaceholderSchema),
     showSelfView: z.boolean().optional().default(true),
     showReportMissing: z.boolean().optional().default(true),
     showAudioMute: z.boolean().optional().default(true),

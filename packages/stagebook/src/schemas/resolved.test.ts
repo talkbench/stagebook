@@ -252,6 +252,68 @@ describe("resolved schemas reject unresolved ${field} placeholders (#284)", () =
     }
   });
 
+  test("resolvedStageSchema rejects discussion.showTitle as a placeholder string (#565)", () => {
+    const stage = {
+      name: "stage1",
+      duration: 60,
+      discussion: {
+        chatType: "video",
+        showNickname: true,
+        showTitle: "${unboundShowTitle}",
+        rooms: [{ includePositions: [0, 1] }],
+      },
+      elements: [{ type: "submitButton" }],
+    };
+    const result = resolvedStageSchema.safeParse(stage);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) =>
+        i.message.includes("unresolved"),
+      );
+      expect(issue).toBeDefined();
+      expect(issue?.path).toEqual(["discussion", "showTitle"]);
+    }
+  });
+
+  test("resolvedStageSchema rejects discussion.showNickname as a placeholder string (#565)", () => {
+    const stage = {
+      name: "stage1",
+      duration: 60,
+      discussion: {
+        chatType: "video",
+        showNickname: "${unboundShowNickname}",
+        showTitle: true,
+        rooms: [{ includePositions: [0, 1] }],
+      },
+      elements: [{ type: "submitButton" }],
+    };
+    const result = resolvedStageSchema.safeParse(stage);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) =>
+        i.message.includes("unresolved"),
+      );
+      expect(issue).toBeDefined();
+      expect(issue?.path).toEqual(["discussion", "showNickname"]);
+    }
+  });
+
+  test("resolvedStageSchema accepts discussion.showTitle as a literal boolean (no regression)", () => {
+    const stage = {
+      name: "stage1",
+      duration: 60,
+      discussion: {
+        chatType: "video",
+        showNickname: false,
+        showTitle: true,
+        rooms: [{ includePositions: [0, 1] }],
+      },
+      elements: [{ type: "submitButton" }],
+    };
+    const result = resolvedStageSchema.safeParse(stage);
+    expect(result.success).toBe(true);
+  });
+
   test("resolvedStageSchema accepts discussion.rooms as a literal array (no regression)", () => {
     const stage = {
       name: "stage1",
