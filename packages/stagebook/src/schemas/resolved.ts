@@ -294,47 +294,55 @@ export type ResolvedElementType = z.infer<typeof resolvedElementSchema>;
 // we add a superRefine here that flags any placeholder string still
 // present after fillTemplates ran. Catches typos and missing fields
 // that would otherwise reach runtime components.
-const resolvedDiscussionSchema = discussionSchema.superRefine((data, ctx) => {
-  if (typeof data.rooms === "string") {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["rooms"],
-      message: `discussion.rooms is an unresolved \`${data.rooms}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row or additionalFields.`,
-      params: { reason: "unresolved-placeholder" },
-    });
-  }
-  // `showNickname` / `showTitle` accept a `${field}` placeholder pre-fill
-  // (#565). A string reaching the resolved shape means the template field was
-  // never bound — flag it instead of letting the widened `boolean | string`
-  // type carry a placeholder into a runtime component.
-  for (const flag of ["showNickname", "showTitle"] as const) {
-    if (typeof data[flag] === "string") {
+const resolvedDiscussionSchema = discussionSchema
+  .superRefine((data, ctx) => {
+    if (typeof data.rooms === "string") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: [flag],
-        message: `discussion.${flag} is an unresolved \`${data[flag]}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row or additionalFields.`,
+        path: ["rooms"],
+        message: `discussion.rooms is an unresolved \`${data.rooms}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row or additionalFields.`,
         params: { reason: "unresolved-placeholder" },
       });
     }
-  }
-  if (data.layout && typeof data.layout === "object") {
-    for (const [seat, layoutDef] of Object.entries(data.layout)) {
-      if (
-        layoutDef &&
-        typeof layoutDef === "object" &&
-        "feeds" in layoutDef &&
-        typeof layoutDef.feeds === "string"
-      ) {
+    // `showNickname` / `showTitle` accept a `${field}` placeholder pre-fill
+    // (#565). A string reaching the resolved shape means the template field was
+    // never bound — flag it instead of letting the widened `boolean | string`
+    // type carry a placeholder into a runtime component.
+    for (const flag of ["showNickname", "showTitle"] as const) {
+      if (typeof data[flag] === "string") {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ["layout", seat, "feeds"],
-          message: `discussion.layout[${seat}].feeds is an unresolved \`${layoutDef.feeds}\` placeholder. The template field was not bound during fillTemplates.`,
+          path: [flag],
+          message: `discussion.${flag} is an unresolved \`${data[flag]}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row or additionalFields.`,
           params: { reason: "unresolved-placeholder" },
         });
       }
     }
-  }
-});
+    if (data.layout && typeof data.layout === "object") {
+      for (const [seat, layoutDef] of Object.entries(data.layout)) {
+        if (
+          layoutDef &&
+          typeof layoutDef === "object" &&
+          "feeds" in layoutDef &&
+          typeof layoutDef.feeds === "string"
+        ) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["layout", seat, "feeds"],
+            message: `discussion.layout[${seat}].feeds is an unresolved \`${layoutDef.feeds}\` placeholder. The template field was not bound during fillTemplates.`,
+            params: { reason: "unresolved-placeholder" },
+          });
+        }
+      }
+    }
+  })
+  // Narrow the schema's OUTPUT type (not just runtime-refine) so schema-derived
+  // resolved types (`ResolvedStageType`/`ResolvedTreatmentType`) expose the same
+  // narrowed `discussion` as `StageConfig`/`ViewerStep` — no cast needed at the
+  // seam (#570 review). Sound because the superRefine above rejects any string
+  // in `showTitle`/`showNickname`/`rooms`/`layout[].feeds`, so a passing value
+  // already matches `ResolvedDiscussionType`.
+  .transform((data): ResolvedDiscussionType => data as ResolvedDiscussionType);
 
 // #567 — the narrowed, runtime discussion type. `discussionSchema` accepts
 // `${field}` placeholders, so `DiscussionType` is widened (`showTitle: boolean
@@ -353,10 +361,12 @@ export type ResolvedDiscussionType = Omit<
 > & {
   showNickname: boolean;
   showTitle: boolean;
-  rooms?: DiscussionRoomType[];
+  rooms?: [DiscussionRoomType, ...DiscussionRoomType[]];
   layout?: Record<
     string,
-    Omit<LayoutDefinitionType, "feeds"> & { feeds: LayoutFeedType[] }
+    Omit<LayoutDefinitionType, "feeds"> & {
+      feeds: [LayoutFeedType, ...LayoutFeedType[]];
+    }
   >;
 };
 
@@ -386,6 +396,12 @@ type _ResolvedDiscussionNarrowed = AssertTrue<
       HasNoStringMember<ResolvedDiscussionType["rooms"]>,
       HasNoStringMember<
         NonNullable<ResolvedDiscussionType["layout"]>[string]["feeds"]
+      >,
+      // Schema-derived path: the `.transform` above must narrow
+      // `resolvedStageSchema`'s output too, so `ResolvedStageType.discussion`
+      // is `ResolvedDiscussionType`, not the widened `DiscussionType` (#570).
+      IsExactlyBoolean<
+        NonNullable<ResolvedStageType["discussion"]>["showTitle"]
       >,
     ]
   >
