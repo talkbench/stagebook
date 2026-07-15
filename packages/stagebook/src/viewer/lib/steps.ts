@@ -1,6 +1,6 @@
 import type {
   ElementType,
-  DiscussionType,
+  ResolvedDiscussionType,
   ConditionType,
 } from "../../schemas/index.js";
 
@@ -12,7 +12,7 @@ export interface ViewerStep {
   name: string;
   elements: ElementType[];
   duration?: number;
-  discussion?: DiscussionType;
+  discussion?: ResolvedDiscussionType;
   /** Researcher-facing notes on the stage (never shown to participants). */
   notes?: string;
   /** Stage-level conditions (#183). Evaluated by StageConditionGate. */
@@ -77,7 +77,7 @@ interface Treatment {
     conditions?: ConditionType[];
     duration?: number;
     elements: ElementType[];
-    discussion?: DiscussionType;
+    discussion?: ResolvedDiscussionType;
   }[];
   exitSequence?: StepShape[];
 }

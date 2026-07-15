@@ -11,7 +11,7 @@ import { ScrollIndicator } from "./scroll/ScrollIndicator.js";
 import { useScrollAwareness } from "./scroll/useScrollAwareness.js";
 import { PlaybackProvider } from "./playback/PlaybackProvider.js";
 import { ElementErrorBoundary } from "./ElementErrorBoundary.js";
-import type { DiscussionType } from "../schemas/treatment.js";
+import type { ResolvedDiscussionType } from "../schemas/resolved.js";
 import type { Condition } from "./conditions/ConditionsConditionalRender.js";
 
 // Max-width per element type — wider for surveys/qualtrics/video
@@ -73,7 +73,7 @@ export interface StageConfig {
   name: string;
   duration?: number;
   elements: ElementConfig[];
-  discussion?: DiscussionType;
+  discussion?: ResolvedDiscussionType;
   /**
    * Stage-level conditions (#183). When any condition evaluates to
    * false at mount the stage is skipped; when a condition flips to
@@ -192,7 +192,7 @@ function ElementsColumn({
 
 // Check whether the current position should see the discussion
 function positionAllowsDiscussion(
-  discussion: DiscussionType | undefined,
+  discussion: ResolvedDiscussionType | undefined,
   position: number | undefined,
 ): boolean {
   if (!discussion) return false;

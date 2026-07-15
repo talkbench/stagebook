@@ -155,6 +155,7 @@ export {
   resolvedConditionSchema,
   resolvedConditionsSchema,
   validateResolvedTreatmentFile,
+  type ResolvedDiscussionType,
   type ResolvedElementType,
   type ResolvedStageType,
   type ResolvedIntroExitStepType,
