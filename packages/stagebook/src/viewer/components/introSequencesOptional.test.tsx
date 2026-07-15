@@ -71,6 +71,31 @@ function selectUnit(container: HTMLElement, key: string): void {
   });
 }
 
+/** The StageNav <select> — the one whose options are numeric step indices
+ *  (the part picker's values are "treatment:N"; a 1-player position select
+ *  only has option "0"). */
+function stageNav(container: HTMLElement): HTMLSelectElement {
+  const nav = Array.from(container.querySelectorAll("select")).find((sel) =>
+    Array.from(sel.options).some((o) => o.value === "1"),
+  );
+  if (!nav) throw new Error("stage nav not found");
+  return nav;
+}
+
+/** Navigate the stage <select> to the given step index. */
+function selectStage(container: HTMLElement, index: number): void {
+  const nav = stageNav(container);
+  act(() => {
+    nav.value = String(index);
+    nav.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
+/** The current step index the StageNav is showing. */
+function currentStageIndex(container: HTMLElement): string {
+  return stageNav(container).value;
+}
+
 const noop = () => {};
 const getText = () => Promise.resolve("# x");
 const getAsset = (p: string) => p;
@@ -151,6 +176,50 @@ function introHeTreatmentEnFile(): TreatmentFileType {
         playerCount: 1,
         gameStages: [
           { name: "s1", duration: 60, elements: [{ type: "submitButton" }] },
+        ],
+      },
+    ],
+  } as unknown as TreatmentFileType;
+}
+
+/** Two treatments, each with two game stages that carry a submit button. Lets
+ *  a test advance to the second stage, then switch treatments to check the
+ *  stage position is preserved (cross-treatment comparison) and the store is
+ *  cleared (the landed stage is fresh). */
+function twoTreatmentsFile(playerCount = 1): TreatmentFileType {
+  const stages = (prefix: string) => [
+    { name: `${prefix}1`, duration: 60, elements: [{ type: "submitButton" }] },
+    { name: `${prefix}2`, duration: 60, elements: [{ type: "submitButton" }] },
+  ];
+  return {
+    treatments: [
+      { name: "A", locale: "en", playerCount, gameStages: stages("A") },
+      { name: "B", locale: "en", playerCount, gameStages: stages("B") },
+    ],
+  } as unknown as TreatmentFileType;
+}
+
+/** Treatment A has three game stages, B has one — to exercise the clamp when
+ *  switching to a treatment with fewer stages than the current index. */
+function unevenTreatmentsFile(): TreatmentFileType {
+  return {
+    treatments: [
+      {
+        name: "A",
+        locale: "en",
+        playerCount: 1,
+        gameStages: [
+          { name: "A1", duration: 60, elements: [{ type: "submitButton" }] },
+          { name: "A2", duration: 60, elements: [{ type: "submitButton" }] },
+          { name: "A3", duration: 60, elements: [{ type: "submitButton" }] },
+        ],
+      },
+      {
+        name: "B",
+        locale: "en",
+        playerCount: 1,
+        gameStages: [
+          { name: "B1", duration: 60, elements: [{ type: "submitButton" }] },
         ],
       },
     ],
@@ -315,6 +384,169 @@ describe("unit-switch state hygiene", () => {
     selectUnit(container, "intro:0");
     expect(positionSelect().options).toHaveLength(1);
     expect(positionSelect().value).toBe("0");
+    unmount();
+  });
+});
+
+describe("switching treatments preserves the stage position", () => {
+  it("stays on the same game stage across a switch (and clears the store)", () => {
+    const { container, unmount } = render(
+      <Viewer
+        treatmentFile={twoTreatmentsFile()}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+      />,
+    );
+    const main = () => container.querySelector("main")!;
+
+    // On treatment A, advance to the second game stage (index 1) and submit it.
+    selectStage(container, 1);
+    expect(currentStageIndex(container)).toBe("1");
+    const submit = main().querySelector<HTMLButtonElement>(
+      '[data-testid="submitButton"]',
+    );
+    expect(submit).not.toBeNull();
+    act(() => {
+      submit!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(main().textContent).toContain("Waiting for other participants");
+
+    // Switch to treatment B: land on the SAME stage index (1) so a researcher
+    // can compare the same stage across treatments...
+    selectUnit(container, "treatment:1");
+    expect(currentStageIndex(container)).toBe("1");
+    // ...and that stage must be fresh — the store is cleared on switch, so B's
+    // stage 1 does NOT inherit A's submitted[1] (the waiting overlay).
+    expect(main().textContent).not.toContain("Waiting for other participants");
+    expect(main().querySelector('[data-testid="submitButton"]')).not.toBeNull();
+    unmount();
+  });
+
+  it("clamps into range when the new treatment has fewer stages", () => {
+    const { container, unmount } = render(
+      <Viewer
+        treatmentFile={unevenTreatmentsFile()}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+      />,
+    );
+
+    // On treatment A (3 game stages), stand on the last game stage (index 2).
+    selectStage(container, 2);
+    expect(currentStageIndex(container)).toBe("2");
+
+    // Switch to treatment B (1 game stage → 2 steps incl. transition): index 2
+    // no longer exists, so the viewer clamps into range and still renders —
+    // it must not blank (a null render drops the <main>).
+    selectUnit(container, "treatment:1");
+    expect(container.querySelector("main")).not.toBeNull();
+    // B has one game stage + a transition (2 steps), so index 2 clamps to the
+    // last valid step (1) — NOT back to the first stage (the old reset would
+    // give "0").
+    expect(currentStageIndex(container)).toBe("1");
+    unmount();
+  });
+
+  it("remounts the stage on switch so read-once element state cannot leak", () => {
+    // The store is cleared on switch, but that alone does not reset elements
+    // that seed local state from the store once on mount and then own it (e.g.
+    // Timeline). Keeping the stage index means the <Stage> would reconcile
+    // rather than remount, so such an element would keep the previous
+    // treatment's state over the cleared store. Guard the fix at the mechanism
+    // level: an element that reconciles across the switch (same type + position)
+    // must become a FRESH DOM node — which only happens if the subtree
+    // remounted, which is exactly what resets read-once local state.
+    const { container, unmount } = render(
+      <Viewer
+        treatmentFile={twoTreatmentsFile()}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+      />,
+    );
+    const submitNode = () =>
+      container.querySelector('main [data-testid="submitButton"]');
+
+    // Sit on stage index 1 of treatment A (a plain, unsubmitted stage).
+    selectStage(container, 1);
+    const before = submitNode();
+    expect(before).not.toBeNull();
+
+    // Switch to treatment B: same stage index...
+    selectUnit(container, "treatment:1");
+    expect(currentStageIndex(container)).toBe("1");
+    const after = submitNode();
+    expect(after).not.toBeNull();
+    // ...but a different element instance — the stage subtree remounted, so any
+    // read-once local state started fresh from the (cleared) store.
+    expect(after).not.toBe(before);
+    unmount();
+  });
+});
+
+describe("switching treatments preserves the participant position", () => {
+  it("keeps the selected position when the new treatment has enough players", () => {
+    const { container, unmount } = render(
+      <Viewer
+        treatmentFile={twoTreatmentsFile(2)}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+      />,
+    );
+    const positionSelect = () =>
+      container.querySelector("#position-select") as HTMLSelectElement;
+
+    // On treatment A, pick participant 1.
+    act(() => {
+      positionSelect().value = "1";
+      positionSelect().dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(positionSelect().value).toBe("1");
+
+    // Switch to treatment B (also 2 players): the position must be preserved,
+    // not reset to 0 — so a researcher compares the same participant.
+    selectUnit(container, "treatment:1");
+    expect(positionSelect().value).toBe("1");
+    unmount();
+  });
+
+  it("restores the position after a round-trip through a smaller unit", () => {
+    // Proves the position is preserved INTERNALLY (not just clamped for
+    // display): pick position 2 on a 3-player treatment, pass through a
+    // 1-player intro (which can only show position 0), then return — the
+    // original position 2 must come back.
+    const { container, unmount } = render(
+      <Viewer
+        treatmentFile={introPlusTreatmentFile(3)}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+      />,
+    );
+    const positionSelect = () =>
+      container.querySelector("#position-select") as HTMLSelectElement;
+
+    expect(positionSelect().options).toHaveLength(3);
+    act(() => {
+      positionSelect().value = "2";
+      positionSelect().dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(positionSelect().value).toBe("2");
+
+    selectUnit(container, "intro:0");
+    expect(positionSelect().value).toBe("0");
+
+    selectUnit(container, "treatment:0");
+    expect(positionSelect().options).toHaveLength(3);
+    expect(positionSelect().value).toBe("2");
     unmount();
   });
 });

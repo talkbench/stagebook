@@ -147,16 +147,18 @@ export function Viewer({
     }
   }, [steps.length, stageIndex]);
 
-  // Restart at the first step whenever the selected unit changes, and give the
-  // new unit a clean slate: submitted flags + elapsed time are keyed by numeric
-  // stageIndex, so without clearing them an intro's submitted[0] would make the
-  // treatment's first stage read as already-submitted (waiting overlay), and a
-  // stale participant `position` could exceed the new unit's playerCount
-  // (#485 review). The store wipe only fires on an actual unit switch — an
-  // in-place refresh keeps the same key, so saved responses persist as before.
+  // Give the newly-selected unit a clean slate: submitted flags + elapsed time
+  // are keyed by numeric stageIndex, so without clearing them an intro's
+  // submitted[0] would make the treatment's first stage read as already-
+  // submitted (waiting overlay). The wipe only fires on an actual unit switch —
+  // an in-place refresh keeps the same key, so saved responses persist.
+  //
+  // We deliberately KEEP the current stageIndex and position across a switch so
+  // a researcher can compare the same stage (and participant) across treatments
+  // — the whole point of the picker. stageIndex is clamped to the new unit's
+  // step count by the effect above, and position is clamped for display via
+  // clampedPosition below, so neither can go out of range.
   useEffect(() => {
-    setStageIndex(0);
-    setPosition(0);
     store.clearAll();
   }, [selectedUnitKey, store]);
 
@@ -487,7 +489,16 @@ export function Viewer({
               <div ref={stageContainerRef} style={stageContainerStyle}>
                 <StagebookProvider value={ctx}>
                   <Stage
-                    key={`stage-${String(stageIndex)}-${String(stageResetVersion)}`}
+                    // The unit key is part of the remount key so that switching
+                    // treatments at the SAME stage index still gives the stage a
+                    // fresh mount: read-once elements (e.g. Timeline seeds its
+                    // selections from the store once, then owns them) and the
+                    // StageConditionGate advance latch would otherwise survive
+                    // the switch and show the previous treatment's state over the
+                    // cleared store. (setStageIndex(0) used to force this
+                    // incidentally; now that we preserve the stage index for
+                    // cross-treatment comparison, we key on the unit explicitly.)
+                    key={`stage-${selectedUnitKey}-${String(stageIndex)}-${String(stageResetVersion)}`}
                     stage={stageConfig}
                     onSubmit={handleSubmit}
                     scrollMode="host"
