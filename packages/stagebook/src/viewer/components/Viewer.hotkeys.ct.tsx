@@ -37,6 +37,24 @@ test("⌥↓ / ⌥↑ switch the previewed treatment", async ({ mount }) => {
   await expect(picker).toHaveValue("treatment:0");
 });
 
+test("switching treatments keeps the current stage (cross-treatment comparison)", async ({
+  mount,
+}) => {
+  const component = await mount(<MockViewer />);
+  const picker = component.getByRole("combobox", { name: "Part to preview" });
+  const counter = component.getByText(/^\d+ \/ 3$/);
+
+  // Advance to the second stage of treatment A, then switch to treatment B:
+  // the stage counter must stay put so the researcher lands on the same stage
+  // of the new treatment, rather than being bounced back to stage 1.
+  await component.press("Alt+ArrowRight");
+  await expect(counter).toHaveText("2 / 3");
+
+  await component.press("Alt+ArrowDown");
+  await expect(picker).toHaveValue("treatment:1");
+  await expect(counter).toHaveText("2 / 3");
+});
+
 test("⌥<digit> selects a player position and ignores out-of-range digits", async ({
   mount,
 }) => {

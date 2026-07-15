@@ -324,3 +324,14 @@ export function initialUnitKey(
   if (units.some((u) => u.key === wantIntro)) return wantIntro;
   return units[0]?.key ?? wantTreatment;
 }
+
+/**
+ * The phase a unit key belongs to — the prefix before its index, e.g.
+ * "treatment" for "treatment:2" (see the `${kind}:${i}` keys built above).
+ * Switching between units of the same kind is a comparison (keep the stage and
+ * participant); switching kinds is a phase change (restart at the first step).
+ */
+export function unitKindFromKey(key: string): string {
+  const colon = key.indexOf(":");
+  return colon === -1 ? key : key.slice(0, colon);
+}
