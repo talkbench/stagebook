@@ -32,6 +32,62 @@ import {
 // literal by the time we reach the post-fill schema.
 const FIELD_PLACEHOLDER_RE = /\$\{[^}]*\}/;
 
+// The sweep uses the NARROW placeholder grammar (identifier bodies only),
+// matching `fillTemplates` (FIELD_PLACEHOLDER_REGEX in templates/). A leak is
+// specifically an `${identifier}` that fillTemplates WOULD have substituted but
+// didn't (unbound field). A literal like `buttonText: "${form.id}"` (dot body)
+// is never a fill placeholder, so it must NOT be flagged (#568 review).
+const SWEEP_PLACEHOLDER_RE = /\$\{[a-zA-Z0-9_]+\}/;
+
+// #568 — resolved placeholder-leak sweep. The per-field resolved guards
+// (prompt.file, rooms/feeds, showTitle/showNickname) only cover slots
+// someone explicitly checked, and slots whose resolved type is a
+// number/array reject a surviving `"${x}"` by type mismatch. But
+// *string-typed* slots — condition `value` (equals/includes/matches),
+// element `url`/`displayText`/`reference`/`helperText`/`buttonText`/
+// `altText`/`surveyName`, `urlParams[].value` — accept `"${x}"` as a
+// structurally valid string and let it through silently, so at runtime a
+// condition compares against the literal `"${x}"` and never matches, or a
+// truthy string inverts a flag. This walks the whole filled tree and
+// reports any surviving `${…}` in any string, tagged
+// `unresolved-placeholder` (so `skipUnresolved` still filters it in
+// authoring contexts). Mirrors the annotator's hand-rolled global scan
+// (`resolveTask`); see the sweep issue. Findings are deduped against the
+// per-field guards in `validateResolvedTreatmentFile` so a leak is
+// reported once, preferring the guard's more specific message.
+function collectPlaceholderLeaks(
+  node: unknown,
+  path: (string | number)[],
+  out: { path: (string | number)[]; token: string }[],
+): void {
+  if (typeof node === "string") {
+    const match = SWEEP_PLACEHOLDER_RE.exec(node);
+    if (match) out.push({ path, token: match[0] });
+    return;
+  }
+  if (Array.isArray(node)) {
+    node.forEach((item, index) =>
+      collectPlaceholderLeaks(item, [...path, index], out),
+    );
+    return;
+  }
+  if (node && typeof node === "object") {
+    for (const [key, value] of Object.entries(node)) {
+      // Skip the file-level `templates:` / `imports:` blocks. Template
+      // definitions are a lookup table (not runtime content) and legitimately
+      // contain `${field}` placeholders; the resolved schema tolerates a
+      // not-yet-stripped tree (`templates: z.unknown()`), so the sweep must
+      // too, or it false-positives on every placeholder in a definition
+      // (#568 review). Only skipped at the top level (path.length === 0) —
+      // no nested runtime object carries these keys.
+      if (path.length === 0 && (key === "templates" || key === "imports")) {
+        continue;
+      }
+      collectPlaceholderLeaks(value, [...path, key], out);
+    }
+  }
+}
+
 // ----------------------------------------------------------------
 // Resolved condition — no template placeholders in values
 // ----------------------------------------------------------------
@@ -523,20 +579,44 @@ export function validateResolvedTreatmentFile(
   issues: ValidateResolvedIssue[];
 } {
   const result = resolvedTreatmentFileSchema.safeParse(filled);
-  if (result.success) return { success: true, issues: [] };
-  let issues: ValidateResolvedIssue[] = result.error.issues.map((issue) => {
-    const params =
-      issue.code === "custom"
-        ? ((issue as { params?: unknown }).params as
-            | { reason?: string }
-            | undefined)
-        : undefined;
-    return {
-      path: [...issue.path],
-      message: issue.message,
-      reason: params?.reason,
-    };
-  });
+  let issues: ValidateResolvedIssue[] = result.success
+    ? []
+    : result.error.issues.map((issue) => {
+        const params =
+          issue.code === "custom"
+            ? ((issue as { params?: unknown }).params as
+                | { reason?: string }
+                | undefined)
+            : undefined;
+        return {
+          path: [...issue.path],
+          message: issue.message,
+          reason: params?.reason,
+        };
+      });
+
+  // #568 — global placeholder-leak sweep over the raw filled tree. Catches
+  // surviving `${…}` in string-typed slots the resolved schema accepts as
+  // valid strings (condition value, buttonText, url, …). Runs even when the
+  // schema otherwise passes — that's exactly the silent-leak case. Deduped
+  // by path against the per-field guards above (which carry more specific
+  // messages) so a single leak isn't reported twice; a leak the schema
+  // already errored on for another reason (e.g. a numeric slot's "Expected
+  // number") is likewise not double-reported.
+  const leaks: { path: (string | number)[]; token: string }[] = [];
+  collectPlaceholderLeaks(filled, [], leaks);
+  const seenPaths = new Set(issues.map((i) => JSON.stringify(i.path)));
+  for (const leak of leaks) {
+    const key = JSON.stringify(leak.path);
+    if (seenPaths.has(key)) continue;
+    seenPaths.add(key);
+    issues.push({
+      path: leak.path,
+      message: `${leak.path.join(".") || "value"} is an unresolved \`${leak.token}\` placeholder. The template field was not bound during fillTemplates — check the broadcast row, additionalFields, or annotator binding.`,
+      reason: "unresolved-placeholder",
+    });
+  }
+
   if (options.skipUnresolved) {
     issues = issues.filter((i) => i.reason !== "unresolved-placeholder");
   }
