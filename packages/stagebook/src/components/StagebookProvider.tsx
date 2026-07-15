@@ -6,7 +6,8 @@ import React, {
   useEffect,
   useRef,
 } from "react";
-import type { DiscussionType, ReferenceType } from "../schemas/treatment.js";
+import type { ReferenceType } from "../schemas/treatment.js";
+import type { ResolvedDiscussionType } from "../schemas/resolved.js";
 import { parseDottedReference } from "../schemas/reference.js";
 import {
   getReferenceKeyAndPath,
@@ -137,7 +138,21 @@ export interface StagebookContext {
   setAllowIdle?: (allow: boolean) => void;
 
   // Platform-provided renderers for service-coupled elements
-  renderDiscussion?: (config: DiscussionType) => React.ReactNode;
+  /**
+   * Renders the live discussion (video/audio/text call) for a stage.
+   *
+   * `config` is a {@link ResolvedDiscussionType}: `showTitle`/`showNickname`
+   * are real booleans and `rooms`/`layout.feeds` are concrete arrays — never a
+   * surviving `${field}` placeholder string. Stagebook's own viewer guarantees
+   * this by gating on `validateResolvedTreatmentFile` before this seam. **A host
+   * implementing this callback with its own expansion pipeline must likewise run
+   * `validateResolvedTreatmentFile` (with `skipUnresolved` off) on the fully
+   * bound treatment before rendering** — otherwise an unbound placeholder could
+   * reach `config` typed as a `boolean` and silently invert a blind-arm
+   * title/nickname manipulation (the narrowed type is runtime-backed, not
+   * compiler-enforced at the producer).
+   */
+  renderDiscussion?: (config: ResolvedDiscussionType) => React.ReactNode;
   /**
    * Renders a shared text input with collaborative editing semantics.
    * Called by `prompt` elements with `shared: true` and an openResponse

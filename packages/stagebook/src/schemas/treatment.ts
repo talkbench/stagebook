@@ -562,6 +562,15 @@ export const discussionSchema = z
   });
 export type DiscussionType = z.infer<typeof discussionSchema>;
 
+// Sub-types of the discussion config, exported so `ResolvedDiscussionType`
+// (resolved.ts) can narrow the placeholder-bearing fields back to their
+// concrete runtime shapes (#567). `DiscussionRoomType` and `LayoutFeedType`
+// are the same in authoring and resolved form; only the *container* fields
+// (`rooms`, `layout[].feeds`) carry the `| string` placeholder widening.
+export type DiscussionRoomType = z.infer<typeof discussionRoomSchema>;
+export type LayoutFeedType = z.infer<typeof layoutFeedSchema>;
+export type LayoutDefinitionType = z.infer<typeof layoutDefinitionSchema>;
+
 // ------------------ Template contexts ------------------ //
 const templateFieldKeysSchema = z
   .string()

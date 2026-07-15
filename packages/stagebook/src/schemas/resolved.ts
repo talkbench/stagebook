@@ -23,6 +23,10 @@ import {
   referenceSchema,
   promptFilePathSchema,
   validateConditionRules,
+  type DiscussionType,
+  type DiscussionRoomType,
+  type LayoutFeedType,
+  type LayoutDefinitionType,
 } from "./treatment.js";
 
 // Detects `${field}` placeholders that survived `fillTemplates` —
@@ -331,6 +335,62 @@ const resolvedDiscussionSchema = discussionSchema.superRefine((data, ctx) => {
     }
   }
 });
+
+// #567 — the narrowed, runtime discussion type. `discussionSchema` accepts
+// `${field}` placeholders, so `DiscussionType` is widened (`showTitle: boolean
+// | string`, `rooms: DiscussionRoomType[] | string`, `layout[].feeds` widened).
+// That authoring type is right pre-fill, but the RUNTIME seam (renderDiscussion,
+// StageConfig, the viewer step model) only ever sees a *resolved* config:
+// `resolvedDiscussionSchema` above rejects any surviving placeholder and the
+// file-level sweep (#569) is the backstop, so the value handed to those
+// consumers is guaranteed placeholder-free. Narrow the placeholder-bearing
+// fields back to their concrete shapes here so hosts get a real `boolean`/array
+// and the compiler stops them mishandling a would-be placeholder string. The
+// authoring-preview path (SkeletonPlaceholder) keeps the widened `DiscussionType`.
+export type ResolvedDiscussionType = Omit<
+  DiscussionType,
+  "showNickname" | "showTitle" | "rooms" | "layout"
+> & {
+  showNickname: boolean;
+  showTitle: boolean;
+  rooms?: DiscussionRoomType[];
+  layout?: Record<
+    string,
+    Omit<LayoutDefinitionType, "feeds"> & { feeds: LayoutFeedType[] }
+  >;
+};
+
+// Compile-time guards (#567): fail the dts build if any placeholder-bearing
+// slot re-widens on the resolved type — the point of the split is that the
+// runtime seam sees real booleans/arrays, never a `${…}` string. Booleans are
+// the load-bearing case (a `boolean | string` re-widening silently inverts
+// `if (showTitle)`), but we also pin `rooms` and the fragile nested
+// `layout[].feeds` mapped type (a `LayoutDefinitionType` refactor could
+// otherwise re-widen it unnoticed). Zero runtime footprint.
+type AssertTrue<T extends true> = T;
+type IsExactlyBoolean<T> = [T] extends [boolean]
+  ? [boolean] extends [T]
+    ? true
+    : false
+  : false;
+type HasNoStringMember<T> = [Extract<T, string>] extends [never] ? true : false;
+type AllTrue<T extends readonly boolean[]> = T[number] extends true
+  ? true
+  : false;
+/* eslint-disable @typescript-eslint/no-unused-vars */
+type _ResolvedDiscussionNarrowed = AssertTrue<
+  AllTrue<
+    [
+      IsExactlyBoolean<ResolvedDiscussionType["showTitle"]>,
+      IsExactlyBoolean<ResolvedDiscussionType["showNickname"]>,
+      HasNoStringMember<ResolvedDiscussionType["rooms"]>,
+      HasNoStringMember<
+        NonNullable<ResolvedDiscussionType["layout"]>[string]["feeds"]
+      >,
+    ]
+  >
+>;
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
 export const resolvedStageSchema = z.object({
   name: nameSchema,
