@@ -117,6 +117,129 @@ export function collectAssetPrefixes(treatmentFile: unknown): string[] {
   return [...prefixes];
 }
 
+// Any RFC 3986 URI scheme (`data:`, `mailto:`, `blob:`, `file:`, `http:`,
+// `asset:`, …). A local file path never carries a scheme; a scheme means the
+// destination is an embedded (`data:`) or remote asset the host doesn't bundle
+// as a local file. Mirrors `encodeAssetPath`'s scheme detector so the two
+// agree on what counts as "already a URI". `isCollectableLocalPath` already
+// rejects `http(s)://`, protocol-relative `//`, and `asset:`; this additionally
+// catches `data:` (common in markdown) and every other scheme.
+const URI_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
+
+// Inline CommonMark image: `![alt](destination "optional title")`.
+//   group 1 — alt text (may be empty; nested `[]` and newlines unsupported)
+//   group 2 — angle-bracket destination `<…>` (may contain spaces)
+//   group 3 — bare destination (whitespace- and `)`-terminated)
+// A trailing title (`"…"`, `'…'`, or `(…)`) is matched but discarded. This
+// mirrors the inline-image form the renderer actually resolves — `Markdown.tsx`
+// rewrites `![](…)` destinations through the host `resolveURL`. Reference-style
+// images (`![a][ref]`) and raw `<img>` HTML are intentionally out of scope:
+// the former isn't resolved by the renderer, the latter doesn't render at all
+// (the Markdown component loads no `rehype-raw`).
+//
+// The optional title is `(?:\s+(?:title))?` — the whitespace before the title
+// is REQUIRED and lives INSIDE the optional group, deliberately. Writing it as
+// two independent `\s*` runs (`…\s*(?:title)?\s*\)`) makes the whitespace
+// ambiguous between them, so an unterminated `![](x   …` line (no closing `)`)
+// backtracks in O(n²) — a ReDoS. Coupling the space to the title (per
+// CommonMark, a title must be whitespace-separated) leaves the trailing `\s*`
+// as the only run that can match the whitespace, so matching stays linear.
+const MARKDOWN_IMAGE_PATTERN =
+  /!\[((?:\\.|[^\]\\\n])*)\]\(\s*(?:<([^<>\n]*)>|([^\s)]+))(?:\s+(?:"[^"]*"|'[^']*'|\([^()]*\)))?\s*\)/g;
+
+/** One inline image reference found in a markdown body. */
+export interface MarkdownImageReference {
+  /** The image destination path exactly as authored in the markdown. */
+  path: string;
+  /** The image's alt text (may be an empty string). */
+  alt: string;
+  /** 0-based line of the image syntax within the markdown string. */
+  line: number;
+  /** 0-based column (UTF-16 offset) of the leading `!` within its line. */
+  column: number;
+}
+
+function isCollectableMarkdownImagePath(path: string): boolean {
+  // Reuse the element-field rules (empty / `${…}` placeholder / `http(s)://`
+  // / protocol-relative / `asset:`), then also drop any other URI scheme so a
+  // `data:` (or `blob:`, `mailto:`, …) embedded asset isn't mistaken for a
+  // local file to bundle.
+  if (!isCollectableLocalPath(path)) return false;
+  if (URI_SCHEME_PATTERN.test(path)) return false;
+  return true;
+}
+
+/**
+ * Enumerate the local-asset paths referenced by inline `![alt](path)` images
+ * in a markdown body — the piece `getReferencedAssets` can't see, because
+ * prompt bodies live in external `*.prompt.md` files, not the treatment tree.
+ *
+ * Pure and I/O-free: callers that already hold a prompt body (the VS Code
+ * extension, the runner's preflight, the manager) pass it in and merge the
+ * result with `getReferencedAssets(treatment)` for the full dependency set.
+ * The returned `path` is the raw authored string — resolution against a base
+ * (treatment-relative, CDN-root, …) is a consumer concern and deliberately
+ * left out here, exactly as `getReferencedAssets` returns raw paths.
+ *
+ * Excludes the same non-local forms as `getReferencedAssets` (`${…}`
+ * placeholders, `http(s)://`, protocol-relative `//`, `asset:`) plus every
+ * other URI scheme (`data:`, `blob:`, …). Non-string / empty input yields `[]`.
+ *
+ * Images inside fenced code blocks (```` ``` ```` or `~~~`, any info string)
+ * are skipped — they render as code, not images, so they're not dependencies.
+ * A fence closes only on a line of the same character, at least as long as the
+ * opener (CommonMark), so a nested shorter fence doesn't end it early. Indented
+ * code fences and inline code spans are not tracked (a `![](…)` inside a
+ * single-line `` `code span` `` is a rare false positive).
+ */
+export function getMarkdownImageReferences(
+  markdown: unknown,
+): MarkdownImageReference[] {
+  if (typeof markdown !== "string" || markdown.length === 0) return [];
+  const results: MarkdownImageReference[] = [];
+  // Split on `\r?\n` so a CRLF file doesn't leave a trailing `\r` on every
+  // line; line numbers stay aligned with what an editor shows.
+  const lines = markdown.split(/\r?\n/);
+  // When inside a fenced code block, the opener's fence char + length; else null.
+  let fence: { char: string; len: number } | null = null;
+  for (let lineNo = 0; lineNo < lines.length; lineNo++) {
+    const line = lines[lineNo];
+    const fenceMatch = /^(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      // A closing fence is the same char, ≥ the opener's length, with nothing
+      // but trailing whitespace after it (an info string is opener-only).
+      if (
+        fenceMatch &&
+        fenceMatch[1][0] === fence.char &&
+        fenceMatch[1].length >= fence.len &&
+        line.slice(fenceMatch[1].length).trim() === ""
+      ) {
+        fence = null;
+      }
+      // Every line up to and including the close is code — never an image.
+      continue;
+    }
+    if (fenceMatch) {
+      fence = { char: fenceMatch[1][0], len: fenceMatch[1].length };
+      continue;
+    }
+    // Module-level regex is reused across lines and calls — reset before each
+    // scan so a prior line's `lastIndex` can't skip the start of this one.
+    MARKDOWN_IMAGE_PATTERN.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = MARKDOWN_IMAGE_PATTERN.exec(line)) !== null) {
+      const alt = match[1] ?? "";
+      // Angle-bracket destination (group 2) wins when present; otherwise the
+      // bare destination (group 3). Trim stray whitespace the parens allowed.
+      const rawPath = match[2] !== undefined ? match[2] : match[3];
+      const path = (rawPath ?? "").trim();
+      if (!isCollectableMarkdownImagePath(path)) continue;
+      results.push({ path, alt, line: lineNo, column: match.index });
+    }
+  }
+  return results;
+}
+
 /** Info passed to a {@link visitFileFields} callback for one file-like field. */
 interface FileFieldVisit {
   /** The raw field value (may be any type; callers narrow to string). */

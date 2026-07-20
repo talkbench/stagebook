@@ -14,6 +14,8 @@ export {
 export {
   getReferencedAssets,
   collectAssetPrefixes,
+  getMarkdownImageReferences,
   type ReferencedAsset,
+  type MarkdownImageReference,
 } from "./referencedAssets.js";
 export { sanitizeName, deriveStorageKeyName } from "./deriveStorageKeyName.js";

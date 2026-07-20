@@ -2,7 +2,9 @@ import { describe, test, expect } from "vitest";
 import {
   getReferencedAssets,
   collectAssetPrefixes,
+  getMarkdownImageReferences,
   type ReferencedAsset,
+  type MarkdownImageReference,
 } from "./referencedAssets.js";
 
 // Helper: wrap a set of elements into a minimal treatmentFile-shaped object so
@@ -514,5 +516,302 @@ describe("collectAssetPrefixes (#192)", () => {
       treatments: [],
     };
     expect(collectAssetPrefixes(tree)).toEqual(["onboarding"]);
+  });
+});
+
+describe("getMarkdownImageReferences — defensive input", () => {
+  test("returns [] for empty string", () => {
+    expect(getMarkdownImageReferences("")).toEqual([]);
+  });
+
+  test("returns [] for markdown with no images", () => {
+    expect(
+      getMarkdownImageReferences(
+        "# Heading\n\nSome **bold** text and a [link](x).",
+      ),
+    ).toEqual([]);
+  });
+
+  test("returns [] for non-string input", () => {
+    // Callers pass raw prompt bodies; be defensive like getReferencedAssets.
+    expect(getMarkdownImageReferences(null as unknown as string)).toEqual([]);
+    expect(getMarkdownImageReferences(undefined as unknown as string)).toEqual(
+      [],
+    );
+    expect(getMarkdownImageReferences(42 as unknown as string)).toEqual([]);
+  });
+});
+
+describe("getMarkdownImageReferences — basic collection", () => {
+  test("collects a single inline image with path and alt", () => {
+    const refs = getMarkdownImageReferences("![A diagram](images/flow.png)");
+    expect(refs).toEqual<MarkdownImageReference[]>([
+      { path: "images/flow.png", alt: "A diagram", line: 0, column: 0 },
+    ]);
+  });
+
+  test("collects an image with empty alt", () => {
+    const refs = getMarkdownImageReferences("![](logo.png)");
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({ path: "logo.png", alt: "" });
+  });
+
+  test("collects multiple images across lines in document order", () => {
+    const md = [
+      "Intro paragraph.",
+      "",
+      "![first](a.png)",
+      "",
+      "Middle text ![second](sub/b.jpg) inline.",
+    ].join("\n");
+    const refs = getMarkdownImageReferences(md);
+    expect(refs.map((r) => r.path)).toEqual(["a.png", "sub/b.jpg"]);
+    expect(refs[0]).toMatchObject({ line: 2, column: 0 });
+    // "Middle text " is 12 chars, so the image starts at column 12.
+    expect(refs[1]).toMatchObject({ line: 4, column: 12 });
+  });
+
+  test("collects two images on the same line with correct columns", () => {
+    const refs = getMarkdownImageReferences("![a](x.png) ![b](y.png)");
+    expect(refs.map((r) => r.path)).toEqual(["x.png", "y.png"]);
+    expect(refs.map((r) => r.column)).toEqual([0, 12]);
+  });
+});
+
+describe("getMarkdownImageReferences — destination forms", () => {
+  test("strips a title after a bare destination", () => {
+    const refs = getMarkdownImageReferences('![a](images/x.png "My title")');
+    expect(refs).toHaveLength(1);
+    expect(refs[0].path).toBe("images/x.png");
+  });
+
+  test("handles an angle-bracket destination with a space", () => {
+    const refs = getMarkdownImageReferences("![a](<my pic.png>)");
+    expect(refs).toHaveLength(1);
+    expect(refs[0].path).toBe("my pic.png");
+  });
+
+  test("handles an angle-bracket destination followed by a title", () => {
+    const refs = getMarkdownImageReferences("![a](<my pic.png> 'cap')");
+    expect(refs).toHaveLength(1);
+    expect(refs[0].path).toBe("my pic.png");
+  });
+
+  test("trims whitespace around a bare destination inside the parens", () => {
+    const refs = getMarkdownImageReferences("![a](  images/x.png  )");
+    expect(refs).toHaveLength(1);
+    expect(refs[0].path).toBe("images/x.png");
+  });
+});
+
+describe("getMarkdownImageReferences — exclusions", () => {
+  test("excludes http, https, and protocol-relative URLs", () => {
+    const md = [
+      "![a](http://example.com/a.png)",
+      "![b](https://example.com/b.png)",
+      "![c](//cdn.example.com/c.png)",
+    ].join("\n");
+    expect(getMarkdownImageReferences(md)).toEqual([]);
+  });
+
+  test("excludes data: URIs (embedded, not a local file)", () => {
+    const md =
+      "![placeholder](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=)";
+    expect(getMarkdownImageReferences(md)).toEqual([]);
+  });
+
+  test("excludes asset:// and opaque asset: references", () => {
+    const md = ["![a](asset://diagrams/flow.png)", "![b](asset:flow.png)"].join(
+      "\n",
+    );
+    expect(getMarkdownImageReferences(md)).toEqual([]);
+  });
+
+  test("excludes paths containing a ${…} template placeholder", () => {
+    const md = ["![a](${region}/logo.png)", "![b](img/${variant}.png)"].join(
+      "\n",
+    );
+    expect(getMarkdownImageReferences(md)).toEqual([]);
+  });
+
+  test("excludes an empty destination", () => {
+    expect(getMarkdownImageReferences("![alt]()")).toEqual([]);
+  });
+
+  test("keeps a local path alongside excluded ones", () => {
+    const md = [
+      "![remote](https://example.com/a.png)",
+      "![local](images/b.png)",
+      "![embedded](data:image/png;base64,AAAA)",
+    ].join("\n");
+    const refs = getMarkdownImageReferences(md);
+    expect(refs.map((r) => r.path)).toEqual(["images/b.png"]);
+  });
+});
+
+describe("getMarkdownImageReferences — fenced code blocks", () => {
+  test("skips images inside a fenced code block", () => {
+    const md = [
+      "Here is how to embed an image:",
+      "",
+      "```markdown",
+      "![example](images/should-not-count.png)",
+      "```",
+      "",
+      "![real](images/counts.png)",
+    ].join("\n");
+    const refs = getMarkdownImageReferences(md);
+    expect(refs.map((r) => r.path)).toEqual(["images/counts.png"]);
+    expect(refs[0].line).toBe(6);
+  });
+
+  test("a fence with an info string still toggles code mode", () => {
+    const md = ["```js", "// ![nope](x.png)", "```", "![yes](y.png)"].join(
+      "\n",
+    );
+    expect(getMarkdownImageReferences(md).map((r) => r.path)).toEqual([
+      "y.png",
+    ]);
+  });
+
+  test("skips images inside a ~~~ (tilde) fenced code block", () => {
+    const md = [
+      "~~~",
+      "![inside](images/nope.png)",
+      "~~~",
+      "![outside](images/yes.png)",
+    ].join("\n");
+    expect(getMarkdownImageReferences(md).map((r) => r.path)).toEqual([
+      "images/yes.png",
+    ]);
+  });
+
+  test("a shorter inner fence does not close a longer outer fence", () => {
+    // A 3-backtick line can't close a 4-backtick fence (CommonMark), so
+    // everything between the ```` fences is code.
+    const md = [
+      "````",
+      "![a](inside-code.png)",
+      "```",
+      "![b](still-inside.png)",
+      "````",
+      "![c](real.png)",
+    ].join("\n");
+    expect(getMarkdownImageReferences(md).map((r) => r.path)).toEqual([
+      "real.png",
+    ]);
+  });
+
+  test("an unclosed fence swallows the rest of the document", () => {
+    const md = ["```", "![a](x.png)", "still code, no close"].join("\n");
+    expect(getMarkdownImageReferences(md)).toEqual([]);
+  });
+});
+
+describe("getMarkdownImageReferences — title forms and edge cases", () => {
+  test("strips a parenthesised title", () => {
+    const refs = getMarkdownImageReferences("![d](x.png (Figure 1))");
+    expect(refs.map((r) => r.path)).toEqual(["x.png"]);
+  });
+
+  test("a closing paren inside a title does not truncate the path", () => {
+    const refs = getMarkdownImageReferences(
+      '![chart](results.png "Results (final)")',
+    );
+    expect(refs.map((r) => r.path)).toEqual(["results.png"]);
+  });
+
+  test("an angle-bracket destination may contain both spaces and parens", () => {
+    const refs = getMarkdownImageReferences("![a](<screenshot (1).png>)");
+    expect(refs.map((r) => r.path)).toEqual(["screenshot (1).png"]);
+  });
+
+  test("captures alt text verbatim including punctuation and escaped brackets", () => {
+    const refs = getMarkdownImageReferences(
+      '![Figure 1: "cats" \\] end](x.png)',
+    );
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({
+      alt: 'Figure 1: "cats" \\] end',
+      path: "x.png",
+    });
+  });
+
+  test("a whitespace-only destination is not a match", () => {
+    expect(getMarkdownImageReferences("![a](   )")).toEqual([]);
+  });
+
+  test("column of a second image accounts for a title on the first", () => {
+    const md = '![a](x.png "t") ![b](y.png)';
+    const refs = getMarkdownImageReferences(md);
+    expect(refs.map((r) => r.path)).toEqual(["x.png", "y.png"]);
+    // `![a](x.png "t") ` is 16 chars, so the second image starts at column 16.
+    expect(refs.map((r) => r.column)).toEqual([0, 16]);
+  });
+});
+
+describe("getMarkdownImageReferences — documented non-goals", () => {
+  test("reference-style images are not matched", () => {
+    const md = ["![alt][ref]", "", "[ref]: real.png"].join("\n");
+    expect(getMarkdownImageReferences(md)).toEqual([]);
+  });
+
+  test("raw <img> HTML is not matched (renderer loads no rehype-raw)", () => {
+    expect(getMarkdownImageReferences('<img src="pic.png" alt="x">')).toEqual(
+      [],
+    );
+  });
+
+  test("excludes an uppercase ASSET:// scheme", () => {
+    expect(
+      getMarkdownImageReferences("![a](ASSET://diagrams/flow.png)"),
+    ).toEqual([]);
+  });
+
+  test("excludes a non-data, non-asset URI scheme (mailto:)", () => {
+    // Exercises URI_SCHEME_PATTERN independently of isCollectableLocalPath.
+    expect(getMarkdownImageReferences("![a](mailto:foo@example.com)")).toEqual(
+      [],
+    );
+  });
+});
+
+describe("getMarkdownImageReferences — line endings and positions", () => {
+  test("handles CRLF line endings without leaking \\r into paths", () => {
+    const md = "![a](x.png)\r\n![b](y.png)";
+    const refs = getMarkdownImageReferences(md);
+    expect(refs).toEqual<MarkdownImageReference[]>([
+      { path: "x.png", alt: "a", line: 0, column: 0 },
+      { path: "y.png", alt: "b", line: 1, column: 0 },
+    ]);
+  });
+
+  test("detects a CRLF fenced block and its close", () => {
+    const md = "```md\r\n![no](a.png)\r\n```\r\n![yes](b.png)";
+    const refs = getMarkdownImageReferences(md);
+    expect(refs.map((r) => r.path)).toEqual(["b.png"]);
+    expect(refs[0].line).toBe(3);
+  });
+
+  test("column is a UTF-16 offset (a surrogate pair counts as two)", () => {
+    // A leading emoji occupies two UTF-16 code units.
+    const refs = getMarkdownImageReferences("😀![a](x.png)");
+    expect(refs).toHaveLength(1);
+    expect(refs[0].column).toBe(2);
+  });
+});
+
+describe("getMarkdownImageReferences — resistance to adversarial input", () => {
+  test("an unterminated image with a long whitespace run resolves quickly", () => {
+    // Regression guard for the quadratic-backtracking ReDoS: a single line
+    // `![](x` + a huge space run with no closing `)` must not blow up.
+    const line = "![](x" + " ".repeat(100_000);
+    const start = performance.now();
+    const refs = getMarkdownImageReferences(line);
+    const elapsedMs = performance.now() - start;
+    expect(refs).toEqual([]);
+    // Linear matching finishes in well under 100ms; the quadratic bug took
+    // ~16s at this size.
+    expect(elapsedMs).toBeLessThan(1000);
   });
 });
