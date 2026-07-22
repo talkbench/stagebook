@@ -99,16 +99,16 @@ test("resolveURL: does NOT double-encode %XX sequences in the host's already-enc
   expect(src).not.toContain("%252B");
 });
 
-test("resolveURL: encodes spaces in researcher-authored filenames", async ({
+test("resolveURL: encodes spaces in an angle-bracket destination", async ({
   mount,
 }) => {
-  // Markdown source is raw — researchers write paths like
-  // `![](my pic.jpg)`. The fix encodes the path segment(s) before
-  // resolving, so spaces (and other URI-special chars) become
-  // `%20` rather than landing literally in the <img src>.
+  // A space in a bare destination isn't a valid CommonMark image, so the
+  // space form is the angle-bracket destination `<…>`. remark unwraps it to
+  // `folder/my pic.jpg`; the resolver then percent-encodes the segments, so
+  // the space becomes `%20` in the <img src> rather than landing literally.
   const component = await mount(
     <MockMarkdown
-      text="![photo](folder/my pic.jpg)"
+      text="![photo](<folder/my pic.jpg>)"
       baseUrl="https://example.com/"
     />,
   );
@@ -193,6 +193,167 @@ test("resolveURL: encodes non-ASCII characters in path", async ({ mount }) => {
   );
   const src = await component.locator("img").getAttribute("src");
   expect(src).toBe("https://example.com/caf%C3%A9.png");
+});
+
+// -- CommonMark image forms resolve on the AST (#576) --
+//
+// The renderer resolves image `src` on react-markdown's CommonMark AST instead
+// of a pre-render regex, so every valid image form — titled, angle-bracket,
+// balanced parens, wrapped alt — parses correctly and resolves against the
+// asset base. Each of these rows was broken under the old regex.
+
+test("resolveURL: a titled image resolves the path and keeps the title", async ({
+  mount,
+}) => {
+  // The old regex captured `cat.jpg "My cat"` as the path and 404'd. remark
+  // parses the title out, so the path resolves and the title lands on the img.
+  const component = await mount(
+    <MockMarkdown
+      text={'![a](cat.jpg "My cat")'}
+      baseUrl="https://example.com/"
+    />,
+  );
+  const img = component.locator("img");
+  await expect(img).toHaveAttribute("src", "https://example.com/cat.jpg");
+  await expect(img).toHaveAttribute("title", "My cat");
+});
+
+test("resolveURL: an angle-bracket destination resolves", async ({ mount }) => {
+  const component = await mount(
+    <MockMarkdown text="![a](<my pic.png>)" baseUrl="https://example.com/" />,
+  );
+  const src = await component.locator("img").getAttribute("src");
+  expect(src).toBe("https://example.com/my%20pic.png");
+});
+
+test("resolveURL: a balanced-paren filename resolves (parens kept)", async ({
+  mount,
+}) => {
+  // The old regex stopped the destination at the first `)`, truncating to
+  // `image(1`. remark balances the parens, so the whole name resolves.
+  const component = await mount(
+    <MockMarkdown text="![a](image(1).png)" baseUrl="https://example.com/" />,
+  );
+  const src = await component.locator("img").getAttribute("src");
+  expect(src).toBe("https://example.com/image(1).png");
+});
+
+test("resolveURL: alt text wrapping across lines still resolves the image", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <MockMarkdown
+      text={"![alt spanning\ntwo lines](x.png)"}
+      baseUrl="https://example.com/"
+    />,
+  );
+  const src = await component.locator("img").getAttribute("src");
+  expect(src).toBe("https://example.com/x.png");
+});
+
+test("resolveURL: a reference-style image resolves against its definition", async ({
+  mount,
+}) => {
+  // react-markdown resolves `![alt][ref]` against its `[ref]: path` definition
+  // and renders an <img>, so the asset resolver runs on it — the enumerator
+  // (getMarkdownImageReferences) flags these in lockstep.
+  const component = await mount(
+    <MockMarkdown
+      text={"![Figure 1][fig1]\n\n[fig1]: diagrams/figure1.png"}
+      baseUrl="https://example.com/"
+    />,
+  );
+  await expect(component.locator("img")).toHaveAttribute(
+    "src",
+    "https://example.com/diagrams/figure1.png",
+  );
+});
+
+test("resolveURL: an image inside a fenced code block is NOT rewritten", async ({
+  mount,
+}) => {
+  // The image syntax is shown as a code EXAMPLE, so it renders as literal text:
+  // no <img>, and — the old bug — the resolved CDN URL must not leak into the
+  // displayed code.
+  const component = await mount(
+    <MockMarkdown
+      text={"```md\n![logo](images/logo.png)\n```"}
+      baseUrl="https://example.com/"
+    />,
+  );
+  await expect(component.locator("img")).toHaveCount(0);
+  await expect(component.locator("pre")).toContainText(
+    "![logo](images/logo.png)",
+  );
+  await expect(component.locator("pre")).not.toContainText("example.com");
+});
+
+test("resolveURL: an escaped \\![…] is not an image and is not rewritten", async ({
+  mount,
+}) => {
+  // `\!` escapes the bang, so CommonMark renders `!` + a link (not an image).
+  // No <img> is produced, and the link keeps its raw href — the asset resolver
+  // only ever touches image src, so the CDN base never appears.
+  const component = await mount(
+    <MockMarkdown
+      text={"\\![logo](images/logo.png)"}
+      baseUrl="https://example.com/"
+    />,
+  );
+  await expect(component.locator("img")).toHaveCount(0);
+  await expect(component.locator("a")).toHaveAttribute(
+    "href",
+    "images/logo.png",
+  );
+});
+
+test("resolveURL: a javascript: destination is neutralized, never resolved", async ({
+  mount,
+}) => {
+  // react-markdown's default url sanitizer zeroes `javascript:` before the img
+  // component, so it can't reach the DOM as an executable src and the asset
+  // resolver never runs on it — no `javascript:`, no CDN base.
+  const component = await mount(
+    <MockMarkdown
+      text="![x](javascript:alert(1))"
+      baseUrl="https://example.com/"
+    />,
+  );
+  const src = (await component.locator("img").getAttribute("src")) ?? "";
+  expect(src).not.toContain("javascript:");
+  expect(src).not.toContain("example.com");
+});
+
+test("resolveURL: an asset:// markdown image is not resolved (renders empty)", async ({
+  mount,
+}) => {
+  // react-markdown strips the `asset:` scheme (not in its safe-protocol list)
+  // to "" before the img component, so it renders empty rather than resolving
+  // against the CDN base. Platform `asset://` refs belong in an element's
+  // `file:` field, not a markdown body — this pins that intentional behavior.
+  const component = await mount(
+    <MockMarkdown
+      text="![a](asset://kit/logo.png)"
+      baseUrl="https://example.com/"
+    />,
+  );
+  const src = (await component.locator("img").getAttribute("src")) ?? "";
+  expect(src).not.toContain("example.com");
+  expect(src).not.toContain("asset:");
+});
+
+test("a long `![`×N run renders as text without hanging (no regex ReDoS)", async ({
+  mount,
+}) => {
+  // The old pre-render regex was O(n²) on a `![![![…` run (the issue measured
+  // ~2.3s at 60k). Resolving on the AST deletes that regex; react-markdown
+  // parses the run in near-linear time, so this mounts promptly, yields no
+  // image, and leaks no resolved URL.
+  const component = await mount(
+    <MockMarkdown text={"![".repeat(20_000)} baseUrl="https://example.com/" />,
+  );
+  await expect(component.locator("img")).toHaveCount(0);
+  await expect(component.locator("p")).not.toContainText("example.com");
 });
 
 test("img renders with inline max-width: 100% and height: auto so it can't overflow the prompt (issue #211)", async ({
