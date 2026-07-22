@@ -15,11 +15,13 @@ export default defineConfig({
   splitting: true,
   clean: true,
   sourcemap: true,
-  // `unified` / `remark-parse` (used by `getMarkdownImageReferences` in the
-  // root entry) are ESM-only. Externalized, the generated `dist/index.cjs`
-  // `require()`s them and throws for CJS consumers (no `require` export /
-  // broken named-export interop). Bundling them — and their transitive
-  // micromark/mdast tree, which isn't a direct dependency so is inlined
-  // anyway — keeps the CJS build self-contained. See #576.
-  noExternal: ["unified", "remark-parse"],
+  // `mdast-util-from-markdown` (used by `getMarkdownImageReferences`) is
+  // ESM-only. Externalized, the generated `dist/index.cjs` `require()`s it and
+  // throws for CJS consumers (no `require` export / broken named-export
+  // interop). Bundling it — and its transitive micromark/mdast tree, which
+  // isn't a direct dependency so is inlined anyway — keeps the CJS build
+  // self-contained. Unlike `unified`/`remark-parse`, it pulls in NO Node
+  // built-ins (no `vfile`), so bundling it is safe for the browser-facing
+  // viewer/webview builds too. See #576 / #577.
+  noExternal: ["mdast-util-from-markdown"],
 });
