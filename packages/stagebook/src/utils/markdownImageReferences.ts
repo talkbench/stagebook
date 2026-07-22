@@ -25,21 +25,29 @@ import { isCollectableLocalPath } from "./referencedAssets.js";
 // catches `data:` (common in markdown) and every other scheme.
 const URI_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 
-// Perf guard for the CommonMark parse below. remark/micromark is linear on
-// normal prose, but has super-linear (O(n²)) worst cases on adversarial input —
-// most sharply its emphasis (attention) resolver on a `*_*_*_…` run: ~0.6s to
-// parse a 10 KB run, ~1.5s at 16 KB, ~4s at 32 KB, ~90s at 100 KB. This runs
-// SERVER-SIDE (preflight / manager / annotator / the VS Code extension host),
-// so an unbounded parse of a hostile researcher-authored body would block the
-// event loop and starve co-tenants. Real prompt bodies are a few KB (the repo's
-// largest is ~2.4 KB), so this cap (~1600 words) sits well above any realistic
-// prompt while keeping even the worst observed parse under ~1s. A skipped
-// over-cap body simply isn't enumerated — the renderer parses the same body, so
-// an oversized adversarial body is a rendering-time problem regardless, and
-// preflight enumeration is advisory (a missed image surfaces as a runtime 404,
-// not silent corruption). The cap is deliberately coarse: it bounds the worst
-// case we can observe rather than proving no super-linear case exists past it.
-const MAX_MARKDOWN_LENGTH = 10_000;
+// Perf guards for the CommonMark parse below. micromark is linear on normal
+// prose, but has super-linear (O(n²)) worst cases on adversarial input. This
+// runs SERVER-SIDE (preflight / manager / annotator / the VS Code extension
+// host), so an unbounded parse of a hostile researcher-authored body would
+// block the event loop and starve co-tenants. A skipped over-cap body isn't
+// enumerated — the renderer parses the same body, so an oversized adversarial
+// body is a rendering problem regardless, and preflight enumeration is advisory
+// (a missed image surfaces as a runtime 404, not silent corruption).
+//
+// Two guards, because a single length cap forced a bad trade-off. The SHARPEST
+// blow-up by far is micromark's emphasis (attention) resolver on an UNRESOLVABLE
+// `*_*_…` run, and its cost tracks the NUMBER of emphasis markers, not body
+// length: `*_`×25 000 (a 50 KB run) takes ~14 s, but `*`×50 000 takes ~5 ms and
+// a realistic 50 KB prompt with 7 000 *resolving* `**bold**`/`_italic_` markers
+// parses in ~26 ms. So capping the marker COUNT bounds that vector directly
+// (~15 000 markers ≈ 0.85 s) without penalizing a long, richly-formatted but
+// legitimate prompt — no real prompt has 15 000 emphasis markers (that's ~30 %
+// of the text). The length cap then bounds the milder remaining vectors
+// (ref-link runs are the next worst, ~1 s at 50 KB) and any unknown one. 50 KB
+// is ~20× the repo's largest prompt (~2.4 KB), so a legitimate body effectively
+// never trips either guard, while the worst *admitted* parse stays ~1 s.
+const MAX_MARKDOWN_LENGTH = 50_000;
+const MAX_EMPHASIS_MARKERS = 15_000;
 
 // `fromMarkdown` parses core CommonMark only — NO remark-gfm. The renderer
 // (`Markdown.tsx`) parses with GFM, but GFM only ever *wraps* inline images (in
@@ -170,15 +178,25 @@ function collectImages(
  * the mdast node's 0-based line/column (UTF-16) of the leading `!`.
  *
  * A real parse replaces the old substring scan: there is no regex over
- * untrusted text, and a `![![…` run resolves in near-linear time. A length cap
- * ({@link MAX_MARKDOWN_LENGTH}) bounds remark's super-linear worst cases on an
- * adversarial body (see that constant); an over-cap body yields `[]`.
+ * untrusted text, and a `![![…` run resolves in near-linear time. Two guards
+ * ({@link MAX_MARKDOWN_LENGTH} and {@link MAX_EMPHASIS_MARKERS}) bound
+ * micromark's super-linear worst cases on an adversarial body (see those
+ * constants); a body that exceeds either yields `[]`.
  */
 export function getMarkdownImageReferences(
   markdown: unknown,
 ): MarkdownImageReference[] {
   if (typeof markdown !== "string" || markdown.length === 0) return [];
   if (markdown.length > MAX_MARKDOWN_LENGTH) return [];
+  // Bound the emphasis (attention) resolver's O(n²) worst case directly — an
+  // O(n) marker count, far cheaper than the parse it guards. See the constants.
+  let emphasisMarkers = 0;
+  for (let i = 0; i < markdown.length; i++) {
+    const c = markdown.charCodeAt(i);
+    if (c === 42 /* * */ || c === 95 /* _ */) {
+      if (++emphasisMarkers > MAX_EMPHASIS_MARKERS) return [];
+    }
+  }
 
   const tree = fromMarkdown(markdown);
   const definitions = new Map<string, string>();

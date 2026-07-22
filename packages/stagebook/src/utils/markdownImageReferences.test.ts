@@ -416,42 +416,73 @@ describe("getMarkdownImageReferences — line endings and positions", () => {
   });
 });
 
-describe("getMarkdownImageReferences — length guard", () => {
-  // remark/micromark has super-linear worst cases on adversarial input (most
-  // sharply its emphasis resolver on a `*_*_…` run). This runs server-side, so a
-  // length cap (well above any realistic prompt) bounds the parse. An over-cap
-  // body is not enumerated — an accepted false negative (enumeration is advisory;
-  // a missed image surfaces as a runtime 404, and the renderer would choke on the
-  // same oversized body regardless).
+describe("getMarkdownImageReferences — perf guards", () => {
+  // micromark has super-linear worst cases on adversarial input. Two guards
+  // bound them server-side (see the constants): a 50 KB length cap for the
+  // milder/unknown vectors, and an emphasis-marker count cap for the sharpest
+  // one (the attention resolver on a `*_*_…` run). An over-cap body is not
+  // enumerated — an accepted false negative (enumeration is advisory; a missed
+  // image surfaces as a runtime 404, and the renderer would choke on the same
+  // oversized body regardless). A realistic prompt trips neither.
 
   test("a body over the length cap yields [] even if it holds a valid image", () => {
     const image = "\n![a](real.png)";
-    const md = "x".repeat(10_001 - image.length) + image;
-    expect(md.length).toBeGreaterThan(10_000);
+    const md = "x".repeat(50_001 - image.length) + image;
+    expect(md.length).toBeGreaterThan(50_000);
     expect(getMarkdownImageReferences(md)).toEqual([]);
   });
 
-  test("a valid image in a body at the cap is still collected", () => {
+  test("a valid image in a body at the length cap is still collected", () => {
     const image = "\n\n![a](real.png)";
-    const md = "x".repeat(10_000 - image.length) + image;
-    expect(md.length).toBe(10_000);
+    const md = "x".repeat(50_000 - image.length) + image;
+    expect(md.length).toBe(50_000);
     expect(getMarkdownImageReferences(md).map((r) => r.path)).toEqual([
       "real.png",
+    ]);
+  });
+
+  test("a body over the emphasis-marker cap yields [] (even under the length cap)", () => {
+    // 18 000 `*_` markers in 18 001 chars — under the 50 KB length cap, over the
+    // 15 000 emphasis-marker cap, so the emphasis guard (not the length one)
+    // short-circuits before the expensive attention resolve.
+    const md = "*_".repeat(9_000) + "![a](real.png)";
+    expect(md.length).toBeLessThan(50_000);
+    expect(getMarkdownImageReferences(md)).toEqual([]);
+  });
+
+  test("a long, heavily-formatted but legitimate body is still enumerated", () => {
+    // ~40 KB of prose with ~7 000 *resolving* bold/italic markers — well under
+    // both caps, so its image is collected (the whole point of the two-guard
+    // split: length alone would have to be tiny to bound the emphasis vector).
+    const para =
+      "This is **important** guidance about the _study_ procedures. ";
+    const md = para.repeat(650) + "\n\n![diagram](figures/flow.png)";
+    expect(md.length).toBeGreaterThan(35_000);
+    expect(md.length).toBeLessThan(50_000);
+    expect((md.match(/[*_]/g) || []).length).toBeLessThan(15_000);
+    expect(getMarkdownImageReferences(md).map((r) => r.path)).toEqual([
+      "figures/flow.png",
     ]);
   });
 });
 
 describe("getMarkdownImageReferences — resistance to adversarial input", () => {
   // A real CommonMark parse handles the `![…`/`![](x…` multi-start patterns (that
-  // make a backtracking regex O(n²)) in near-linear time, and the length cap
-  // bounds remark's OWN super-linear cases — most sharply the emphasis resolver
-  // on a `*_*_…` run (unbounded, this hangs ~90s at 100 KB). Each oversized line
-  // below exceeds the cap, so the guard short-circuits before parsing.
+  // make a backtracking regex O(n²)) in near-linear time, and the two perf guards
+  // bound micromark's OWN super-linear cases — most sharply the emphasis resolver
+  // on a `*_*_…` run (unbounded, this hangs ~14s at 50 KB, ~90s at 100 KB). Each
+  // body below trips a guard (length or emphasis-marker count), so it
+  // short-circuits before parsing. The `*_`×20 000 case is the key one: 40 KB is
+  // UNDER the length cap, so only the emphasis-marker guard catches it.
   test.each([
     ["long whitespace run, no close", "![](x" + " ".repeat(100_000)],
     ["repeated `![` with no `]`", "![".repeat(80_000)],
     ["repeated `![](x` with no `)`", "![](x".repeat(50_000)],
-    ["emphasis `*_` run (remark's worst case)", "*_".repeat(50_000)],
+    ["emphasis `*_` run over the length cap", "*_".repeat(50_000)],
+    [
+      "emphasis `*_` run under length cap, over marker cap",
+      "*_".repeat(20_000),
+    ],
     ["`)` then many `![` starts", "](x)" + "![".repeat(80_000)],
   ])("over-cap adversarial body resolves instantly: %s", (_label, line) => {
     const start = performance.now();
