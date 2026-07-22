@@ -2,7 +2,6 @@ import React, { useId } from "react";
 import { useIsRTL } from "../StagebookProvider.js";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { encodeAssetPath } from "../../utils/encodeAssetPath.js";
 
 export interface MarkdownProps {
   text: string;
@@ -226,6 +225,67 @@ export function computeSafeRel(
   return rel ? `${rel} noopener noreferrer` : "noopener noreferrer";
 }
 
+// Characters that `encodeURIComponent` percent-encodes but CommonMark's URL
+// encoding (below) does NOT — i.e. `encodeURIComponent`'s set MINUS
+// `encodeURI`'s set, with `/` removed so path separators survive. A stagebook
+// image destination is a raw FILE PATH, so these URI-structural characters must
+// be encoded or they corrupt the path once joined to the host base: `#` starts
+// a fragment, `?` a query, `+` decodes to a space on many servers, etc.
+const URL_TO_PATH_UNSAFE = /[#$&+,:;=?@]/g;
+
+/**
+ * Resolve an inline markdown image's `src` against the host's asset base.
+ *
+ * We resolve on the CommonMark AST rather than by pre-rewriting the raw text
+ * with a regex (the old approach, see #576): `react-markdown` hands us the
+ * parsed destination — titles (`![a](x.png "t")`), `<…>` angle-bracket paths,
+ * balanced parens (`image(1).png`), and wrapped alt text are all handled by
+ * remark — so every valid image form resolves, fenced-code / escaped-`\!`
+ * examples never get rewritten, and there is no untrusted-text regex to ReDoS.
+ * react-markdown has also already applied its default URL sanitizer, so a
+ * `javascript:` destination arrives here as `""`.
+ *
+ * Only genuinely relative paths are resolved:
+ * - An absolute destination that survived react-markdown's URL sanitizer —
+ *   `http(s):` or a protocol-relative `//host` — already points somewhere, so
+ *   it passes through unchanged. (react-markdown strips schemes it deems unsafe,
+ *   including `javascript:`, `data:`, and `asset:`, to `""` BEFORE this runs, so
+ *   those arrive as `""` and render nothing — platform `asset://` references
+ *   belong in an element's `file:` field, not a markdown body.)
+ * - For a relative path, `src` is ALREADY `encodeURI`-encoded by react-markdown
+ *   (spaces and non-ASCII → `%XX`), which is exactly what we want for those —
+ *   re-encoding would double-encode the `%` (the #431 hazard). We only finish
+ *   the job by encoding the URI-structural characters react-markdown leaves
+ *   raw ({@link URL_TO_PATH_UNSAFE}) so the final result matches per-segment
+ *   `encodeURIComponent`, then hand that to the host's `resolveURL`. `/` and
+ *   the existing `%XX` are preserved, so the host's already-encoded base isn't
+ *   double-encoded either.
+ * - If the resolver returns something that isn't a fetchable `http(s):` /
+ *   `data:` URL, we fall back to the raw path rather than emit a surprising src.
+ *
+ * Exported for direct unit testing (same rationale as `computeSafeRel`). SECURITY
+ * PRECONDITION: the scheme-passthrough below is only safe because this always
+ * runs downstream of react-markdown's URL sanitizer (which has already zeroed
+ * dangerous schemes). Don't reuse it on unsanitized input.
+ */
+export function resolveImageSrc(
+  src: string | undefined,
+  resolveURL: ((path: string) => string) | undefined,
+): string | undefined {
+  if (!resolveURL || typeof src !== "string" || src === "") return src;
+  // Absolute / scheme-prefixed / protocol-relative destinations aren't resolved
+  // against the asset base — they already point somewhere. (Any unsafe scheme
+  // was already stripped to "" upstream — see the SECURITY PRECONDITION above.)
+  if (/^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//")) return src;
+  const encodedPath = src.replace(
+    URL_TO_PATH_UNSAFE,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  const resolved = resolveURL(encodedPath);
+  if (!/^(?:https?:|data:)/i.test(resolved)) return src;
+  return resolved;
+}
+
 // Only `text-decoration: underline` stays inline — the base color
 // AND the `:hover` / `:focus-visible` / `:visited` overrides all
 // live in the scoped <style> block. Putting the base color inline
@@ -331,36 +391,6 @@ const taskListCheckboxCheckedStyle: React.CSSProperties = {
 
 export function Markdown({ text, resolveURL }: MarkdownProps) {
   const isRTL = useIsRTL();
-  let displayText = text;
-
-  // Rewrite relative image paths if a resolver is provided
-  if (resolveURL) {
-    displayText = text?.replace(
-      /!\[(.*?)\]\((.*?)\)/g,
-      (_match, alt: string, path: string) => {
-        // Skip absolute URLs
-        if (path.startsWith("http://") || path.startsWith("https://")) {
-          return `![${alt}](${path})`;
-        }
-        // Encode the markdown source path before handing it to the
-        // host's resolver — researchers write raw filesystem paths
-        // (`images/my pic.jpg`), while the host's resolver returns an
-        // already-encoded base. Encoding the resolved URL would
-        // double-encode the host's intentional `%XX` sequences
-        // (e.g. VS Code's `asWebviewUri` `%2B` → `%252B`). See #431.
-        const resolved = resolveURL(encodeAssetPath(path));
-        // Reject non-http protocols (e.g., javascript:)
-        if (
-          !resolved.startsWith("http://") &&
-          !resolved.startsWith("https://") &&
-          !resolved.startsWith("data:")
-        ) {
-          return `![${alt}](${path})`; // fall back to original path
-        }
-        return `![${alt}](${resolved})`;
-      },
-    );
-  }
 
   // Per-instance class for pseudo-class rules. The previous
   // `id="markdown"` was a duplicate-id bug on any page rendering
@@ -542,12 +572,13 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
             // Inline max-width keeps markdown-embedded images inside
             // the prompt container on any host, regardless of what
             // reset the host chose. See issue #211.
-            img: ({ node: _node, ...props }) => (
+            img: ({ node: _node, src, ...props }) => (
               <img
                 style={imgStyle}
                 loading="lazy"
                 decoding="async"
                 {...props}
+                src={resolveImageSrc(src, resolveURL)}
                 alt={props.alt ?? ""}
               />
             ),
@@ -592,7 +623,7 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
             },
           }}
         >
-          {displayText}
+          {text}
         </ReactMarkdown>
       </div>
     </>

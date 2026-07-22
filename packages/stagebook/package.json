@@ -100,7 +100,9 @@
     "js-yaml": "^4.1.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
     "tinyglobby": "^0.2.16",
+    "unified": "^11.0.0",
     "yaml": "^2.8.3"
   },
   "peerDependencies": {
@@ -121,6 +123,7 @@
     "@hello-pangea/dnd": "^18.0.1",
     "@playwright/experimental-ct-react": "^1.58.2",
     "@types/js-yaml": "^4.0.9",
+    "@types/mdast": "^4.0.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "eslint": "^9.0.0",

@@ -578,30 +578,42 @@ describe("getMarkdownImageReferences — basic collection", () => {
   });
 });
 
-describe("getMarkdownImageReferences — destination forms (renderer semantics)", () => {
-  test("keeps spaces within a bare path (renderer resolves them)", () => {
-    // Markdown.ct.tsx tests exactly this: `![](folder/my pic.jpg)` resolves to
-    // `.../folder/my%20pic.jpg`, so the space-bearing path is a real dependency.
-    const refs = getMarkdownImageReferences("![photo](folder/my pic.jpg)");
+describe("getMarkdownImageReferences — destination forms (CommonMark semantics)", () => {
+  // The enumerator parses the SAME CommonMark grammar the renderer uses (#576),
+  // so it reports the destination the renderer actually requests — titles
+  // stripped, `<…>` unwrapped, balanced parens kept, whitespace trimmed.
+
+  test("a bare (unescaped) space destination is NOT an image", () => {
+    // CommonMark stops a non-`<…>` destination at the first space, so
+    // `![photo](folder/my pic.jpg)` renders as literal text, not an image —
+    // the renderer requests nothing, so neither do we. Use `<…>` for spaces.
+    expect(getMarkdownImageReferences("![photo](folder/my pic.jpg)")).toEqual(
+      [],
+    );
+  });
+
+  test("an angle-bracket destination unwraps to the path (spaces allowed)", () => {
+    // Mirrors the renderer's space-in-path component test: `<folder/my pic.jpg>`
+    // resolves to `.../folder/my%20pic.jpg`, so the unwrapped path is the real
+    // dependency.
+    const refs = getMarkdownImageReferences("![a](<folder/my pic.jpg>)");
     expect(refs).toHaveLength(1);
     expect(refs[0].path).toBe("folder/my pic.jpg");
   });
 
-  test("matches bracketed alt text (allows `]` when not before `(`)", () => {
+  test("matches bracketed alt text (balanced `]` inside the label)", () => {
     const refs = getMarkdownImageReferences("![Figure [A]](images/a.png)");
     expect(refs).toHaveLength(1);
     expect(refs[0]).toMatchObject({ alt: "Figure [A]", path: "images/a.png" });
   });
 
-  test("reports a padded destination verbatim (renderer requests it padded)", () => {
-    // The renderer passes the raw capture to encodeAssetPath, so padded parens
-    // 404 at runtime — reporting the trimmed path would hide that break.
+  test("trims surrounding whitespace inside the parens", () => {
     const refs = getMarkdownImageReferences("![a](  images/x.png  )");
     expect(refs).toHaveLength(1);
-    expect(refs[0].path).toBe("  images/x.png  ");
+    expect(refs[0].path).toBe("images/x.png");
   });
 
-  test("a padded URL/scheme is still excluded (exclusion runs on a trimmed copy)", () => {
+  test("a padded URL/scheme is still excluded", () => {
     const md = [
       "![a](  https://cdn.example.com/x.png  )",
       "![b](  asset://kit/y.png  )",
@@ -610,19 +622,33 @@ describe("getMarkdownImageReferences — destination forms (renderer semantics)"
     expect(getMarkdownImageReferences(md)).toEqual([]);
   });
 
-  test("captures a title verbatim — titles are not a supported form", () => {
-    // The renderer's naive rewrite grabs everything up to the first `)` as the
-    // destination, so a titled image resolves to a missing file. Reporting the
-    // verbatim destination surfaces that (rather than hiding it by stripping).
+  test("strips a title — the destination is the path, not the whole capture", () => {
+    // A titled image now resolves against the asset base (the renderer parses
+    // the title out), so we report the clean path — not the old verbatim
+    // `images/x.png "My title"` that used to 404.
     const refs = getMarkdownImageReferences('![a](images/x.png "My title")');
-    expect(refs.map((r) => r.path)).toEqual(['images/x.png "My title"']);
+    expect(refs.map((r) => r.path)).toEqual(["images/x.png"]);
   });
 
-  test("captures an angle-bracket destination verbatim — also unsupported", () => {
-    // Stagebook's renderer resolves bare space paths (above), so `<…>` is
-    // unnecessary AND unsupported; the brackets land in the destination.
+  test("unwraps an angle-bracket destination", () => {
     const refs = getMarkdownImageReferences("![a](<my pic.png>)");
-    expect(refs.map((r) => r.path)).toEqual(["<my pic.png>"]);
+    expect(refs.map((r) => r.path)).toEqual(["my pic.png"]);
+  });
+
+  test("keeps balanced parens inside a bare destination", () => {
+    const refs = getMarkdownImageReferences("![a](image(1).png)");
+    expect(refs.map((r) => r.path)).toEqual(["image(1).png"]);
+  });
+
+  test("alt text may wrap across lines (still one image)", () => {
+    const refs = getMarkdownImageReferences(
+      "![alt spanning\ntwo lines](x.png)",
+    );
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({
+      alt: "alt spanning\ntwo lines",
+      path: "x.png",
+    });
   });
 });
 
@@ -741,10 +767,10 @@ describe("getMarkdownImageReferences — fenced code blocks", () => {
     ]);
   });
 
-  test("4+ spaces is an indented code block, not a fence (not tracked)", () => {
-    // A 4-space indent is a different construct; the `` ``` `` is literal code,
-    // so the fence never opens and the following image is still scanned. This
-    // pins the documented limitation.
+  test("4+ spaces is an indented code block, not a fence", () => {
+    // A 4-space indent is an indented code block, so the `` ``` `` lines are
+    // literal code and never open a fence; the unindented image line in between
+    // is an ordinary paragraph and is collected (correct CommonMark).
     const md = ["    ```", "![a](x.png)", "    ```"].join("\n");
     expect(getMarkdownImageReferences(md).map((r) => r.path)).toEqual([
       "x.png",
@@ -753,13 +779,15 @@ describe("getMarkdownImageReferences — fenced code blocks", () => {
 });
 
 describe("getMarkdownImageReferences — alt text and edge cases", () => {
-  test("captures alt text verbatim including punctuation and escaped brackets", () => {
+  test("captures alt text with punctuation; a `\\]` escape renders as `]`", () => {
+    // CommonMark resolves the escape, so the reported alt is the rendered text
+    // (`]`), matching what a screen reader would announce.
     const refs = getMarkdownImageReferences(
       '![Figure 1: "cats" \\] end](x.png)',
     );
     expect(refs).toHaveLength(1);
     expect(refs[0]).toMatchObject({
-      alt: 'Figure 1: "cats" \\] end',
+      alt: 'Figure 1: "cats" ] end',
       path: "x.png",
     });
   });
@@ -769,9 +797,9 @@ describe("getMarkdownImageReferences — alt text and edge cases", () => {
   });
 
   test("a very long alt (accessibility description) does not drop the image", () => {
-    // The linear scan imposes no length cap, so a paragraph-length alt still
-    // resolves its destination — the file is a real dependency regardless.
-    const longAlt = "A ".repeat(5000).trim();
+    // A paragraph-length alt (well under the body length cap) still resolves its
+    // destination — the file is a real dependency regardless of alt length.
+    const longAlt = "A ".repeat(2000).trim();
     const refs = getMarkdownImageReferences(`![${longAlt}](images/chart.png)`);
     expect(refs).toHaveLength(1);
     expect(refs[0]).toMatchObject({ alt: longAlt, path: "images/chart.png" });
@@ -790,23 +818,74 @@ describe("getMarkdownImageReferences — alt text and edge cases", () => {
   test("column of a second image accounts for a title on the first", () => {
     const md = '![a](x.png "t") ![b](y.png)';
     const refs = getMarkdownImageReferences(md);
-    // The first destination is captured verbatim up to the first `)`.
-    expect(refs.map((r) => r.path)).toEqual(['x.png "t"', "y.png"]);
+    // The first image's title is parsed out, so its path is the clean `x.png`.
+    expect(refs.map((r) => r.path)).toEqual(["x.png", "y.png"]);
     // `![a](x.png "t") ` is 16 chars, so the second image starts at column 16.
     expect(refs.map((r) => r.column)).toEqual([0, 16]);
   });
 });
 
-describe("getMarkdownImageReferences — documented non-goals", () => {
-  test("reference-style images are not matched", () => {
-    const md = ["![alt][ref]", "", "[ref]: real.png"].join("\n");
-    expect(getMarkdownImageReferences(md)).toEqual([]);
+describe("getMarkdownImageReferences — reference-style images", () => {
+  // The renderer (react-markdown) resolves reference-style images against their
+  // `[id]: url` definition, so the enumerator must too (#576 lockstep).
+
+  test("full reference `![alt][id]` resolves to its definition", () => {
+    const md = "![Figure 1][fig1]\n\n[fig1]: diagrams/figure1.png";
+    expect(getMarkdownImageReferences(md)).toEqual<MarkdownImageReference[]>([
+      { path: "diagrams/figure1.png", alt: "Figure 1", line: 0, column: 0 },
+    ]);
   });
 
+  test("collapsed `![id][]` and shortcut `![id]` resolve too", () => {
+    expect(
+      getMarkdownImageReferences("![fig][]\n\n[fig]: a.png").map((r) => r.path),
+    ).toEqual(["a.png"]);
+    expect(
+      getMarkdownImageReferences("![fig]\n\n[fig]: b.png").map((r) => r.path),
+    ).toEqual(["b.png"]);
+  });
+
+  test("reference matches its definition case-insensitively", () => {
+    // mdast normalizes identifiers, so `[Fig1]` resolves against `[fig1]:`.
+    const refs = getMarkdownImageReferences("![x][Fig1]\n\n[fig1]: c.png");
+    expect(refs.map((r) => r.path)).toEqual(["c.png"]);
+  });
+
+  test("first definition wins when an identifier is defined twice", () => {
+    const md = "![x][r]\n\n[r]: first.png\n\n[r]: second.png";
+    expect(getMarkdownImageReferences(md).map((r) => r.path)).toEqual([
+      "first.png",
+    ]);
+  });
+
+  test("an unresolved reference (no definition) is not matched", () => {
+    expect(getMarkdownImageReferences("![alt][missing]")).toEqual([]);
+  });
+
+  test("a reference whose definition is a URL/scheme is excluded", () => {
+    const md = "![a][r]\n\n[r]: https://cdn.example.com/x.png";
+    expect(getMarkdownImageReferences(md)).toEqual([]);
+  });
+});
+
+describe("getMarkdownImageReferences — documented non-goals", () => {
   test("raw <img> HTML is not matched (renderer loads no rehype-raw)", () => {
     expect(getMarkdownImageReferences('<img src="pic.png" alt="x">')).toEqual(
       [],
     );
+  });
+
+  test("an image inside an inline code span is not matched", () => {
+    // The image syntax is inside a `` `code span` ``, so it's literal text —
+    // the renderer shows it, doesn't request it. (A behavior the old scan
+    // couldn't see; the CommonMark parse excludes it for free.)
+    expect(getMarkdownImageReferences("Use `![a](x.png)` inline")).toEqual([]);
+  });
+
+  test("an image on a 4-space-indented (code block) line is not matched", () => {
+    // A 4-space indent is an indented code block, so `![a](x.png)` is literal
+    // code, not an image request.
+    expect(getMarkdownImageReferences("    ![a](x.png)")).toEqual([]);
   });
 
   test("excludes an uppercase ASSET:// scheme", () => {
@@ -820,6 +899,10 @@ describe("getMarkdownImageReferences — documented non-goals", () => {
     expect(getMarkdownImageReferences("![a](mailto:foo@example.com)")).toEqual(
       [],
     );
+  });
+
+  test("excludes a javascript: destination", () => {
+    expect(getMarkdownImageReferences("![a](javascript:alert(1))")).toEqual([]);
   });
 });
 
@@ -848,24 +931,59 @@ describe("getMarkdownImageReferences — line endings and positions", () => {
   });
 });
 
+describe("getMarkdownImageReferences — length guard", () => {
+  // remark/micromark has super-linear worst cases on adversarial input (most
+  // sharply its emphasis resolver on a `*_*_…` run). This runs server-side, so a
+  // length cap (well above any realistic prompt) bounds the parse. An over-cap
+  // body is not enumerated — an accepted false negative (enumeration is advisory;
+  // a missed image surfaces as a runtime 404, and the renderer would choke on the
+  // same oversized body regardless).
+
+  test("a body over the length cap yields [] even if it holds a valid image", () => {
+    const image = "\n![a](real.png)";
+    const md = "x".repeat(10_001 - image.length) + image;
+    expect(md.length).toBeGreaterThan(10_000);
+    expect(getMarkdownImageReferences(md)).toEqual([]);
+  });
+
+  test("a valid image in a body at the cap is still collected", () => {
+    const image = "\n\n![a](real.png)";
+    const md = "x".repeat(10_000 - image.length) + image;
+    expect(md.length).toBe(10_000);
+    expect(getMarkdownImageReferences(md).map((r) => r.path)).toEqual([
+      "real.png",
+    ]);
+  });
+});
+
 describe("getMarkdownImageReferences — resistance to adversarial input", () => {
-  // Each is a single untrusted line crafted to blow up a backtracking matcher:
-  // the `![…` repetitions give O(n) match-starts that each scan to end-of-line,
-  // so a regex is O(n²). The linear `indexOf` scan does one forward pass. All
-  // must finish near-instantly and find nothing.
+  // A real CommonMark parse handles the `![…`/`![](x…` multi-start patterns (that
+  // make a backtracking regex O(n²)) in near-linear time, and the length cap
+  // bounds remark's OWN super-linear cases — most sharply the emphasis resolver
+  // on a `*_*_…` run (unbounded, this hangs ~90s at 100 KB). Each oversized line
+  // below exceeds the cap, so the guard short-circuits before parsing.
   test.each([
     ["long whitespace run, no close", "![](x" + " ".repeat(100_000)],
     ["repeated `![` with no `]`", "![".repeat(80_000)],
-    ["repeated `![a` with no `]`", "![a".repeat(60_000)],
     ["repeated `![](x` with no `)`", "![](x".repeat(50_000)],
+    ["emphasis `*_` run (remark's worst case)", "*_".repeat(50_000)],
     ["`)` then many `![` starts", "](x)" + "![".repeat(80_000)],
-  ])("resolves quickly: %s", (_label, line) => {
+  ])("over-cap adversarial body resolves instantly: %s", (_label, line) => {
     const start = performance.now();
     const refs = getMarkdownImageReferences(line);
     const elapsedMs = performance.now() - start;
     expect(refs).toEqual([]);
-    // Linear matching finishes in well under a second; the uncapped quadratic
-    // took ~6-16s at these sizes.
     expect(elapsedMs).toBeLessThan(1000);
+  });
+
+  test("a large under-cap emphasis run stays bounded (the cap's whole point)", () => {
+    // `*_*_…` is remark's sharpest super-linear input. Sized well under the cap
+    // so the guard does NOT fire and the real parse runs; it must stay bounded.
+    const line = "*_".repeat(4_000); // 8_000 chars < the length cap
+    const start = performance.now();
+    const refs = getMarkdownImageReferences(line);
+    const elapsedMs = performance.now() - start;
+    expect(refs).toEqual([]);
+    expect(elapsedMs).toBeLessThan(3000);
   });
 });
