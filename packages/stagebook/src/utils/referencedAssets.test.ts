@@ -757,6 +757,15 @@ describe("getMarkdownImageReferences — alt text and edge cases", () => {
     expect(getMarkdownImageReferences("![a](   )")).toEqual([]);
   });
 
+  test("a very long alt (accessibility description) does not drop the image", () => {
+    // The linear scan imposes no length cap, so a paragraph-length alt still
+    // resolves its destination — the file is a real dependency regardless.
+    const longAlt = "A ".repeat(5000).trim();
+    const refs = getMarkdownImageReferences(`![${longAlt}](images/chart.png)`);
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({ alt: longAlt, path: "images/chart.png" });
+  });
+
   test("skips an escaped bang (\\![…] renders as literal text)", () => {
     expect(getMarkdownImageReferences("\\![a](missing.png)")).toEqual([]);
   });
@@ -829,10 +838,10 @@ describe("getMarkdownImageReferences — line endings and positions", () => {
 });
 
 describe("getMarkdownImageReferences — resistance to adversarial input", () => {
-  // Each is a single untrusted line crafted to blow up a backtracking matcher.
-  // Uncapped, the `![…` repetitions are O(n²) (every `![` is a match-start that
-  // scans to end-of-line); the {0,MAX} caps make the scan linear. All must
-  // finish near-instantly and find nothing.
+  // Each is a single untrusted line crafted to blow up a backtracking matcher:
+  // the `![…` repetitions give O(n) match-starts that each scan to end-of-line,
+  // so a regex is O(n²). The linear `indexOf` scan does one forward pass. All
+  // must finish near-instantly and find nothing.
   test.each([
     ["long whitespace run, no close", "![](x" + " ".repeat(100_000)],
     ["repeated `![` with no `]`", "![".repeat(80_000)],

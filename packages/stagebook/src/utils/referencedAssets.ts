@@ -126,38 +126,6 @@ export function collectAssetPrefixes(treatmentFile: unknown): string[] {
 // catches `data:` (common in markdown) and every other scheme.
 const URI_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 
-// Deliberately mirror the destination the RENDERER resolves rather than a
-// stricter CommonMark reading. `Markdown.tsx` rewrites images with the naive
-// `/!\[(.*?)\]\((.*?)\)/` — everything up to the first `]` is the alt, up to
-// the first `)` is the destination — then feeds that destination to the host
-// `resolveURL`. So the destination the study actually requests can contain
-// spaces (`![](my pic.jpg)`, a tested case) and a `]` can appear in the alt
-// (`![Figure [A]](a.png)`). To catch every file the renderer will request (and
-// thus every one that can 404), this pattern must be exactly that permissive —
-// a tighter regex would miss real dependencies. Titles and `<…>` angle
-// destinations are NOT special-cased: the renderer doesn't parse them out, so
-// they land in the destination verbatim (and, being unsupported, resolve to a
-// missing file — correctly surfaced rather than hidden).
-//   group 1 — alt: any run up to the `](` that opens the destination. `]` is
-//             allowed when not immediately followed by `(` (so bracketed alt
-//             text matches), matching the renderer's backtracking `.*?`.
-//   group 2 — destination: any run up to the first `)`.
-// Reference-style images (`![a][ref]`) and raw `<img>` HTML stay out of scope:
-// the renderer resolves neither (the Markdown component loads no `rehype-raw`).
-//
-// Both groups are length-capped ({0,MAX}) — NOT for correctness (no real path
-// or alt is that long) but to bound backtracking. Applied per line, a run of
-// `![![![…` gives O(n) match-start positions that each fail; an uncapped scan
-// makes that O(n²) (a ReDoS on an untrusted prompt body). The cap makes each
-// start O(MAX), so the whole scan is linear in the input. An over-long `data:`
-// URI that exceeds the cap simply doesn't match — harmless, since it's excluded
-// anyway.
-const MAX_IMAGE_SYNTAX_LEN = 1024;
-const MARKDOWN_IMAGE_PATTERN = new RegExp(
-  `!\\[((?:[^\\]\\n]|\\](?!\\()){0,${MAX_IMAGE_SYNTAX_LEN}})\\]\\(([^)\\n]{0,${MAX_IMAGE_SYNTAX_LEN}})\\)`,
-  "g",
-);
-
 /** One inline image reference found in a markdown body. */
 export interface MarkdownImageReference {
   /** The image destination path exactly as authored in the markdown. */
@@ -192,6 +160,19 @@ function isCollectableMarkdownImagePath(path: string): boolean {
  * (treatment-relative, CDN-root, …) is a consumer concern and deliberately
  * left out here, exactly as `getReferencedAssets` returns raw paths.
  *
+ * Mirrors what the RENDERER actually resolves rather than strict CommonMark:
+ * `Markdown.tsx` rewrites images with the naive `/!\[(.*?)\]\((.*?)\)/` — alt
+ * runs to the first `](`, the destination to the first `)` — then feeds that
+ * destination to the host `resolveURL`. This scan reproduces that exactly, so
+ * it catches every file the renderer will request (and thus every one that can
+ * 404): a bare path may contain spaces (`![](my pic.jpg)`, a tested renderer
+ * case) and a `]` may appear in the alt (`![Figure [A]](a.png)`). Titles and
+ * `<…>` angle destinations are NOT special-cased — the renderer doesn't parse
+ * them out, so they land in the destination verbatim (and, being unsupported,
+ * resolve to a missing file, which is then correctly surfaced). Reference-style
+ * images (`![a][ref]`) and raw `<img>` HTML stay out of scope: the renderer
+ * resolves neither (the Markdown component loads no `rehype-raw`).
+ *
  * Excludes the same non-local forms as `getReferencedAssets` (`${…}`
  * placeholders, `http(s)://`, protocol-relative `//`, `asset:`) plus every
  * other URI scheme (`data:`, `blob:`, …). Surrounding whitespace is trimmed
@@ -203,8 +184,16 @@ function isCollectableMarkdownImagePath(path: string): boolean {
  * - images inside fenced code blocks (```` ``` ```` or `~~~`, any info string,
  *   indented up to 3 spaces) — a fence closes only on a line of the same char
  *   at least as long as the opener, so a nested shorter fence doesn't end it.
- * Indented code blocks (4-space) and inline code spans are not tracked (a
- * `![](…)` inside a single-line `` `code span` `` is a rare false positive).
+ * Not tracked (rare, and each mirrors a renderer or block-parser edge we don't
+ * reproduce): images whose alt text WRAPS across lines (the renderer's own
+ * single-line rewrite regex also misses these, so they're already broken),
+ * fences nested inside a blockquote/list, 4-space indented code blocks, and
+ * `![](…)` inside a single-line `` `code span` ``.
+ *
+ * The scan is a linear `indexOf` walk (no backtracking regex, no length caps):
+ * a `![![![…` run — where a backtracking matcher retries from every `![` and
+ * goes O(n²) — costs one forward pass here, so an untrusted prompt body can't
+ * trigger a ReDoS, and a long accessibility alt never disqualifies its image.
  */
 export function getMarkdownImageReferences(
   markdown: unknown,
@@ -239,22 +228,37 @@ export function getMarkdownImageReferences(
       fence = { char: fenceMatch[1][0], len: fenceMatch[1].length };
       continue;
     }
-    // Module-level regex is reused across lines and calls — reset before each
-    // scan so a prior line's `lastIndex` can't skip the start of this one.
-    MARKDOWN_IMAGE_PATTERN.lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = MARKDOWN_IMAGE_PATTERN.exec(line)) !== null) {
-      // Skip an escaped bang (`\![…]`): an odd run of backslashes before the
-      // `!` escapes it, so CommonMark renders literal text — no image request.
+    let i = 0;
+    while (i < line.length) {
+      const bang = line.indexOf("![", i);
+      if (bang < 0) break;
+      // Shortest alt: the first `](` after the bang opens the destination.
+      const destOpen = line.indexOf("](", bang + 2);
+      // No `](` anywhere later on this line means no image can complete — the
+      // early break is what keeps a `![![![…` run linear instead of O(n²).
+      if (destOpen < 0) break;
+      // Shortest destination: up to the first `)` (matching the renderer's
+      // naive `.*?`, which stops there too).
+      const destClose = line.indexOf(")", destOpen + 2);
+      if (destClose < 0) break;
+      // Skip an escaped bang (`\![…]`): an odd backslash run before the `!`
+      // makes CommonMark render literal text — no image request.
       let backslashes = 0;
-      for (let k = match.index - 1; k >= 0 && line[k] === "\\"; k--) {
-        backslashes++;
+      for (let k = bang - 1; k >= 0 && line[k] === "\\"; k--) backslashes++;
+      if (backslashes % 2 === 0) {
+        const path = line.slice(destOpen + 2, destClose).trim();
+        if (isCollectableMarkdownImagePath(path)) {
+          results.push({
+            path,
+            alt: line.slice(bang + 2, destOpen),
+            line: lineNo,
+            column: bang,
+          });
+        }
       }
-      if (backslashes % 2 === 1) continue;
-      const alt = match[1] ?? "";
-      const path = (match[2] ?? "").trim();
-      if (!isCollectableMarkdownImagePath(path)) continue;
-      results.push({ path, alt, line: lineNo, column: match.index });
+      // Continue after this image's `)` — mirrors the renderer consuming the
+      // whole `![…](…)` (including an escaped one) before matching again.
+      i = destClose + 1;
     }
   }
   return results;
