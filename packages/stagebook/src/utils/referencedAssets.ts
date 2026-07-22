@@ -126,26 +126,37 @@ export function collectAssetPrefixes(treatmentFile: unknown): string[] {
 // catches `data:` (common in markdown) and every other scheme.
 const URI_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 
-// Inline CommonMark image: `![alt](destination "optional title")`.
-//   group 1 — alt text (may be empty; nested `[]` and newlines unsupported)
-//   group 2 — angle-bracket destination `<…>` (may contain spaces)
-//   group 3 — bare destination (whitespace- and `)`-terminated)
-// A trailing title (`"…"`, `'…'`, or `(…)`) is matched but discarded. This
-// mirrors the inline-image form the renderer actually resolves — `Markdown.tsx`
-// rewrites `![](…)` destinations through the host `resolveURL`. Reference-style
-// images (`![a][ref]`) and raw `<img>` HTML are intentionally out of scope:
-// the former isn't resolved by the renderer, the latter doesn't render at all
-// (the Markdown component loads no `rehype-raw`).
+// Deliberately mirror the destination the RENDERER resolves rather than a
+// stricter CommonMark reading. `Markdown.tsx` rewrites images with the naive
+// `/!\[(.*?)\]\((.*?)\)/` — everything up to the first `]` is the alt, up to
+// the first `)` is the destination — then feeds that destination to the host
+// `resolveURL`. So the destination the study actually requests can contain
+// spaces (`![](my pic.jpg)`, a tested case) and a `]` can appear in the alt
+// (`![Figure [A]](a.png)`). To catch every file the renderer will request (and
+// thus every one that can 404), this pattern must be exactly that permissive —
+// a tighter regex would miss real dependencies. Titles and `<…>` angle
+// destinations are NOT special-cased: the renderer doesn't parse them out, so
+// they land in the destination verbatim (and, being unsupported, resolve to a
+// missing file — correctly surfaced rather than hidden).
+//   group 1 — alt: any run up to the `](` that opens the destination. `]` is
+//             allowed when not immediately followed by `(` (so bracketed alt
+//             text matches), matching the renderer's backtracking `.*?`.
+//   group 2 — destination: any run up to the first `)`.
+// Reference-style images (`![a][ref]`) and raw `<img>` HTML stay out of scope:
+// the renderer resolves neither (the Markdown component loads no `rehype-raw`).
 //
-// The optional title is `(?:\s+(?:title))?` — the whitespace before the title
-// is REQUIRED and lives INSIDE the optional group, deliberately. Writing it as
-// two independent `\s*` runs (`…\s*(?:title)?\s*\)`) makes the whitespace
-// ambiguous between them, so an unterminated `![](x   …` line (no closing `)`)
-// backtracks in O(n²) — a ReDoS. Coupling the space to the title (per
-// CommonMark, a title must be whitespace-separated) leaves the trailing `\s*`
-// as the only run that can match the whitespace, so matching stays linear.
-const MARKDOWN_IMAGE_PATTERN =
-  /!\[((?:\\.|[^\]\\\n])*)\]\(\s*(?:<([^<>\n]*)>|([^\s)]+))(?:\s+(?:"[^"]*"|'[^']*'|\([^()]*\)))?\s*\)/g;
+// Both groups are length-capped ({0,MAX}) — NOT for correctness (no real path
+// or alt is that long) but to bound backtracking. Applied per line, a run of
+// `![![![…` gives O(n) match-start positions that each fail; an uncapped scan
+// makes that O(n²) (a ReDoS on an untrusted prompt body). The cap makes each
+// start O(MAX), so the whole scan is linear in the input. An over-long `data:`
+// URI that exceeds the cap simply doesn't match — harmless, since it's excluded
+// anyway.
+const MAX_IMAGE_SYNTAX_LEN = 1024;
+const MARKDOWN_IMAGE_PATTERN = new RegExp(
+  `!\\[((?:[^\\]\\n]|\\](?!\\()){0,${MAX_IMAGE_SYNTAX_LEN}})\\]\\(([^)\\n]{0,${MAX_IMAGE_SYNTAX_LEN}})\\)`,
+  "g",
+);
 
 /** One inline image reference found in a markdown body. */
 export interface MarkdownImageReference {
@@ -183,14 +194,17 @@ function isCollectableMarkdownImagePath(path: string): boolean {
  *
  * Excludes the same non-local forms as `getReferencedAssets` (`${…}`
  * placeholders, `http(s)://`, protocol-relative `//`, `asset:`) plus every
- * other URI scheme (`data:`, `blob:`, …). Non-string / empty input yields `[]`.
+ * other URI scheme (`data:`, `blob:`, …). Surrounding whitespace is trimmed
+ * (spaces WITHIN a path, e.g. `my pic.jpg`, are kept — the renderer resolves
+ * them). Non-string / empty input yields `[]`.
  *
- * Images inside fenced code blocks (```` ``` ```` or `~~~`, any info string)
- * are skipped — they render as code, not images, so they're not dependencies.
- * A fence closes only on a line of the same character, at least as long as the
- * opener (CommonMark), so a nested shorter fence doesn't end it early. Indented
- * code fences and inline code spans are not tracked (a `![](…)` inside a
- * single-line `` `code span` `` is a rare false positive).
+ * Not counted, because the renderer wouldn't render them as an image request:
+ * - a `\![…](…)` with an escaped bang (CommonMark renders literal text);
+ * - images inside fenced code blocks (```` ``` ```` or `~~~`, any info string,
+ *   indented up to 3 spaces) — a fence closes only on a line of the same char
+ *   at least as long as the opener, so a nested shorter fence doesn't end it.
+ * Indented code blocks (4-space) and inline code spans are not tracked (a
+ * `![](…)` inside a single-line `` `code span` `` is a rare false positive).
  */
 export function getMarkdownImageReferences(
   markdown: unknown,
@@ -204,7 +218,9 @@ export function getMarkdownImageReferences(
   let fence: { char: string; len: number } | null = null;
   for (let lineNo = 0; lineNo < lines.length; lineNo++) {
     const line = lines[lineNo];
-    const fenceMatch = /^(`{3,}|~{3,})/.exec(line);
+    // A fence may be indented up to 3 spaces (CommonMark); 4+ spaces is an
+    // indented code block, a different construct we don't track.
+    const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(line);
     if (fence) {
       // A closing fence is the same char, ≥ the opener's length, with nothing
       // but trailing whitespace after it (an info string is opener-only).
@@ -212,7 +228,7 @@ export function getMarkdownImageReferences(
         fenceMatch &&
         fenceMatch[1][0] === fence.char &&
         fenceMatch[1].length >= fence.len &&
-        line.slice(fenceMatch[1].length).trim() === ""
+        line.slice(fenceMatch[0].length).trim() === ""
       ) {
         fence = null;
       }
@@ -228,11 +244,15 @@ export function getMarkdownImageReferences(
     MARKDOWN_IMAGE_PATTERN.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = MARKDOWN_IMAGE_PATTERN.exec(line)) !== null) {
+      // Skip an escaped bang (`\![…]`): an odd run of backslashes before the
+      // `!` escapes it, so CommonMark renders literal text — no image request.
+      let backslashes = 0;
+      for (let k = match.index - 1; k >= 0 && line[k] === "\\"; k--) {
+        backslashes++;
+      }
+      if (backslashes % 2 === 1) continue;
       const alt = match[1] ?? "";
-      // Angle-bracket destination (group 2) wins when present; otherwise the
-      // bare destination (group 3). Trim stray whitespace the parens allowed.
-      const rawPath = match[2] !== undefined ? match[2] : match[3];
-      const path = (rawPath ?? "").trim();
+      const path = (match[2] ?? "").trim();
       if (!isCollectableMarkdownImagePath(path)) continue;
       results.push({ path, alt, line: lineNo, column: match.index });
     }

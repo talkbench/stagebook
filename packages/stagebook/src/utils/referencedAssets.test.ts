@@ -578,29 +578,40 @@ describe("getMarkdownImageReferences — basic collection", () => {
   });
 });
 
-describe("getMarkdownImageReferences — destination forms", () => {
-  test("strips a title after a bare destination", () => {
-    const refs = getMarkdownImageReferences('![a](images/x.png "My title")');
+describe("getMarkdownImageReferences — destination forms (renderer semantics)", () => {
+  test("keeps spaces within a bare path (renderer resolves them)", () => {
+    // Markdown.ct.tsx tests exactly this: `![](folder/my pic.jpg)` resolves to
+    // `.../folder/my%20pic.jpg`, so the space-bearing path is a real dependency.
+    const refs = getMarkdownImageReferences("![photo](folder/my pic.jpg)");
     expect(refs).toHaveLength(1);
-    expect(refs[0].path).toBe("images/x.png");
+    expect(refs[0].path).toBe("folder/my pic.jpg");
   });
 
-  test("handles an angle-bracket destination with a space", () => {
-    const refs = getMarkdownImageReferences("![a](<my pic.png>)");
+  test("matches bracketed alt text (allows `]` when not before `(`)", () => {
+    const refs = getMarkdownImageReferences("![Figure [A]](images/a.png)");
     expect(refs).toHaveLength(1);
-    expect(refs[0].path).toBe("my pic.png");
+    expect(refs[0]).toMatchObject({ alt: "Figure [A]", path: "images/a.png" });
   });
 
-  test("handles an angle-bracket destination followed by a title", () => {
-    const refs = getMarkdownImageReferences("![a](<my pic.png> 'cap')");
-    expect(refs).toHaveLength(1);
-    expect(refs[0].path).toBe("my pic.png");
-  });
-
-  test("trims whitespace around a bare destination inside the parens", () => {
+  test("trims surrounding whitespace inside the parens", () => {
     const refs = getMarkdownImageReferences("![a](  images/x.png  )");
     expect(refs).toHaveLength(1);
     expect(refs[0].path).toBe("images/x.png");
+  });
+
+  test("captures a title verbatim — titles are not a supported form", () => {
+    // The renderer's naive rewrite grabs everything up to the first `)` as the
+    // destination, so a titled image resolves to a missing file. Reporting the
+    // verbatim destination surfaces that (rather than hiding it by stripping).
+    const refs = getMarkdownImageReferences('![a](images/x.png "My title")');
+    expect(refs.map((r) => r.path)).toEqual(['images/x.png "My title"']);
+  });
+
+  test("captures an angle-bracket destination verbatim — also unsupported", () => {
+    // Stagebook's renderer resolves bare space paths (above), so `<…>` is
+    // unnecessary AND unsupported; the brackets land in the destination.
+    const refs = getMarkdownImageReferences("![a](<my pic.png>)");
+    expect(refs.map((r) => r.path)).toEqual(["<my pic.png>"]);
   });
 });
 
@@ -706,26 +717,31 @@ describe("getMarkdownImageReferences — fenced code blocks", () => {
     const md = ["```", "![a](x.png)", "still code, no close"].join("\n");
     expect(getMarkdownImageReferences(md)).toEqual([]);
   });
+
+  test("recognizes a fence indented up to 3 spaces", () => {
+    const md = [
+      "   ```markdown",
+      "   ![indented](images/nope.png)",
+      "   ```",
+      "![after](images/yes.png)",
+    ].join("\n");
+    expect(getMarkdownImageReferences(md).map((r) => r.path)).toEqual([
+      "images/yes.png",
+    ]);
+  });
+
+  test("4+ spaces is an indented code block, not a fence (not tracked)", () => {
+    // A 4-space indent is a different construct; the `` ``` `` is literal code,
+    // so the fence never opens and the following image is still scanned. This
+    // pins the documented limitation.
+    const md = ["    ```", "![a](x.png)", "    ```"].join("\n");
+    expect(getMarkdownImageReferences(md).map((r) => r.path)).toEqual([
+      "x.png",
+    ]);
+  });
 });
 
-describe("getMarkdownImageReferences — title forms and edge cases", () => {
-  test("strips a parenthesised title", () => {
-    const refs = getMarkdownImageReferences("![d](x.png (Figure 1))");
-    expect(refs.map((r) => r.path)).toEqual(["x.png"]);
-  });
-
-  test("a closing paren inside a title does not truncate the path", () => {
-    const refs = getMarkdownImageReferences(
-      '![chart](results.png "Results (final)")',
-    );
-    expect(refs.map((r) => r.path)).toEqual(["results.png"]);
-  });
-
-  test("an angle-bracket destination may contain both spaces and parens", () => {
-    const refs = getMarkdownImageReferences("![a](<screenshot (1).png>)");
-    expect(refs.map((r) => r.path)).toEqual(["screenshot (1).png"]);
-  });
-
+describe("getMarkdownImageReferences — alt text and edge cases", () => {
   test("captures alt text verbatim including punctuation and escaped brackets", () => {
     const refs = getMarkdownImageReferences(
       '![Figure 1: "cats" \\] end](x.png)',
@@ -741,10 +757,21 @@ describe("getMarkdownImageReferences — title forms and edge cases", () => {
     expect(getMarkdownImageReferences("![a](   )")).toEqual([]);
   });
 
+  test("skips an escaped bang (\\![…] renders as literal text)", () => {
+    expect(getMarkdownImageReferences("\\![a](missing.png)")).toEqual([]);
+  });
+
+  test("an even backslash run before the bang does NOT escape it", () => {
+    // `\\` is an escaped backslash, so the `!` is live and the image counts.
+    const refs = getMarkdownImageReferences("\\\\![a](real.png)");
+    expect(refs.map((r) => r.path)).toEqual(["real.png"]);
+  });
+
   test("column of a second image accounts for a title on the first", () => {
     const md = '![a](x.png "t") ![b](y.png)';
     const refs = getMarkdownImageReferences(md);
-    expect(refs.map((r) => r.path)).toEqual(["x.png", "y.png"]);
+    // The first destination is captured verbatim up to the first `)`.
+    expect(refs.map((r) => r.path)).toEqual(['x.png "t"', "y.png"]);
     // `![a](x.png "t") ` is 16 chars, so the second image starts at column 16.
     expect(refs.map((r) => r.column)).toEqual([0, 16]);
   });
@@ -802,16 +829,23 @@ describe("getMarkdownImageReferences — line endings and positions", () => {
 });
 
 describe("getMarkdownImageReferences — resistance to adversarial input", () => {
-  test("an unterminated image with a long whitespace run resolves quickly", () => {
-    // Regression guard for the quadratic-backtracking ReDoS: a single line
-    // `![](x` + a huge space run with no closing `)` must not blow up.
-    const line = "![](x" + " ".repeat(100_000);
+  // Each is a single untrusted line crafted to blow up a backtracking matcher.
+  // Uncapped, the `![…` repetitions are O(n²) (every `![` is a match-start that
+  // scans to end-of-line); the {0,MAX} caps make the scan linear. All must
+  // finish near-instantly and find nothing.
+  test.each([
+    ["long whitespace run, no close", "![](x" + " ".repeat(100_000)],
+    ["repeated `![` with no `]`", "![".repeat(80_000)],
+    ["repeated `![a` with no `]`", "![a".repeat(60_000)],
+    ["repeated `![](x` with no `)`", "![](x".repeat(50_000)],
+    ["`)` then many `![` starts", "](x)" + "![".repeat(80_000)],
+  ])("resolves quickly: %s", (_label, line) => {
     const start = performance.now();
     const refs = getMarkdownImageReferences(line);
     const elapsedMs = performance.now() - start;
     expect(refs).toEqual([]);
-    // Linear matching finishes in well under 100ms; the quadratic bug took
-    // ~16s at this size.
+    // Linear matching finishes in well under a second; the uncapped quadratic
+    // took ~6-16s at these sizes.
     expect(elapsedMs).toBeLessThan(1000);
   });
 });
