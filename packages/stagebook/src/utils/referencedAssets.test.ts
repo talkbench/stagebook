@@ -593,10 +593,21 @@ describe("getMarkdownImageReferences — destination forms (renderer semantics)"
     expect(refs[0]).toMatchObject({ alt: "Figure [A]", path: "images/a.png" });
   });
 
-  test("trims surrounding whitespace inside the parens", () => {
+  test("reports a padded destination verbatim (renderer requests it padded)", () => {
+    // The renderer passes the raw capture to encodeAssetPath, so padded parens
+    // 404 at runtime — reporting the trimmed path would hide that break.
     const refs = getMarkdownImageReferences("![a](  images/x.png  )");
     expect(refs).toHaveLength(1);
-    expect(refs[0].path).toBe("images/x.png");
+    expect(refs[0].path).toBe("  images/x.png  ");
+  });
+
+  test("a padded URL/scheme is still excluded (exclusion runs on a trimmed copy)", () => {
+    const md = [
+      "![a](  https://cdn.example.com/x.png  )",
+      "![b](  asset://kit/y.png  )",
+      "![c](   )",
+    ].join("\n");
+    expect(getMarkdownImageReferences(md)).toEqual([]);
   });
 
   test("captures a title verbatim — titles are not a supported form", () => {

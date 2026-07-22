@@ -175,9 +175,11 @@ function isCollectableMarkdownImagePath(path: string): boolean {
  *
  * Excludes the same non-local forms as `getReferencedAssets` (`${…}`
  * placeholders, `http(s)://`, protocol-relative `//`, `asset:`) plus every
- * other URI scheme (`data:`, `blob:`, …). Surrounding whitespace is trimmed
- * (spaces WITHIN a path, e.g. `my pic.jpg`, are kept — the renderer resolves
- * them). Non-string / empty input yields `[]`.
+ * other URI scheme (`data:`, `blob:`, …), evaluated on a whitespace-trimmed
+ * copy so a *padded* URL/scheme is still excluded. The reported `path` is the
+ * destination VERBATIM (surrounding whitespace kept) — the renderer requests
+ * exactly that, so padded parens resolve to a missing file that this then
+ * flags. Non-string / empty input yields `[]`.
  *
  * Not counted, because the renderer wouldn't render them as an image request:
  * - a `\![…](…)` with an escaped bang (CommonMark renders literal text);
@@ -246,8 +248,14 @@ export function getMarkdownImageReferences(
       let backslashes = 0;
       for (let k = bang - 1; k >= 0 && line[k] === "\\"; k--) backslashes++;
       if (backslashes % 2 === 0) {
-        const path = line.slice(destOpen + 2, destClose).trim();
-        if (isCollectableMarkdownImagePath(path)) {
+        // Report the destination VERBATIM — the renderer passes this exact
+        // substring to `encodeAssetPath`/`resolveURL`, so padded parens
+        // (`![](  x.png  )`) request `%20%20x.png%20%20` and 404. Reporting the
+        // trimmed `x.png` would validate a file the broken image never loads.
+        // The exclusion test runs on a TRIMMED copy so the anchored `^http(s)`
+        // / `^asset:` / empty checks still reject a *padded* URL or blank ref.
+        const path = line.slice(destOpen + 2, destClose);
+        if (isCollectableMarkdownImagePath(path.trim())) {
           results.push({
             path,
             alt: line.slice(bang + 2, destOpen),
