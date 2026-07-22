@@ -113,6 +113,17 @@ describe("resolveImageSrc", () => {
     );
   });
 
+  test("encodes a literal `%` that isn't a valid %XX escape", () => {
+    // react-markdown leaves an invalid escape (`50%off.png`) raw; without this
+    // the server would choke on `%of`. A valid `%XX` is still preserved.
+    expect(resolveImageSrc("50%off.png", base)).toBe(
+      "https://cdn.example.com/dir/50%25off.png",
+    );
+    expect(resolveImageSrc("100%25done.png", base)).toBe(
+      "https://cdn.example.com/dir/100%25done.png",
+    );
+  });
+
   test("does not double-encode a host's already-encoded base (#431)", () => {
     const resolved = resolveImageSrc(
       "images/test.png",

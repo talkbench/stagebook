@@ -231,7 +231,16 @@ export function computeSafeRel(
 // image destination is a raw FILE PATH, so these URI-structural characters must
 // be encoded or they corrupt the path once joined to the host base: `#` starts
 // a fragment, `?` a query, `+` decodes to a space on many servers, etc.
-const URL_TO_PATH_UNSAFE = /[#$&+,:;=?@]/g;
+//
+// Also matches a `%` that is NOT already part of a valid `%XX` escape, so a
+// literal percent in a filename (`50%off.png`) becomes `%25` instead of an
+// invalid escape. A `%` that DOES precede two hex digits is left alone — it's
+// react-markdown's own encoding of a space/non-ASCII char (`caf%C3%A9.png`) or
+// an author-written escape, so re-encoding it would double-encode (the #431
+// hazard). A filename whose literal name contains a `%XX`-shaped run is
+// therefore ambiguous and not distinguishable here — an accepted edge of
+// resolving on react-markdown's already-normalized `src` rather than raw text.
+const URL_TO_PATH_UNSAFE = /%(?![0-9A-Fa-f]{2})|[#$&+,:;=?@]/g;
 
 /**
  * Resolve an inline markdown image's `src` against the host's asset base.
