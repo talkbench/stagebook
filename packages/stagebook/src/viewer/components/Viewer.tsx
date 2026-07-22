@@ -15,7 +15,12 @@ import {
   useScrollAwareness,
   isRTLLocale,
 } from "../../components/index.js";
-import { buildUnits, initialUnitKey, type ViewerUnit } from "../lib/steps.js";
+import {
+  buildUnits,
+  initialUnitKey,
+  unitKindFromKey,
+  type ViewerUnit,
+} from "../lib/steps.js";
 import { ViewerStateStore } from "../lib/store.js";
 import { createViewerContext } from "../lib/context.js";
 import { useViewerHotkeys } from "../lib/hotkeys.js";
@@ -115,18 +120,6 @@ export function Viewer({
   const handleResetStage = useCallback(() => {
     setStageResetVersion((v) => v + 1);
   }, []);
-  // When the file changes, keep the current selection if it still exists —
-  // an in-place refresh (VS Code save, same study) must NOT yank the user off
-  // the intro they were previewing back to a treatment (#485 review). Only when
-  // the selected unit is gone (study swapped, or the researcher deleted it) do
-  // we fall back to the host's landing selection.
-  useEffect(() => {
-    setSelectedUnitKey((prev) =>
-      units.some((u) => u.key === prev)
-        ? prev
-        : initialUnitKey(units, selectedIntroIndex, selectedTreatmentIndex),
-    );
-  }, [treatmentFile, units, selectedIntroIndex, selectedTreatmentIndex]);
   const [position, setPosition] = useState(0);
   const [store] = useState(() => new ViewerStateStore());
   const stageContainerRef = useRef<HTMLDivElement | null>(null);
@@ -147,18 +140,28 @@ export function Viewer({
     }
   }, [steps.length, stageIndex]);
 
-  // Restart at the first step whenever the selected unit changes, and give the
-  // new unit a clean slate: submitted flags + elapsed time are keyed by numeric
-  // stageIndex, so without clearing them an intro's submitted[0] would make the
-  // treatment's first stage read as already-submitted (waiting overlay), and a
-  // stale participant `position` could exceed the new unit's playerCount
-  // (#485 review). The store wipe only fires on an actual unit switch — an
-  // in-place refresh keeps the same key, so saved responses persist as before.
+  // In-place refresh (VS Code save, same study): keep the current selection if
+  // it still exists — must NOT yank the user off the intro they were previewing
+  // back to a treatment (#485 review). Only when the selected unit is gone
+  // (study swapped, or the unit deleted) do we fall back to the host's landing
+  // selection — and since that's a genuinely different unit, give it a clean
+  // slate the same way selectUnit does (clear the store, restart at step 0).
   useEffect(() => {
+    if (units.some((u) => u.key === selectedUnitKey)) return;
+    store.clearAll();
     setStageIndex(0);
     setPosition(0);
-    store.clearAll();
-  }, [selectedUnitKey, store]);
+    setSelectedUnitKey(
+      initialUnitKey(units, selectedIntroIndex, selectedTreatmentIndex),
+    );
+  }, [
+    treatmentFile,
+    units,
+    selectedIntroIndex,
+    selectedTreatmentIndex,
+    selectedUnitKey,
+    store,
+  ]);
 
   // Subscribe to store changes so the UI re-renders.
   // The version is included in ctx memo deps below so that
@@ -204,6 +207,23 @@ export function Viewer({
   // <select> and the Alt+↑/↓ hotkey share one path.
   const selectUnit = useCallback(
     (key: string) => {
+      // Clear the mock store synchronously, BEFORE the re-render mounts the new
+      // unit's stage, so read-once elements (e.g. Timeline seeds its selections
+      // from the store once on mount, then owns them locally) initialize from an
+      // empty store rather than the previous unit's saved values. Deferring the
+      // wipe to an effect would clear AFTER the remount had already read the old
+      // store, leaking the prior treatment's state. (Mirrors the inspector's
+      // Reset-stage flow above: mutate the store, then force the remount.)
+      store.clearAll();
+      // Keep the current stage + participant only when comparing like with like
+      // (treatment↔treatment, intro↔intro) — the whole point of the picker.
+      // A cross-phase switch (e.g. treatment→intro) isn't a comparison, and a
+      // preserved deep index would open the new unit on its trailing transition,
+      // skipping its first authored step — so restart those at the beginning.
+      if (unitKindFromKey(key) !== unitKindFromKey(selectedUnitKey)) {
+        setStageIndex(0);
+        setPosition(0);
+      }
       setSelectedUnitKey(key);
       if (key.startsWith("treatment:")) {
         onTreatmentIndexChange?.(Number(key.slice("treatment:".length)));
@@ -211,7 +231,7 @@ export function Viewer({
         onIntroIndexChange?.(Number(key.slice("intro:".length)));
       }
     },
-    [onTreatmentIndexChange, onIntroIndexChange],
+    [store, selectedUnitKey, onTreatmentIndexChange, onIntroIndexChange],
   );
 
   // Unit keys in the order the <optgroup> picker shows them, so Alt+↑/↓ walks
@@ -487,7 +507,16 @@ export function Viewer({
               <div ref={stageContainerRef} style={stageContainerStyle}>
                 <StagebookProvider value={ctx}>
                   <Stage
-                    key={`stage-${String(stageIndex)}-${String(stageResetVersion)}`}
+                    // The unit key is part of the remount key so that switching
+                    // treatments at the SAME stage index still gives the stage a
+                    // fresh mount: read-once elements (e.g. Timeline seeds its
+                    // selections from the store once, then owns them) and the
+                    // StageConditionGate advance latch would otherwise survive
+                    // the switch and show the previous treatment's state over the
+                    // cleared store. (setStageIndex(0) used to force this
+                    // incidentally; now that we preserve the stage index for
+                    // cross-treatment comparison, we key on the unit explicitly.)
+                    key={`stage-${selectedUnitKey}-${String(stageIndex)}-${String(stageResetVersion)}`}
                     stage={stageConfig}
                     onSubmit={handleSubmit}
                     scrollMode="host"

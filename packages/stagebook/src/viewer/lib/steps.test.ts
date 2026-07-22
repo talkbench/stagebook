@@ -4,6 +4,7 @@ import {
   localeForPhase,
   buildUnits,
   initialUnitKey,
+  unitKindFromKey,
 } from "./steps.js";
 
 describe("flattenSteps", () => {
@@ -465,5 +466,27 @@ describe("initialUnitKey", () => {
 
   it("returns a treatment key as last resort when there are no units", () => {
     expect(initialUnitKey([], 0, 3)).toBe("treatment:3");
+  });
+});
+
+describe("unitKindFromKey", () => {
+  it("returns the phase prefix before the index", () => {
+    expect(unitKindFromKey("treatment:2")).toBe("treatment");
+    expect(unitKindFromKey("intro:0")).toBe("intro");
+    expect(unitKindFromKey("consent:1")).toBe("consent");
+  });
+
+  it("distinguishes same-phase from cross-phase switches", () => {
+    // Same kind → comparison (preserve stage); different kind → phase change.
+    expect(
+      unitKindFromKey("treatment:0") === unitKindFromKey("treatment:5"),
+    ).toBe(true);
+    expect(unitKindFromKey("treatment:0") === unitKindFromKey("intro:0")).toBe(
+      false,
+    );
+  });
+
+  it("returns the whole string when there is no index suffix", () => {
+    expect(unitKindFromKey("treatment")).toBe("treatment");
   });
 });
