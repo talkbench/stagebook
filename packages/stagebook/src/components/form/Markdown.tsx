@@ -1,6 +1,6 @@
 import React, { useId } from "react";
 import { useIsRTL } from "../StagebookProvider.js";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 export interface MarkdownProps {
@@ -254,13 +254,18 @@ const URL_TO_PATH_UNSAFE = /%(?![0-9A-Fa-f]{2})|[#$&+,:;=?@]/g;
  * react-markdown has also already applied its default URL sanitizer, so a
  * `javascript:` destination arrives here as `""`.
  *
- * Only genuinely relative paths are resolved:
+ * Path handling by kind:
+ * - `asset://…` is a platform reference the host resolves against its mounts —
+ *   route it through `resolveURL` (the webview's `buildAssetURL` maps a mounted
+ *   prefix to a loadable URL; an unmounted one comes back unchanged and renders
+ *   nothing). Our `urlTransform` preserves `asset://` past react-markdown's
+ *   sanitizer specifically so this can run — `asset://` body images are a
+ *   documented feature (apps/vscode/README.md).
  * - An absolute destination that survived react-markdown's URL sanitizer —
  *   `http(s):` or a protocol-relative `//host` — already points somewhere, so
- *   it passes through unchanged. (react-markdown strips schemes it deems unsafe,
- *   including `javascript:`, `data:`, and `asset:`, to `""` BEFORE this runs, so
- *   those arrive as `""` and render nothing — platform `asset://` references
- *   belong in an element's `file:` field, not a markdown body.)
+ *   it passes through unchanged. (react-markdown strips other unsafe schemes,
+ *   `javascript:` / `data:`, to `""` BEFORE this runs, so those arrive as `""`
+ *   and render nothing.)
  * - For a relative path, `src` is ALREADY `encodeURI`-encoded by react-markdown
  *   (spaces and non-ASCII → `%XX`), which is exactly what we want for those —
  *   re-encoding would double-encode the `%` (the #431 hazard). We only finish
@@ -282,9 +287,14 @@ export function resolveImageSrc(
   resolveURL: ((path: string) => string) | undefined,
 ): string | undefined {
   if (!resolveURL || typeof src !== "string" || src === "") return src;
-  // Absolute / scheme-prefixed / protocol-relative destinations aren't resolved
-  // against the asset base — they already point somewhere. (Any unsafe scheme
-  // was already stripped to "" upstream — see the SECURITY PRECONDITION above.)
+  // `asset://` is resolved against the host's mounts (unlike other schemes,
+  // which already point somewhere). `encodeAssetPath` is a no-op on a scheme
+  // URI, so pass it raw: mounted → a loadable `http(s)` webview URL; unmounted →
+  // the `asset://` comes back unchanged and renders nothing (the #191 intent).
+  if (/^asset:\/\//i.test(src)) return resolveURL(src);
+  // Other absolute / scheme-prefixed / protocol-relative destinations aren't
+  // resolved against the asset base — they already point somewhere. (Any unsafe
+  // scheme was already stripped to "" upstream — see the SECURITY PRECONDITION.)
   if (/^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//")) return src;
   const encodedPath = src.replace(
     URL_TO_PATH_UNSAFE,
@@ -475,6 +485,18 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
       >
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
+          // Preserve `asset://` through react-markdown's URL sanitizer so the
+          // `img` renderer can route it through the host `resolveURL` (mounted
+          // prefixes resolve via the webview's `buildAssetURL`). This is a
+          // DOCUMENTED contract — `asset://` images inside a prompt body resolve
+          // wherever a prefix is mounted (apps/vscode/README.md). Every other
+          // URL still goes through the default sanitizer, which zeroes
+          // `javascript:` / `data:` / other unsafe schemes. `asset://` is not a
+          // navigable/executable scheme, so preserving it (for a link href too)
+          // is safe.
+          urlTransform={(url) =>
+            /^asset:\/\//i.test(url) ? url : defaultUrlTransform(url)
+          }
           components={{
             h1: ({ node: _node, ...props }) => (
               <h1 style={h1Style} {...props} />

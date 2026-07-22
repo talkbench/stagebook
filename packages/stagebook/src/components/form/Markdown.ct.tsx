@@ -324,13 +324,14 @@ test("resolveURL: a javascript: destination is neutralized, never resolved", asy
   expect(src).not.toContain("example.com");
 });
 
-test("resolveURL: an asset:// markdown image is not resolved (renders empty)", async ({
+test("resolveURL: an asset:// markdown image resolves against the host mounts", async ({
   mount,
 }) => {
-  // react-markdown strips the `asset:` scheme (not in its safe-protocol list)
-  // to "" before the img component, so it renders empty rather than resolving
-  // against the CDN base. Platform `asset://` refs belong in an element's
-  // `file:` field, not a markdown body — this pins that intentional behavior.
+  // `asset://` images inside a prompt body are a documented feature (a mounted
+  // prefix resolves wherever it's used — apps/vscode/README.md). Our
+  // urlTransform preserves `asset://` past react-markdown's sanitizer so the img
+  // renderer hands it to resolveURL (the mock mirrors buildAssetURL, mapping the
+  // prefix to `<base>mount/…`). Regression guard for #576/#577, which dropped it.
   const component = await mount(
     <MockMarkdown
       text="![a](asset://kit/logo.png)"
@@ -338,8 +339,7 @@ test("resolveURL: an asset:// markdown image is not resolved (renders empty)", a
     />,
   );
   const src = (await component.locator("img").getAttribute("src")) ?? "";
-  expect(src).not.toContain("example.com");
-  expect(src).not.toContain("asset:");
+  expect(src).toBe("https://example.com/mount/logo.png");
 });
 
 test("a long `![`×N run renders as text without hanging (no regex ReDoS)", async ({

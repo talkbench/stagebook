@@ -143,12 +143,23 @@ describe("resolveImageSrc", () => {
     );
   });
 
-  test("other URI schemes (data:, asset:) → passed through unchanged", () => {
+  test("data: src → passed through unchanged (already absolute)", () => {
     const spy = (p: string) => `SHOULD_NOT_RESOLVE/${p}`;
     expect(resolveImageSrc("data:image/png;base64,AAAA", spy)).toBe(
       "data:image/png;base64,AAAA",
     );
-    expect(resolveImageSrc("asset://kit/logo.png", spy)).toBe(
+  });
+
+  test("asset:// src → routed through resolveURL (mounts resolve, unmounted passes through)", () => {
+    // A mounted prefix resolves to a loadable webview URL...
+    const mounted = (p: string) =>
+      p === "asset://kit/logo.png" ? "https://webview.example/kit/logo.png" : p;
+    expect(resolveImageSrc("asset://kit/logo.png", mounted)).toBe(
+      "https://webview.example/kit/logo.png",
+    );
+    // ...an unmounted prefix comes back unchanged (renders nothing, #191).
+    const unmounted = (p: string) => p;
+    expect(resolveImageSrc("asset://kit/logo.png", unmounted)).toBe(
       "asset://kit/logo.png",
     );
   });
