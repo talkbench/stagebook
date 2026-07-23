@@ -485,10 +485,10 @@ The platform must:
 
 - Provide a collaborative text editor
 - Sync edits in real-time across all participants
-- Support default text initialization
+- Render `defaultText` as **placeholder text only** — grey hint text that disappears once anyone types, matching non-shared open-response prompts. Do not seed it into the shared document; it must never appear in the saved/exported value.
 - Persist content for the stage duration
 
-**Services used in deliberation-empirica**: Etherpad
+**Services used**: Etherpad (deliberation-empirica); Yjs/CodeMirror coedit service (TalkBench runner)
 
 Provide via: `renderSharedNotepad(config)` on StagebookProvider.
 

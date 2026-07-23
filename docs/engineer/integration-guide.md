@@ -653,15 +653,21 @@ The `config` parameter is the full `discussion` object from the treatment YAML, 
 
 ### Shared Notepad
 
-Collaborative text editors (e.g., Etherpad) are used by `shared: true` open-response prompts. (The standalone `sharedNotepad` element type was removed in #250.)
+Collaborative text editors (e.g., a Yjs-backed CodeMirror, or Etherpad) are used by `shared: true` open-response prompts. (The standalone `sharedNotepad` element type was removed in #250.)
 
 ```typescript
 const context: StagebookContext = {
-  renderSharedNotepad: ({ padName }) => (
-    <EtherpadEmbed padName={padName} />
+  renderSharedNotepad: ({ padName, defaultText, rows }) => (
+    <YourCollaborativeEditor
+      padName={padName}
+      placeholder={defaultText}
+      rows={rows}
+    />
   ),
 };
 ```
+
+`defaultText` carries the prompt file's `> ` placeholder lines and is **placeholder-only**: render it as ephemeral hint text (e.g. a CodeMirror `placeholder()` extension) that disappears once anyone types. Do not seed it into the shared document — it is never part of the saved/exported value, matching how non-shared open-response prompts treat placeholder text.
 
 ### Progressive adoption
 

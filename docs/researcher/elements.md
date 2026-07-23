@@ -548,14 +548,21 @@ A collaborative text editor where multiple participants edit a single saved valu
 
 Where `prompts/group_notes.prompt.md` is a minimal openResponse file:
 
-```yaml
+```markdown
 ---
 type: openResponse
 ---
+
 # Group notes
 
 (Optional framing for the notepad goes in the body.)
+
+---
+
+> Start typing your group's notes here
 ```
+
+Placeholder text (the `> ` line) works exactly as in a non-shared open response: it appears as grey hint text inside the editor and disappears once anyone types. It is a hint only — it is never seeded into the shared document as starting text and is never part of the saved value.
 
 The host platform implements the collaborative semantics via the `renderSharedNotepad` context slot. The standalone `sharedNotepad` element type was removed in #250; shared prompts are the single path now.
 

@@ -40,7 +40,12 @@ interface StagebookContext {
 
   // Platform-provided renderers for service-coupled elements
   renderDiscussion?: (config: DiscussionType) => React.ReactNode;
-  renderSharedNotepad?: (config: { padName: string }) => React.ReactNode;
+  // defaultText is placeholder-only: hint text, never seeded content
+  renderSharedNotepad?: (config: {
+    padName: string;
+    defaultText?: string;
+    rows?: number;
+  }) => React.ReactNode;
   /** @deprecated pending removal once a module-reuse pattern lands */
   renderSurvey?: (config: {
     surveyName: string;
@@ -106,11 +111,11 @@ Stagebook provides `useTextContent(path)` — a hook that wraps `getTextContent`
 
 Some elements depend on external services. Stagebook validates config, manages layout, and handles conditional rendering — but the platform supplies the actual component:
 
-| Slot                  | When used                          | What the platform provides                           |
-| --------------------- | ---------------------------------- | ---------------------------------------------------- |
-| `renderDiscussion`    | Stage has `discussion` block       | Video call or text chat component                    |
+| Slot                  | When used                                                                                 | What the platform provides                           |
+| --------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `renderDiscussion`    | Stage has `discussion` block                                                              | Video call or text chat component                    |
 | `renderSurvey`        | `type: "survey"` element (deprecated — pending removal once a module-reuse pattern lands) | Survey UI component that calls `onComplete(results)` |
-| `renderSharedNotepad` | `shared: true` open-response prompt | Collaborative text editor                            |
+| `renderSharedNotepad` | `shared: true` open-response prompt                                                       | Collaborative text editor                            |
 
 All slots are optional. If not provided, the element renders nothing.
 

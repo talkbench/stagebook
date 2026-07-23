@@ -158,6 +158,11 @@ export interface StagebookContext {
    * Called by `prompt` elements with `shared: true` and an openResponse
    * prompt file. (The standalone `sharedNotepad` element type was removed
    * in #250 — shared prompts are now the single path.)
+   *
+   * `defaultText` is placeholder-ONLY: render it as ephemeral hint text
+   * that disappears once anyone types, matching non-shared open response.
+   * Never seed it into the shared document — it must not appear in the
+   * saved/exported value.
    */
   renderSharedNotepad?: (config: {
     padName: string;
