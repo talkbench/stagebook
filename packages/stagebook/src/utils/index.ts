@@ -16,4 +16,10 @@ export {
   collectAssetPrefixes,
   type ReferencedAsset,
 } from "./referencedAssets.js";
+// Kept in a separate module so its CommonMark parser can be tree-shaken from
+// bundles that don't enumerate markdown (see that file's header + #577).
+export {
+  getMarkdownImageReferences,
+  type MarkdownImageReference,
+} from "./markdownImageReferences.js";
 export { sanitizeName, deriveStorageKeyName } from "./deriveStorageKeyName.js";

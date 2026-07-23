@@ -1,8 +1,7 @@
 import React, { useId } from "react";
 import { useIsRTL } from "../StagebookProvider.js";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { encodeAssetPath } from "../../utils/encodeAssetPath.js";
 
 export interface MarkdownProps {
   text: string;
@@ -226,6 +225,99 @@ export function computeSafeRel(
   return rel ? `${rel} noopener noreferrer` : "noopener noreferrer";
 }
 
+// Characters that `encodeURIComponent` percent-encodes but CommonMark's URL
+// encoding (below) does NOT — i.e. `encodeURIComponent`'s set MINUS
+// `encodeURI`'s set, with `/` removed so path separators survive. A stagebook
+// image destination is a raw FILE PATH, so these URI-structural characters must
+// be encoded or they corrupt the path once joined to the host base: `#` starts
+// a fragment, `?` a query, `+` decodes to a space on many servers, etc.
+//
+// Also matches a `%` that is NOT already part of a valid `%XX` escape, so a
+// literal percent in a filename (`50%off.png`) becomes `%25` instead of an
+// invalid escape. A `%` that DOES precede two hex digits is left alone — it's
+// react-markdown's own encoding of a space/non-ASCII char (`caf%C3%A9.png`) or
+// an author-written escape, so re-encoding it would double-encode (the #431
+// hazard). A filename whose literal name contains a `%XX`-shaped run is
+// therefore ambiguous and not distinguishable here — an accepted edge of
+// resolving on react-markdown's already-normalized `src` rather than raw text.
+const URL_TO_PATH_UNSAFE = /%(?![0-9A-Fa-f]{2})|[#$&+,:;=?@]/g;
+
+/**
+ * Resolve an inline markdown image's `src` against the host's asset base.
+ *
+ * We resolve on the CommonMark AST rather than by pre-rewriting the raw text
+ * with a regex (the old approach, see #576): `react-markdown` hands us the
+ * parsed destination — titles (`![a](x.png "t")`), `<…>` angle-bracket paths,
+ * balanced parens (`image(1).png`), and wrapped alt text are all handled by
+ * remark — so every valid image form resolves, fenced-code / escaped-`\!`
+ * examples never get rewritten, and there is no untrusted-text regex to ReDoS.
+ * react-markdown has also already applied its default URL sanitizer, so a
+ * `javascript:` destination arrives here as `""`.
+ *
+ * Path handling by kind:
+ * - `asset://…` is a platform reference the host resolves against its mounts —
+ *   route it through `resolveURL` (the webview's `buildAssetURL` maps a mounted
+ *   prefix to a loadable URL; an unmounted one comes back unchanged and renders
+ *   nothing). Our `urlTransform` preserves `asset://` past react-markdown's
+ *   sanitizer specifically so this can run — `asset://` body images are a
+ *   documented feature (apps/vscode/README.md).
+ * - An absolute destination that survived react-markdown's URL sanitizer —
+ *   `http(s):` or a protocol-relative `//host` — already points somewhere, so
+ *   it passes through unchanged. (react-markdown strips other unsafe schemes,
+ *   `javascript:` / `data:`, to `""` BEFORE this runs, so those arrive as `""`
+ *   and render nothing.)
+ * - For a relative path, `src` is ALREADY `encodeURI`-encoded by react-markdown
+ *   (spaces and non-ASCII → `%XX`), which is exactly what we want for those —
+ *   re-encoding would double-encode the `%` (the #431 hazard). We only finish
+ *   the job by encoding the URI-structural characters react-markdown leaves
+ *   raw ({@link URL_TO_PATH_UNSAFE}) so the final result matches per-segment
+ *   `encodeURIComponent`, then hand that to the host's `resolveURL`. `/` and
+ *   the existing `%XX` are preserved, so the host's already-encoded base isn't
+ *   double-encoded either.
+ * - If the resolver returns something that isn't a fetchable `http(s):` /
+ *   `data:` URL, we fall back to the raw path rather than emit a surprising src.
+ *
+ * Exported for direct unit testing (same rationale as `computeSafeRel`). SECURITY
+ * PRECONDITION: the scheme-passthrough below is only safe because this always
+ * runs downstream of react-markdown's URL sanitizer (which has already zeroed
+ * dangerous schemes). Don't reuse it on unsanitized input.
+ */
+export function resolveImageSrc(
+  src: string | undefined,
+  resolveURL: ((path: string) => string) | undefined,
+): string | undefined {
+  if (!resolveURL || typeof src !== "string" || src === "") return src;
+  // `asset://` is resolved against the host's mounts (unlike other schemes,
+  // which already point somewhere): mounted → a loadable `http(s)` webview URL;
+  // unmounted → the `asset://` comes back unchanged and renders nothing (#191).
+  // react-markdown has ALREADY percent-encoded the src (`my pic.png` →
+  // `my%20pic.png`), but the mount resolver (`buildAssetURL` → `resolveAssetUrl`)
+  // re-encodes each path segment with `encodeURIComponent` — so recover the raw
+  // path first or it double-encodes (`%20` → `%2520`) and 404s. `decodeURI`
+  // reverses react-markdown's `encodeURI`; keep the raw src if it somehow isn't
+  // valid percent-encoding.
+  if (/^asset:\/\//i.test(src)) {
+    let rawAssetPath = src;
+    try {
+      rawAssetPath = decodeURI(src);
+    } catch {
+      // malformed escape — fall back to the src as-is
+    }
+    return resolveURL(rawAssetPath);
+  }
+  // Other absolute / scheme-prefixed / protocol-relative destinations aren't
+  // resolved against the asset base — they already point somewhere. (Any unsafe
+  // scheme was already stripped to "" upstream — see the SECURITY PRECONDITION.)
+  if (/^[a-z][a-z0-9+.-]*:/i.test(src) || src.startsWith("//")) return src;
+  const encodedPath = src.replace(
+    URL_TO_PATH_UNSAFE,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  const resolved = resolveURL(encodedPath);
+  if (!/^(?:https?:|data:)/i.test(resolved)) return src;
+  return resolved;
+}
+
 // Only `text-decoration: underline` stays inline — the base color
 // AND the `:hover` / `:focus-visible` / `:visited` overrides all
 // live in the scoped <style> block. Putting the base color inline
@@ -331,36 +423,6 @@ const taskListCheckboxCheckedStyle: React.CSSProperties = {
 
 export function Markdown({ text, resolveURL }: MarkdownProps) {
   const isRTL = useIsRTL();
-  let displayText = text;
-
-  // Rewrite relative image paths if a resolver is provided
-  if (resolveURL) {
-    displayText = text?.replace(
-      /!\[(.*?)\]\((.*?)\)/g,
-      (_match, alt: string, path: string) => {
-        // Skip absolute URLs
-        if (path.startsWith("http://") || path.startsWith("https://")) {
-          return `![${alt}](${path})`;
-        }
-        // Encode the markdown source path before handing it to the
-        // host's resolver — researchers write raw filesystem paths
-        // (`images/my pic.jpg`), while the host's resolver returns an
-        // already-encoded base. Encoding the resolved URL would
-        // double-encode the host's intentional `%XX` sequences
-        // (e.g. VS Code's `asWebviewUri` `%2B` → `%252B`). See #431.
-        const resolved = resolveURL(encodeAssetPath(path));
-        // Reject non-http protocols (e.g., javascript:)
-        if (
-          !resolved.startsWith("http://") &&
-          !resolved.startsWith("https://") &&
-          !resolved.startsWith("data:")
-        ) {
-          return `![${alt}](${path})`; // fall back to original path
-        }
-        return `![${alt}](${resolved})`;
-      },
-    );
-  }
 
   // Per-instance class for pseudo-class rules. The previous
   // `id="markdown"` was a duplicate-id bug on any page rendering
@@ -436,6 +498,21 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
       >
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
+          // Preserve `asset://` through react-markdown's URL sanitizer ONLY for
+          // an image `src` (`key === "src"`), so the `img` renderer can route it
+          // through the host `resolveURL` (mounted prefixes resolve via the
+          // webview's `buildAssetURL`). This is a DOCUMENTED contract —
+          // `asset://` images inside a prompt body resolve wherever a prefix is
+          // mounted (apps/vscode/README.md). A link `href` is NOT preserved: a
+          // `[text](asset://…)` link isn't resolved by the asset pipeline, so
+          // leaving it raw would navigate the webview to an unresolvable custom
+          // scheme on click — let the default sanitizer zero it (as it does
+          // `javascript:` / `data:` / other unsafe schemes) for every non-`src`.
+          urlTransform={(url, key) =>
+            key === "src" && /^asset:\/\//i.test(url)
+              ? url
+              : defaultUrlTransform(url)
+          }
           components={{
             h1: ({ node: _node, ...props }) => (
               <h1 style={h1Style} {...props} />
@@ -542,12 +619,13 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
             // Inline max-width keeps markdown-embedded images inside
             // the prompt container on any host, regardless of what
             // reset the host chose. See issue #211.
-            img: ({ node: _node, ...props }) => (
+            img: ({ node: _node, src, ...props }) => (
               <img
                 style={imgStyle}
                 loading="lazy"
                 decoding="async"
                 {...props}
+                src={resolveImageSrc(src, resolveURL)}
                 alt={props.alt ?? ""}
               />
             ),
@@ -592,7 +670,7 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
             },
           }}
         >
-          {displayText}
+          {text}
         </ReactMarkdown>
       </div>
     </>

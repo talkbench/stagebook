@@ -38,7 +38,11 @@ export interface ReferencedAsset {
   pathInTree: (string | number)[];
 }
 
-function isCollectableLocalPath(value: unknown): value is string {
+// Exported for `markdownImageReferences.ts` (kept in a separate module so its
+// CommonMark parser can be tree-shaken from bundles that don't enumerate
+// markdown — see that file's header). Not re-exported from the package barrel;
+// it's an internal predicate.
+export function isCollectableLocalPath(value: unknown): value is string {
   if (typeof value !== "string") return false;
   if (value.length === 0) return false;
   if (PLACEHOLDER_PATTERN.test(value)) return false;

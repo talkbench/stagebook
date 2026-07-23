@@ -13,5 +13,17 @@ export interface MockMarkdownProps {
 }
 
 export function MockMarkdown({ text, baseUrl }: MockMarkdownProps) {
-  return <Markdown text={text} resolveURL={(p) => baseUrl + p} />;
+  return (
+    <Markdown
+      text={text}
+      resolveURL={(p) =>
+        // Mirror the webview's `buildAssetURL`: an `asset://<prefix>/<rest>` URI
+        // resolves to a loadable URL (here `<base>mount/<rest>`), any other path
+        // joins onto the base. Lets a CT verify `asset://` body images resolve.
+        /^asset:\/\//i.test(p)
+          ? p.replace(/^asset:\/\/[^/]+\//i, `${baseUrl}mount/`)
+          : baseUrl + p
+      }
+    />
+  );
 }
