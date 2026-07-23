@@ -164,6 +164,27 @@ describe("resolveImageSrc", () => {
     );
   });
 
+  test("asset:// src is decoded before the mount resolver (no double-encoding)", () => {
+    // react-markdown pre-encodes the src (`my pic.png` → `my%20pic.png`); the
+    // real mount resolver (resolveAssetUrl) encodeURIComponent's each segment,
+    // so without decoding first the space would become `%2520` and 404. This
+    // mock mirrors resolveAssetUrl's per-segment encoding to catch that.
+    const mount = (p: string) => {
+      const rest = p.replace(/^asset:\/\/[^/]+\//i, "");
+      return (
+        "https://webview.example/mount/" +
+        rest.split("/").map(encodeURIComponent).join("/")
+      );
+    };
+    expect(resolveImageSrc("asset://kit/my%20pic.png", mount)).toBe(
+      "https://webview.example/mount/my%20pic.png",
+    );
+    // non-ASCII survives one round-trip too (café → caf%C3%A9, not %25C3%25A9)
+    expect(resolveImageSrc("asset://kit/caf%C3%A9.png", mount)).toBe(
+      "https://webview.example/mount/caf%C3%A9.png",
+    );
+  });
+
   test("protocol-relative //host src → passed through unchanged", () => {
     const spy = (p: string) => `SHOULD_NOT_RESOLVE/${p}`;
     expect(resolveImageSrc("//cdn.example.com/a.png", spy)).toBe(

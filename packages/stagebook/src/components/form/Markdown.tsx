@@ -288,10 +288,23 @@ export function resolveImageSrc(
 ): string | undefined {
   if (!resolveURL || typeof src !== "string" || src === "") return src;
   // `asset://` is resolved against the host's mounts (unlike other schemes,
-  // which already point somewhere). `encodeAssetPath` is a no-op on a scheme
-  // URI, so pass it raw: mounted → a loadable `http(s)` webview URL; unmounted →
-  // the `asset://` comes back unchanged and renders nothing (the #191 intent).
-  if (/^asset:\/\//i.test(src)) return resolveURL(src);
+  // which already point somewhere): mounted → a loadable `http(s)` webview URL;
+  // unmounted → the `asset://` comes back unchanged and renders nothing (#191).
+  // react-markdown has ALREADY percent-encoded the src (`my pic.png` →
+  // `my%20pic.png`), but the mount resolver (`buildAssetURL` → `resolveAssetUrl`)
+  // re-encodes each path segment with `encodeURIComponent` — so recover the raw
+  // path first or it double-encodes (`%20` → `%2520`) and 404s. `decodeURI`
+  // reverses react-markdown's `encodeURI`; keep the raw src if it somehow isn't
+  // valid percent-encoding.
+  if (/^asset:\/\//i.test(src)) {
+    let rawAssetPath = src;
+    try {
+      rawAssetPath = decodeURI(src);
+    } catch {
+      // malformed escape — fall back to the src as-is
+    }
+    return resolveURL(rawAssetPath);
+  }
   // Other absolute / scheme-prefixed / protocol-relative destinations aren't
   // resolved against the asset base — they already point somewhere. (Any unsafe
   // scheme was already stripped to "" upstream — see the SECURITY PRECONDITION.)
