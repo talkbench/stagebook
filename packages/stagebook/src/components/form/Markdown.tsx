@@ -485,17 +485,20 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
       >
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
-          // Preserve `asset://` through react-markdown's URL sanitizer so the
-          // `img` renderer can route it through the host `resolveURL` (mounted
-          // prefixes resolve via the webview's `buildAssetURL`). This is a
-          // DOCUMENTED contract — `asset://` images inside a prompt body resolve
-          // wherever a prefix is mounted (apps/vscode/README.md). Every other
-          // URL still goes through the default sanitizer, which zeroes
-          // `javascript:` / `data:` / other unsafe schemes. `asset://` is not a
-          // navigable/executable scheme, so preserving it (for a link href too)
-          // is safe.
-          urlTransform={(url) =>
-            /^asset:\/\//i.test(url) ? url : defaultUrlTransform(url)
+          // Preserve `asset://` through react-markdown's URL sanitizer ONLY for
+          // an image `src` (`key === "src"`), so the `img` renderer can route it
+          // through the host `resolveURL` (mounted prefixes resolve via the
+          // webview's `buildAssetURL`). This is a DOCUMENTED contract —
+          // `asset://` images inside a prompt body resolve wherever a prefix is
+          // mounted (apps/vscode/README.md). A link `href` is NOT preserved: a
+          // `[text](asset://…)` link isn't resolved by the asset pipeline, so
+          // leaving it raw would navigate the webview to an unresolvable custom
+          // scheme on click — let the default sanitizer zero it (as it does
+          // `javascript:` / `data:` / other unsafe schemes) for every non-`src`.
+          urlTransform={(url, key) =>
+            key === "src" && /^asset:\/\//i.test(url)
+              ? url
+              : defaultUrlTransform(url)
           }
           components={{
             h1: ({ node: _node, ...props }) => (

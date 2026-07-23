@@ -342,6 +342,22 @@ test("resolveURL: an asset:// markdown image resolves against the host mounts", 
   expect(src).toBe("https://example.com/mount/logo.png");
 });
 
+test("resolveURL: an asset:// LINK href is sanitized (not preserved like image src)", async ({
+  mount,
+}) => {
+  // The `asset://` passthrough is scoped to image `src` only. A link href isn't
+  // resolved by the asset pipeline, so leaving it raw would navigate the webview
+  // to an unresolvable scheme on click — the default sanitizer must zero it.
+  const component = await mount(
+    <MockMarkdown
+      text="[open](asset://external/form)"
+      baseUrl="https://example.com/"
+    />,
+  );
+  const href = (await component.locator("a").getAttribute("href")) ?? "";
+  expect(href).not.toContain("asset:");
+});
+
 test("a long `![`×N run renders as text without hanging (no regex ReDoS)", async ({
   mount,
 }) => {
