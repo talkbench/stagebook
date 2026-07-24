@@ -292,11 +292,11 @@ Requires StagebookProvider. Dispatches to the appropriate element component base
 
 ### Render Slots (platform-provided)
 
-| Slot                  | Config                       | When Used                                                                                 |
-| --------------------- | ---------------------------- | ----------------------------------------------------------------------------------------- |
-| `renderSurvey`        | `{ surveyName, onComplete }` | `type: "survey"` element (deprecated — pending removal once a module-reuse pattern lands) |
-| `renderDiscussion`    | Full `DiscussionType` config | Stage with `discussion` block                                                             |
-| `renderSharedNotepad` | `{ padName }`                | `shared: true` open-response prompt                                                       |
+| Slot                  | Config                             | When Used                                                                                                                               |
+| --------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `renderSurvey`        | `{ surveyName, onComplete }`       | `type: "survey"` element (deprecated — pending removal once a module-reuse pattern lands)                                               |
+| `renderDiscussion`    | Full `DiscussionType` config       | Stage with `discussion` block                                                                                                           |
+| `renderSharedNotepad` | `{ padName, defaultText?, rows? }` | `shared: true` open-response prompt. `defaultText` is placeholder-only: hint text, never seeded into the shared document or saved value |
 
 ### Conditional Components
 
