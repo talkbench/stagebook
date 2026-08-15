@@ -7,6 +7,11 @@ import * as validate from "./index.js";
 // extension's Validate-Workspace command (#442). Removing or renaming
 // any of these is a breaking change — surface it here instead of in a
 // downstream consumer's red squiggly.
+//
+// The host-facing analysis family (`checkPairing`, `getRequiredServices`,
+// `getTreatmentDurations` + their merge helpers) is listed too: its
+// consumers are the manager and the runner, which live in other repos, so
+// a rename here surfaces nowhere in this monorepo's own type-check.
 
 const EXPECTED_FUNCTIONS = [
   "validateTreatmentSource",
@@ -24,6 +29,11 @@ const EXPECTED_FUNCTIONS = [
   "remapErrorPath",
   "offsetToLineCol",
   "checkUnsatisfiableConditionsWithLoader",
+  "checkPairing",
+  "getRequiredServices",
+  "mergeRequiredServices",
+  "getTreatmentDurations",
+  "mergeTreatmentDurations",
 ] as const;
 
 describe("stagebook/validate public API", () => {

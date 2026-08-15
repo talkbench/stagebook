@@ -152,7 +152,7 @@ Expects **expanded** input (e.g. the output of `expandAndValidateWithImports` or
 
 ### `getRequiredServices(mergedFile, { loadPrompt })`
 
-Host provisioning primitive (#508): walk an expanded treatment and report which external services it requires, so a host provisions exactly those and nothing more. The third member of the host-facing analysis family alongside `getReferencedAssets` (→ asset mirror) and `checkPairing` (→ intro pairing).
+Host provisioning primitive (#508): walk an expanded treatment and report which external services it requires, so a host provisions exactly those and nothing more. One of the host-facing analysis family, alongside `getReferencedAssets` (→ asset mirror), `checkPairing` (→ intro pairing) and `getTreatmentDurations` (→ runtime bounds).
 
 ```typescript
 import {
@@ -195,6 +195,58 @@ Async because the coedit signal is **split across files**: `shared: true` lives 
 Expects a **fully hydrated** tree — imports merged **and** templates expanded (`fillTemplates` run), e.g. `parseTreatmentSource(...).data` or your own hydration pipeline. A merely import-merged tree (`loadAndMergeImports().merged`) is not enough: it still carries `templates:` definitions and unsubstituted `${...}` fields. Service triggers are read only from real DSL positions (`elements:` items and a stage's `discussion:` block), so an element-shaped object sitting in an opaque config bag (e.g. a discussion layout feed's `options`) is never mistaken for an element.
 
 **Keyed by arm.** A launch selects **(treatment set) × (one intro sequence) × (one consent arm)** — the treatment/intro axes are exactly `checkPairing`'s inputs; the top-level `consent:` collection (#481) is selected separately by `consentName`. A file that keeps pilot/control variants together can be provisioned for just the selected arms via `byTreatment` / `byIntroSequence` / `byConsent` + `mergeRequiredServices`, instead of the whole-file `overall` union (which over-provisions in the safe direction). `coedit`, `video` and `textChat` are game-stage-only, so they only ever surface under `byTreatment`; `externalSurvey` is the one need that can also come from an intro sequence or a consent arm (a Qualtrics consent/demographics step), which is why those are separate keyed axes. `overall` is a genuine whole-file walk (not merely the union of the maps), so stray or unnamed service-bearing content is still caught. `mergeRequiredServices(...services)` OR-combines any number of `RequiredServices` (skipping `undefined`, so an unknown arm key contributes nothing).
+
+### `getTreatmentDurations(hydratedFile)`
+
+Host bounds primitive (#585): **how long can this treatment run?** The fourth member of the host-facing analysis family. A host that provisions infrastructure has runtime bounds the design knows nothing about and must check the design against them — the runner creates a Daily room per game with a hard-coded one-hour `exp`, and nothing sums a treatment's stage durations against it, so a study longer than 60 minutes loses its room mid-session (talkbench/runner#542 §3).
+
+```typescript
+import {
+  getTreatmentDurations,
+  mergeTreatmentDurations,
+  type TreatmentDurationsReport,
+} from "stagebook/validate";
+
+const report: TreatmentDurationsReport = getTreatmentDurations(expandedFile);
+
+// Narrow to the launch's selection (treatments × intro sequence × consent
+// arm — the same selection you pass to checkPairing / getRequiredServices):
+const bound = mergeTreatmentDurations(
+  ...selectedTreatmentNames.map((t) => report.byTreatment[t]),
+  report.byIntroSequence[selectedIntroSequenceName],
+  report.byConsent[selectedConsentName],
+);
+
+// runner: size the call room to the game, plus slack, with the current
+// hour as a floor so nothing regresses.
+const roomExp = now + Math.max(3600, bound.gameSeconds + SLACK_SECONDS);
+
+// manager: participant time for payment estimation. The self-paced phases
+// carry no duration in the DSL (see below), so the host applies its own
+// per-step estimate to the counts.
+const participantSeconds =
+  bound.gameSeconds +
+  (bound.consentSteps + bound.introSteps + bound.exitSteps) * SECONDS_PER_STEP;
+```
+
+**Returns:** `TreatmentDurationsReport` — `{ overall, byTreatment, byIntroSequence, byConsent }`, where each value is a `TreatmentDurations`:
+
+| Field              | Meaning                                                                                                               |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `gameSeconds`      | Sum of `gameStages[].duration` in scope — the number a per-game resource's lifetime must cover                        |
+| `gameStages`       | How many game stages are in scope                                                                                     |
+| `unresolvedStages` | Game stages whose `duration` isn't a usable number (an unresolved `${field}`, or missing / non-finite / non-positive) |
+| `consentSteps`     | Self-paced steps in `consent[].steps`                                                                                 |
+| `introSteps`       | Self-paced steps in `introSequences[].introSteps`                                                                     |
+| `exitSteps`        | Self-paced steps in `treatments[].exitSequence` (debrief included — it's authored as the trailing exit steps, #481)   |
+
+**Upper bound, not a prediction.** A game stage ends early when every player submits, and a stage with `conditions:` may be skipped entirely — it still counts, because over-provisioning is the safe direction for a resource bound. Don't show these numbers to a participant as "how long this takes".
+
+**Only game stages are timed.** `duration` exists on exactly one node in the DSL: a game stage. Intro, exit and consent steps are self-paced — `introExitStepSchema` has no duration field — so no honest number can be summed for them. Rather than report a structurally-zero "intro seconds" a caller would read as "the intro is instant", they're reported as **counts** and the per-step estimate is left to the host, the only layer that has one. (Element-level `displayTime` / `hideTime` / `timer.endTime` inside a self-paced step are ignored: an element that appears at `t=60` implies the step lasts _at least_ 60s, and mixing a lower bound into an upper bound yields neither.)
+
+**Pure and synchronous** — unlike `getRequiredServices`, every duration is already in the treatment tree, so there is no loader to inject. Expects the same **fully hydrated** tree (imports merged **and** templates expanded); a merely import-merged tree still holds `${field}` placeholders where durations belong, and those land in `unresolvedStages` rather than being guessed at, so a non-zero `unresolvedStages` means `gameSeconds` is an under-count and the bound is unsafe. Accepts `unknown`; a non-object yields a zero report. Durations are read only from real DSL positions (an item of a `gameStages:` array), so a `duration` sitting in an opaque config bag — or a `mediaPlayer`'s `stepDuration`, or a `timer`'s `endTime` — can never inflate the bound.
+
+**Keyed by arm, and merged with `max`.** `mergeTreatmentDurations(...durations)` takes the field-wise **maximum** (skipping `undefined`; no arguments yields zeros) — max rather than sum because a launch's arms are alternatives a participant is assigned between, not phases they run in series. That stays correct across phases only because each phase is its own field: a consent arm contributes `consentSteps` and nothing else, so maxing them together never lets one phase mask another. For the same reason `overall` is the field-wise max over every arm in the file (including unnamed ones the keyed maps drop), **not** the whole-file union `getRequiredServices.overall` is — summing two arms' game stages would describe a session nobody runs and inflate the bound by a factor of the arm count.
 
 ## React Components
 
