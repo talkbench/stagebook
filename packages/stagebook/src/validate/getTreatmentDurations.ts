@@ -276,8 +276,28 @@ function countSteps(
   }
   for (const item of list) {
     acc[field] += 1;
-    if (!isRecord(item)) acc.unresolvedSteps += 1;
+    // A step position that is still a template invocation counts as one
+    // unit here, but a list-valued template (`contentType: exitSteps`) or
+    // a `broadcast:` fans it out into several — so the count is an
+    // under-count and has to say so.
+    if (!isRecord(item) || isTemplateInvocation(item)) acc.unresolvedSteps += 1;
   }
+}
+
+/**
+ * Is this node a surviving template invocation
+ * (`templateContextSchema` — `{ template, fields?, broadcast? }`)?
+ *
+ * `altTemplateContext` wraps every arm collection, every step list, and
+ * every stage, so any of those positions can still hold one in a merely
+ * import-merged tree. A stage invocation is already caught by having no
+ * numeric `duration`; a STEP invocation is not, because a step carries no
+ * required scalar to miss — `introExitStepSchema` is `.strict()` over
+ * name/notes/conditions/elements, so a `template:` key can only be an
+ * invocation, never a real step.
+ */
+function isTemplateInvocation(node: Record<string, unknown>): boolean {
+  return typeof node.template === "string";
 }
 
 /** Read the duration-bearing fields off one arm root. Which fields
@@ -312,8 +332,19 @@ function scanEntries(
   root: Record<string, unknown>,
   key: keyof typeof SCAN_ARM,
 ): { name: string | undefined; durations: TreatmentDurations }[] {
-  const list = Array.isArray(root[key]) ? (root[key] as unknown[]) : [];
-  return list.map((item) => {
+  const raw = root[key];
+  // The collection ITSELF is `altTemplateContext`-wrapped, so a merely
+  // import-merged tree can hold `treatments: {template: all_arms}` —
+  // present, schema-valid, and not an array. Reading that as "no arms"
+  // would hand back the same all-zero, all-clear report the un-hydrated
+  // guarantee exists to prevent, so scan one unread arm instead.
+  if (!Array.isArray(raw)) {
+    if (raw === undefined) return [];
+    const durations = zero();
+    SCAN_ARM[key](undefined, durations);
+    return [{ name: undefined, durations }];
+  }
+  return (raw as unknown[]).map((item) => {
     const durations = zero();
     SCAN_ARM[key](item, durations);
     return {

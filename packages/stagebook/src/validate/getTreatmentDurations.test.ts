@@ -312,6 +312,72 @@ describe("getTreatmentDurations", () => {
       });
     });
 
+    test("a whole-COLLECTION template invocation is flagged", () => {
+      // `treatmentsSchema` / `introSequencesSchema` / `consentSchema` are
+      // each `altTemplateContext`-wrapped, so the collection itself can
+      // be an invocation — present, schema-valid, and not an array.
+      const report = getTreatmentDurations({
+        treatments: { template: "all_arms" },
+        introSequences: { template: "all_intros" },
+        consent: { template: "all_consents" },
+      });
+      expect(report.overall.unresolvedStages).toBeGreaterThan(0);
+      expect(report.overall.unresolvedSteps).toBeGreaterThan(0);
+      expect(report.byTreatment).toEqual({});
+      expect(report.byIntroSequence).toEqual({});
+      expect(report.byConsent).toEqual({});
+    });
+
+    test("a step position that is a template invocation is flagged", () => {
+      // A list-valued template (`contentType: exitSteps`) or a
+      // `broadcast:` fans one position out into several, so counting it
+      // as a single resolved step would under-count in silence.
+      const report = getTreatmentDurations({
+        introSequences: [
+          {
+            name: "i",
+            introSteps: [step("real"), { template: "checks", fields: {} }],
+          },
+        ],
+        treatments: [
+          {
+            name: "t",
+            gameStages: [stage("a", 60)],
+            exitSequence: [
+              { template: "debrief", broadcast: { n: [1, 2, 3] } },
+            ],
+          },
+        ],
+      });
+      expect(report.byIntroSequence.i).toEqual({
+        ...ZERO,
+        introSteps: 2,
+        unresolvedSteps: 1,
+      });
+      expect(report.byTreatment.t).toEqual({
+        ...ZERO,
+        gameSeconds: 60,
+        gameStages: 1,
+        exitSteps: 1,
+        unresolvedSteps: 1,
+      });
+    });
+
+    test("a stage position that is a template invocation is flagged", () => {
+      // Already covered by having no numeric `duration`, but pin it —
+      // it's the same un-hydrated shape as the step case above.
+      const report = getTreatmentDurations({
+        treatments: [
+          { name: "t", gameStages: [{ template: "round", fields: {} }] },
+        ],
+      });
+      expect(report.byTreatment.t).toEqual({
+        ...ZERO,
+        gameStages: 1,
+        unresolvedStages: 1,
+      });
+    });
+
     test("an arm entry that isn't a record is flagged, not dropped", () => {
       // A YAML indentation slip nests a whole treatment one level deep.
       const report = getTreatmentDurations({
@@ -499,8 +565,10 @@ describe("getTreatmentDurations", () => {
       introSequences: [null, 7, { name: 5, introSteps: [step("a")] }],
       consent: [{ name: "c", steps: "not-an-array" }],
     });
-    // A non-array collection has no arms at all.
+    // A present-but-non-array collection supplies no selectable arm, but
+    // it is not "no arms" either — it scans as one unread arm.
     expect(report.byTreatment).toEqual({});
+    expect(report.overall.unresolvedStages).toBe(1);
     // Entries that can't supply a name are dropped from the keyed map
     // but still fold into `overall` — the over-estimating direction.
     expect(report.byIntroSequence).toEqual({});
