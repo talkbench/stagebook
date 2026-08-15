@@ -340,6 +340,9 @@ describe("getTreatmentDurations", () => {
       expect(report.byTreatment).toEqual({});
       expect(report.byIntroSequence).toEqual({});
       expect(report.byConsent).toEqual({});
+      // …and the maps being empty is itself reported, so a host that
+      // narrows by name can tell "no arms" from "arms I couldn't read".
+      expect(report.unnamedArms).toBe(3);
     });
 
     test("a step position that is a template invocation is flagged", () => {
@@ -418,6 +421,49 @@ describe("getTreatmentDurations", () => {
         exitSteps: 3,
         unresolvedExitSteps: 2,
       });
+    });
+  });
+
+  describe("unnamedArms guards the narrowed-merge path", () => {
+    test("is zero for a hydrated file where every arm is named", () => {
+      const report = getTreatmentDurations({
+        consent: [{ name: "irb", steps: [step("form")] }],
+        introSequences: [{ name: "en", introSteps: [step("a")] }],
+        treatments: [{ name: "control", gameStages: [stage("a", 600)] }],
+      });
+      expect(report.unnamedArms).toBe(0);
+    });
+
+    test("counts every entry the keyed maps drop", () => {
+      const report = getTreatmentDurations({
+        treatments: [
+          { name: "real", gameStages: [stage("a", 600)] },
+          { gameStages: [stage("a", 900)] }, // unnamed
+          { template: "std" }, // invocation — carries no name
+          [{ name: "nested", gameStages: [stage("a", 60)] }], // not a record
+        ],
+      });
+      expect(Object.keys(report.byTreatment)).toEqual(["real"]);
+      expect(report.unnamedArms).toBe(3);
+    });
+
+    test("it is the only signal a narrowing host gets for an unreadable arm", () => {
+      // The hazard: `overall` is correctly flagged, but a host that
+      // narrows by name looks up a key that was never added, and
+      // mergeTreatmentDurations skips `undefined` — so the narrowed
+      // bound comes back all-zero AND all-clear.
+      const report = getTreatmentDurations({
+        treatments: { template: "all_arms" },
+      });
+      expect(report.overall.unresolvedStages).toBe(1);
+
+      const narrowed = mergeTreatmentDurations(report.byTreatment.control);
+      expect(narrowed).toEqual(ZERO);
+      expect(narrowed.unresolvedStages).toBe(0);
+
+      // Nothing inside the merged value can reveal the problem, so the
+      // host has to consult the report itself.
+      expect(report.unnamedArms).toBeGreaterThan(0);
     });
   });
 
@@ -742,6 +788,7 @@ describe("over real hydrated example studies", () => {
     // Max over the arms, not the 360 sum.
     expect(report.overall.gameSeconds).toBe(270);
     expect(report.overall.unresolvedStages).toBe(0);
+    expect(report.unnamedArms).toBe(0);
     expect(report.overall.unresolvedConsentSteps).toBe(0);
     expect(report.overall.unresolvedIntroSteps).toBe(0);
     expect(report.overall.unresolvedExitSteps).toBe(0);

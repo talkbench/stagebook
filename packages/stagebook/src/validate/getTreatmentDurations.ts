@@ -162,6 +162,26 @@ export interface TreatmentDurationsReport {
    *  `consent:` collection, #481 — a launch axis selected by
    *  `consentName`). Only `consentSteps` can originate here. */
   byConsent: Record<string, TreatmentDurations>;
+  /**
+   * How many entries across the three collections have no usable string
+   * `name`, and so appear in `overall` but in NONE of the keyed maps
+   * above. An unnamed arm, a non-record entry, or — the case that
+   * matters — an arm or whole collection still held as a template
+   * invocation, which carries no `name` because
+   * `templateContextSchema` is `{ template, fields?, broadcast? }`.
+   *
+   * **Non-zero means the keyed maps are INCOMPLETE.** The per-arm
+   * `unresolved*` counters can't carry that warning: narrowing a launch
+   * looks up arms by name, an unreadable arm has no name to look up, so
+   * `byTreatment[selected]` is `undefined` and `mergeTreatmentDurations`
+   * skips it — handing back an all-zero, all-clear bound. Check this
+   * before trusting a narrowed merge. (`overall` is unaffected; it
+   * covers every entry regardless of name.)
+   *
+   * Zero for any fully hydrated file, since every arm the schema
+   * accepts carries a `name`.
+   */
+  unnamedArms: number;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -425,12 +445,16 @@ function scanEntries(
  * non-object yields a zero report and empty maps, mirroring the family's
  * tolerance of pre-schema input.
  *
- * Returns `{ overall, byTreatment, byIntroSequence, byConsent }`.
- * `overall` is the field-wise max over every arm (the worst case one
- * launch could produce); the keyed maps let a host narrow to the arms a
- * batch actually selects and combine them with `mergeTreatmentDurations`
- * — the treatment × intro selection is the same one it passes to
- * `checkPairing`, and consent is selected by `consentName`.
+ * Returns `{ overall, byTreatment, byIntroSequence, byConsent,
+ * unnamedArms }`. `overall` is the field-wise max over every arm (the
+ * worst case one launch could produce); the keyed maps let a host narrow
+ * to the arms a batch actually selects and combine them with
+ * `mergeTreatmentDurations` — the treatment × intro selection is the same
+ * one it passes to `checkPairing`, and consent is selected by
+ * `consentName`. A narrowing host must also check `unnamedArms`: an
+ * unreadable arm has no name to key on, so it reaches `overall` but not
+ * the maps, and a narrowed merge over missing keys would otherwise come
+ * back all-zero and all-clear.
  */
 export function getTreatmentDurations(
   hydratedFile: unknown,
@@ -465,12 +489,15 @@ export function getTreatmentDurations(
     return map;
   };
 
+  const allEntries = [...treatments, ...introSequences, ...consent];
   return {
-    overall: mergeTreatmentDurations(
-      ...[...treatments, ...introSequences, ...consent].map((e) => e.durations),
-    ),
+    overall: mergeTreatmentDurations(...allEntries.map((e) => e.durations)),
     byTreatment: keyed(treatments),
     byIntroSequence: keyed(introSequences),
     byConsent: keyed(consent),
+    // Report-level, because it is a fact about the MAPS rather than about
+    // any one arm: these entries have no name to be looked up by, so no
+    // per-arm counter could ever reach a host that narrows by name.
+    unnamedArms: allEntries.filter((e) => e.name === undefined).length,
   };
 }

@@ -209,6 +209,11 @@ import {
 
 const report: TreatmentDurationsReport = getTreatmentDurations(expandedFile);
 
+// Narrowing looks arms up BY NAME, and an unreadable arm has no name to
+// look up — so check this before trusting any narrowed merge, or a missing
+// key silently merges to an all-zero, all-clear bound.
+if (report.unnamedArms > 0) throw new Error("treatment is not hydrated");
+
 // Narrow to the launch's selection (treatments × intro sequence × consent
 // arm — the same selection you pass to checkPairing / getRequiredServices):
 const bound = mergeTreatmentDurations(
@@ -225,9 +230,12 @@ const roomExp = now + Math.max(3600, bound.gameSeconds + SLACK_SECONDS);
 
 // manager: participant time for payment estimation. The self-paced phases
 // carry no duration in the DSL (see below), so the host applies its own
-// per-step estimate to the counts — guarded by the same kind of flag.
+// per-step estimate to the counts. This consumes gameSeconds TOO, so it
+// guards on the stage flag as well as the three step flags — guard every
+// input the calculation actually reads.
 if (
-  bound.unresolvedConsentSteps +
+  bound.unresolvedStages +
+    bound.unresolvedConsentSteps +
     bound.unresolvedIntroSteps +
     bound.unresolvedExitSteps >
   0
@@ -238,7 +246,7 @@ const participantSeconds =
   (bound.consentSteps + bound.introSteps + bound.exitSteps) * SECONDS_PER_STEP;
 ```
 
-**Returns:** `TreatmentDurationsReport` — `{ overall, byTreatment, byIntroSequence, byConsent }`, where each value is a `TreatmentDurations`:
+**Returns:** `TreatmentDurationsReport` — `{ overall, byTreatment, byIntroSequence, byConsent, unnamedArms }`. The first four hold a `TreatmentDurations`:
 
 | Field                                                                     | Meaning                                                                                                                    |
 | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
@@ -259,6 +267,8 @@ const participantSeconds =
 **Pure and synchronous** — unlike `getRequiredServices`, every duration is already in the treatment tree, so there is no loader to inject. Accepts `unknown`; a non-object yields a zero report.
 
 **Un-hydrated input is flagged, never a silent zero.** Expects the same **hydrated** tree (imports merged **and** templates expanded) — but note that hydrated does _not_ mean fully resolved. `parseTreatmentSource` runs `fillTemplates({ allowUnresolved: true })` deliberately, so editor and preview surfaces can render a partially-authored file; its output is in-contract input here and may still carry `duration: "${stageLength}"`. That is why this **reports rather than throws** — refusing unresolved input would reject the recommended pipeline's own output — and why checking the flags is the caller's job rather than an optional nicety. The dangerous failure here is the quiet one: `altTemplateContext` wraps every arm collection, every step list and every stage, so a merely import-merged tree can hold a template _invocation_ at any of those levels — the whole collection (`treatments: {template: all_arms}`), one arm (`- template: std`), a list (`gameStages: {template: rounds}`), or a single position (`introSteps: [{template: checks}]`). A naive reader finds no durations, reports a clean zero, and lets a host compute `max(3600, 0 + slack)` — silently falling back to exactly the hard-coded hour this primitive exists to remove. A `broadcast:` invocation compounds it, fanning one position out into several units. So **every position that can't be read counts as one unit and raises the `unresolved*` counter for its phase**; nothing is dropped in silence. Check the flag for the number you are about to use.
+
+`unnamedArms` is the report-level counterpart, and a narrowing host must check it. The per-arm counters can't carry this warning: narrowing looks arms up by name, an unreadable arm has no name (`templateContextSchema` is `{ template, fields?, broadcast? }` — no `name`), so `byTreatment[selected]` is `undefined`, `mergeTreatmentDurations` skips it, and the narrowed bound comes back all-zero **and** all-clear. `overall` is unaffected — it covers every entry regardless of name — and `unnamedArms` is zero for any fully hydrated file, since every arm the schema accepts carries a `name`.
 
 Those counters are split **per phase** rather than aggregated into one `unresolvedSteps`, for the same reason every other field is: consent, intro and exit run in _series_ for one participant, so maxing a single shared counter across them would report `1` where three phases each hid a position. Keeping every field per-phase is what makes the field-wise `max` below exact rather than approximate.
 
