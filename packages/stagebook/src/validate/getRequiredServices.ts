@@ -1,10 +1,11 @@
 // Host primitive: analyze an expanded treatment for the external
 // services it requires (#508).
 //
-// `getRequiredServices` is the third member of the host-facing analysis
-// family stagebook ships alongside `getReferencedAssets` (→ asset
-// mirror) and `checkPairing` (→ intro pairing): walk the expanded
-// treatment tree, tell the host what infrastructure it must provision.
+// `getRequiredServices` is one of the host-facing analysis family
+// stagebook ships alongside `getReferencedAssets` (→ asset mirror),
+// `checkPairing` (→ intro pairing) and `getTreatmentDurations` (→
+// runtime bounds): walk the expanded treatment tree, tell the host what
+// infrastructure it must provision.
 //
 // A host that provisions study infrastructure (the manager) needs to
 // know which external services a treatment uses so it can spawn exactly
