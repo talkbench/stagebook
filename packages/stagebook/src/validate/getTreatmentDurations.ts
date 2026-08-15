@@ -308,12 +308,20 @@ function isTemplateInvocation(node: Record<string, unknown>): boolean {
  *  read, so it is flagged rather than dropped. */
 const SCAN_ARM = {
   treatments: (arm: unknown, acc: TreatmentDurations) => {
-    sumGameStages(isRecord(arm) ? arm.gameStages : undefined, acc);
+    // `exitSequence` is the one list the schema lets an arm omit, so
+    // "absent" normally means a genuine zero. That exemption is only
+    // safe on a RESOLVED treatment: a whole-arm template invocation has
+    // no raw `exitSequence` either, and its expansion may well add one —
+    // so honouring the exemption there would report `exitSteps: 0` with
+    // `unresolvedSteps: 0`, and a host checking only the step flag (the
+    // documented participant-time path) would trust the under-count.
+    const resolved = isRecord(arm) && !isTemplateInvocation(arm);
+    sumGameStages(resolved ? arm.gameStages : undefined, acc);
     countSteps(
-      isRecord(arm) ? arm.exitSequence : undefined,
+      resolved ? arm.exitSequence : undefined,
       acc,
       "exitSteps",
-      isRecord(arm),
+      resolved,
     );
   },
   introSequences: (arm: unknown, acc: TreatmentDurations) => {

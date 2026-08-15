@@ -263,9 +263,17 @@ describe("getTreatmentDurations", () => {
         ],
         treatments: [{ template: "std", fields: {} }],
       });
-      expect(report.overall.unresolvedStages).toBeGreaterThan(0);
-      expect(report.overall.gameStages).toBe(1);
-      expect(report.overall.gameSeconds).toBe(0);
+      // Both flags must fire. The expansion can add an `exitSequence`,
+      // so the absent raw one is NOT the schema's optional-list case —
+      // a host checking only `unresolvedSteps` would otherwise trust
+      // `exitSteps: 0`.
+      expect(report.overall).toEqual({
+        ...ZERO,
+        gameStages: 1,
+        unresolvedStages: 1,
+        exitSteps: 1,
+        unresolvedSteps: 1,
+      });
     });
 
     test("a whole-list template invocation is flagged", () => {
