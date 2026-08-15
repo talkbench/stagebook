@@ -375,16 +375,28 @@ function scanEntries(
  * Pure and synchronous — unlike `getRequiredServices`, every duration is
  * already in the treatment tree, so there is no loader to inject.
  *
- * Expects a fully HYDRATED tree — imports merged AND templates expanded
+ * Expects a HYDRATED tree — imports merged AND templates expanded
  * (`fillTemplates` run), e.g. `parseTreatmentSource(...).data` or the
- * host's own hydration pipeline. **Check `unresolvedStages` before
- * trusting `gameSeconds`** (and `unresolvedSteps` before trusting the
- * step counts): a merely import-merged tree still holds arms and stage
- * lists as template invocations, and every position this can't read is
- * counted and flagged rather than silently skipped — so an un-hydrated
- * input reports a visible shortfall instead of a clean-looking zero.
- * Accepts `unknown`; a non-object yields a zero report and empty maps,
- * mirroring the family's tolerance of pre-schema input.
+ * host's own hydration pipeline.
+ *
+ * **Check `unresolvedStages` before trusting `gameSeconds`** (and
+ * `unresolvedSteps` before trusting the step counts). That is not just a
+ * guard against being handed the wrong thing: hydrated does NOT mean
+ * fully resolved. `parseTreatmentSource` — the recommended entry point
+ * above — runs `fillTemplates({ allowUnresolved: true })` on purpose, so
+ * that editor and preview surfaces can render a partially-authored file.
+ * Its output is in-contract input here and can still carry
+ * `duration: "${stageLength}"`. That is also why this reports rather than
+ * throws: refusing unresolved input would reject the recommended
+ * pipeline's own output.
+ *
+ * So every position this can't read is counted and flagged rather than
+ * silently skipped, whether it came from a legitimate partial parse or
+ * from a caller who passed a merely import-merged tree (which still holds
+ * arms and stage lists as template invocations). Either way the shortfall
+ * is visible instead of a clean-looking zero. Accepts `unknown`; a
+ * non-object yields a zero report and empty maps, mirroring the family's
+ * tolerance of pre-schema input.
  *
  * Returns `{ overall, byTreatment, byIntroSequence, byConsent }`.
  * `overall` is the field-wise max over every arm (the worst case one
