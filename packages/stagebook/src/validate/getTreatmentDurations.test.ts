@@ -1,9 +1,14 @@
 import { describe, expect, test } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { load as loadYaml } from "js-yaml";
 import {
   getTreatmentDurations,
   mergeTreatmentDurations,
   type TreatmentDurations,
 } from "./getTreatmentDurations.js";
+import { expandAndValidateWithImports } from "./expandAndValidate.js";
 
 /**
  * `getTreatmentDurations` (#585) — the fourth host-facing analysis
@@ -11,6 +16,12 @@ import {
  * BOUND, so a host can size a runtime resource (the runner's Daily room
  * `exp`, talkbench/runner#542 §3) against the design instead of pinning
  * it to a guess.
+ *
+ * Two properties carry most of the risk and get the most tests here:
+ * the report must never silently read zero from an un-hydrated tree (a
+ * host would under-provision and lose the room mid-session), and it
+ * must never let author-controlled content outside a real DSL position
+ * inflate the bound.
  */
 
 const ZERO: TreatmentDurations = {
@@ -20,6 +31,7 @@ const ZERO: TreatmentDurations = {
   consentSteps: 0,
   introSteps: 0,
   exitSteps: 0,
+  unresolvedSteps: 0,
 };
 
 /** A minimal game stage. */
@@ -83,6 +95,16 @@ describe("getTreatmentDurations", () => {
       gameStages: 1,
       exitSteps: 2,
     });
+  });
+
+  test("an absent exitSequence is zero exit steps, not an unread one", () => {
+    // `exitSequence` is the one optional list — absent genuinely means
+    // no exit steps, so it must not raise the unresolved flag.
+    const report = getTreatmentDurations({
+      treatments: [{ name: "control", gameStages: [stage("a", 300)] }],
+    });
+    expect(report.byTreatment.control.exitSteps).toBe(0);
+    expect(report.byTreatment.control.unresolvedSteps).toBe(0);
   });
 
   test("counts intro steps under byIntroSequence only", () => {
@@ -161,7 +183,11 @@ describe("getTreatmentDurations", () => {
         },
       ],
     });
-    expect(report.byTreatment.branching.gameSeconds).toBe(900);
+    expect(report.byTreatment.branching).toEqual({
+      ...ZERO,
+      gameSeconds: 900,
+      gameStages: 2,
+    });
   });
 
   test("overall is the MAX across arms, never their sum", () => {
@@ -183,9 +209,9 @@ describe("getTreatmentDurations", () => {
     // A participant runs ONE treatment, so the file's worst case is the
     // longest arm — not 300 + 3600.
     expect(report.overall).toEqual({
+      ...ZERO,
       gameSeconds: 3600,
       gameStages: 2,
-      unresolvedStages: 0,
       consentSteps: 1,
       introSteps: 3,
       exitSteps: 1,
@@ -219,15 +245,137 @@ describe("getTreatmentDurations", () => {
     });
   });
 
-  test("a `duration` outside a gameStages position is never counted", () => {
-    // Position-scoped, like getRequiredServices: only an item of a
-    // `gameStages:` array is a stage. An opaque config bag that happens
-    // to carry `duration` is not.
+  describe("un-hydrated input is flagged, never a silent zero", () => {
+    // The failure that matters most: a host passes a merely
+    // import-merged tree, gets a clean-looking zero, and provisions for
+    // a study that actually runs an hour longer than the bound says.
+
+    test("a whole-arm template invocation is flagged", () => {
+      // `treatments: [{ template: … }]` is what a merely import-merged
+      // tree carries — no `gameStages` key at all.
+      const report = getTreatmentDurations({
+        templates: [
+          {
+            name: "std",
+            contentType: "treatment",
+            content: { name: "t", gameStages: [stage("a", 3600)] },
+          },
+        ],
+        treatments: [{ template: "std", fields: {} }],
+      });
+      expect(report.overall.unresolvedStages).toBeGreaterThan(0);
+      expect(report.overall.gameStages).toBe(1);
+      expect(report.overall.gameSeconds).toBe(0);
+    });
+
+    test("a whole-list template invocation is flagged", () => {
+      // `gameStages: { template: … }` — schema-valid via
+      // altTemplateContext, and not an array.
+      const report = getTreatmentDurations({
+        treatments: [{ name: "t", gameStages: { template: "rounds" } }],
+      });
+      expect(report.byTreatment.t).toEqual({
+        ...ZERO,
+        gameStages: 1,
+        unresolvedStages: 1,
+      });
+    });
+
+    test("an un-hydrated step list is flagged on every phase", () => {
+      const report = getTreatmentDurations({
+        introSequences: [{ name: "i", introSteps: { template: "s" } }],
+        consent: [{ name: "c", steps: "${consentSteps}" }],
+        treatments: [
+          {
+            name: "t",
+            gameStages: [stage("a", 60)],
+            exitSequence: { template: "s" },
+          },
+        ],
+      });
+      expect(report.byIntroSequence.i).toEqual({
+        ...ZERO,
+        introSteps: 1,
+        unresolvedSteps: 1,
+      });
+      expect(report.byConsent.c).toEqual({
+        ...ZERO,
+        consentSteps: 1,
+        unresolvedSteps: 1,
+      });
+      expect(report.byTreatment.t).toEqual({
+        ...ZERO,
+        gameSeconds: 60,
+        gameStages: 1,
+        exitSteps: 1,
+        unresolvedSteps: 1,
+      });
+    });
+
+    test("an arm entry that isn't a record is flagged, not dropped", () => {
+      // A YAML indentation slip nests a whole treatment one level deep.
+      const report = getTreatmentDurations({
+        treatments: [[{ name: "t", gameStages: [stage("a", 900)] }]],
+      });
+      expect(report.overall.unresolvedStages).toBe(1);
+      expect(report.byTreatment).toEqual({});
+    });
+
+    test("a non-record step position is flagged", () => {
+      const report = getTreatmentDurations({
+        treatments: [
+          {
+            name: "t",
+            gameStages: [stage("a", 60)],
+            exitSequence: [step("ok"), null, "junk"],
+          },
+        ],
+      });
+      expect(report.byTreatment.t).toEqual({
+        ...ZERO,
+        gameSeconds: 60,
+        gameStages: 1,
+        exitSteps: 3,
+        unresolvedSteps: 2,
+      });
+    });
+  });
+
+  test("author content outside a real DSL position never inflates the bound", () => {
+    // `discussion.layout.feeds[].options` is an open
+    // `z.record(z.string(), z.unknown())` bag sitting inside a GAME
+    // STAGE, so an author can put a key named `steps` / `introSteps` /
+    // `gameStages` in it. Reading fixed arm positions instead of hunting
+    // key names is what makes this structurally impossible.
     const report = getTreatmentDurations({
+      consent: [{ name: "irb", steps: [step("form")] }],
       treatments: [
         {
           name: "control",
-          gameStages: [stage("a", 300)],
+          gameStages: [
+            {
+              ...stage("s", 600),
+              discussion: {
+                chatType: "video",
+                layout: {
+                  feeds: [
+                    {
+                      source: { type: "self" },
+                      displayRegion: "main",
+                      options: {
+                        steps: [{ at: 0 }, { at: 1 }, { at: 2 }, { at: 3 }],
+                        introSteps: [{ at: 0 }],
+                        gameStages: [{ name: "fake", duration: 99999 }],
+                        // A prototype-chain key, which a `key in table`
+                        // lookup would have matched.
+                        constructor: [{ at: 0 }],
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          ],
           exitSequence: [
             {
               name: "wrap",
@@ -243,69 +391,125 @@ describe("getTreatmentDurations", () => {
     });
     expect(report.byTreatment.control).toEqual({
       ...ZERO,
-      gameSeconds: 300,
+      gameSeconds: 600,
       gameStages: 1,
       exitSteps: 1,
     });
+    expect(report.byConsent.irb.consentSteps).toBe(1);
+    expect(report.overall.consentSteps).toBe(1);
   });
 
-  test("survives a cyclic object graph (YAML anchors/aliases)", () => {
-    const cyclic: Record<string, unknown> = { name: "loop" };
-    cyclic.self = [cyclic];
+  test("gameSeconds stays finite and JSON-safe under an enormous sum", () => {
+    // `durationSchema` is `z.number().int().positive()` with no upper
+    // bound, and `Number.isInteger(1e308)` is true — so this file is
+    // schema-valid. An `Infinity` here would reach a host as `null`
+    // through JSON, and `now + Infinity` is a nonsense room expiry.
     const report = getTreatmentDurations({
       treatments: [
-        { name: "control", gameStages: [stage("a", 300)], notes: cyclic },
+        {
+          name: "overflow",
+          gameStages: [stage("a", 1e308), stage("b", 1e308)],
+        },
       ],
     });
-    expect(report.byTreatment.control.gameSeconds).toBe(300);
+    const { gameSeconds, unresolvedStages } = report.byTreatment.overflow;
+    expect(Number.isFinite(gameSeconds)).toBe(true);
+    expect(gameSeconds).toBeLessThanOrEqual(Number.MAX_SAFE_INTEGER);
+    expect(JSON.parse(JSON.stringify({ gameSeconds })).gameSeconds).toBe(
+      gameSeconds,
+    );
+    expect(unresolvedStages).toBeGreaterThan(0);
   });
 
-  test("a hostile arm name stays an ordinary enumerable key", () => {
-    const report = getTreatmentDurations({
-      treatments: [{ name: "__proto__", gameStages: [stage("a", 300)] }],
-    });
-    expect(Object.keys(report.byTreatment)).toEqual(["__proto__"]);
-    expect(report.byTreatment["__proto__"].gameSeconds).toBe(300);
-    expect(({} as Record<string, unknown>).gameSeconds).toBeUndefined();
-  });
-
-  test("duplicate arm names fold to the longer arm", () => {
+  test("a repeated object reference (a YAML alias) counts once per position", () => {
+    // js-yaml resolves an alias to the SAME object, so one stage object
+    // can occupy two positions. Each position is a real stage the
+    // participant runs, so both must count — this pins the sum against a
+    // refactor that dedupes by object identity.
+    const shared = stage("round", 600);
+    const sharedStep = step("wrap");
     const report = getTreatmentDurations({
       treatments: [
-        { name: "dup", gameStages: [stage("a", 300)] },
-        { name: "dup", gameStages: [stage("a", 900), stage("b", 60)] },
+        {
+          name: "aliased",
+          gameStages: [shared, shared],
+          exitSequence: [sharedStep, sharedStep],
+        },
       ],
     });
-    expect(report.byTreatment.dup).toEqual({
+    expect(report.byTreatment.aliased).toEqual({
       ...ZERO,
-      gameSeconds: 960,
+      gameSeconds: 1200,
       gameStages: 2,
+      exitSteps: 2,
     });
   });
 
-  test("malformed arm collections degrade to zeros rather than throwing", () => {
+  describe("keyed maps", () => {
+    test("a hostile arm name stays an ordinary enumerable key", () => {
+      const report = getTreatmentDurations({
+        treatments: [{ name: "__proto__", gameStages: [stage("a", 300)] }],
+      });
+      expect(Object.keys(report.byTreatment)).toEqual(["__proto__"]);
+      expect(report.byTreatment["__proto__"].gameSeconds).toBe(300);
+      expect(({} as Record<string, unknown>).gameSeconds).toBeUndefined();
+    });
+
+    test("an unset key reads undefined, not an inherited member", () => {
+      // The null prototype is load-bearing: with a plain `{}`,
+      // `byTreatment["constructor"]` would be a function, which
+      // mergeTreatmentDurations (guarding only on `!== undefined`) would
+      // fold into `Math.max(0, undefined)` — NaN in every field, and a
+      // NaN room expiry for the host.
+      const report = getTreatmentDurations({
+        treatments: [{ name: "real", gameStages: [stage("a", 300)] }],
+      });
+      expect(Object.getPrototypeOf(report.byTreatment)).toBeNull();
+      for (const key of ["constructor", "toString", "hasOwnProperty"]) {
+        expect(report.byTreatment[key]).toBeUndefined();
+        expect(mergeTreatmentDurations(report.byTreatment[key])).toEqual(ZERO);
+      }
+    });
+
+    test("duplicate arm names fold field-wise, not last-write-wins", () => {
+      // Crossing fixture: neither arm dominates on every field, so this
+      // fails for any "pick the longer arm wholesale" implementation.
+      const report = getTreatmentDurations({
+        treatments: [
+          { name: "dup", gameStages: [stage("a", 900)] },
+          {
+            name: "dup",
+            gameStages: [stage("a", 300)],
+            exitSequence: [step("x"), step("y")],
+          },
+        ],
+      });
+      expect(report.byTreatment.dup).toEqual({
+        ...ZERO,
+        gameSeconds: 900,
+        gameStages: 1,
+        exitSteps: 2,
+      });
+    });
+  });
+
+  test("malformed arm collections degrade rather than throwing", () => {
     const report = getTreatmentDurations({
       treatments: "not-an-array",
       introSequences: [null, 7, { name: 5, introSteps: [step("a")] }],
       consent: [{ name: "c", steps: "not-an-array" }],
     });
-    // The non-string-named intro sequence is dropped from the keyed map
-    // but still folds into `overall` — the over-estimating direction.
-    expect(report.overall).toEqual({ ...ZERO, introSteps: 1 });
+    // A non-array collection has no arms at all.
     expect(report.byTreatment).toEqual({});
+    // Entries that can't supply a name are dropped from the keyed map
+    // but still fold into `overall` — the over-estimating direction.
     expect(report.byIntroSequence).toEqual({});
-    expect(report.byConsent).toEqual({ c: ZERO });
-  });
-
-  test("reaches stages nested below the arm root", () => {
-    // The walk recurses through every value, so a stage list that sits
-    // under an unexpected wrapper key is still found.
-    const report = getTreatmentDurations({
-      treatments: [
-        { name: "wrapped", extra: { gameStages: [stage("a", 300)] } },
-      ],
+    expect(report.overall.introSteps).toBe(1);
+    expect(report.byConsent.c).toEqual({
+      ...ZERO,
+      consentSteps: 1,
+      unresolvedSteps: 1,
     });
-    expect(report.byTreatment.wrapped.gameSeconds).toBe(300);
   });
 });
 
@@ -327,6 +531,23 @@ describe("mergeTreatmentDurations", () => {
         { ...ZERO, gameSeconds: 900, gameStages: 4, exitSteps: 1 },
       ),
     ).toEqual({ ...ZERO, gameSeconds: 900, gameStages: 4, exitSteps: 3 });
+  });
+
+  test("an unresolved flag in any selected arm survives the merge", () => {
+    expect(
+      mergeTreatmentDurations(
+        { ...ZERO, gameSeconds: 900, gameStages: 1 },
+        { ...ZERO, gameStages: 1, unresolvedStages: 1 },
+        { ...ZERO, introSteps: 1, unresolvedSteps: 1 },
+      ),
+    ).toEqual({
+      ...ZERO,
+      gameSeconds: 900,
+      gameStages: 1,
+      unresolvedStages: 1,
+      introSteps: 1,
+      unresolvedSteps: 1,
+    });
   });
 
   test("the consumer launch-selection pattern", () => {
@@ -356,9 +577,9 @@ describe("mergeTreatmentDurations", () => {
       report.byConsent.irb,
     );
     expect(selected).toEqual({
+      ...ZERO,
       gameSeconds: 1800,
       gameStages: 2,
-      unresolvedStages: 0,
       consentSteps: 1,
       introSteps: 2,
       exitSteps: 1,
@@ -366,7 +587,67 @@ describe("mergeTreatmentDurations", () => {
 
     // The runner's use: size the call room to the game, plus slack, with
     // the current hour as a floor so nothing regresses.
+    expect(selected.unresolvedStages).toBe(0);
     const roomLifetime = Math.max(3600, selected.gameSeconds + 600);
     expect(roomLifetime).toBe(3600);
+  });
+});
+
+describe("over real hydrated example studies", () => {
+  // The rest of the suite builds trees by hand, which can't catch a
+  // mismatch between what fillTemplates EMITS and what this reads.
+  // prisoners-dilemma is the sharpest case in the repo: a
+  // `contentType: stages` template whose content is itself an array,
+  // invoked bare in one arm and with `broadcast:` in another.
+  const examplesRoot = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../../../examples",
+  );
+
+  const hydrate = async (relPath: string) => {
+    const fullPath = resolve(examplesRoot, relPath);
+    const rootDir = dirname(fullPath);
+    const result = await expandAndValidateWithImports({
+      source: readFileSync(fullPath, "utf8"),
+      loadImport: async (importPath) =>
+        readFileSync(resolve(rootDir, importPath), "utf8"),
+    });
+    expect(result.expandError).toBeNull();
+    return loadYaml(result.fullYaml);
+  };
+
+  test("prisoners-dilemma: a broadcast template expands into counted stages", async () => {
+    const report = getTreatmentDurations(
+      await hydrate("prisoners-dilemma/prisoners-dilemma.stagebook.yaml"),
+    );
+
+    expect(report.byTreatment["Prisoners Dilemma one-shot"]).toEqual({
+      ...ZERO,
+      gameSeconds: 90,
+      gameStages: 2,
+      exitSteps: 1,
+    });
+    // The same template, broadcast over three rounds.
+    expect(report.byTreatment["Prisoners Dilemma 3-round repeated"]).toEqual({
+      ...ZERO,
+      gameSeconds: 270,
+      gameStages: 6,
+      exitSteps: 1,
+    });
+    expect(report.byIntroSequence.orientation.introSteps).toBe(1);
+    // Max over the arms, not the 360 sum.
+    expect(report.overall.gameSeconds).toBe(270);
+    expect(report.overall.unresolvedStages).toBe(0);
+    expect(report.overall.unresolvedSteps).toBe(0);
+  });
+
+  test("component-gallery: a real study already outlives a one-hour room", async () => {
+    // The hazard #585 exists to surface is reachable with a file in this
+    // repo — the runner's hard-coded 3600s `exp` would expire mid-game.
+    const report = getTreatmentDurations(
+      await hydrate("component-gallery/component-gallery.stagebook.yaml"),
+    );
+    expect(report.overall.gameSeconds).toBeGreaterThan(3600);
+    expect(report.overall.unresolvedStages).toBe(0);
   });
 });

@@ -218,12 +218,15 @@ const bound = mergeTreatmentDurations(
 );
 
 // runner: size the call room to the game, plus slack, with the current
-// hour as a floor so nothing regresses.
+// hour as a floor so nothing regresses. Check the flag first — a non-zero
+// unresolvedStages means gameSeconds is an under-count (see below).
+if (bound.unresolvedStages > 0) throw new Error("treatment is not hydrated");
 const roomExp = now + Math.max(3600, bound.gameSeconds + SLACK_SECONDS);
 
 // manager: participant time for payment estimation. The self-paced phases
 // carry no duration in the DSL (see below), so the host applies its own
-// per-step estimate to the counts.
+// per-step estimate to the counts — guarded by the same kind of flag.
+if (bound.unresolvedSteps > 0) throw new Error("treatment is not hydrated");
 const participantSeconds =
   bound.gameSeconds +
   (bound.consentSteps + bound.introSteps + bound.exitSteps) * SECONDS_PER_STEP;
@@ -231,22 +234,31 @@ const participantSeconds =
 
 **Returns:** `TreatmentDurationsReport` — `{ overall, byTreatment, byIntroSequence, byConsent }`, where each value is a `TreatmentDurations`:
 
-| Field              | Meaning                                                                                                               |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `gameSeconds`      | Sum of `gameStages[].duration` in scope — the number a per-game resource's lifetime must cover                        |
-| `gameStages`       | How many game stages are in scope                                                                                     |
-| `unresolvedStages` | Game stages whose `duration` isn't a usable number (an unresolved `${field}`, or missing / non-finite / non-positive) |
-| `consentSteps`     | Self-paced steps in `consent[].steps`                                                                                 |
-| `introSteps`       | Self-paced steps in `introSequences[].introSteps`                                                                     |
-| `exitSteps`        | Self-paced steps in `treatments[].exitSequence` (debrief included — it's authored as the trailing exit steps, #481)   |
+| Field              | Meaning                                                                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gameSeconds`      | Sum of `gameStages[].duration` in scope — the number a per-game resource's lifetime must cover                                             |
+| `gameStages`       | How many game stages are in scope                                                                                                          |
+| `unresolvedStages` | Game stages that contributed no seconds — **non-zero means `gameSeconds` is an under-count and the bound is unsafe**                       |
+| `consentSteps`     | Self-paced steps in `consent[].steps`                                                                                                      |
+| `introSteps`       | Self-paced steps in `introSequences[].introSteps`                                                                                          |
+| `exitSteps`        | Self-paced steps in `treatments[].exitSequence` (debrief included — it's authored as the trailing exit steps, #481)                        |
+| `unresolvedSteps`  | The same flag for the three step counts — step positions whose contents couldn't be read. An absent (optional) `exitSequence:` is not one. |
 
 **Upper bound, not a prediction.** A game stage ends early when every player submits, and a stage with `conditions:` may be skipped entirely — it still counts, because over-provisioning is the safe direction for a resource bound. Don't show these numbers to a participant as "how long this takes".
 
+`gameSeconds` is always finite and JSON-safe: `durationSchema` sets no upper bound, so a schema-valid pair of enormous durations could otherwise sum to `Infinity` — which `JSON.stringify` hands a host as `null`, and `now + Infinity` is a nonsense expiry. Such a sum is clamped to `Number.MAX_SAFE_INTEGER` and flagged in `unresolvedStages` instead.
+
 **Only game stages are timed.** `duration` exists on exactly one node in the DSL: a game stage. Intro, exit and consent steps are self-paced — `introExitStepSchema` has no duration field — so no honest number can be summed for them. Rather than report a structurally-zero "intro seconds" a caller would read as "the intro is instant", they're reported as **counts** and the per-step estimate is left to the host, the only layer that has one. (Element-level `displayTime` / `hideTime` / `timer.endTime` inside a self-paced step are ignored: an element that appears at `t=60` implies the step lasts _at least_ 60s, and mixing a lower bound into an upper bound yields neither.)
 
-**Pure and synchronous** — unlike `getRequiredServices`, every duration is already in the treatment tree, so there is no loader to inject. Expects the same **fully hydrated** tree (imports merged **and** templates expanded); a merely import-merged tree still holds `${field}` placeholders where durations belong, and those land in `unresolvedStages` rather than being guessed at, so a non-zero `unresolvedStages` means `gameSeconds` is an under-count and the bound is unsafe. Accepts `unknown`; a non-object yields a zero report. Durations are read only from real DSL positions (an item of a `gameStages:` array), so a `duration` sitting in an opaque config bag — or a `mediaPlayer`'s `stepDuration`, or a `timer`'s `endTime` — can never inflate the bound.
+**Pure and synchronous** — unlike `getRequiredServices`, every duration is already in the treatment tree, so there is no loader to inject. Accepts `unknown`; a non-object yields a zero report.
+
+**Un-hydrated input is flagged, never a silent zero.** Expects the same **fully hydrated** tree (imports merged **and** templates expanded). The dangerous failure here is the quiet one: a merely import-merged tree still holds arms and stage lists as template _invocations_ (`- template: std`, or `gameStages: {template: rounds}`), and a naive reader would find no durations, report a clean zero, and let a host compute `max(3600, 0 + slack)` — silently falling back to exactly the hard-coded hour this primitive exists to remove. So **every position that can't be read counts as one unit and raises `unresolvedStages` / `unresolvedSteps`**; nothing is dropped in silence. Check those flags before trusting the numbers.
+
+**Reads fixed positions, does not search.** Each arm collection has one shape, so this reads named fields off the arm root (`treatments[]` → `gameStages` + `exitSequence`, `introSequences[]` → `introSteps`, `consent[]` → `steps`) rather than hunting those key names through the subtree. That is load-bearing rather than stylistic: `discussion.layout.feeds[].options` is an open `z.record(z.string(), z.unknown())` bag **inside a game stage**, so an author-controlled key named `steps` there would otherwise be counted as consent steps. Reading fixed positions makes that structurally impossible — as it does for a `duration` in a config bag, a `mediaPlayer`'s `stepDuration`, or a `timer`'s `endTime` — and drops the tree recursion (and its stack-depth ceiling) with it.
 
 **Keyed by arm, and merged with `max`.** `mergeTreatmentDurations(...durations)` takes the field-wise **maximum** (skipping `undefined`; no arguments yields zeros) — max rather than sum because a launch's arms are alternatives a participant is assigned between, not phases they run in series. That stays correct across phases only because each phase is its own field: a consent arm contributes `consentSteps` and nothing else, so maxing them together never lets one phase mask another. For the same reason `overall` is the field-wise max over every arm in the file (including unnamed ones the keyed maps drop), **not** the whole-file union `getRequiredServices.overall` is — summing two arms' game stages would describe a session nobody runs and inflate the bound by a factor of the arm count.
+
+Two caveats for hosts, both shared with `getRequiredServices`: an unknown arm name merges as `undefined` (contributing nothing), which is indistinguishable from a real arm with no game stages — assert the key exists before merging if you need to tell those apart. And the keyed maps are built with a null prototype so a schema-valid but hostile arm name like `__proto__` stays an ordinary enumerable key; copying one with `Object.assign({}, map)` re-introduces the hazard (use `{...map}` or a JSON round-trip instead).
 
 ## React Components
 

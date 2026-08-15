@@ -3,7 +3,7 @@
 // `getTreatmentDurations` is the fourth member of the host-facing
 // analysis family stagebook ships alongside `getReferencedAssets` (→
 // asset mirror), `checkPairing` (→ intro pairing) and
-// `getRequiredServices` (→ infrastructure): walk the expanded treatment
+// `getRequiredServices` (→ infrastructure): read the expanded treatment
 // tree, hand the host a fact about the design it would otherwise
 // re-derive itself.
 //
@@ -48,8 +48,31 @@
 // consumers — the runner sizes a call room, which is created at game
 // start, so intro time is irrelevant to it; the manager wants total
 // participant time for payment estimation. Keeping them apart lets one
-// walk serve both, and it is what makes the field-wise `max` in
+// read serve both, and it is what makes the field-wise `max` in
 // `mergeTreatmentDurations` correct for a launch selection (see below).
+//
+// READS FIXED POSITIONS, DOES NOT SEARCH. Each arm collection has
+// exactly one shape, so this reads named fields off the arm root —
+// `treatments[]` → `gameStages` + `exitSequence`, `introSequences[]` →
+// `introSteps`, `consent[]` → `steps` — rather than hunting those key
+// names through the subtree. That distinction is load-bearing, not
+// stylistic: `discussion.layout.feeds[].options` is an open
+// `z.record(z.string(), z.unknown())` bag inside a GAME STAGE, so an
+// author-controlled key named `steps` in a feed config would otherwise
+// be counted as consent steps. Reading fixed positions makes that
+// structurally impossible instead of merely untested, and drops the
+// recursion (and its cycle guard and stack-depth ceiling) with it.
+//
+// UN-HYDRATED INPUT IS FLAGGED, NEVER SILENTLY ZERO. The failure that
+// matters most here is the quiet one: a caller passes a merely
+// import-merged tree whose arms are still template INVOCATIONS
+// (`- template: std`), every list this reads is absent, and a
+// zero-everything report sails back. The runner would compute
+// `max(3600, 0 + slack)` and silently fall back to exactly the
+// hard-coded hour #585 exists to remove. So an arm position whose
+// contents can't be read counts as one unit AND raises the matching
+// `unresolvedStages` / `unresolvedSteps` flag: no position is ever
+// dropped in silence.
 
 /** Everything the DSL can tell a host about one scope's length. All
  *  values are UPPER BOUNDS (see the file header). */
@@ -59,19 +82,24 @@ export interface TreatmentDurations {
    * every `gameStages[].duration` in scope. This is the number a
    * per-game runtime resource must cover — the runner's Daily room
    * `exp`, which is stamped at game start (talkbench/runner#542 §3).
-   * Zero for an intro sequence or consent arm, which host no game
-   * stages.
+   * Always zero for an intro sequence or consent arm; neither hosts
+   * game stages. Guaranteed finite and JSON-safe: a sum that would
+   * exceed `Number.MAX_SAFE_INTEGER` is clamped there and flagged in
+   * `unresolvedStages` rather than escaping as `Infinity` (which
+   * `JSON.stringify` would hand a host as `null`).
    */
   gameSeconds: number;
-  /** How many game stages are in scope (whether or not their duration
-   *  was usable). */
+  /** How many game stages are in scope, whether or not each one's
+   *  duration could be read. */
   gameStages: number;
   /**
-   * Game stages in scope whose `duration` is not a usable number — an
-   * unresolved `${field}` placeholder in un-expanded input, or a
-   * missing / non-finite / non-positive value. They contribute 0
-   * seconds, so a non-zero count means `gameSeconds` is an UNDER-count
-   * and the host should treat the bound as unsafe rather than trust it.
+   * Game stages in scope that contributed no seconds — a `duration`
+   * that is an unresolved `${field}` placeholder, missing, non-finite
+   * or non-positive; a stage position that isn't a record at all; or a
+   * whole `gameStages:` list that is still a template invocation rather
+   * than an array. **A non-zero value means `gameSeconds` is an
+   * UNDER-count and the bound is unsafe** — check it before sizing
+   * anything off `gameSeconds`.
    */
   unresolvedStages: number;
   /** Consent steps in scope (`consent[].steps`). Self-paced — the DSL
@@ -83,6 +111,15 @@ export interface TreatmentDurations {
    *  Includes debrief steps, which are authored as the trailing exit
    *  steps (#481). */
   exitSteps: number;
+  /**
+   * Self-paced step positions in scope whose contents couldn't be read —
+   * a step list still held as a template invocation, or a step position
+   * that isn't a record. The `unresolvedStages` analogue for the three
+   * step counts: non-zero means they are under-counts. (An absent
+   * `exitSequence:` is not counted — the schema makes it optional, so a
+   * treatment without one genuinely has zero exit steps.)
+   */
+  unresolvedSteps: number;
 }
 
 export interface TreatmentDurationsReport {
@@ -126,6 +163,7 @@ function zero(): TreatmentDurations {
     consentSteps: 0,
     introSteps: 0,
     exitSteps: 0,
+    unresolvedSteps: 0,
   };
 }
 
@@ -145,7 +183,8 @@ function zero(): TreatmentDurations {
  * across phases only because each phase is its own field: a consent arm
  * contributes `consentSteps` and nothing else, an intro sequence
  * `introSteps` and nothing else, so maxing them together never lets one
- * phase mask another.
+ * phase mask another. The `unresolved*` flags ride along the same way —
+ * non-zero in any selected arm stays non-zero in the result.
  *
  * Undefined entries (an unknown arm name) are skipped, so a missing key
  * contributes nothing rather than throwing; no arguments yields zeros.
@@ -165,83 +204,105 @@ export function mergeTreatmentDurations(
     consentSteps: max((d) => d.consentSteps),
     introSteps: max((d) => d.introSteps),
     exitSteps: max((d) => d.exitSteps),
+    unresolvedSteps: max((d) => d.unresolvedSteps),
   };
 }
 
-/** The DSL key a list of timed/self-paced units sits under → the field
- *  its members count toward. Single source of truth for the walk; a new
- *  phase collection is one row here. */
-const STEP_LIST_KEYS: Record<
-  string,
-  "consentSteps" | "introSteps" | "exitSteps"
-> = {
-  // `steps:` is the consent arm's list; no other DSL node uses it.
-  steps: "consentSteps",
-  introSteps: "introSteps",
-  exitSequence: "exitSteps",
-};
-
-/** Add one `gameStages:` item's duration, or record it as unresolved.
- *  Only a finite, positive number is usable: a `${field}` placeholder
- *  survives un-expanded input as a string, and a non-positive or
- *  non-finite value would corrupt the sum in the UNSAFE direction. */
-function countStage(node: unknown, acc: TreatmentDurations): void {
-  acc.gameStages += 1;
-  const duration = isRecord(node) ? node.duration : undefined;
-  if (
-    typeof duration === "number" &&
-    Number.isFinite(duration) &&
-    duration > 0
-  ) {
-    acc.gameSeconds += duration;
-  } else {
+/**
+ * Sum one `gameStages:` list into the accumulator.
+ *
+ * A stage contributes seconds only when its `duration` is a positive,
+ * finite number: a `${field}` placeholder survives un-expanded input as
+ * a string, and a non-positive or non-finite value would move the sum in
+ * the UNSAFE direction. Anything else counts as a stage (the position is
+ * real, so dropping it would under-count) and raises `unresolvedStages`.
+ *
+ * A `gameStages:` that isn't an array is a surviving template invocation
+ * (or junk) — an unknown number of stages, so it counts as one unread
+ * stage rather than as nothing.
+ */
+function sumGameStages(list: unknown, acc: TreatmentDurations): void {
+  if (!Array.isArray(list)) {
+    acc.gameStages += 1;
     acc.unresolvedStages += 1;
-  }
-}
-
-function walk(
-  node: unknown,
-  acc: TreatmentDurations,
-  seen: WeakSet<object>,
-): void {
-  if (node === null || typeof node !== "object") return;
-  // Guard against cyclic object graphs. YAML anchors/aliases can produce
-  // genuine cycles (e.g. `a: &x { child: [*x] }`), which would otherwise
-  // stack-overflow this recursive walk — and the input is treatment
-  // source a study author controls.
-  if (seen.has(node)) return;
-  seen.add(node);
-
-  if (Array.isArray(node)) {
-    for (const item of node) walk(item, acc, seen);
     return;
   }
-
-  // Classify by the KEY a list sits under, not by finding `duration:`
-  // anywhere — so only real DSL positions count, and an opaque
-  // `z.unknown()` config bag that happens to carry a `duration` (or a
-  // `mediaPlayer`'s `stepDuration`, or a `timer`'s `endTime`) can never
-  // inflate the bound. Still recurse into every value so units nested
-  // deeper in the tree are reached.
-  const record = node as Record<string, unknown>;
-  for (const [key, value] of Object.entries(record)) {
-    if (key === "gameStages" && Array.isArray(value)) {
-      for (const item of value) countStage(item, acc);
-    } else if (Array.isArray(value) && key in STEP_LIST_KEYS) {
-      // Only records are steps; a stray scalar in the list isn't one.
-      for (const item of value)
-        if (isRecord(item)) acc[STEP_LIST_KEYS[key]] += 1;
+  for (const item of list) {
+    acc.gameStages += 1;
+    const duration = isRecord(item) ? item.duration : undefined;
+    if (
+      typeof duration !== "number" ||
+      !Number.isFinite(duration) ||
+      duration <= 0
+    ) {
+      acc.unresolvedStages += 1;
+      continue;
     }
-    walk(value, acc, seen);
+    const sum = acc.gameSeconds + duration;
+    // `durationSchema` sets no upper bound, so a schema-valid pair of
+    // enormous durations can carry the sum past the integer-safe range
+    // and on to Infinity — which `JSON.stringify` hands a host as
+    // `null`, and `now + Infinity` turns into a nonsense expiry. Clamp
+    // to a finite, JSON-safe value and flag it as unreadable instead.
+    if (sum > Number.MAX_SAFE_INTEGER) {
+      acc.gameSeconds = Number.MAX_SAFE_INTEGER;
+      acc.unresolvedStages += 1;
+    } else {
+      acc.gameSeconds = sum;
+    }
   }
 }
 
-/** Walk one arm subtree into a fresh accumulator. */
-function scan(node: unknown): TreatmentDurations {
-  const acc = zero();
-  walk(node, acc, new WeakSet<object>());
-  return acc;
+/**
+ * Count one self-paced step list into `field`.
+ *
+ * `optional` marks a list the schema lets an arm omit (only
+ * `exitSequence`): absent means genuinely zero steps. A REQUIRED list
+ * that is absent or not an array is un-hydrated or malformed — an
+ * unknown number of steps, counted as one unread step rather than as
+ * nothing.
+ */
+function countSteps(
+  list: unknown,
+  acc: TreatmentDurations,
+  field: "consentSteps" | "introSteps" | "exitSteps",
+  optional = false,
+): void {
+  if (!Array.isArray(list)) {
+    if (optional && list === undefined) return;
+    acc[field] += 1;
+    acc.unresolvedSteps += 1;
+    return;
+  }
+  for (const item of list) {
+    acc[field] += 1;
+    if (!isRecord(item)) acc.unresolvedSteps += 1;
+  }
 }
+
+/** Read the duration-bearing fields off one arm root. Which fields
+ *  exist is fixed by the collection the arm came from, so each scanner
+ *  reads named positions — never a key-name search (see the file
+ *  header). A non-record arm entry (a YAML indentation slip that nests
+ *  a treatment one level too deep) is an arm whose contents can't be
+ *  read, so it is flagged rather than dropped. */
+const SCAN_ARM = {
+  treatments: (arm: unknown, acc: TreatmentDurations) => {
+    sumGameStages(isRecord(arm) ? arm.gameStages : undefined, acc);
+    countSteps(
+      isRecord(arm) ? arm.exitSequence : undefined,
+      acc,
+      "exitSteps",
+      isRecord(arm),
+    );
+  },
+  introSequences: (arm: unknown, acc: TreatmentDurations) => {
+    countSteps(isRecord(arm) ? arm.introSteps : undefined, acc, "introSteps");
+  },
+  consent: (arm: unknown, acc: TreatmentDurations) => {
+    countSteps(isRecord(arm) ? arm.steps : undefined, acc, "consentSteps");
+  },
+} as const;
 
 /** Every entry of a top-level arm collection, scanned. `name` is
  *  `undefined` for an entry that can't be a launch-selection target —
@@ -249,13 +310,18 @@ function scan(node: unknown): TreatmentDurations {
  *  which is the over-estimating direction. */
 function scanEntries(
   root: Record<string, unknown>,
-  key: string,
+  key: keyof typeof SCAN_ARM,
 ): { name: string | undefined; durations: TreatmentDurations }[] {
   const list = Array.isArray(root[key]) ? (root[key] as unknown[]) : [];
-  return list.filter(isRecord).map((item) => ({
-    name: typeof item.name === "string" ? item.name : undefined,
-    durations: scan(item),
-  }));
+  return list.map((item) => {
+    const durations = zero();
+    SCAN_ARM[key](item, durations);
+    return {
+      name:
+        isRecord(item) && typeof item.name === "string" ? item.name : undefined,
+      durations,
+    };
+  });
 }
 
 /**
@@ -272,10 +338,12 @@ function scanEntries(
  *
  * Expects a fully HYDRATED tree — imports merged AND templates expanded
  * (`fillTemplates` run), e.g. `parseTreatmentSource(...).data` or the
- * host's own hydration pipeline. A merely import-merged tree
- * (`loadAndMergeImports().merged`) still carries `${field}` placeholders
- * where durations belong; those are counted in `unresolvedStages` rather
- * than guessed at, so the shortfall is visible instead of silent.
+ * host's own hydration pipeline. **Check `unresolvedStages` before
+ * trusting `gameSeconds`** (and `unresolvedSteps` before trusting the
+ * step counts): a merely import-merged tree still holds arms and stage
+ * lists as template invocations, and every position this can't read is
+ * counted and flagged rather than silently skipped — so an un-hydrated
+ * input reports a visible shortfall instead of a clean-looking zero.
  * Accepts `unknown`; a non-object yields a zero report and empty maps,
  * mirroring the family's tolerance of pre-schema input.
  *
@@ -301,9 +369,13 @@ export function getTreatmentDurations(
   // Key by arm `name` into a null-prototype map so a schema-valid but
   // hostile arm name (`__proto__`, `constructor`) can't rebind the map's
   // prototype and become enumeration-invisible — a narrowing host must
-  // be able to see and look up every arm. Duplicate names fold to the
-  // longer arm rather than letting a later entry silently shorten the
-  // bound.
+  // be able to see and look up every arm. This is load-bearing beyond
+  // tidiness: with a plain `{}`, `byTreatment["constructor"]` would
+  // return an inherited function, which `mergeTreatmentDurations` (whose
+  // only guard is `!== undefined`) would fold into `Math.max(0,
+  // undefined)` — handing a host `NaN` in every field, and a `NaN` room
+  // expiry. Duplicate names fold field-wise rather than letting a later
+  // entry silently shorten the bound.
   const keyed = (
     entries: { name: string | undefined; durations: TreatmentDurations }[],
   ): Record<string, TreatmentDurations> => {
