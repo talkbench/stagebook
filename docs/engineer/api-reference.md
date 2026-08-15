@@ -226,7 +226,13 @@ const roomExp = now + Math.max(3600, bound.gameSeconds + SLACK_SECONDS);
 // manager: participant time for payment estimation. The self-paced phases
 // carry no duration in the DSL (see below), so the host applies its own
 // per-step estimate to the counts — guarded by the same kind of flag.
-if (bound.unresolvedSteps > 0) throw new Error("treatment is not hydrated");
+if (
+  bound.unresolvedConsentSteps +
+    bound.unresolvedIntroSteps +
+    bound.unresolvedExitSteps >
+  0
+)
+  throw new Error("treatment is not hydrated");
 const participantSeconds =
   bound.gameSeconds +
   (bound.consentSteps + bound.introSteps + bound.exitSteps) * SECONDS_PER_STEP;
@@ -234,15 +240,15 @@ const participantSeconds =
 
 **Returns:** `TreatmentDurationsReport` — `{ overall, byTreatment, byIntroSequence, byConsent }`, where each value is a `TreatmentDurations`:
 
-| Field              | Meaning                                                                                                                                    |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `gameSeconds`      | Sum of `gameStages[].duration` in scope — the number a per-game resource's lifetime must cover                                             |
-| `gameStages`       | How many game stages are in scope                                                                                                          |
-| `unresolvedStages` | Game stages that contributed no seconds — **non-zero means `gameSeconds` is an under-count and the bound is unsafe**                       |
-| `consentSteps`     | Self-paced steps in `consent[].steps`                                                                                                      |
-| `introSteps`       | Self-paced steps in `introSequences[].introSteps`                                                                                          |
-| `exitSteps`        | Self-paced steps in `treatments[].exitSequence` (debrief included — it's authored as the trailing exit steps, #481)                        |
-| `unresolvedSteps`  | The same flag for the three step counts — step positions whose contents couldn't be read. An absent (optional) `exitSequence:` is not one. |
+| Field                                                                     | Meaning                                                                                                                    |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `gameSeconds`                                                             | Sum of `gameStages[].duration` in scope — the number a per-game resource's lifetime must cover                             |
+| `gameStages`                                                              | How many game stages are in scope                                                                                          |
+| `unresolvedStages`                                                        | Game stages that contributed no seconds — **non-zero means `gameSeconds` is an under-count and the bound is unsafe**       |
+| `consentSteps`                                                            | Self-paced steps in `consent[].steps`                                                                                      |
+| `introSteps`                                                              | Self-paced steps in `introSequences[].introSteps`                                                                          |
+| `exitSteps`                                                               | Self-paced steps in `treatments[].exitSequence` (debrief included — it's authored as the trailing exit steps, #481)        |
+| `unresolvedConsentSteps` / `unresolvedIntroSteps` / `unresolvedExitSteps` | The same flag per phase — step positions whose contents couldn't be read. An absent (optional) `exitSequence:` is not one. |
 
 **Upper bound, not a prediction.** A game stage ends early when every player submits, and a stage with `conditions:` may be skipped entirely — it still counts, because over-provisioning is the safe direction for a resource bound. Don't show these numbers to a participant as "how long this takes".
 
@@ -252,7 +258,9 @@ const participantSeconds =
 
 **Pure and synchronous** — unlike `getRequiredServices`, every duration is already in the treatment tree, so there is no loader to inject. Accepts `unknown`; a non-object yields a zero report.
 
-**Un-hydrated input is flagged, never a silent zero.** Expects the same **hydrated** tree (imports merged **and** templates expanded) — but note that hydrated does _not_ mean fully resolved. `parseTreatmentSource` runs `fillTemplates({ allowUnresolved: true })` deliberately, so editor and preview surfaces can render a partially-authored file; its output is in-contract input here and may still carry `duration: "${stageLength}"`. That is why this **reports rather than throws** — refusing unresolved input would reject the recommended pipeline's own output — and why checking the flags is the caller's job rather than an optional nicety. The dangerous failure here is the quiet one: `altTemplateContext` wraps every arm collection, every step list and every stage, so a merely import-merged tree can hold a template _invocation_ at any of those levels — the whole collection (`treatments: {template: all_arms}`), one arm (`- template: std`), a list (`gameStages: {template: rounds}`), or a single position (`introSteps: [{template: checks}]`). A naive reader finds no durations, reports a clean zero, and lets a host compute `max(3600, 0 + slack)` — silently falling back to exactly the hard-coded hour this primitive exists to remove. A `broadcast:` invocation compounds it, fanning one position out into several units. So **every position that can't be read counts as one unit and raises `unresolvedStages` / `unresolvedSteps`**; nothing is dropped in silence. Check those flags before trusting the numbers.
+**Un-hydrated input is flagged, never a silent zero.** Expects the same **hydrated** tree (imports merged **and** templates expanded) — but note that hydrated does _not_ mean fully resolved. `parseTreatmentSource` runs `fillTemplates({ allowUnresolved: true })` deliberately, so editor and preview surfaces can render a partially-authored file; its output is in-contract input here and may still carry `duration: "${stageLength}"`. That is why this **reports rather than throws** — refusing unresolved input would reject the recommended pipeline's own output — and why checking the flags is the caller's job rather than an optional nicety. The dangerous failure here is the quiet one: `altTemplateContext` wraps every arm collection, every step list and every stage, so a merely import-merged tree can hold a template _invocation_ at any of those levels — the whole collection (`treatments: {template: all_arms}`), one arm (`- template: std`), a list (`gameStages: {template: rounds}`), or a single position (`introSteps: [{template: checks}]`). A naive reader finds no durations, reports a clean zero, and lets a host compute `max(3600, 0 + slack)` — silently falling back to exactly the hard-coded hour this primitive exists to remove. A `broadcast:` invocation compounds it, fanning one position out into several units. So **every position that can't be read counts as one unit and raises the `unresolved*` counter for its phase**; nothing is dropped in silence. Check the flag for the number you are about to use.
+
+Those counters are split **per phase** rather than aggregated into one `unresolvedSteps`, for the same reason every other field is: consent, intro and exit run in _series_ for one participant, so maxing a single shared counter across them would report `1` where three phases each hid a position. Keeping every field per-phase is what makes the field-wise `max` below exact rather than approximate.
 
 **Reads fixed positions, does not search.** Each arm collection has one shape, so this reads named fields off the arm root (`treatments[]` → `gameStages` + `exitSequence`, `introSequences[]` → `introSteps`, `consent[]` → `steps`) rather than hunting those key names through the subtree. That is load-bearing rather than stylistic: `discussion.layout.feeds[].options` is an open `z.record(z.string(), z.unknown())` bag **inside a game stage**, so an author-controlled key named `steps` there would otherwise be counted as consent steps. Reading fixed positions makes that structurally impossible — as it does for a `duration` in a config bag, a `mediaPlayer`'s `stepDuration`, or a `timer`'s `endTime` — and drops the tree recursion (and its stack-depth ceiling) with it.
 

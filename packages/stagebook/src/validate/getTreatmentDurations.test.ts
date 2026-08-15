@@ -29,9 +29,11 @@ const ZERO: TreatmentDurations = {
   gameStages: 0,
   unresolvedStages: 0,
   consentSteps: 0,
+  unresolvedConsentSteps: 0,
   introSteps: 0,
+  unresolvedIntroSteps: 0,
   exitSteps: 0,
-  unresolvedSteps: 0,
+  unresolvedExitSteps: 0,
 };
 
 /** A minimal game stage. */
@@ -104,7 +106,7 @@ describe("getTreatmentDurations", () => {
       treatments: [{ name: "control", gameStages: [stage("a", 300)] }],
     });
     expect(report.byTreatment.control.exitSteps).toBe(0);
-    expect(report.byTreatment.control.unresolvedSteps).toBe(0);
+    expect(report.byTreatment.control.unresolvedExitSteps).toBe(0);
   });
 
   test("counts intro steps under byIntroSequence only", () => {
@@ -265,14 +267,14 @@ describe("getTreatmentDurations", () => {
       });
       // Both flags must fire. The expansion can add an `exitSequence`,
       // so the absent raw one is NOT the schema's optional-list case —
-      // a host checking only `unresolvedSteps` would otherwise trust
+      // a host checking only the exit flag would otherwise trust
       // `exitSteps: 0`.
       expect(report.overall).toEqual({
         ...ZERO,
         gameStages: 1,
         unresolvedStages: 1,
         exitSteps: 1,
-        unresolvedSteps: 1,
+        unresolvedExitSteps: 1,
       });
     });
 
@@ -304,19 +306,19 @@ describe("getTreatmentDurations", () => {
       expect(report.byIntroSequence.i).toEqual({
         ...ZERO,
         introSteps: 1,
-        unresolvedSteps: 1,
+        unresolvedIntroSteps: 1,
       });
       expect(report.byConsent.c).toEqual({
         ...ZERO,
         consentSteps: 1,
-        unresolvedSteps: 1,
+        unresolvedConsentSteps: 1,
       });
       expect(report.byTreatment.t).toEqual({
         ...ZERO,
         gameSeconds: 60,
         gameStages: 1,
         exitSteps: 1,
-        unresolvedSteps: 1,
+        unresolvedExitSteps: 1,
       });
     });
 
@@ -329,8 +331,12 @@ describe("getTreatmentDurations", () => {
         introSequences: { template: "all_intros" },
         consent: { template: "all_consents" },
       });
-      expect(report.overall.unresolvedStages).toBeGreaterThan(0);
-      expect(report.overall.unresolvedSteps).toBeGreaterThan(0);
+      // Every phase flags independently — a shared counter would have
+      // collapsed these three into one.
+      expect(report.overall.unresolvedStages).toBe(1);
+      expect(report.overall.unresolvedConsentSteps).toBe(1);
+      expect(report.overall.unresolvedIntroSteps).toBe(1);
+      expect(report.overall.unresolvedExitSteps).toBe(1);
       expect(report.byTreatment).toEqual({});
       expect(report.byIntroSequence).toEqual({});
       expect(report.byConsent).toEqual({});
@@ -360,14 +366,14 @@ describe("getTreatmentDurations", () => {
       expect(report.byIntroSequence.i).toEqual({
         ...ZERO,
         introSteps: 2,
-        unresolvedSteps: 1,
+        unresolvedIntroSteps: 1,
       });
       expect(report.byTreatment.t).toEqual({
         ...ZERO,
         gameSeconds: 60,
         gameStages: 1,
         exitSteps: 1,
-        unresolvedSteps: 1,
+        unresolvedExitSteps: 1,
       });
     });
 
@@ -410,7 +416,7 @@ describe("getTreatmentDurations", () => {
         gameSeconds: 60,
         gameStages: 1,
         exitSteps: 3,
-        unresolvedSteps: 2,
+        unresolvedExitSteps: 2,
       });
     });
   });
@@ -584,7 +590,7 @@ describe("getTreatmentDurations", () => {
     expect(report.byConsent.c).toEqual({
       ...ZERO,
       consentSteps: 1,
-      unresolvedSteps: 1,
+      unresolvedConsentSteps: 1,
     });
   });
 });
@@ -614,7 +620,7 @@ describe("mergeTreatmentDurations", () => {
       mergeTreatmentDurations(
         { ...ZERO, gameSeconds: 900, gameStages: 1 },
         { ...ZERO, gameStages: 1, unresolvedStages: 1 },
-        { ...ZERO, introSteps: 1, unresolvedSteps: 1 },
+        { ...ZERO, introSteps: 1, unresolvedIntroSteps: 1 },
       ),
     ).toEqual({
       ...ZERO,
@@ -622,7 +628,29 @@ describe("mergeTreatmentDurations", () => {
       gameStages: 1,
       unresolvedStages: 1,
       introSteps: 1,
-      unresolvedSteps: 1,
+      unresolvedIntroSteps: 1,
+    });
+  });
+
+  test("sequential phases each keep their own unresolved count", () => {
+    // Consent, intro and exit run IN SERIES for one participant, so a
+    // single shared `unresolvedSteps` counter would max these three
+    // 1s down to 1 and under-report how much is unread. Each phase
+    // having its own field is what keeps the field-wise max exact.
+    expect(
+      mergeTreatmentDurations(
+        { ...ZERO, consentSteps: 2, unresolvedConsentSteps: 1 },
+        { ...ZERO, introSteps: 3, unresolvedIntroSteps: 1 },
+        { ...ZERO, exitSteps: 4, unresolvedExitSteps: 1 },
+      ),
+    ).toEqual({
+      ...ZERO,
+      consentSteps: 2,
+      unresolvedConsentSteps: 1,
+      introSteps: 3,
+      unresolvedIntroSteps: 1,
+      exitSteps: 4,
+      unresolvedExitSteps: 1,
     });
   });
 
@@ -714,7 +742,9 @@ describe("over real hydrated example studies", () => {
     // Max over the arms, not the 360 sum.
     expect(report.overall.gameSeconds).toBe(270);
     expect(report.overall.unresolvedStages).toBe(0);
-    expect(report.overall.unresolvedSteps).toBe(0);
+    expect(report.overall.unresolvedConsentSteps).toBe(0);
+    expect(report.overall.unresolvedIntroSteps).toBe(0);
+    expect(report.overall.unresolvedExitSteps).toBe(0);
   });
 
   test("component-gallery: a real study already outlives a one-hour room", async () => {
