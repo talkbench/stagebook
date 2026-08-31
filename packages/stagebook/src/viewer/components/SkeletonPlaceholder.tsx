@@ -1,6 +1,9 @@
 import React from "react";
 import type { DiscussionType } from "../../schemas/index.js";
-import { TEXTAREA_METRICS } from "../../components/form/TextArea.js";
+import {
+  TEXTAREA_METRICS,
+  TEXTAREA_FONT_FAMILY,
+} from "../../components/form/TextArea.js";
 
 interface SkeletonPlaceholderProps {
   type: string;
@@ -470,6 +473,13 @@ const notepadBoxStyle: React.CSSProperties = {
   padding: `${TEXTAREA_METRICS.paddingBlockRem}rem ${TEXTAREA_METRICS.paddingInlineRem}rem`,
   fontSize: `${TEXTAREA_METRICS.fontSizeRem}rem`,
   lineHeight: `${TEXTAREA_METRICS.lineHeightRem}rem`,
+  // Resolve the font token rather than inheriting the ambient font. Both
+  // things this box stands in for pin it explicitly — the solo TextArea
+  // (#399) and the runner's CodeMirror theme — so a host that scopes
+  // --stagebook-font to its viewer container, or omits stagebook/styles,
+  // would otherwise wrap the placeholder differently here than in the live
+  // editor, and the wrapping is exactly what the height preview rests on.
+  fontFamily: TEXTAREA_FONT_FAMILY,
   borderWidth: `${TEXTAREA_METRICS.borderWidthPx}px`,
   // Dashed rather than solid: the one visual difference from the real
   // field, marking the box itself as a stand-in.

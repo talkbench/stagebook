@@ -16,7 +16,10 @@ import {
   createSkeletonRenderers,
   sharedNotepadBoxHeight,
 } from "./SkeletonPlaceholder.js";
-import { TEXTAREA_METRICS } from "../../components/form/TextArea.js";
+import {
+  TEXTAREA_METRICS,
+  TEXTAREA_FONT_FAMILY,
+} from "../../components/form/TextArea.js";
 
 beforeAll(() => {
   (
@@ -219,6 +222,19 @@ describe("shared-notepad skeleton (#591)", () => {
         el.querySelector("[data-testid='notepad-shared-chip']"),
       ),
     ).toBe(true);
+  });
+
+  it("resolves the --stagebook-font token instead of inheriting", () => {
+    // Codex review on #592. Both things this box stands in for pin the font
+    // explicitly (TextArea #399, and the runner's CodeMirror theme). Without
+    // the declaration the preview inherits the ambient font, so a host that
+    // scopes --stagebook-font to its container wraps the placeholder
+    // differently here than in the live editor — and the wrapping is what the
+    // height preview rests on.
+    const el = renderNotepad({ padName: "n", defaultText: "x", rows: 2 });
+    const box = el.querySelector<HTMLElement>("[data-testid='notepad-box']");
+    expect(box!.style.fontFamily).toBe(TEXTAREA_FONT_FAMILY);
+    expect(box!.style.fontFamily).toContain("--stagebook-font");
   });
 
   it("takes its typography from TEXTAREA_METRICS, not a second copy", () => {

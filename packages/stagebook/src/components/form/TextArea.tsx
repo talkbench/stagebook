@@ -72,6 +72,9 @@ export interface TextAreaProps {
  * values on purpose, so that a shared and a solo response field are
  * typographically identical. Changing them here changes both.
  */
+export const TEXTAREA_FONT_FAMILY =
+  'var(--stagebook-font, "Inter", ui-sans-serif, system-ui, sans-serif)';
+
 export const TEXTAREA_METRICS = {
   fontSizeRem: 0.875,
   lineHeightRem: 1.25,
@@ -475,8 +478,7 @@ export function TextArea({
           // stack, Safari to sans-serif, so the same TextArea would
           // otherwise render different fonts cross-browser (#399).
           // Hosts override --stagebook-font at :root to opt out.
-          fontFamily:
-            'var(--stagebook-font, "Inter", ui-sans-serif, system-ui, sans-serif)',
+          fontFamily: TEXTAREA_FONT_FAMILY,
           fontSize: `${TEXTAREA_METRICS.fontSizeRem}rem`,
           lineHeight: `${TEXTAREA_METRICS.lineHeightRem}rem`,
           color: "var(--stagebook-text, #1f2937)",
