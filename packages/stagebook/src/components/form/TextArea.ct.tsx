@@ -452,3 +452,21 @@ test("font respects --stagebook-font override", async ({ mount }) => {
   );
   expect(fontFamily).toMatch(/Helvetica/);
 });
+
+test("box metrics render at their documented values", async ({ mount }) => {
+  // TEXTAREA_METRICS is consumed by two components now — this one and the
+  // viewer's shared-notepad stand-in — so its values are load-bearing beyond
+  // this file. Nothing else asserts them: three of the six could be mutated to
+  // absurd values with the whole CT suite still green.
+  //
+  // Deliberately LITERAL px, not derived from TEXTAREA_METRICS. Deriving them
+  // would only prove the textarea reads the constant, never that the constant
+  // is what we think it is — the same tautology the viewer's height tests had.
+  const component = await mount(<TextArea />);
+  const textarea = component.locator("textarea");
+  await expect(textarea).toHaveCSS("font-size", "14px");
+  await expect(textarea).toHaveCSS("line-height", "20px");
+  await expect(textarea).toHaveCSS("padding", "8px 12px");
+  await expect(textarea).toHaveCSS("border-radius", "6px");
+  await expect(textarea).toHaveCSS("border-width", "1px");
+});

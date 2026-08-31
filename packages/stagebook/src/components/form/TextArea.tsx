@@ -61,6 +61,26 @@ export interface TextAreaProps {
   ariaLabelledBy?: string;
 }
 
+/**
+ * Box metrics of the rendered `<textarea>`. Exported so that stand-in
+ * renderers — the viewer's shared-notepad placeholder (#591) — can reproduce
+ * this component's typography instead of hardcoding a second copy of the
+ * numbers that silently drifts when these change. The styles below are built
+ * from these values, so there is exactly one source of truth.
+ *
+ * The runner's collaborative editor pins its CodeMirror theme to these same
+ * values on purpose, so that a shared and a solo response field are
+ * typographically identical. Changing them here changes both.
+ */
+export const TEXTAREA_METRICS = {
+  fontSizeRem: 0.875,
+  lineHeightRem: 1.25,
+  paddingBlockRem: 0.5,
+  paddingInlineRem: 0.75,
+  borderWidthPx: 1,
+  borderRadiusRem: 0.375,
+} as const;
+
 const CURSOR_KEYS = new Set([
   "ArrowLeft",
   "ArrowRight",
@@ -440,16 +460,16 @@ export function TextArea({
           display: "block",
           width: "100%",
           boxSizing: "border-box",
-          padding: "0.5rem 0.75rem",
+          padding: `${TEXTAREA_METRICS.paddingBlockRem}rem ${TEXTAREA_METRICS.paddingInlineRem}rem`,
           // Border longhands rather than the `border` shorthand —
           // matches the pattern adopted in #367 (RadioGroup) and the
           // sibling form components. Lets future state-based color
           // overrides on `borderColor` (e.g. an error state) play
           // nicely with React's inline-style diff.
-          borderWidth: "1px",
+          borderWidth: `${TEXTAREA_METRICS.borderWidthPx}px`,
           borderStyle: "solid",
           borderColor: "var(--stagebook-border, #d1d5db)",
-          borderRadius: "0.375rem",
+          borderRadius: `${TEXTAREA_METRICS.borderRadiusRem}rem`,
           // Pin the font so it doesn't pick up the browser UA default
           // for <textarea> — Chrome resolves that to a monospace
           // stack, Safari to sans-serif, so the same TextArea would
@@ -457,8 +477,8 @@ export function TextArea({
           // Hosts override --stagebook-font at :root to opt out.
           fontFamily:
             'var(--stagebook-font, "Inter", ui-sans-serif, system-ui, sans-serif)',
-          fontSize: "0.875rem",
-          lineHeight: "1.25rem",
+          fontSize: `${TEXTAREA_METRICS.fontSizeRem}rem`,
+          lineHeight: `${TEXTAREA_METRICS.lineHeightRem}rem`,
           color: "var(--stagebook-text, #1f2937)",
           resize: "vertical",
           // Note on `box-shadow`: kept in the class-scoped <style>
