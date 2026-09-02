@@ -29,6 +29,7 @@ import { Display } from "./elements/Display";
 import { SubmitButton } from "./elements/SubmitButton";
 import { ImageElement } from "./elements/ImageElement";
 import { TrackedLink } from "./elements/TrackedLink";
+import { MockWaveformTimeline } from "./testing/MockWaveformTimeline";
 import {
   multipleChoiceSingle,
   multipleChoiceMultiple,
@@ -125,6 +126,17 @@ const cases: { name: string; node: ReactNode }[] = [
   {
     name: "ImageElement",
     node: <ImageElement src={testImage} alt="A small test image" />,
+  },
+  {
+    name: "WaveformTimeline",
+    node: (
+      <MockWaveformTimeline
+        label="Recording amplitude timeline"
+        duration={8}
+        currentTime={2}
+        mockPeaks={[-0.2, 0.2, -0.8, 0.8, -0.5, 0.5, -0.1, 0.1]}
+      />
+    ),
   },
   {
     name: "TrackedLink",
