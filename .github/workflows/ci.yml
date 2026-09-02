@@ -16,11 +16,8 @@ on:
 # Declared here rather than inherited from the org/repo default, which is
 # `read` today but lives outside this file. Every job in this workflow runs
 # untrusted PR code (`npm ci` executes lifecycle scripts from the PR's own
-# lockfile), so state this read-only floor explicitly. `pull-requests: read`
-# is required by dorny/paths-filter on PR events. The two jobs that upload
-# artifacts (`package-vscode`, `test-ct`) escalate `actions: write` locally,
-# scoped to just that job, since `upload-artifact@v4` needs it and this
-# default must stay read-only for the rest.
+# lockfile) and none of them writes anything, so state the floor explicitly.
+# `pull-requests: read` is required by dorny/paths-filter on PR events.
 permissions:
   contents: read
   pull-requests: read
@@ -193,11 +190,6 @@ jobs:
     if: needs.changes.outputs.vscode == 'true' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 4
-    # `actions/upload-artifact@v4` needs `actions: write` on the GITHUB_TOKEN
-    # to create the artifact; the workflow-level default is `read`.
-    permissions:
-      contents: read
-      actions: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -235,12 +227,6 @@ jobs:
     # (runner CT) and 15 (manager e2e), and a 10m cap plus a slow registry day
     # would reproduce the very failure class this change exists to remove.
     timeout-minutes: 15
-    # `actions/upload-artifact@v4` (below, on failure) needs `actions: write`
-    # on the GITHUB_TOKEN to create the artifact; the workflow-level default
-    # is `read`.
-    permissions:
-      contents: read
-      actions: write
     # Run inside Microsoft's official Playwright image, which ships all
     # three browsers AND their system deps pre-installed, so setup
     # touches the network only for `npm ci`.
