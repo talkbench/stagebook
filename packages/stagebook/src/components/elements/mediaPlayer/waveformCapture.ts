@@ -120,8 +120,10 @@ export function accumulatePeaks(
  * are clamped to [-1, 1] so decoder overshoot cannot push a bar outside the
  * canvas. Every bucket a sample overlaps receives it, so a sparse input (more
  * buckets than samples) still fills the track; only empty input leaves the
- * sentinel (min=1, max=-1) in place. Non-positive bucket counts return an
- * empty array; counts above `MAX_BUCKETS` are capped.
+ * sentinel (min=1, max=-1) in place. Non-positive or non-finite bucket
+ * counts return an empty array; finite counts above `MAX_BUCKETS` are
+ * capped. The result spans the whole input, so a consumer stretching it
+ * across a `duration` must pass the input's own duration.
  *
  * @param channels - Per-channel sample data, e.g. `AudioBuffer.getChannelData(i)`
  *   for each channel. All channels are expected to share one length; the

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { WaveformRenderer } from "./WaveformRenderer.js";
 import { timeToPixel } from "./timelineLayout.js";
 
@@ -12,15 +12,18 @@ export interface WaveformTimelineProps {
    */
   label: string;
   /**
-   * Interleaved min/max pairs per time bucket — the shape `createPeaksArrays`
-   * allocates and `peaksFromSamples` produces. `null` draws the empty track.
+   * Interleaved min/max pairs per time bucket for ONE channel — the shape
+   * `peaksFromSamples` produces and `createPeaksArrays(1, buckets)[0]`
+   * allocates. The whole array is stretched across `duration`, so the
+   * array's time extent must equal `duration`. `null` draws the empty track.
    */
   peaks: Float32Array | null;
   /**
-   * Render token. Peaks arrays are typically mutated in place while audio is
-   * captured, so the reference never changes; bump this counter to redraw.
+   * Render token. A new `peaks` reference redraws on its own; when an array
+   * is mutated in place while audio is captured, bump this counter instead.
+   * Defaults to 0 for hosts that always hand over a fresh array.
    */
-  peaksVersion: number;
+  peaksVersion?: number;
   /**
    * Axis extent in seconds. The full peaks array is stretched across the
    * track, and the playhead is positioned at `currentTime / duration`. A
@@ -37,7 +40,10 @@ export interface WaveformTimelineProps {
    * `prefers-reduced-motion`.
    */
   currentTime: number | null;
-  /** Track height in CSS px. Defaults to `WAVEFORM_TIMELINE_HEIGHT`. */
+  /**
+   * Total box height in CSS px, border included. Defaults to
+   * `WAVEFORM_TIMELINE_HEIGHT`, one `Timeline` track.
+   */
   height?: number;
 }
 
@@ -55,15 +61,19 @@ export interface WaveformTimelineProps {
 export function WaveformTimeline({
   label,
   peaks,
-  peaksVersion,
+  peaksVersion = 0,
   duration,
   currentTime,
   height = WAVEFORM_TIMELINE_HEIGHT,
 }: WaveformTimelineProps) {
-  // Measure the content width with a callback ref (usable on first paint)
-  // and keep it current with a ResizeObserver — the same pattern Timeline
-  // uses. The content box excludes the 1px border so the canvas and the
-  // playhead share one coordinate space.
+  // Measure the width with a callback ref (usable on first paint) and keep
+  // it current with a ResizeObserver. The border is an inset box-shadow, so
+  // the box, the canvas, and the playhead share one coordinate space.
+  //
+  // Teardown lives in the ref callback alone: React calls it with `null` on
+  // unmount. An effect cleanup would also disconnect the observer under
+  // React 18 StrictMode's replayed effects — which do NOT re-invoke callback
+  // refs — leaving the component blind to resizes for its whole life.
   const [width, setWidth] = useState(0);
   const observerRef = useRef<ResizeObserver | null>(null);
   const containerRef = useCallback((el: HTMLDivElement | null) => {
@@ -79,12 +89,6 @@ export function WaveformTimeline({
     });
     observer.observe(el);
     observerRef.current = observer;
-  }, []);
-  useEffect(() => {
-    return () => {
-      observerRef.current?.disconnect();
-      observerRef.current = null;
-    };
   }, []);
 
   const totalBuckets = peaks ? Math.floor(peaks.length / 2) : 0;
@@ -114,10 +118,11 @@ export function WaveformTimeline({
         position: "relative",
         boxSizing: "border-box",
         width: "100%",
-        // Border adds to the content height so the track keeps its full size.
-        height: `${String(height + 2)}px`,
+        height: `${String(height)}px`,
         overflow: "hidden",
-        border: "1px solid var(--stagebook-border, #d1d5db)",
+        // Inset shadow, not a border: the box is exactly `height` tall and
+        // `clientWidth` is the full drawing width.
+        boxShadow: "inset 0 0 0 1px var(--stagebook-border, #d1d5db)",
         borderRadius: "0.5rem",
       }}
     >

@@ -1,5 +1,4 @@
-import { test, expect } from "@playwright/experimental-ct-react";
-import type { Locator } from "@playwright/test";
+import { test, expect, type Locator } from "@playwright/experimental-ct-react";
 import { MockWaveformTimeline } from "../../testing/MockWaveformTimeline.js";
 
 // Interleaved min/max peaks for 8 buckets: a loud middle, quiet edges.
@@ -15,22 +14,35 @@ const EMPTY_PEAKS = Array.from({ length: 16 }, (_, i) =>
 
 const PLAYHEAD = '[data-testid="waveform-timeline-playhead"]';
 
-/** Count fully opaque pixels — waveform bars are opaque, the track band is not. */
-async function opaquePixels(canvas: Locator): Promise<number> {
+/**
+ * Pixel census of the waveform canvas. Bars are fully opaque; the track band
+ * behind them is translucent (alpha 0.15); untouched pixels are transparent.
+ * A test asserting "no bars" must also see the band, or a canvas that was
+ * never drawn on would pass for the wrong reason.
+ */
+function pixelCensus(
+  canvas: Locator,
+): Promise<{ opaque: number; translucent: number }> {
   return canvas.evaluate((el) => {
     const c = el as HTMLCanvasElement;
     const ctx = c.getContext("2d");
-    if (!ctx) return -1;
+    if (!ctx) return { opaque: -1, translucent: -1 };
     const { data } = ctx.getImageData(0, 0, c.width, c.height);
-    let count = 0;
+    let opaque = 0;
+    let translucent = 0;
     for (let i = 3; i < data.length; i += 4) {
-      if (data[i] === 255) count += 1;
+      if (data[i] === 255) opaque += 1;
+      else if (data[i] > 0) translucent += 1;
     }
-    return count;
+    return { opaque, translucent };
   });
 }
 
-async function playheadLeft(playhead: Locator): Promise<number> {
+function opaquePixels(canvas: Locator): Promise<number> {
+  return pixelCensus(canvas).then(({ opaque }) => opaque);
+}
+
+function playheadLeft(playhead: Locator): Promise<number> {
   return playhead.evaluate((el) => parseFloat((el as HTMLElement).style.left));
 }
 
@@ -158,8 +170,10 @@ test("redraws the waveform when peaks arrive under a bumped peaksVersion", async
   );
   const canvas = component.locator('[data-testid="waveform-canvas"]');
   await expect(canvas).toBeAttached();
-  // Sentinel buckets draw nothing but the translucent track band.
-  await expect.poll(() => opaquePixels(canvas)).toBe(0);
+  // Sentinel buckets draw nothing but the translucent track band — the
+  // band is the positive control that the canvas was drawn at all.
+  await expect.poll(() => pixelCensus(canvas)).toMatchObject({ opaque: 0 });
+  expect((await pixelCensus(canvas)).translucent).toBeGreaterThan(0);
 
   await component.update(
     <MockWaveformTimeline
@@ -185,5 +199,8 @@ test("renders the empty state (no peaks) without a waveform", async ({
   );
   const canvas = component.locator('[data-testid="waveform-canvas"]');
   await expect(canvas).toBeAttached();
-  await expect.poll(() => opaquePixels(canvas)).toBe(0);
+  // No bars, but the track band is drawn: the empty state is a visible
+  // track, not a blank canvas.
+  await expect.poll(() => pixelCensus(canvas)).toMatchObject({ opaque: 0 });
+  expect((await pixelCensus(canvas)).translucent).toBeGreaterThan(0);
 });
