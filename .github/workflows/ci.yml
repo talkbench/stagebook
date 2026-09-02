@@ -13,6 +13,15 @@ on:
   # green WITHOUT running the suite, merging the combined state untested.
   merge_group:
 
+# Declared here rather than inherited from the org/repo default, which is
+# `read` today but lives outside this file. Every job in this workflow runs
+# untrusted PR code (`npm ci` executes lifecycle scripts from the PR's own
+# lockfile) and none of them writes anything, so state the floor explicitly.
+# `pull-requests: read` is required by dorny/paths-filter on PR events.
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   changes:
     name: Detect changes
@@ -79,12 +88,35 @@ jobs:
       # the component-test container tag can be derived from it rather than
       # duplicated. Reads the lockfile directly — no `npm ci` needed, and
       # this job is already the first thing every other job waits on.
+      # DELIBERATELY NOT gated on `github.event_name != 'merge_group'` like the
+      # filter step above. In the merge queue test-ct runs unconditionally, so
+      # an empty version here would make all 12 shards die at container init —
+      # the #519 class of bug. Do not "fix" the inconsistency with its neighbour.
       - name: Read pinned Playwright version
         id: playwright-version
         run: |
-          ver=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/experimental-ct-react'].version")
-          if [ -z "$ver" ]; then
-            echo "::error::Could not read @playwright/experimental-ct-react version from package-lock.json"
+          # Match on path suffix, not the exact hoisted key, so this keeps
+          # working if npm ever nests the package under a workspace. Prints
+          # empty rather than throwing when absent, so the guard below is the
+          # thing that reports the failure.
+          ver=$(node -e "
+            const lock = require('./package-lock.json');
+            const hit = Object.entries(lock.packages || {}).find(
+              ([k]) => k === 'node_modules/@playwright/experimental-ct-react'
+                || k.endsWith('/node_modules/@playwright/experimental-ct-react')
+            );
+            process.stdout.write(hit?.[1]?.version ?? '');
+          ")
+          # Strict shape check, not just non-empty. This value is interpolated
+          # into `container.image` below, and the runner passes that through to
+          # `docker` unquoted — whitespace would split into extra argv tokens.
+          # A fork PR controls package-lock.json, so validate before trusting.
+          # (The literal `-noble` suffix and the fixed mcr.microsoft.com prefix
+          # already make an attacker-controlled pull unreachable; this makes it
+          # true by construction rather than by luck. It also blocks a `\n` in
+          # the JSON string from forging a second GITHUB_OUTPUT entry.)
+          if ! [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Unexpected @playwright/experimental-ct-react version '$ver' in package-lock.json — expected a bare X.Y.Z"
             exit 1
           fi
           echo "version=$ver" >> "$GITHUB_OUTPUT"
@@ -187,10 +219,14 @@ jobs:
     needs: changes
     if: needs.changes.outputs.ct == 'true' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
-    # Each shard runs ~1/4 of the suite at `--workers=1`, so per-shard
-    # wall clock should be ~1-2 min over the ~30s setup baseline. 10
-    # leaves comfortable headroom over the worst observed.
-    timeout-minutes: 10
+    # Each shard runs ~1/4 of the suite at `--workers=1` in ~35-70s. Setup is
+    # now dominated by the container pull (4 layers, 914 MB compressed —
+    # ~32s measured on runner's CT job, but that is not a floor), and
+    # "Initialize containers" counts against this budget. Raised 10 -> 15 with
+    # the container switch: the sibling repos running this same image allow 20
+    # (runner CT) and 15 (manager e2e), and a 10m cap plus a slow registry day
+    # would reproduce the very failure class this change exists to remove.
+    timeout-minutes: 15
     # Run inside Microsoft's official Playwright image, which ships all
     # three browsers AND their system deps pre-installed, so setup
     # touches the network only for `npm ci`.
@@ -255,9 +291,16 @@ jobs:
         shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v5
-      # The Playwright image ships Node 22; the rest of this workflow
-      # standardises on 24, so install it on top. Small (~10s node-dist
-      # tarball, no apt-get) and keeps every job on one Node version.
+        with:
+          # The token is not needed after checkout, and this job runs
+          # untrusted code from the PR (`npm ci` lifecycle scripts, then the
+          # PR's own test files). Don't leave it in `.git/config` while that
+          # runs. Same reasoning as the package-vscode job above.
+          persist-credentials: false
+      # Kept even though the image already ships Node 24 (verified: its build
+      # args carry `NODE_VERSION=24`), for two reasons: `cache: npm` restores
+      # ~/.npm for the `npm ci` below, and pinning here means the job's Node
+      # version stops silently tracking whatever the next image tag ships.
       - uses: actions/setup-node@v5
         with:
           node-version: 24
@@ -266,8 +309,24 @@ jobs:
       # No `playwright install` step: the image already has all three
       # browsers under /ms-playwright, which Playwright discovers via the
       # PLAYWRIGHT_BROWSERS_PATH env baked into it.
+      # playwright-ct.config.ts keys BOTH `forbidOnly` and `retries: 2` off
+      # `process.env.CI`. Actions injects CI=true into container jobs, but if
+      # that ever stopped holding, a stray `test.only` would shrink a shard to
+      # one test and still exit 0 — green with no coverage. Set it explicitly
+      # so the suite's own guard rails don't depend on the execution context.
       - run: npx playwright test --config playwright-ct.config.ts --project=${{ matrix.browser }} --workers=1 --shard=${{ matrix.shard }}/4
         working-directory: packages/stagebook
+        env:
+          CI: "true"
+      # The execution environment changed with the container switch, so keep
+      # the HTML report + traces for anything that fails only in CI. Both
+      # sibling repos do this; this job never did.
+      - uses: actions/upload-artifact@v4
+        if: ${{ failure() }}
+        with:
+          name: playwright-report-${{ matrix.browser }}-${{ matrix.shard }}
+          path: packages/stagebook/playwright-report/
+          retention-days: 7
 
   build:
     name: Build
