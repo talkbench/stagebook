@@ -173,9 +173,10 @@ test.describe("Select", () => {
     const component = await mount(
       <Select options={options} onChange={() => {}} id="myPicker" />,
     );
-    // Wrapper carries the data-testid; the root mounted component IS
-    // the wrapper.
-    await expect(component).toHaveAttribute("data-testid", "myPicker");
+    await expect(component.locator("select")).toHaveAttribute(
+      "data-testid",
+      "myPicker",
+    );
   });
 
   test("explicit data-testid overrides id", async ({ mount }) => {
@@ -187,7 +188,29 @@ test.describe("Select", () => {
         data-testid="customId"
       />,
     );
-    await expect(component).toHaveAttribute("data-testid", "customId");
+    await expect(component.locator("select")).toHaveAttribute(
+      "data-testid",
+      "customId",
+    );
+  });
+
+  test("data-testid resolves to the <select>, so Playwright can drive it", async ({
+    mount,
+  }) => {
+    // The testid names the interactive element, not the layout box
+    // around it (#601). `selectOption()` and `inputValue()` both
+    // refuse a locator that isn't a real <select>, so with the
+    // testid on the wrapping <div> the idiomatic call throws instead
+    // of selecting — and every consumer has to remember to append a
+    // descendant ` select`. Matches Button, which puts the caller's
+    // testid on the <button> itself.
+    const component = await mount(
+      <MockSelect options={options} data-testid="micPicker" />,
+    );
+    const picker = component.getByTestId("micPicker");
+
+    await picker.selectOption("b");
+    expect(await picker.inputValue()).toBe("b");
   });
 
   // ----------- UI polish (#370) -----------
@@ -258,8 +281,8 @@ test.describe("Select", () => {
         <Select options={options} onChange={() => {}} data-testid="untouched" />
       </div>,
     );
-    const touched = component.locator('[data-testid="touched"] select');
-    const untouched = component.locator('[data-testid="untouched"] select');
+    const touched = component.getByTestId("touched");
+    const untouched = component.getByTestId("untouched");
 
     await touched.focus();
     await touched.blur();

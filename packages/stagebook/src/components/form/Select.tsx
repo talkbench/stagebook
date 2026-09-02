@@ -142,7 +142,7 @@ export function Select({
   };
 
   return (
-    <div data-testid={dataTestId ?? selectId} style={{ marginTop: "1rem" }}>
+    <div style={{ marginTop: "1rem" }}>
       <style>{`
         .${triggerClass}:focus-visible {
           outline: none;
@@ -170,6 +170,13 @@ export function Select({
       )}
       <select
         id={selectId}
+        // On the <select>, not the wrapper: the testid names the
+        // element a test drives, and Playwright's selectOption() /
+        // inputValue() both refuse a locator that isn't a real
+        // <select> (#601). Same placement as Button. Composite
+        // controls (RadioGroup, CheckboxGroup, Slider) keep theirs on
+        // the wrapper — they have no single element to name.
+        data-testid={dataTestId ?? selectId}
         className={triggerClass}
         value={currentValue}
         onChange={handleChange}
