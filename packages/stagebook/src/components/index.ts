@@ -92,6 +92,26 @@ export {
   type TimelineProps,
 } from "./elements/index.js";
 
+// Standalone display primitives — no StagebookProvider required. A host
+// renders its own recording (a microphone check, a voice note) with the same
+// waveform + playhead treatment the Timeline element uses (#596).
+export {
+  WaveformTimeline,
+  type WaveformTimelineProps,
+  WAVEFORM_TIMELINE_HEIGHT,
+} from "./elements/index.js";
+
+// Waveform peaks helpers — the interleaved min/max data shape WaveformTimeline
+// (and Timeline) render. `peaksFromSamples` folds decoded PCM channel data
+// into it; `createPeaksArrays` allocates empty (sentinel-filled) arrays for
+// incremental capture.
+export {
+  computeBucketCount,
+  createPeaksArrays,
+  peaksFromSamples,
+  MAX_BUCKETS,
+} from "./elements/mediaPlayer/waveformCapture.js";
+
 // Conditional rendering components
 export {
   TimeConditionalRender,

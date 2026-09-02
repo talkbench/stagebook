@@ -16,3 +16,8 @@ export {
 export { Prompt, type PromptProps } from "./Prompt.js";
 export { Qualtrics, type QualtricsProps } from "./Qualtrics.js";
 export { Timeline, type TimelineProps } from "./Timeline.js";
+export {
+  WaveformTimeline,
+  type WaveformTimelineProps,
+  WAVEFORM_TIMELINE_HEIGHT,
+} from "./timeline/WaveformTimeline.js";

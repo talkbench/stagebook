@@ -358,6 +358,14 @@ Requires StagebookProvider. Dispatches to the appropriate element component base
 | `ListSorter`    | `items`, `onChange`                                                                                                                                                |
 | `Markdown`      | `text`, `resolveURL?`                                                                                                                                              |
 
+### Display Components (standalone)
+
+| Component          | Key Props                                                                                                                                                                                                                                       |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WaveformTimeline` | `label`, `peaks` (interleaved min/max `Float32Array` or `null`), `peaksVersion`, `duration`, `currentTime` (`null` hides the playhead), `height?`. Read-only waveform track with a playhead; no internal animation, the host drives `currentTime`. |
+
+Peaks helpers exported alongside it: `createPeaksArrays(channelCount, bucketCount)` allocates sentinel-filled arrays for incremental capture; `peaksFromSamples(channels, bucketCount)` folds decoded `AudioBuffer` channel data (all channels merged, clamped to ±1) into one array; `computeBucketCount(duration, bucketsPerSecond)` and `MAX_BUCKETS` bound the allocation.
+
 ### Element Components (pure props)
 
 | Component       | Key Props                                                                                                   |

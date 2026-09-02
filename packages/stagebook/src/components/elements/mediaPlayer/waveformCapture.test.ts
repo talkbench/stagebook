@@ -239,14 +239,15 @@ describe("peaksFromSamples", () => {
     expect(peaks[1]).toBe(1);
   });
 
-  it("leaves buckets with no samples at the empty sentinel", () => {
-    // 2 samples spread over 4 buckets: only buckets 0 and 2 receive data.
+  it("spreads sparse samples across every bucket they overlap", () => {
+    // 2 samples over 4 buckets: sample 0 spans buckets 0-1, sample 1 spans
+    // buckets 2-3. No bucket is left at the sentinel, so the track has no
+    // spurious gaps.
     const channel = Float32Array.from([0.5, -0.5]);
     const peaks = peaksFromSamples([channel], 4);
-    expect(peaks[0]).toBeCloseTo(0.5);
-    expect(peaks[1]).toBeCloseTo(0.5);
-    expect(peaks[2]).toBe(1);
-    expect(peaks[3]).toBe(-1);
+    expect(Array.from(peaks)).toEqual([
+      0.5, 0.5, 0.5, 0.5, -0.5, -0.5, -0.5, -0.5,
+    ]);
   });
 
   it("returns an all-sentinel array for empty channel data", () => {

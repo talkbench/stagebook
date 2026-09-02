@@ -111,9 +111,7 @@ test("positions the playhead at currentTime / duration of the measured width", a
     .toBeCloseTo(contentWidth * 0.75, 1);
 });
 
-test("clamps the playhead inside the track past the end", async ({
-  mount,
-}) => {
+test("clamps the playhead inside the track past the end", async ({ mount }) => {
   const component = await mount(
     <MockWaveformTimeline
       label="Timeline"

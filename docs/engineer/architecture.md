@@ -58,7 +58,7 @@ interface StagebookContext {
 
 Stagebook components are organized in three layers:
 
-1. **Pure components** (form/) — `Button`, `Separator`, `RadioGroup`, `CheckboxGroup`, `TextArea`, `Slider`, `ListSorter`, `Markdown`, `Loading`. These take props and render UI. No StagebookProvider needed. Usable anywhere in the app (consent screens, debrief, etc.).
+1. **Pure components** (form/) — `Button`, `Separator`, `RadioGroup`, `CheckboxGroup`, `TextArea`, `Slider`, `ListSorter`, `Markdown`, `Loading`, plus the read-only `WaveformTimeline` display primitive (elements/timeline/). These take props and render UI. No StagebookProvider needed. Usable anywhere in the app (consent screens, debrief, an equipment check's recording timeline, etc.).
 
 2. **Element components** (elements/) — `Prompt`, `Display`, `SubmitButton`, `AudioElement`, `ImageElement`, `KitchenTimer`, `TrackedLink`, `TrainingVideo`, `Qualtrics`. These are pure prop-based components that render specific experiment elements. They receive data and callbacks as props, not from context.
 

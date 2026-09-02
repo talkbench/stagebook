@@ -18,8 +18,10 @@ import {
   type WaveformTimelineProps,
 } from "../elements/timeline/WaveformTimeline.js";
 
-export interface MockWaveformTimelineProps
-  extends Omit<WaveformTimelineProps, "peaks" | "peaksVersion"> {
+export interface MockWaveformTimelineProps extends Omit<
+  WaveformTimelineProps,
+  "peaks" | "peaksVersion"
+> {
   /** Interleaved min/max pairs per bucket, as plain numbers. */
   mockPeaks?: number[] | null;
   /** Container width in CSS px. */

@@ -110,3 +110,63 @@ export function accumulatePeaks(
     if (frameMax > existingMax) peakArr[maxIdx] = frameMax;
   }
 }
+
+/**
+ * Fold decoded PCM samples into one interleaved min/max peaks array — the
+ * same shape `createPeaksArrays` allocates and `WaveformRenderer` draws.
+ *
+ * Every channel is merged into a single envelope (a host showing a mono
+ * recording, or a compact summary of a stereo one, wants one track). Samples
+ * are clamped to [-1, 1] so decoder overshoot cannot push a bar outside the
+ * canvas. Every bucket a sample overlaps receives it, so a sparse input (more
+ * buckets than samples) still fills the track; only empty input leaves the
+ * sentinel (min=1, max=-1) in place. Non-positive bucket counts return an
+ * empty array; counts above `MAX_BUCKETS` are capped.
+ *
+ * @param channels - Per-channel sample data, e.g. `AudioBuffer.getChannelData(i)`
+ *   for each channel. All channels are expected to share one length; the
+ *   longest channel defines the time axis.
+ * @param bucketCount - Number of time buckets to fold the samples into.
+ */
+export function peaksFromSamples(
+  channels: readonly Float32Array[],
+  bucketCount: number,
+): Float32Array {
+  if (!Number.isFinite(bucketCount) || bucketCount <= 0) {
+    return new Float32Array(0);
+  }
+  const buckets = Math.min(Math.floor(bucketCount), MAX_BUCKETS);
+  const [peaks] = createPeaksArrays(1, buckets);
+  let sampleCount = 0;
+  for (const channel of channels) {
+    if (channel.length > sampleCount) sampleCount = channel.length;
+  }
+  if (sampleCount === 0) return peaks;
+
+  const samplesPerBucket = sampleCount / buckets;
+  for (let bucket = 0; bucket < buckets; bucket++) {
+    const start = Math.floor(bucket * samplesPerBucket);
+    // Each bucket covers every sample whose span overlaps it: at least one
+    // sample (so more buckets than samples never leaves gaps), and the last
+    // bucket absorbs any rounding remainder so no sample is dropped.
+    const end =
+      bucket === buckets - 1
+        ? sampleCount
+        : Math.max(start + 1, Math.floor((bucket + 1) * samplesPerBucket));
+    let min = 1;
+    let max = -1;
+    for (const channel of channels) {
+      const limit = Math.min(end, channel.length);
+      for (let i = start; i < limit; i++) {
+        const sample = Math.max(-1, Math.min(1, channel[i]));
+        if (sample < min) min = sample;
+        if (sample > max) max = sample;
+      }
+    }
+    if (min <= max) {
+      peaks[bucket * 2] = min;
+      peaks[bucket * 2 + 1] = max;
+    }
+  }
+  return peaks;
+}
