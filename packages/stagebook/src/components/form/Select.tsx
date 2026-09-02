@@ -171,11 +171,11 @@ export function Select({
       <select
         id={selectId}
         // On the <select>, not the wrapper: the testid names the
-        // element a test drives, and Playwright's selectOption() /
-        // inputValue() both refuse a locator that isn't a real
-        // <select> (#601). Same placement as Button. Composite
-        // controls (RadioGroup, CheckboxGroup, Slider) keep theirs on
-        // the wrapper — they have no single element to name.
+        // element a test drives, and Playwright's selectOption()
+        // requires a real <select> (inputValue(), a form control), so
+        // both throw on a wrapper <div> (#601). Same placement as
+        // Button. Composite controls (RadioGroup, CheckboxGroup) keep
+        // theirs on the group wrapper — no single element to name.
         data-testid={dataTestId ?? selectId}
         className={triggerClass}
         value={currentValue}

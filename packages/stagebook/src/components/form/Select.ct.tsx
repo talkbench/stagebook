@@ -198,12 +198,17 @@ test.describe("Select", () => {
     mount,
   }) => {
     // The testid names the interactive element, not the layout box
-    // around it (#601). `selectOption()` and `inputValue()` both
-    // refuse a locator that isn't a real <select>, so with the
-    // testid on the wrapping <div> the idiomatic call throws instead
-    // of selecting — and every consumer has to remember to append a
-    // descendant ` select`. Matches Button, which puts the caller's
-    // testid on the <button> itself.
+    // around it (#601). `selectOption()` requires a real <select> and
+    // `inputValue()` a form control, so with the testid on the
+    // wrapping <div> the idiomatic call throws instead of selecting —
+    // and every consumer has to remember to append a descendant
+    // ` select`. Matches Button, which puts the caller's testid on
+    // the <button> itself.
+    //
+    // Asserted with the non-retrying `inputValue()` rather than the
+    // house `toHaveValue()` on purpose: it is the second of the two
+    // calls this placement unblocks, and the one talkbench/runner#737
+    // reads directly. `selectOption` has already awaited the change.
     const component = await mount(
       <MockSelect options={options} data-testid="micPicker" />,
     );
@@ -281,8 +286,14 @@ test.describe("Select", () => {
         <Select options={options} onChange={() => {}} data-testid="untouched" />
       </div>,
     );
-    const touched = component.getByTestId("touched");
-    const untouched = component.getByTestId("untouched");
+    // `select[data-testid=…]`, not `getByTestId(…)`: the element-
+    // qualified form is self-guarding. A bare testid lookup would
+    // resolve to the wrapper if the testid ever moved back, and
+    // focus()/blur() on a non-focusable <div> is a silent no-op — two
+    // untouched wrappers report the same border and this passes
+    // having exercised no <select> at all.
+    const touched = component.locator('select[data-testid="touched"]');
+    const untouched = component.locator('select[data-testid="untouched"]');
 
     await touched.focus();
     await touched.blur();
