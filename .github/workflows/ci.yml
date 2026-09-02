@@ -25,6 +25,9 @@ jobs:
       ct: ${{ steps.filter.outputs.ct }}
       lint: ${{ steps.filter.outputs.lint }}
       action: ${{ steps.filter.outputs.action }}
+      # Playwright version pinned in package-lock.json, used to build the
+      # component-test container tag. See that job for why.
+      playwright: ${{ steps.playwright-version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -72,6 +75,19 @@ jobs:
             action:
               - 'validate-action/**'
               - '.github/workflows/ci.yml'
+      # Read the pinned Playwright version straight out of the lockfile so
+      # the component-test container tag can be derived from it rather than
+      # duplicated. Reads the lockfile directly — no `npm ci` needed, and
+      # this job is already the first thing every other job waits on.
+      - name: Read pinned Playwright version
+        id: playwright-version
+        run: |
+          ver=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/experimental-ct-react'].version")
+          if [ -z "$ver" ]; then
+            echo "::error::Could not read @playwright/experimental-ct-react version from package-lock.json"
+            exit 1
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
 
   lint:
     name: Lint & Format
@@ -175,6 +191,47 @@ jobs:
     # wall clock should be ~1-2 min over the ~30s setup baseline. 10
     # leaves comfortable headroom over the worst observed.
     timeout-minutes: 10
+    # Run inside Microsoft's official Playwright image, which ships all
+    # three browsers AND their system deps pre-installed, so setup
+    # touches the network only for `npm ci`.
+    #
+    # This replaced an `actions/cache` of `~/.cache/ms-playwright` plus a
+    # per-run `npx playwright install-deps`. The cache only ever covered
+    # browser *binaries*; system libs are OS packages and structurally
+    # can't live there, so a cache hit was precisely the branch that ran
+    # apt-get. Measured per shard on the run that motivated this change:
+    #   chromium    9 packages /  21.1 MB of archives
+    #   firefox    40 packages /  48.8 MB
+    #   webkit    181 packages / 114 MB
+    # times 4 shards each, plus 12x11.7 MB of index refresh — roughly
+    # 875 MB pulled from azure.archive.ubuntu.com on EVERY run to install
+    # what the image already contains, and twelve independent chances to
+    # draw a stalled mirror. One did: a chromium shard hung 9m45s mid-
+    # download with zero tests run and was killed by the 10m timeout.
+    #
+    # Cost is a ~32s image pull, so this is roughly minute-neutral (and
+    # minutes are free here anyway — public repo, standard runners). The
+    # win is removing apt from the hot path entirely. Same pattern as
+    # talkbench/runner (playwright_component.yml, playwright_e2e.yml,
+    # playwright_e2e_video.yml) and talkbench/manager (pr.yml), which
+    # adopted it after ~6min webkit and ~11min chromium `--with-deps`
+    # steps respectively.
+    #
+    # The tag is DERIVED from the `@playwright/experimental-ct-react`
+    # version in package-lock.json rather than hardcoded: the image's
+    # browser builds and the client library speak a versioned protocol,
+    # and drift between them surfaces as an inscrutable launch failure.
+    # Deriving it means a Playwright bump can't desync the two — a
+    # dependabot PR moves both at once. If a bump ever lands before
+    # Microsoft publishes the matching image, the job fails loudly at
+    # pull time, which is the outcome we want.
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.changes.outputs.playwright }}-noble
+      # The image runs as root by default; pinning the runner's own UID
+      # so checkout + npm steps don't trip over file-owner mismatches
+      # with the host mount. (Chromium also refuses to launch as root
+      # without --no-sandbox; this avoids needing that.)
+      options: --user 1001
     strategy:
       # Run every (browser, shard) combination even when one fails so
       # the PR shows which engine(s) and which shard(s) broke at a
@@ -198,52 +255,17 @@ jobs:
         shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v5
+      # The Playwright image ships Node 22; the rest of this workflow
+      # standardises on 24, so install it on top. Small (~10s node-dist
+      # tarball, no apt-get) and keeps every job on one Node version.
       - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
       - run: npm ci
-      # Cache the Playwright browser binaries (~150MB per engine)
-      # keyed on the `@playwright/experimental-ct-react` version
-      # pinned in package-lock.json AND the browser project name —
-      # different browsers expand to different cache keys so we don't
-      # over-fetch unrelated engines on hit. On a hit, only the small
-      # `install-deps` step runs (apt-get for system libs — libnss3,
-      # libatk, …). Saves ~25s on cached runs.
-      #
-      # Alternative if this stops paying off: run inside the
-      # `mcr.microsoft.com/playwright:vX.Y.Z-noble` image (matching
-      # the Playwright version in package-lock.json). The image
-      # ships browsers + system deps pre-installed, so the entire
-      # 33s install step disappears — but two gotchas:
-      #   1. GitHub Actions runs container jobs as root by default.
-      #      Chromium refuses to launch as root without
-      #      `--no-sandbox`. Fix: set `container.options: --user 1001`
-      #      (matches the runner's UID) OR add `args: ["--no-sandbox"]`
-      #      to the chromium launch options in playwright-ct.config.ts.
-      #      runner's playwright_component.yml uses the
-      #      `--user 1001` form.
-      #   2. The image tag MUST track the `@playwright/experimental-
-      #      ct-react` version in package-lock.json (two places to
-      #      bump on a Playwright upgrade — drift breaks the browser
-      #      protocol).
-      # See PR #366 for the full cache-vs-image trade-off discussion.
-      - name: Get Playwright version
-        id: pw-version
-        run: |
-          ver=$(node -p "require('@playwright/experimental-ct-react/package.json').version")
-          echo "version=$ver" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
-        id: pw-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw-version.outputs.version }}-${{ matrix.browser }}
-      - name: Install Playwright browser (cache miss)
-        if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps ${{ matrix.browser }}
-      - name: Install Playwright system deps (cache hit)
-        if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps ${{ matrix.browser }}
+      # No `playwright install` step: the image already has all three
+      # browsers under /ms-playwright, which Playwright discovers via the
+      # PLAYWRIGHT_BROWSERS_PATH env baked into it.
       - run: npx playwright test --config playwright-ct.config.ts --project=${{ matrix.browser }} --workers=1 --shard=${{ matrix.shard }}/4
         working-directory: packages/stagebook
 
