@@ -358,6 +358,8 @@ Requires StagebookProvider. Dispatches to the appropriate element component base
 | `ListSorter`    | `items`, `onChange`                                                                                                                                                |
 | `Markdown`      | `text`, `resolveURL?`                                                                                                                                              |
 
+**`data-testid` placement.** Single-element controls (`Button`, `Select`) put the caller's `data-testid` on the interactive element itself, so `getByTestId(…)` can be driven directly — Playwright's `selectOption()` requires a real `<select>` and `inputValue()` a form control, so both throw on a wrapper `<div>`. Composite controls (`RadioGroup`, `CheckboxGroup`) put theirs on the group wrapper, since there is no single element to name, and tag inner parts with their own testids (`option`). `Slider` takes no caller testid at all — it exposes fixed ones (`slider` on the wrapper, plus `slider-track`, `slider-thumb`, `slider-value-badge`).
+
 ### Display Components (standalone)
 
 | Component          | Key Props                                                                                                                                                                                                                                       |

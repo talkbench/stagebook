@@ -173,9 +173,10 @@ test.describe("Select", () => {
     const component = await mount(
       <Select options={options} onChange={() => {}} id="myPicker" />,
     );
-    // Wrapper carries the data-testid; the root mounted component IS
-    // the wrapper.
-    await expect(component).toHaveAttribute("data-testid", "myPicker");
+    await expect(component.locator("select")).toHaveAttribute(
+      "data-testid",
+      "myPicker",
+    );
   });
 
   test("explicit data-testid overrides id", async ({ mount }) => {
@@ -187,7 +188,34 @@ test.describe("Select", () => {
         data-testid="customId"
       />,
     );
-    await expect(component).toHaveAttribute("data-testid", "customId");
+    await expect(component.locator("select")).toHaveAttribute(
+      "data-testid",
+      "customId",
+    );
+  });
+
+  test("data-testid resolves to the <select>, so Playwright can drive it", async ({
+    mount,
+  }) => {
+    // The testid names the interactive element, not the layout box
+    // around it (#601). `selectOption()` requires a real <select> and
+    // `inputValue()` a form control, so with the testid on the
+    // wrapping <div> the idiomatic call throws instead of selecting —
+    // and every consumer has to remember to append a descendant
+    // ` select`. Matches Button, which puts the caller's testid on
+    // the <button> itself.
+    //
+    // Asserted with the non-retrying `inputValue()` rather than the
+    // house `toHaveValue()` on purpose: it is the second of the two
+    // calls this placement unblocks, and the one talkbench/runner#737
+    // reads directly. `selectOption` has already awaited the change.
+    const component = await mount(
+      <MockSelect options={options} data-testid="micPicker" />,
+    );
+    const picker = component.getByTestId("micPicker");
+
+    await picker.selectOption("b");
+    expect(await picker.inputValue()).toBe("b");
   });
 
   // ----------- UI polish (#370) -----------
@@ -258,8 +286,14 @@ test.describe("Select", () => {
         <Select options={options} onChange={() => {}} data-testid="untouched" />
       </div>,
     );
-    const touched = component.locator('[data-testid="touched"] select');
-    const untouched = component.locator('[data-testid="untouched"] select');
+    // `select[data-testid=…]`, not `getByTestId(…)`: the element-
+    // qualified form is self-guarding. A bare testid lookup would
+    // resolve to the wrapper if the testid ever moved back, and
+    // focus()/blur() on a non-focusable <div> is a silent no-op — two
+    // untouched wrappers report the same border and this passes
+    // having exercised no <select> at all.
+    const touched = component.locator('select[data-testid="touched"]');
+    const untouched = component.locator('select[data-testid="untouched"]');
 
     await touched.focus();
     await touched.blur();

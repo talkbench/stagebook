@@ -6,6 +6,7 @@ export interface MockSelectProps {
   initialValue?: string;
   placeholder?: string;
   label?: string;
+  "data-testid"?: string;
 }
 
 export function MockSelect({
@@ -13,6 +14,7 @@ export function MockSelect({
   initialValue,
   placeholder,
   label,
+  "data-testid": dataTestId,
 }: MockSelectProps) {
   const [value, setValue] = useState(initialValue);
 
@@ -24,6 +26,7 @@ export function MockSelect({
         onChange={(e) => setValue(e.target.value)}
         label={label}
         placeholder={placeholder}
+        data-testid={dataTestId}
       />
       <div data-testid="selected-value" style={{ display: "none" }}>
         {value ?? ""}
