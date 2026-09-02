@@ -5,6 +5,7 @@ import {
   accumulatePeaks,
   createPeaksArrays,
   allBuffersSilent,
+  peaksFromSamples,
   MAX_BUCKETS,
 } from "./waveformCapture.js";
 
@@ -198,5 +199,74 @@ describe("allBuffersSilent", () => {
     buf.fill(128);
     buf[42] = 129;
     expect(allBuffersSilent([buf])).toBe(false);
+  });
+});
+
+describe("peaksFromSamples", () => {
+  it("folds each bucket's samples into an interleaved min/max pair", () => {
+    // 10 samples → 2 buckets of 5.
+    const channel = Float32Array.from([
+      0.1, -0.2, 0.3, -0.4, 0.5, 0.05, -0.9, 0.7, 0.0, 0.1,
+    ]);
+    const peaks = peaksFromSamples([channel], 2);
+    expect(peaks).toHaveLength(4);
+    expect(peaks[0]).toBeCloseTo(-0.4);
+    expect(peaks[1]).toBeCloseTo(0.5);
+    expect(peaks[2]).toBeCloseTo(-0.9);
+    expect(peaks[3]).toBeCloseTo(0.7);
+  });
+
+  it("gives the last bucket the remainder when samples do not divide evenly", () => {
+    // 7 samples → 3 buckets: [0,1], [2,3], [4,5,6].
+    const channel = Float32Array.from([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.95]);
+    const peaks = peaksFromSamples([channel], 3);
+    expect(peaks[4]).toBeCloseTo(0.5);
+    expect(peaks[5]).toBeCloseTo(0.95);
+  });
+
+  it("merges every channel into one envelope", () => {
+    const left = Float32Array.from([0.1, 0.1, 0.1, 0.1]);
+    const right = Float32Array.from([-0.6, 0.0, 0.0, 0.8]);
+    const peaks = peaksFromSamples([left, right], 1);
+    expect(peaks[0]).toBeCloseTo(-0.6);
+    expect(peaks[1]).toBeCloseTo(0.8);
+  });
+
+  it("clamps decoded samples that overshoot full scale", () => {
+    const channel = Float32Array.from([1.7, -1.3]);
+    const peaks = peaksFromSamples([channel], 1);
+    expect(peaks[0]).toBe(-1);
+    expect(peaks[1]).toBe(1);
+  });
+
+  it("spreads sparse samples across every bucket they overlap", () => {
+    // 2 samples over 4 buckets: sample 0 spans buckets 0-1, sample 1 spans
+    // buckets 2-3. No bucket is left at the sentinel, so the track has no
+    // spurious gaps.
+    const channel = Float32Array.from([0.5, -0.5]);
+    const peaks = peaksFromSamples([channel], 4);
+    expect(Array.from(peaks)).toEqual([
+      0.5, 0.5, 0.5, 0.5, -0.5, -0.5, -0.5, -0.5,
+    ]);
+  });
+
+  it("returns an all-sentinel array for empty channel data", () => {
+    const peaks = peaksFromSamples([new Float32Array(0)], 3);
+    expect(Array.from(peaks)).toEqual([1, -1, 1, -1, 1, -1]);
+    expect(Array.from(peaksFromSamples([], 2))).toEqual([1, -1, 1, -1]);
+  });
+
+  it("returns an empty array for a non-positive bucket count", () => {
+    const channel = Float32Array.from([0.5]);
+    expect(peaksFromSamples([channel], 0)).toHaveLength(0);
+    expect(peaksFromSamples([channel], -3)).toHaveLength(0);
+    expect(peaksFromSamples([channel], NaN)).toHaveLength(0);
+  });
+
+  it("caps the bucket count at MAX_BUCKETS", () => {
+    const channel = Float32Array.from([0.5, 0.5]);
+    expect(peaksFromSamples([channel], MAX_BUCKETS + 10)).toHaveLength(
+      MAX_BUCKETS * 2,
+    );
   });
 });
