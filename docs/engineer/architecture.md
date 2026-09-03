@@ -144,6 +144,10 @@ Stagebook components render correctly on any host without extra CSS, but the _ho
 
 `stagebook/host-typography` is an opt-in stylesheet that provides a small preflight-like baseline on **bare tags only**: a universal box-model reset of `box-sizing: border-box` and `border: 0 solid`, `img/video { max-width: 100% }`, a heading type scale, zero `margin-block` on `p/ul/ol/h*`, and `a` styled from `--stagebook-link`. No class selectors — nothing that targets stagebook's own components.
 
+The heading scale matches what `Markdown` / `Prompt` render for the same level — same size, same weight, same leading — so a host's own `<h2>` and a researcher's `## ` read as one heading style. Spacing is the deliberate exception: markdown headings carry their own `margin-block`, bare tags get `0`, because the host's layout owns vertical rhythm. `host-typography.ct.tsx` pins both halves by rendering the two surfaces side by side in a real browser and comparing computed styles, so neither can drift.
+
+Heading weight is per-level: `--stagebook-heading-weight` covers h2–h6, while h1 defaults heavier (700, matching markdown) through its own `--stagebook-h1-weight` and is therefore not reachable via the shared token. `--stagebook-heading-line-height` covers all six.
+
 Import it alongside `stagebook/styles`:
 
 ```ts

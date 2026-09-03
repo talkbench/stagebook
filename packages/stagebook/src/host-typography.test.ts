@@ -6,6 +6,12 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const cssPath = join(here, "host-typography.css");
 
+/*
+ * Source-shape contracts only. Anything about how these rules RENDER — the
+ * heading scale matching markdown, the cascade between the grouped rule and
+ * the h1 rule — is asserted in a real browser by host-typography.ct.tsx,
+ * because no amount of source-matching can see the cascade (#607).
+ */
 describe("host-typography.css", () => {
   const css = readFileSync(cssPath, "utf8");
   // Strip comments so documented override examples or JSDoc-style prose
@@ -23,6 +29,8 @@ describe("host-typography.css", () => {
       "--stagebook-body-size",
       "--stagebook-body-line-height",
       "--stagebook-heading-weight",
+      "--stagebook-h1-weight",
+      "--stagebook-heading-line-height",
       "--stagebook-link-hover",
     ]) {
       expect(cssWithoutComments).toMatch(new RegExp(`${name}\\s*:`));

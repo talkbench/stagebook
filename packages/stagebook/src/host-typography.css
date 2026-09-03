@@ -28,11 +28,20 @@
  *   `survey-react`). Hosts that need to preserve browser defaults for a
  *   specific subtree should not import this globally — or scope it via
  *   their own wrapper (this file deliberately doesn't define one).
+ * - Headings also take a `line-height`, which is NOT a browser default being
+ *   overridden — browsers set no leading on headings, so heading leading was
+ *   previously inherited from the host's body. Third-party headings that only
+ *   set their own font-size (survey-react's `.sv-*__title` rules, say) go from
+ *   the host's body leading to 1.2. Tighter, not broken, but it is a value
+ *   this layer did not touch before 0.28.
  * - NOT a stylesheet for stagebook's own components. Those already ship
  *   inline styles and aren't affected by this layer.
  *
  * Customize by overriding the --stagebook-* variables at :root or on any
- * ancestor element — same pattern as stagebook/styles.
+ * ancestor element — same pattern as stagebook/styles. For headings that
+ * means --stagebook-heading-weight (h2-h6), --stagebook-h1-weight (h1 alone,
+ * which defaults heavier to match markdown, and so is NOT reachable through
+ * --stagebook-heading-weight), and --stagebook-heading-line-height (all six).
  */
 
 /* ------------------------------------------------------------------ */
@@ -49,6 +58,14 @@
   --stagebook-body-size: 1rem;
   --stagebook-body-line-height: 1.5;
   --stagebook-heading-weight: 600;
+  /* h1 is the one level markdown weights differently (see
+     --stagebook-prompt-h1-weight in stagebook/styles); the rest sit at the
+     shared --stagebook-heading-weight. */
+  --stagebook-h1-weight: 700;
+  /* Headings set their own leading rather than inheriting the body's 1.5 —
+     display type at 30px wants tighter leading than running text, and this
+     is the value markdown headings already use. */
+  --stagebook-heading-line-height: 1.2;
   --stagebook-link-hover: #1d4ed8;
   /* --stagebook-link is declared in stagebook/styles. Usages below carry a
      literal fallback so this file is still usable if imported alone. */
@@ -80,6 +97,13 @@ video {
 /* ------------------------------------------------------------------ */
 /* Headings — reset margin-block so host layouts control spacing, and        */
 /* restore a usable type scale regardless of what the host's reset does.    */
+/*                                                                          */
+/* Size, weight and leading match what `Markdown`/`Prompt` render for the    */
+/* same heading level, so a host's own <h2> and a researcher's `## ` read as */
+/* one heading style (#607). Spacing deliberately does NOT match: markdown   */
+/* headings carry their own margins, these don't, because the host's layout  */
+/* owns vertical rhythm here. host-typography.ct.tsx renders both surfaces   */
+/* in a browser and pins both halves post-cascade.                           */
 /* ------------------------------------------------------------------ */
 
 h1,
@@ -89,11 +113,14 @@ h4,
 h5,
 h6 {
   font-weight: var(--stagebook-heading-weight, 600);
+  line-height: var(--stagebook-heading-line-height, 1.2);
   margin-block: 0;
 }
 
+/* After the grouped rule, so the h1-specific weight wins on equal specificity. */
 h1 {
   font-size: var(--stagebook-h1-size, 1.875rem);
+  font-weight: var(--stagebook-h1-weight, 700);
 }
 h2 {
   font-size: var(--stagebook-h2-size, 1.5rem);
