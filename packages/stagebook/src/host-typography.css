@@ -49,6 +49,14 @@
   --stagebook-body-size: 1rem;
   --stagebook-body-line-height: 1.5;
   --stagebook-heading-weight: 600;
+  /* h1 is the one level markdown weights differently (see
+     --stagebook-prompt-h1-weight in stagebook/styles); the rest sit at the
+     shared --stagebook-heading-weight. */
+  --stagebook-h1-weight: 700;
+  /* Headings set their own leading rather than inheriting the body's 1.5 —
+     display type at 30px wants tighter leading than running text, and this
+     is the value markdown headings already use. */
+  --stagebook-heading-line-height: 1.2;
   --stagebook-link-hover: #1d4ed8;
   /* --stagebook-link is declared in stagebook/styles. Usages below carry a
      literal fallback so this file is still usable if imported alone. */
@@ -80,6 +88,12 @@ video {
 /* ------------------------------------------------------------------ */
 /* Headings — reset margin-block so host layouts control spacing, and        */
 /* restore a usable type scale regardless of what the host's reset does.    */
+/*                                                                          */
+/* Size, weight and leading match what `Markdown`/`Prompt` render for the    */
+/* same heading level, so a host's own <h2> and a researcher's `## ` read as */
+/* one heading style (#607). Spacing deliberately does NOT match: markdown   */
+/* headings carry their own margins, these don't, because the host's layout  */
+/* owns vertical rhythm here. host-typography.test.ts pins both halves.      */
 /* ------------------------------------------------------------------ */
 
 h1,
@@ -89,11 +103,14 @@ h4,
 h5,
 h6 {
   font-weight: var(--stagebook-heading-weight, 600);
+  line-height: var(--stagebook-heading-line-height, 1.2);
   margin-block: 0;
 }
 
+/* After the grouped rule, so the h1-specific weight wins on equal specificity. */
 h1 {
   font-size: var(--stagebook-h1-size, 1.875rem);
+  font-weight: var(--stagebook-h1-weight, 700);
 }
 h2 {
   font-size: var(--stagebook-h2-size, 1.5rem);
