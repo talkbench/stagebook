@@ -28,11 +28,20 @@
  *   `survey-react`). Hosts that need to preserve browser defaults for a
  *   specific subtree should not import this globally — or scope it via
  *   their own wrapper (this file deliberately doesn't define one).
+ * - Headings also take a `line-height`, which is NOT a browser default being
+ *   overridden — browsers set no leading on headings, so heading leading was
+ *   previously inherited from the host's body. Third-party headings that only
+ *   set their own font-size (survey-react's `.sv-*__title` rules, say) go from
+ *   the host's body leading to 1.2. Tighter, not broken, but it is a value
+ *   this layer did not touch before 0.28.
  * - NOT a stylesheet for stagebook's own components. Those already ship
  *   inline styles and aren't affected by this layer.
  *
  * Customize by overriding the --stagebook-* variables at :root or on any
- * ancestor element — same pattern as stagebook/styles.
+ * ancestor element — same pattern as stagebook/styles. For headings that
+ * means --stagebook-heading-weight (h2-h6), --stagebook-h1-weight (h1 alone,
+ * which defaults heavier to match markdown, and so is NOT reachable through
+ * --stagebook-heading-weight), and --stagebook-heading-line-height (all six).
  */
 
 /* ------------------------------------------------------------------ */
@@ -93,7 +102,8 @@ video {
 /* same heading level, so a host's own <h2> and a researcher's `## ` read as */
 /* one heading style (#607). Spacing deliberately does NOT match: markdown   */
 /* headings carry their own margins, these don't, because the host's layout  */
-/* owns vertical rhythm here. host-typography.test.ts pins both halves.      */
+/* owns vertical rhythm here. host-typography.ct.tsx renders both surfaces   */
+/* in a browser and pins both halves post-cascade.                           */
 /* ------------------------------------------------------------------ */
 
 h1,
