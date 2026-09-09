@@ -24,6 +24,19 @@ describe("focusRingCss (#610)", () => {
     expect(FOCUS_RING_HALO).toMatch(/0 0 0 2px[\s\S]*?0 0 0 4px/);
   });
 
+  it("reaches through to --stagebook-primary when styles.css isn't loaded", () => {
+    // styles.css is optional (#213) and is the only place that aliases
+    // --stagebook-focus-ring to the accent. A host that skips it and themes
+    // by setting --stagebook-primary alone leaves the ring token undefined;
+    // with a single-level fallback the ring would ignore their accent and
+    // paint our hard-coded blue. Both indicators have to nest.
+    for (const css of [FOCUS_RING_HALO, focusOutlineCss()]) {
+      expect(css).toContain(
+        "var(--stagebook-focus-ring, var(--stagebook-primary, #2563eb))",
+      );
+    }
+  });
+
   it("keeps a transparent outline so forced-colors has something to repaint", () => {
     // The load-bearing half of the forced-colors fix: that mode drops
     // box-shadow and honors outline. `outline: none` here would silently

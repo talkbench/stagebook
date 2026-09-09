@@ -18,6 +18,7 @@
 // times. See src/components/focusRing.ts for the shared treatment.
 import { test, expect } from "@playwright/experimental-ct-react";
 import type { Locator, Page } from "playwright/test";
+import type React from "react";
 import type { ReactNode } from "react";
 
 import { RadioGroup } from "./form/RadioGroup";
@@ -292,6 +293,36 @@ test.describe("focus indicator is opaque (1.4.11)", () => {
       }
     });
   }
+});
+
+// styles.css is optional (#213): components carry their own styles, so a host
+// may theme by defining --stagebook-primary alone and never load our
+// stylesheet. That leaves --stagebook-focus-ring — which only styles.css
+// defines — undefined, and the ring has to reach through to the accent
+// rather than falling back to our hard-coded blue. `initial` on a custom
+// property is the guaranteed-invalid value, which is exactly the state a
+// host that skipped styles.css would be in.
+test("the ring follows --stagebook-primary when the ring token is undefined", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <div
+      style={
+        {
+          "--stagebook-focus-ring": "initial",
+          "--stagebook-primary": "rgb(200, 0, 0)",
+        } as React.CSSProperties
+      }
+    >
+      <Button primary>Themed</Button>
+    </div>,
+  );
+  const button = component.locator("button").first();
+  await focusAsKeyboardUser(page, button);
+  await expect
+    .poll(() => button.evaluate((el) => getComputedStyle(el).boxShadow))
+    .toContain("rgb(200, 0, 0) 0px 0px 0px 4px");
 });
 
 // Stagebook suppresses the focus outline on its *own* range input, because

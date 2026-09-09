@@ -54,6 +54,13 @@ accent at full strength. That keeps the property the old token comment was
 after (retuning a host's accent retunes the ring) and, unlike the `color-mix`
 it replaces, needs no `@supports` fallback to stay in sync.
 
+That alias lives in `styles.css`, which hosts may legitimately not load
+([#213]). So components reference the accent as
+`var(--stagebook-focus-ring, var(--stagebook-primary, #2563eb))` — nested, not
+single-level. A host that skips the stylesheet and themes by defining
+`--stagebook-primary` alone leaves the ring token undefined, and a
+single-level fallback would ignore their accent and paint our hard-coded blue.
+
 Opacity alone is not sufficient, and this is the part worth recording because
 the obvious fix is wrong. On a control whose own fill _is_ the accent — a
 primary Button, a checked radio — a flat accent ring is **1.00:1**, which is

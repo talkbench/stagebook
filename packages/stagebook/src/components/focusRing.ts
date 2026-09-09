@@ -36,14 +36,24 @@
  */
 
 /**
- * The two halo layers: a page-colored spacer, then the accent ring.
+ * The accent the indicator is painted in.
  *
- * `--stagebook-focus-ring` defaults to `--stagebook-primary`, so retuning a
- * host's accent retunes the ring — as long as that accent itself clears 3:1
- * on the host's page color, which the palette gate asserts for ours.
+ * The fallback is nested for a reason. `--stagebook-focus-ring` is aliased to
+ * `--stagebook-primary` in `styles.css`, which hosts may legitimately not
+ * load (#213) — components carry their own styles. Such a host themes by
+ * defining `--stagebook-primary` alone, which leaves `--stagebook-focus-ring`
+ * undefined; a single-level fallback would then drop straight to our
+ * hard-coded blue and ignore their accent entirely. Reaching through to
+ * `--stagebook-primary` first keeps the "retuning the accent retunes the
+ * ring" promise true in both configurations — as long as that accent itself
+ * clears 3:1 on the host's page color, which the palette gate asserts for
+ * ours.
  */
-export const FOCUS_RING_HALO =
-  "0 0 0 2px var(--stagebook-bg, #fff), 0 0 0 4px var(--stagebook-focus-ring, #2563eb)";
+export const FOCUS_RING_ACCENT =
+  "var(--stagebook-focus-ring, var(--stagebook-primary, #2563eb))";
+
+/** The two halo layers: a page-colored spacer, then the accent ring. */
+export const FOCUS_RING_HALO = `0 0 0 2px var(--stagebook-bg, #fff), 0 0 0 4px ${FOCUS_RING_ACCENT}`;
 
 /**
  * The full declaration block for a focus rule, for interpolation into a
@@ -78,6 +88,6 @@ export function focusRingCss(...beneath: string[]): string {
  * honors `outline`, and only repaints the color.
  */
 export function focusOutlineCss(): string {
-  return `outline: 2px solid var(--stagebook-focus-ring, #2563eb);
+  return `outline: 2px solid ${FOCUS_RING_ACCENT};
           outline-offset: 2px;`;
 }
