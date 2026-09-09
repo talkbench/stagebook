@@ -532,17 +532,19 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     // subtle input border and predates #535 — the WCAG 1.4.11 question for
     // form-control boundaries is a separate a11y decision, not asserted here.
     ["--stagebook-playhead", "--stagebook-bg", UI, "playhead marker (UI)"],
-    // #612. The tooltip's text is a literal `white` (timelineStyles.ts), and
-    // --stagebook-bg is white, so this asserts the real pairing by proxy.
-    // (A host that darkens --stagebook-bg does NOT retint that literal — a
-    // separate theming gap, tracked apart from this contrast assertion.)
-    // Only assertable now that the gate resolves the @supports form: this
-    // token's static fallback is translucent, its effective value is not.
+    // #612. The tooltip's text is a hard-coded `white` in timelineStyles.ts,
+    // so the foreground here is the literal — NOT --stagebook-bg, which only
+    // happens to be white today. Using the token as a proxy would silently
+    // start asserting the wrong pairing the moment a host (or a future
+    // darker palette) moved it, while the rendered text stayed white
+    // (#617 review). The literal is pinned to its source by the test below.
+    // Only assertable at all now that the gate resolves the @supports form:
+    // this token's static fallback is translucent, its effective value is not.
     [
-      "--stagebook-bg",
+      "#ffffff",
       "--stagebook-timeline-tooltip-bg",
       AA,
-      "timeline range tooltip text",
+      "timeline range tooltip text (literal white)",
     ],
     // #610: the focus ring is a non-text UI indicator (1.4.11), so it needs
     // 3:1 against everything it can abut. It was translucent until #610 —
@@ -563,8 +565,14 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     // re-declared under @supports has two, and both render somewhere — the
     // static one on a browser without color-mix, the override everywhere
     // else. Asserting only the first tested the palette almost nobody sees.
-    const fgHexes = resolveAllHexes(fg);
-    const bgHexes = resolveAllHexes(bg);
+    // A side may be a literal hex rather than a token: some rendered colors
+    // are hard-coded in a component and are not themeable, so asserting a
+    // token "as a proxy" for them would compute a pairing that isn't on
+    // screen the moment that token moves (#617 review).
+    const asHexes = (side: string) =>
+      side.startsWith("#") ? [side] : resolveAllHexes(side);
+    const fgHexes = asHexes(fg);
+    const bgHexes = asHexes(bg);
     expect(fgHexes, `${fg} should resolve to at least one hex`).not.toEqual([]);
     expect(bgHexes, `${bg} should resolve to at least one hex`).not.toEqual([]);
     for (const fgHex of fgHexes) {
@@ -576,6 +584,18 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
         ).toBeGreaterThanOrEqual(min);
       }
     }
+  });
+
+  it("pins the tooltip's hard-coded text color to the pairing above", () => {
+    // The pairing asserts a literal #ffffff because that is what renders.
+    // If the tooltip's text color ever changes, this fails and forces the
+    // pairing to be updated with it — otherwise the two drift silently and
+    // the contrast assertion quietly stops describing the screen.
+    const timelineStyles = readFileSync(
+      join(componentsDir, "elements", "timeline", "timelineStyles.ts"),
+      "utf8",
+    );
+    expect(timelineStyles).toMatch(/color:\s*"white"/);
   });
 
   it("honors a deprecated --stagebook-text-faint override through --stagebook-decoration", () => {
