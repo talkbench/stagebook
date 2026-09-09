@@ -83,7 +83,7 @@ describe("styles.css custom property coverage", () => {
 // re-aliasing the tint to the accent turns the Slider's hover track solid
 // blue, and re-introducing alpha on the ring restores the 1.03:1 defect —
 // both silently, since neither is something the palette gate can catch (it
-// skips translucent tokens by design).
+// skips translucent values by design — see #612).
 describe("the focus ring is opaque and the tint is not (#610)", () => {
   const css = readFileSync(stylesPath, "utf8");
   const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -107,7 +107,9 @@ describe("the focus ring is opaque and the tint is not (#610)", () => {
 
   it("--stagebook-primary-tint stays translucent, in every branch", () => {
     // Two branches: the static rgba default and the color-mix upgrade. The
-    // palette gate reads only the first :root block, so it sees neither.
+    // palette gate skips both — they're translucent, so there's no single
+    // opaque hex to assert a ratio against — which is exactly why this
+    // separate guard exists.
     const values = valuesOf("--stagebook-primary-tint");
     expect(values.length).toBe(2);
     for (const v of values) {
@@ -317,28 +319,91 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
 
   // The main :root block (custom-property values use parens, never braces,
   // so the first close-brace ends the block).
+  // The main :root block, for assertions that are specifically about it.
   const rootBody = /:root\s*\{([\s\S]*?)\}/.exec(noComments)?.[1] ?? "";
-  const vars = new Map<string, string>();
-  for (const m of rootBody.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
-    vars.set(m[1], m[2].trim());
+
+  // EVERY declaration of each token, in source order — not just the first
+  // (#612). The @supports(color-mix) block re-declares a dozen tokens, and on
+  // any browser that supports color-mix those overrides are the palette that
+  // actually renders. Reading only the first :root block asserted the static
+  // fallbacks and left the effective values untested.
+  const vars = new Map<string, string[]>();
+  for (const m of noComments.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
+    const prev = vars.get(m[1]) ?? [];
+    prev.push(m[2].trim().replace(/\s+/g, " "));
+    vars.set(m[1], prev);
   }
 
-  /** Resolve a token through var() aliases to a solid hex, or null. */
-  function resolveHex(name: string, seen = new Set<string>()): string | null {
-    if (seen.has(name)) return null;
-    seen.add(name);
-    const v = vars.get(name);
-    if (!v) return null;
+  /**
+   * Resolve one declared value to a solid hex, or null when it has no single
+   * opaque hex (a translucent rgba, or a mix with `transparent`) — a contrast
+   * assertion against those would be meaningless, so the caller asserts that
+   * the token resolved at all.
+   */
+  function resolveValue(v: string, seen: Set<string>): string | null {
     if (/^#[0-9a-f]{3,8}$/i.test(v)) return v;
-    // Only follow a plain `var(--x)` alias to a solid hex. A color-mix()/rgba()
-    // value is a translucent/blended color with no single opaque hex, so a
-    // contrast assertion against it would be meaningless — return null (the
-    // caller asserts the token resolved) rather than the inner var's opaque hex.
     if (/^var\(\s*--[\w-]+\s*\)$/.test(v)) {
       const ref = /var\(\s*(--[\w-]+)/.exec(v);
       return ref ? resolveHex(ref[1], seen) : null;
     }
-    return null;
+    // `color-mix(in srgb, <color> N%, <color>)`. A mix toward `transparent`
+    // stays translucent and is skipped; a mix toward an opaque color (e.g.
+    // the timeline tooltip's `… 80%, #000`) has a real hex worth asserting.
+    const mix =
+      /^color-mix\(\s*in srgb\s*,\s*(.+?)\s+([\d.]+)%\s*,\s*(.+?)\s*\)$/i.exec(
+        v,
+      );
+    if (!mix) return null;
+    const [, aRaw, pctRaw, bRaw] = mix;
+    const a = resolveValue(aRaw, new Set(seen));
+    const b = resolveValue(bRaw, new Set(seen));
+    if (!a || !b) return null;
+    const p = parseFloat(pctRaw) / 100;
+    const chan = (hex: string) => {
+      const h = hex.replace("#", "");
+      const n =
+        h.length === 3
+          ? h
+              .split("")
+              .map((c) => c + c)
+              .join("")
+          : h;
+      return [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16));
+    };
+    const [ar, ag, ab] = chan(a);
+    const [br, bg, bb] = chan(b);
+    return (
+      "#" +
+      [
+        [ar, br],
+        [ag, bg],
+        [ab, bb],
+      ]
+        .map(([x, y]) =>
+          Math.round(x * p + y * (1 - p))
+            .toString(16)
+            .padStart(2, "0"),
+        )
+        .join("")
+    );
+  }
+
+  /**
+   * Every resolvable opaque value a token can take — the static default and
+   * any @supports override. Both ship, so both are asserted: the fallback is
+   * what an old browser renders, the override is what everything else does.
+   */
+  function resolveAllHexes(name: string, seen = new Set<string>()): string[] {
+    if (seen.has(name)) return [];
+    seen.add(name);
+    return (vars.get(name) ?? [])
+      .map((v) => resolveValue(v, seen))
+      .filter((h): h is string => h !== null);
+  }
+
+  /** The token's primary (first-declared) resolvable value, or null. */
+  function resolveHex(name: string, seen = new Set<string>()): string | null {
+    return resolveAllHexes(name, seen)[0] ?? null;
   }
 
   function relLum(hex: string): number {
@@ -382,6 +447,18 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     // subtle input border and predates #535 — the WCAG 1.4.11 question for
     // form-control boundaries is a separate a11y decision, not asserted here.
     ["--stagebook-playhead", "--stagebook-bg", UI, "playhead marker (UI)"],
+    // #612. The tooltip's text is a literal `white` (timelineStyles.ts), and
+    // --stagebook-bg is white, so this asserts the real pairing by proxy.
+    // (A host that darkens --stagebook-bg does NOT retint that literal — a
+    // separate theming gap, tracked apart from this contrast assertion.)
+    // Only assertable now that the gate resolves the @supports form: this
+    // token's static fallback is translucent, its effective value is not.
+    [
+      "--stagebook-bg",
+      "--stagebook-timeline-tooltip-bg",
+      AA,
+      "timeline range tooltip text",
+    ],
     // #610: the focus ring is a non-text UI indicator (1.4.11), so it needs
     // 3:1 against everything it can abut. It was translucent until #610 —
     // and resolveHex() returns null for a translucent value, so it slipped
@@ -397,22 +474,30 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
   ];
 
   it.each(pairings)("%s on %s meets its contrast floor (%s)", (fg, bg, min) => {
-    const fgHex = resolveHex(fg);
-    const bgHex = resolveHex(bg);
-    expect(fgHex, `${fg} should resolve to a hex`).not.toBeNull();
-    expect(bgHex, `${bg} should resolve to a hex`).not.toBeNull();
-    const ratio = contrast(fgHex as string, bgHex as string);
-    expect(
-      ratio,
-      `${fg} (${String(fgHex)}) on ${bg} (${String(bgHex)}) = ${ratio.toFixed(2)}:1, need ${String(min)}`,
-    ).toBeGreaterThanOrEqual(min);
+    // Every shipped value of each token, not just the first (#612): a token
+    // re-declared under @supports has two, and both render somewhere — the
+    // static one on a browser without color-mix, the override everywhere
+    // else. Asserting only the first tested the palette almost nobody sees.
+    const fgHexes = resolveAllHexes(fg);
+    const bgHexes = resolveAllHexes(bg);
+    expect(fgHexes, `${fg} should resolve to at least one hex`).not.toEqual([]);
+    expect(bgHexes, `${bg} should resolve to at least one hex`).not.toEqual([]);
+    for (const fgHex of fgHexes) {
+      for (const bgHex of bgHexes) {
+        const ratio = contrast(fgHex, bgHex);
+        expect(
+          ratio,
+          `${fg} (${fgHex}) on ${bg} (${bgHex}) = ${ratio.toFixed(2)}:1, need ${String(min)}`,
+        ).toBeGreaterThanOrEqual(min);
+      }
+    }
   });
 
   it("honors a deprecated --stagebook-text-faint override through --stagebook-decoration", () => {
     // Back-compat: components read --stagebook-decoration, so it must fall
     // through the old --stagebook-text-faint token first (a host that still
     // overrides the old name must keep working).
-    expect(vars.get("--stagebook-decoration")).toMatch(
+    expect(vars.get("--stagebook-decoration")?.[0]).toMatch(
       /var\(\s*--stagebook-text-faint\b/,
     );
   });
