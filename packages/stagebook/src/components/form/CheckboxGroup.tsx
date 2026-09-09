@@ -1,5 +1,6 @@
 import React, { useId } from "react";
 import { useIsRTL } from "../StagebookProvider.js";
+import { focusRingCss } from "../focusRing.js";
 
 export interface CheckboxOption {
   key: string;
@@ -132,8 +133,7 @@ export function CheckboxGroup({
           background-color: var(--stagebook-hover-bg, #f3f4f6);
         }
         .${inputClass}:focus-visible {
-          outline: none;
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
+          ${focusRingCss()}
         }
         @media (prefers-reduced-motion: reduce) {
           .${rowClass} {

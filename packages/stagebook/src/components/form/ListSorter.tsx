@@ -5,6 +5,7 @@ import {
   Draggable,
   type DropResult,
 } from "@hello-pangea/dnd";
+import { focusRingCss } from "../focusRing.js";
 
 // Drag handle glyph — ⠿ (vertical-pair-of-three-dots Braille
 // character) is the de-facto "drag me" affordance across modern web
@@ -251,10 +252,7 @@ export function ListSorter({ items, onChange }: ListSorterProps) {
            loud visual state (stronger shadow + darker border)
            that already serves the "I'm holding this" purpose. */
         .${itemClass}[data-dragging="false"]:focus-visible {
-          outline: none;
-          box-shadow:
-            0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25)),
-            0 1px 2px 0 rgba(0, 0, 0, 0.05);
+          ${focusRingCss("0 1px 2px 0 rgba(0, 0, 0, 0.05)")}
         }
         @media (prefers-reduced-motion: reduce) {
           .${itemClass} {

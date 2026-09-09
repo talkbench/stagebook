@@ -46,6 +46,7 @@ import {
   zoomIn as nextZoomIn,
   zoomOut as nextZoomOut,
 } from "./timeline/viewport.js";
+import { focusRingCss } from "../focusRing.js";
 
 export interface TimelineProps {
   source: string;
@@ -864,12 +865,6 @@ export function Timeline({
         border: "1px solid var(--stagebook-border, #d1d5db)",
         borderRadius: "0.5rem",
         overflow: "hidden",
-        // `outline: none` removes the browser default; the scoped
-        // `:focus-visible` ring below replaces it. Inline (not in the
-        // <style> block) because the ring is a box-shadow override
-        // that needs the outline killed unconditionally for both
-        // focus and non-focus states.
-        outline: "none",
         position: "relative",
       }}
     >
@@ -893,7 +888,7 @@ export function Timeline({
            only fire on Space/Enter and most users don't expect a
            click-then-spacebar pattern on a button. */
         .${containerClass}:focus {
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
+          ${focusRingCss()}
         }
       `}</style>
       {/* Header: zoom controls (always) + minimap (when zoomed in) — puts

@@ -2,6 +2,7 @@ import React, { useId } from "react";
 import { useIsRTL } from "../StagebookProvider.js";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { focusOutlineCss } from "../focusRing.js";
 
 export interface MarkdownProps {
   text: string;
@@ -451,8 +452,7 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
           color: var(--stagebook-link-visited, #7c3aed);
         }
         .${rootClass} a:focus-visible {
-          outline: 2px solid var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
-          outline-offset: 2px;
+          ${focusOutlineCss()}
           border-radius: 0.125rem;
         }
         /* Code blocks — keyboard scroll. The <pre> carries
@@ -460,8 +460,7 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
            long lines (WCAG 2.1.1); the focus-visible ring tells
            them it's selected. */
         .${rootClass} pre:focus-visible {
-          outline: 2px solid var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
-          outline-offset: 2px;
+          ${focusOutlineCss()}
         }
         /* List markers — muted so the bullet/number reads as
            structure, not weight-competing with body text. */

@@ -3,6 +3,7 @@ import { formatTime } from "../../../utils/formatTime.js";
 import { useMessages, useIsRTL } from "../../StagebookProvider.js";
 import type { StagebookMessages } from "../../../messages/index.js";
 import type { TimelineValue } from "./selections.js";
+import { focusRingCss } from "../../focusRing.js";
 
 export interface TimelineFooterProps {
   selectionType: "range" | "point";
@@ -100,8 +101,7 @@ export function TimelineFooter({
     >
       <style>{`
         .${btnClass}:focus-visible {
-          outline: none;
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
+          ${focusRingCss()}
         }
         .${btnClass}:hover {
           background: var(--stagebook-hover-bg, #f3f4f6);
