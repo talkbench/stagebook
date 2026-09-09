@@ -729,6 +729,32 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     ["--stagebook-success", "--stagebook-success-bg", AA, "success pill"],
     ["--stagebook-warning", "--stagebook-warning-bg", AA, "warning pill"],
     ["--stagebook-danger", "--stagebook-bg", AA, "danger text on white"],
+    // The Select picker (#627) draws the option rows in-page, on the form
+    // control surface rather than the page, so the text/surface pairings
+    // are now on screen as rows and not only inside a closed trigger. The
+    // hovered row swaps the surface for the hover fill; the checked row's
+    // checkmark and the walked row's inset focus ring are non-text
+    // indicators, so they need 3:1 on everything they sit on.
+    [
+      "--stagebook-text",
+      "--stagebook-surface",
+      AA,
+      "select trigger + picker row text",
+    ],
+    ["--stagebook-text", "--stagebook-hover-bg", AA, "hovered picker row text"],
+    ["--stagebook-primary", "--stagebook-surface", UI, "picker checkmark (UI)"],
+    [
+      "--stagebook-focus-ring",
+      "--stagebook-surface",
+      UI,
+      "inset focus ring on a picker row",
+    ],
+    [
+      "--stagebook-focus-ring",
+      "--stagebook-hover-bg",
+      UI,
+      "inset focus ring on a hovered picker row",
+    ],
     // NOTE: --stagebook-border (gray-300, 1.47:1 on white) is a deliberately
     // subtle input border and predates #535 — the WCAG 1.4.11 question for
     // form-control boundaries is a separate a11y decision, not asserted here.

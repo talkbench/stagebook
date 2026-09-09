@@ -11,6 +11,7 @@
 // refinement; a single gate is the low-friction starting form.
 import { test, expect } from "@playwright/experimental-ct-react";
 import AxeBuilder from "@axe-core/playwright";
+import type { Page } from "@playwright/test";
 import type { ReactNode } from "react";
 import type { MetadataType } from "../schemas/promptFile";
 
@@ -78,7 +79,13 @@ const dropdownPrompt = {
 
 // Each case is a participant-facing component in its correctly-used (named,
 // themed) form. The gate asserts none of them produce WCAG 2.2 AA violations.
-const cases: { name: string; node: ReactNode }[] = [
+// `prepare` runs after mount and before the scan, for a state the mounted
+// tree doesn't reach on its own (an open picker).
+const cases: {
+  name: string;
+  node: ReactNode;
+  prepare?: (page: Page) => Promise<void>;
+}[] = [
   {
     name: "RadioGroup",
     node: <RadioGroup options={options} onChange={() => {}} label="Pick one" />,
@@ -115,6 +122,33 @@ const cases: { name: string; node: ReactNode }[] = [
         disabled
       />
     ),
+  },
+  {
+    // Open (#627): under `appearance: base-select` the rows are in-page DOM
+    // — a top-layer popover, not the OS menu — so axe can reach them and
+    // this scans the picker's own contrast, names and roles. On an engine
+    // without base-select the click would only raise the native popup,
+    // which the DOM scan cannot see, so it is skipped there.
+    name: "Select (picker open)",
+    node: (
+      <Select
+        options={options}
+        value="b"
+        onChange={() => {}}
+        label="Choose an option"
+      />
+    ),
+    prepare: async (page) => {
+      if (
+        !(await page.evaluate(() => CSS.supports("appearance", "base-select")))
+      )
+        return;
+      const select = page.locator("select");
+      await select.click();
+      await expect
+        .poll(() => select.evaluate((el) => el.matches(":open")))
+        .toBe(true);
+    },
   },
   {
     name: "TextArea",
@@ -259,6 +293,7 @@ const cases: { name: string; node: ReactNode }[] = [
 for (const c of cases) {
   test(`a11y: ${c.name}`, async ({ mount, page }) => {
     await mount(c.node);
+    await c.prepare?.(page);
     const results = await new AxeBuilder({ page })
       .include("#root")
       .withTags(WCAG_22_AA)

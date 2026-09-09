@@ -1,5 +1,5 @@
 import React, { useId } from "react";
-import { focusRingCss } from "../focusRing.js";
+import { focusRingCss, FOCUS_RING_ACCENT } from "../focusRing.js";
 
 export interface SelectOption {
   key: string;
@@ -67,6 +67,19 @@ const PLACEHOLDER_VALUE = "__stagebook_select_placeholder__";
 // in a class-scoped `<style>` block since pseudo-classes can't be
 // expressed inline.
 //
+// `appearance` is the one structural rule NOT inlined, on purpose (#627).
+// The options list is opted into the customizable select —
+// `appearance: base-select` — which moves it from the OS-drawn popup
+// (offset over the control on macOS, dark under an incognito window, and
+// deaf to our tokens) into the page: a top-layer popover anchored under
+// the trigger and painted with the same palette. That opt-in needs a
+// parse-time fallback, `none` for engines without it, and inline styles
+// can't carry two values of one property; nor can an inline `none` be
+// left in place, since it would beat the class rule and switch the
+// feature off everywhere. So both declarations live in the scoped
+// `<style>` block, still class-scoped and still emitted by the component,
+// so a host that never loads styles.css is covered as before.
+//
 // `:focus-visible` (not `:focus`) so the focus ring appears for
 // keyboard navigation. Note: Chromium/Firefox/Safari all also apply
 // `:focus-visible` after a mouse click on `<select>` because the open
@@ -76,10 +89,22 @@ const PLACEHOLDER_VALUE = "__stagebook_select_placeholder__";
 // caret arrow is a sufficient interactivity signal.
 
 const selectBaseStyle: React.CSSProperties = {
-  appearance: "none",
-  WebkitAppearance: "none",
-  MozAppearance: "none",
+  // Pinned on the control itself, not only at :root (styles.css, #535):
+  // a native popup follows its <select>'s scheme, so this holds on the
+  // native path for a host that never loads our stylesheet or nests the
+  // control under something that sets a scheme. Under base-select the
+  // in-page picker inherits it, which keeps its scrollbar light too.
+  colorScheme: "light",
   width: "100%",
+  // One line, clipped. The native trigger clips a long label anyway; the
+  // base-select trigger is a flex box that would wrap and grow, breaking
+  // the row an icon Button is sized to share (#622). The ellipsis only
+  // draws where the engine gives the label a block box of its own — under
+  // base-select the label sits in an anonymous flex item and is clipped
+  // flat, which is what the native trigger does too.
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
   // Touch-target sizing — reuses the same token as RadioGroup /
   // CheckboxGroup so the three families agree on row height.
   minHeight: "var(--stagebook-row-min-height, 2.25rem)",
@@ -171,12 +196,94 @@ export function Select({
   return (
     <div style={{ marginTop: "1rem" }}>
       <style>{`
+        .${triggerClass} {
+          -webkit-appearance: none;
+          appearance: none;
+          appearance: base-select;
+        }
         .${triggerClass}:focus-visible {
           ${focusRingCss()}
         }
         @media (prefers-reduced-motion: reduce) {
           .${triggerClass} {
             transition: none;
+          }
+        }
+        @supports (appearance: base-select) {
+          /* The engine's own disclosure icon. Ours is the background
+           * chevron on the trigger, which is what the native path shows
+           * too, so hide this one rather than double up. */
+          .${triggerClass}::picker-icon {
+            display: none;
+          }
+          /* The picker: the UA anchors it under the trigger and flips it
+           * above when there is no room. It only floors the width at the
+           * trigger's (min-inline-size: anchor-size(self-inline)) and
+           * would grow to the widest label, off the viewport; capping it
+           * at the same size pins the picker to the width the participant
+           * already read the control at, and long labels wrap into taller
+           * rows instead. The top margin clears the trigger's 4px focus
+           * halo. It inherits font, colour and color-scheme from the
+           * <select>. */
+          .${triggerClass}::picker(select) {
+            appearance: base-select;
+            max-inline-size: anchor-size(self-inline);
+            margin-block-start: 0.25rem;
+            padding: 0.25rem;
+            border: 1px solid var(--stagebook-border, #d1d5db);
+            border-radius: 0.375rem;
+            background-color: var(--stagebook-surface, #fff);
+            color: var(--stagebook-text, #1f2937);
+            box-shadow:
+              0 4px 6px -1px rgba(0, 0, 0, 0.1),
+              0 2px 4px -2px rgba(0, 0, 0, 0.1);
+          }
+          /* Rows: the RadioGroup / CheckboxGroup row treatment, so the
+           * three families agree on height, hover and the host's lever
+           * for raising the target size (--stagebook-row-min-height).
+           * Full text colour rather than the muted caption colour those
+           * rows use: these are the answer set, not labels beside it. */
+          .${triggerClass} option {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            min-height: var(--stagebook-row-min-height, 2.25rem);
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem;
+            color: var(--stagebook-text, #1f2937);
+            /* The UA keeps option text on one line; these rows wrap. */
+            white-space: normal;
+            overflow-wrap: anywhere;
+            cursor: pointer;
+            transition: background-color 120ms ease-out;
+          }
+          .${triggerClass} option:hover,
+          .${triggerClass} option:focus-visible {
+            background-color: var(--stagebook-hover-bg, #f3f4f6);
+          }
+          /* The walked row's focus indicator is an inset ring in the
+           * accent, not the shared outer halo (focusRing.ts): the halo
+           * would be clipped at the picker's scroll edge and overlap the
+           * neighbouring rows. Inset, it stays whole on every row and, as
+           * an outline, survives forced-colors. */
+          .${triggerClass} option:focus-visible {
+            outline: 2px solid ${FOCUS_RING_ACCENT};
+            outline-offset: -2px;
+          }
+          /* The UA reserves the checkmark slot on every row and shows the
+           * glyph on the checked one only, so text stays aligned. */
+          .${triggerClass} option::checkmark {
+            color: var(--stagebook-primary, #2563eb);
+          }
+          .${triggerClass} option:disabled {
+            color: var(--stagebook-text-muted, #6b7280);
+            background-color: transparent;
+            cursor: not-allowed;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            .${triggerClass} option {
+              transition: none;
+            }
           }
         }
       `}</style>
