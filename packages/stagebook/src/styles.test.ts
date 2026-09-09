@@ -338,6 +338,29 @@ function makeResolver(vars: Map<string, string[]>) {
     return parts;
   }
 
+  /**
+   * The opaque hex a literal denotes, or null when it denotes none.
+   *
+   * The loose `#[0-9a-f]{3,8}` this replaces was the gate's last
+   * silently-wrong path: it accepted 4- and 8-digit hex, whose alpha channel
+   * the channel reader then dropped on the floor — scoring a translucent
+   * color as fully opaque — and accepted 5- and 7-digit strings that are not
+   * valid CSS at all. Everything else in the resolver fails loudly; this one
+   * answered confidently and wrongly.
+   */
+  function opaqueHex(v: string): string | null {
+    const m = /^#([0-9a-f]+)$/i.exec(v);
+    if (!m) return null;
+    const h = m[1];
+    if (h.length === 3 || h.length === 6) return v;
+    // 4- and 8-digit forms carry alpha: usable only when fully opaque, and
+    // then only with the alpha stripped so the channel reader sees rgb.
+    if (h.length === 4) return /^f$/i.test(h[3]) ? `#${h.slice(0, 3)}` : null;
+    if (h.length === 8)
+      return /^ff$/i.test(h.slice(6)) ? `#${h.slice(0, 6)}` : null;
+    return null;
+  }
+
   /** Split a hex (3- or 6-digit) into its r/g/b channels. */
   function channels(hex: string): number[] {
     const h = hex.replace("#", "");
@@ -383,7 +406,10 @@ function makeResolver(vars: Map<string, string[]>) {
    * meaningless, so the caller asserts the token resolved to something.
    */
   function resolveValues(v: string, seen: Set<string>): string[] {
-    if (/^#[0-9a-f]{3,8}$/i.test(v)) return [v];
+    if (v.startsWith("#")) {
+      const hex = opaqueHex(v);
+      return hex ? [hex] : [];
+    }
     if (/^var\(\s*--[\w-]+\s*\)$/.test(v)) {
       const ref = /var\(\s*(--[\w-]+)/.exec(v);
       return ref ? resolveAllHexes(ref[1], seen) : [];
@@ -417,6 +443,13 @@ function makeResolver(vars: Map<string, string[]>) {
     const p2 = rawP2 ?? 100 - p1;
     const total = p1 + p2;
     if (total <= 0) return [];
+    // Weights summing UNDER 100% do not just renormalize: CSS applies the
+    // shortfall as an alpha multiplier, so `40%, 40%` is a translucent grey,
+    // not an opaque one. There is no opaque hex to score, so skip it — the
+    // same treatment as a mix toward `transparent`. (Over 100% is a plain
+    // scale-down and stays opaque. A single explicit weight can't get here:
+    // the omitted one is filled to make exactly 100.)
+    if (total < 100) return [];
     const p = p1 / total;
 
     const out: string[] = [];
@@ -494,33 +527,58 @@ describe("the resolver isolates a token's declarations from each other", () => {
     expect(resolveAllHexes("--link")).toEqual(["#2563eb", "#1e4fbc"]);
   });
 
+  // A declaration either has an opaque hex the gate can score, or it does
+  // not. The dangerous answers are neither red nor green — they're a WRONG
+  // hex returned confidently, because the contrast maths then runs on a
+  // color the browser never paints. Each row below is a value CSS considers
+  // valid; `[]` means "no opaque hex", which the pairing assertion surfaces
+  // loudly as "should resolve to at least one hex".
   it.each([
-    // [declaration, expected hex, why this form exists]
-    ["color-mix(in srgb, #ffffff 80%, #000000)", "#cccccc", "one percentage"],
+    // [declaration, expected, why this form exists]
+    ["color-mix(in srgb, #ffffff 80%, #000000)", ["#cccccc"], "one percentage"],
     [
       "color-mix(in srgb, #ffffff 80%, #000000 20%)",
-      "#cccccc",
+      ["#cccccc"],
       "both percentages",
     ],
     [
       "color-mix(in srgb, #ffffff, #000000 20%)",
-      "#cccccc",
+      ["#cccccc"],
       "percentage on the second color only",
     ],
-    ["color-mix(in srgb, #ffffff, #000000)", "#808080", "no percentage"],
+    ["color-mix(in srgb, #ffffff, #000000)", ["#808080"], "no percentage"],
+    [
+      "color-mix(in srgb, #ffffff 70%, #000000 70%)",
+      ["#808080"],
+      "weights over 100% are scaled down, and stay opaque",
+    ],
     [
       "color-mix(in srgb, #ffffff 40%, #000000 40%)",
-      "#808080",
-      "weights that don't sum to 100 are normalized",
+      [],
+      "weights UNDER 100% make the result translucent — CSS applies the shortfall as an alpha multiplier, so there is no opaque hex to score",
     ],
-  ])("resolves %s -> %s (%s)", (decl, expected) => {
-    // All of these are valid CSS. A parser that only understands the
-    // single-percentage form drops the others — and because the token
-    // usually also has an opaque fallback, the "resolved to something"
-    // assertion still passes while the effective override goes untested.
-    // Silent under-assertion again (#617 review).
+    // Hex literals. 3 and 6 digits are opaque by definition; 4 and 8 carry an
+    // alpha channel that must not be silently discarded; other lengths are
+    // not valid CSS hex at all.
+    ["#fff", ["#fff"], "3-digit"],
+    ["#ffffff", ["#ffffff"], "6-digit"],
+    ["#ffff", ["#fff"], "4-digit, fully opaque alpha"],
+    ["#ffffffff", ["#ffffff"], "8-digit, fully opaque alpha"],
+    ["#fff8", [], "4-digit with real alpha is translucent"],
+    ["#ffffff80", [], "8-digit with real alpha is translucent"],
+    ["#fffff", [], "5 digits is not valid CSS hex"],
+    ["#fffffff", [], "7 digits is not valid CSS hex"],
+    // Forms the gate cannot evaluate. These resolve to nothing, which fails
+    // LOUDLY at the pairing (\"should resolve to at least one hex\") rather
+    // than quietly scoring the wrong color — the safe direction to be wrong
+    // in. Teach the resolver about them the day a pairing needs one.
+    ["rgb(255, 255, 255)", [], "rgb() is not parsed"],
+    ["white", [], "named colors are not parsed"],
+    ["var(--x, #ff0000)", [], "var() with a fallback is not parsed"],
+    ["color-mix(in oklab, #fff 50%, #000)", [], "only srgb mixes are parsed"],
+  ])("resolves %s -> %j (%s)", (decl, expected) => {
     const { resolveAllHexes } = makeResolver(new Map([["--t", [decl]]]));
-    expect(resolveAllHexes("--t")).toEqual([expected]);
+    expect(resolveAllHexes("--t")).toEqual(expected);
   });
 
   it("still detects a genuine self-referential cycle", () => {
