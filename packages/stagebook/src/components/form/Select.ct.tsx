@@ -602,13 +602,21 @@ test.describe("Select: picker (#627)", () => {
   test("flips above the trigger when there is no room below", async ({
     mount,
     page,
+    browserName,
   }) => {
     test.skip(
       !(await supportsBaseSelect(page)),
       "native popup: the OS places its own menu",
     );
-    // The UA's position-try fallbacks, which the docs rely on: with the
-    // control near the bottom of a short viewport the rows open upward.
+    // WebKit's position-try fallback is geometry-sensitive at this size
+    // (it flips with the page's default body margin and not without), so
+    // it is Chromium that pins the behaviour; the docs say "may flip".
+    test.skip(
+      browserName === "webkit",
+      "WebKit's position-try fallback does not flip dependably",
+    );
+    // The UA's position-try fallbacks: with the control near the bottom
+    // of a short viewport the rows open upward.
     await page.setViewportSize({ width: 800, height: 260 });
     const component = await mount(
       <div>
@@ -622,6 +630,13 @@ test.describe("Select: picker (#627)", () => {
     const control = (await select.boundingBox())!;
     const last = (await component.locator("option").last().boundingBox())!;
     expect(last.y + last.height).toBeLessThanOrEqual(control.y);
+    // The halo-clearing margin is on this side too: flipped, the picker's
+    // bottom edge would otherwise sit on the trigger's top edge and paint
+    // over the top of its focus halo.
+    const gap = await select.evaluate((el) =>
+      parseFloat(getComputedStyle(el, "::picker(select)").marginBlockEnd),
+    );
+    expect(gap).toBeGreaterThanOrEqual(4);
   });
 
   test("the picker follows the host's token overrides: row height, hover fill, surface", async ({
@@ -776,6 +791,14 @@ test.describe("Select: picker (#627)", () => {
     // beats the hover rule by source order alone, so this pins the order.
     await placeholder.hover();
     await expect(placeholder).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    // The sentinel is "checked" in the DOM, but nothing has been chosen, so
+    // the row carries no checkmark: a tick beside "Pick one…" would read
+    // as a choice made.
+    expect(
+      await placeholder.evaluate(
+        (el) => getComputedStyle(el, "::checkmark").visibility,
+      ),
+    ).toBe("hidden");
   });
 
   test("long labels wrap inside the picker, which stays the trigger's width", async ({

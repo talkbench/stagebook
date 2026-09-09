@@ -1,5 +1,5 @@
 import React, { useId } from "react";
-import { focusRingCss, FOCUS_RING_ACCENT } from "../focusRing.js";
+import { focusRingCss, focusInsetOutlineCss } from "../focusRing.js";
 
 export interface SelectOption {
   key: string;
@@ -201,7 +201,9 @@ export function Select({
          * ".form select { appearance: auto }" is (0,1,1) — enough to beat
          * a single class, and it would put the native arrow back under
          * our chevron. Doubling keeps the #213 property without
-         * !important. */
+         * !important — deliberately not !important itself, so a host that
+         * wants the OS picker back (on phones, say) can still take it at
+         * higher specificity. */
         .${triggerClass}.${triggerClass} {
           -webkit-appearance: none;
           appearance: none;
@@ -228,13 +230,13 @@ export function Select({
            * would grow to the widest label, off the viewport; capping it
            * at the same size pins the picker to the width the participant
            * already read the control at, and long labels wrap into taller
-           * rows instead. The top margin clears the trigger's 4px focus
-           * halo. It inherits font, colour and color-scheme from the
-           * <select>. */
+           * rows instead. The block margins clear the trigger's 4px focus
+           * halo on whichever side the picker opens. It inherits font,
+           * colour and color-scheme from the <select>. */
           .${triggerClass}::picker(select) {
             appearance: base-select;
             max-inline-size: anchor-size(self-inline);
-            margin-block-start: 0.25rem;
+            margin-block: 0.25rem;
             padding: 0.25rem;
             border: 1px solid var(--stagebook-border, #d1d5db);
             border-radius: 0.375rem;
@@ -267,19 +269,20 @@ export function Select({
           .${triggerClass} option:focus-visible {
             background-color: var(--stagebook-hover-bg, #f3f4f6);
           }
-          /* The walked row's focus indicator is an inset ring in the
-           * accent, not the shared outer halo (focusRing.ts): the halo
-           * would be clipped at the picker's scroll edge and overlap the
-           * neighbouring rows. Inset, it stays whole on every row and, as
-           * an outline, survives forced-colors. */
+          /* The walked row's indicator: the inset outline, not the outer
+           * halo — see focusInsetOutlineCss for why. */
           .${triggerClass} option:focus-visible {
-            outline: 2px solid ${FOCUS_RING_ACCENT};
-            outline-offset: -2px;
+            ${focusInsetOutlineCss()}
           }
           /* The UA reserves the checkmark slot on every row and shows the
            * glyph on the checked one only, so text stays aligned. */
           .${triggerClass} option::checkmark {
             color: var(--stagebook-primary, #2563eb);
+          }
+          /* The placeholder sentinel is "checked" while nothing has been
+           * chosen; a tick beside "Pick one…" would read as a choice made. */
+          .${triggerClass} option[value="${PLACEHOLDER_VALUE}"]::checkmark {
+            visibility: hidden;
           }
           .${triggerClass} option:disabled {
             color: var(--stagebook-text-muted, #6b7280);

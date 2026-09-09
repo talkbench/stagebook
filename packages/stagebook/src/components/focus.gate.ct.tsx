@@ -59,6 +59,13 @@ interface Case {
   target: string;
   ring?: string;
   kind: "halo" | "outline";
+  /**
+   * How a keyboard user reaches `target` when one Tab cannot: the Select
+   * picker's rows are focusable only once the picker is open (#627).
+   */
+  reach?: (page: Page) => Promise<void>;
+  /** Skip on an engine without the customizable select (#627). */
+  needsBaseSelect?: boolean;
 }
 
 const cases: Case[] = [
@@ -99,6 +106,35 @@ const cases: Case[] = [
     node: <TextArea value="Some typed response" ariaLabel="Your answer" />,
     target: "textarea",
     kind: "halo",
+  },
+  {
+    // The Select picker's row (#627): the one box-model control that takes
+    // the outline treatment. Rows sit flush in a scroll container, so the
+    // outer halo would overlap the neighbouring rows and clip at the
+    // picker's edge; the ring is an inset outline in the accent instead
+    // (focusInsetOutlineCss), and survives forced-colors for the same
+    // reason the inline-text outline does.
+    name: "Select picker row",
+    node: (
+      <Select
+        options={options}
+        value="a"
+        onChange={() => {}}
+        label="Choose an option"
+      />
+    ),
+    target: 'option[value="b"]',
+    kind: "outline",
+    needsBaseSelect: true,
+    reach: async (page) => {
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Space");
+      const select = page.locator("select");
+      await expect
+        .poll(() => select.evaluate((el) => el.matches(":open")))
+        .toBe(true);
+      await page.keyboard.press("ArrowDown");
+    },
   },
   {
     // Checked, so the radio's fill is the accent — same reasoning as the
@@ -282,9 +318,21 @@ const HALO =
 test.describe("focus indicator is opaque (1.4.11)", () => {
   for (const c of cases) {
     test(`${c.name}`, async ({ mount, page }) => {
+      test.skip(
+        c.needsBaseSelect === true &&
+          !(await page.evaluate(() =>
+            CSS.supports("appearance", "base-select"),
+          )),
+        "the picker is the native popup here",
+      );
       const component = await mount(c.node);
       const target = component.locator(c.target).first();
-      await focusAsKeyboardUser(page, target);
+      if (c.reach) {
+        await c.reach(page);
+        await expect(target).toBeFocused();
+      } else {
+        await focusAsKeyboardUser(page, target);
+      }
 
       const ring = c.ring ? component.locator(c.ring).first() : target;
 
@@ -387,9 +435,21 @@ test.describe("focus indicator survives forced-colors (1.4.1 / 2.4.7)", () => {
 
   for (const c of cases) {
     test(`${c.name}`, async ({ mount, page }) => {
+      test.skip(
+        c.needsBaseSelect === true &&
+          !(await page.evaluate(() =>
+            CSS.supports("appearance", "base-select"),
+          )),
+        "the picker is the native popup here",
+      );
       const component = await mount(c.node);
       const target = component.locator(c.target).first();
-      await focusAsKeyboardUser(page, target);
+      if (c.reach) {
+        await c.reach(page);
+        await expect(target).toBeFocused();
+      } else {
+        await focusAsKeyboardUser(page, target);
+      }
 
       // NOT `test.use({ forcedColors })` — that silently does nothing under
       // Playwright CT (the page is created before the context option takes
