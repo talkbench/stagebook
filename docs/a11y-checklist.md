@@ -6,6 +6,14 @@ new component. The axe regression gate
 (`packages/stagebook/src/components/a11y.gate.ct.tsx`) catches a subset
 automatically — **add your component to it**.
 
+Note what the axe gate does _not_ cover: axe has no rule for focus-indicator
+contrast (1.4.11) and none for forced-colors, so it ran green through the
+whole of [#610]. The focus indicator has its own gate
+(`packages/stagebook/src/components/focus.gate.ct.tsx`) — add your component
+to that one too.
+
+[#610]: https://github.com/talkbench/stagebook/issues/610
+
 ## Names & roles
 
 - [ ] Every interactive control has an accessible name — a `<label>`,
@@ -19,7 +27,17 @@ automatically — **add your component to it**.
 
 - [ ] Fully operable by keyboard alone — no mouse-only interactions. (2.1.1)
 - [ ] Anything drag-based has a keyboard alternative. (2.5.7)
-- [ ] Focus is visible — a `:focus-visible` ring. (2.4.7)
+- [ ] Focus is visible — a `:focus-visible` ring. (2.4.7) Use the shared
+      treatment (`focusRingCss()` / `focusOutlineCss()` in
+      `packages/stagebook/src/components/focusRing.ts`) rather than writing a
+      ring by hand, and add the component to the focus gate
+      (`focus.gate.ct.tsx`). It carries two things that are easy to get wrong
+      alone: an opaque ring behind a page-colored spacer, so the indicator
+      clears 3:1 against the control's own border _and_ against a control
+      whose fill is the accent; and a transparent `outline`, so the indicator
+      survives forced-colors mode, which drops `box-shadow` entirely. Never
+      pair `outline: none` with a box-shadow ring — that combination leaves
+      high-contrast users with no indicator at all (#610).
 - [ ] Focus order is logical and not trapped; popovers/dialogs return focus and
       close on <kbd>Esc</kbd>.
 - [ ] Sticky/fixed content never _entirely_ hides a focused control. (2.4.11)

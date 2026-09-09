@@ -21,6 +21,7 @@ import {
 } from "./mediaPlayer/waveformCapture.js";
 import { setChannelGain } from "./mediaPlayer/muteChannels.js";
 import { useMessages, useIsRTL } from "../StagebookProvider.js";
+import { focusRingCss } from "../focusRing.js";
 
 export interface VideoEvent {
   type: "play" | "pause" | "ended" | "seek" | "speed" | "stopAt";
@@ -1137,10 +1138,6 @@ export function MediaPlayer({
         onMouseLeave={() => setIsHovered(false)}
         style={{
           position: "relative",
-          // outline:none + the scoped :focus ring below — same pattern
-          // as the Timeline so the two stacked components share an
-          // identical "keyboard shortcuts are live" affordance.
-          outline: "none",
           // Border-radius matches the focus-ring outset so the ring
           // doesn't appear as sharp corners around an unrounded box;
           // YouTube's iframe is itself rectangular, but the ring sits
@@ -1161,7 +1158,10 @@ export function MediaPlayer({
                 content (the gallery's test clip happens to be blue,
                 which kills a blue ring). Stacked shadows render a
                 white inner halo + brand-blue outer ring, robust
-                against any background.
+                against any background. #610 generalized exactly this
+                reasoning to every other control — the halo now comes
+                from the shared focusRingCss(), so the rings no longer
+                differ between components.
              2. focus-within (not :focus). The container is
                 tabbable, but clicking interior controls (play /
                 scrub / etc.) moves focus to those children, which
@@ -1173,9 +1173,7 @@ export function MediaPlayer({
                 active component" affordance doesn't flicker as
                 the user moves between sub-controls. */
           .${containerClass}:focus-within {
-            box-shadow:
-              0 0 0 2px var(--stagebook-bg, #fff),
-              0 0 0 5px var(--stagebook-primary, #2563eb);
+            ${focusRingCss()}
           }
         `}</style>
         <div data-testid="mediaPlayer-viewport" style={VIEWPORT_STYLE}>
@@ -1268,7 +1266,6 @@ export function MediaPlayer({
       onMouseLeave={() => setIsHovered(false)}
       style={{
         position: "relative",
-        outline: "none",
         borderRadius: "0.5rem",
       }}
     >
@@ -1277,9 +1274,7 @@ export function MediaPlayer({
            design rationale (halo pattern + :focus-within). Identical
            rule here so both render paths get the same affordance. */
         .${containerClass}:focus-within {
-          box-shadow:
-            0 0 0 2px var(--stagebook-bg, #fff),
-            0 0 0 5px var(--stagebook-primary, #2563eb);
+          ${focusRingCss()}
         }
       `}</style>
       {/* Audio-only: hidden video element (no viewport div) */}

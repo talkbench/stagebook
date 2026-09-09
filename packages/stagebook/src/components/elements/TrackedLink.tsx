@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef } from "react";
 import { useMessages, useIsRTL } from "../StagebookProvider.js";
+import { focusRingCss } from "../focusRing.js";
 
 function ExternalLinkIcon() {
   return (
@@ -191,8 +192,7 @@ export function TrackedLink({
         /* :focus-visible (keyboard-only) ring. Mouse clicks don't
            leave a lingering ring around the link after release. */
         .${linkClass}:focus-visible {
-          outline: none;
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
+          ${focusRingCss()}
           border-radius: 0.125rem;
         }
         @media (prefers-reduced-motion: reduce) {

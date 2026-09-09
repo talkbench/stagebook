@@ -164,10 +164,18 @@
   --stagebook-bg-muted: var(--sb-gray-50);
   --stagebook-bg-track: var(--sb-gray-200);
   /* Hover-state background fill for interactive rows (radio / checkbox
-   * labels, sortable items). Sits between --stagebook-bg-muted and the
-   * primary-tinted focus ring so hover reads as "interactive" without
+   * labels, sortable items). Sits between --stagebook-bg-muted and
+   * --stagebook-primary-tint so hover reads as "interactive" without
    * competing with selection indicators. */
   --stagebook-hover-bg: var(--sb-gray-100);
+  /* Primary-tinted hover surface, for the one hover state that has to read
+   * as "interactive" rather than merely "hovered": the Slider's track,
+   * where a darker gray would swallow the gray snap-point ticks drawn on
+   * it. Translucent on purpose — it tints whatever it sits over. Split out
+   * of --stagebook-focus-ring in #610, which the Slider had been borrowing
+   * for this; the ring had to go opaque and would have turned the hover
+   * track solid blue. */
+  --stagebook-primary-tint: rgba(37, 99, 235, 0.25);
   /* Minimum height for interactive rows. 2.25rem (36px) balances HIG's
    * 44px touch target against vertical density on long Likert scales;
    * mobile-first deployments can override to "2.75rem". */
@@ -177,14 +185,18 @@
    * tint controls separately from the page (e.g. darker cards on white). */
   --stagebook-surface: var(--sb-white);
 
-  /* Focus ring. Static rgba default (blue-600 @25%) so browsers without
-   * color-mix still get a visible ring; the @supports block below
-   * upgrades it to a live mix of --stagebook-primary so overriding the
-   * accent retunes the ring automatically. color-mix can't be the
-   * unconditional value: it's validated at computed-value time, so on an
-   * unsupported browser the whole declaration (and the var fallback at
-   * the usage site) would be dropped and the ring would vanish. */
-  --stagebook-focus-ring: rgba(37, 99, 235, 0.25);
+  /* Focus ring — the accent at full strength (#610). Opaque because the
+   * ring is a non-text UI indicator (WCAG 1.4.11) and has to clear 3:1
+   * against everything it can abut; at the 25% alpha it used to carry, it
+   * measured 1.03:1 against --stagebook-border, which is the control edge
+   * it is drawn immediately beside. No hue at 25% alpha reaches 3:1, so
+   * the alpha was the defect, not the hue — this was never themeable
+   * around. Aliasing --primary keeps the property the old comment was
+   * after (retuning the accent retunes the ring) and, unlike the
+   * color-mix it replaces, needs no @supports fallback to keep in sync.
+   * Components draw it as a two-layer halo — see components/focusRing.ts
+   * — so it stays visible even on a control whose own fill is the accent. */
+  --stagebook-focus-ring: var(--stagebook-primary);
 
   /* Timeline waveform bars + subtle track lane behind them. The track is
    * a neutral translucent so the waveform stays visually dominant. */
@@ -272,12 +284,14 @@
   --stagebook-blockquote-bg: var(--stagebook-bg-muted);
 }
 
-/* Upgrade the focus ring to a live mix of --stagebook-primary only on
- * browsers that support color-mix; otherwise the static rgba default
- * above continues to apply. Feature-queried on the exact syntax used. */
+/* Upgrade the translucent accent derivatives to live mixes of
+ * --stagebook-primary only on browsers that support color-mix; otherwise
+ * the static rgba defaults above continue to apply. Feature-queried on the
+ * exact syntax used. (The focus ring used to be one of these; it's an
+ * opaque alias since #610, so it no longer needs the two-value dance.) */
 @supports (color: color-mix(in srgb, red, blue)) {
   :root {
-    --stagebook-focus-ring: color-mix(
+    --stagebook-primary-tint: color-mix(
       in srgb,
       var(--stagebook-primary) 25%,
       transparent
@@ -424,9 +438,18 @@ input[type="search"]:focus,
 input[type="tel"]:focus,
 textarea:focus,
 select:focus {
-  outline: none;
+  /* The shared focus treatment, longhand — this file can't import
+   * components/focusRing.ts, which carries the full rationale. Two halo
+   * layers (page-colored spacer, then the opaque accent ring) so the ring
+   * never abuts the control's own border, plus a transparent outline that
+   * forced-colors repaints from the system palette. Change one, change
+   * both. */
+  outline: 2px solid transparent;
+  outline-offset: 2px;
   border-color: var(--stagebook-primary, #2563eb);
-  box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
+  box-shadow:
+    0 0 0 2px var(--stagebook-bg, #fff),
+    0 0 0 4px var(--stagebook-focus-ring, #2563eb);
 }
 
 /* Checkbox + radio styling (base, :checked, :focus) moved to inline

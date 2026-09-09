@@ -1,6 +1,7 @@
 import React, { useId } from "react";
 import { MIN_ZOOM, MAX_ZOOM } from "./viewport.js";
 import { useMessages } from "../../StagebookProvider.js";
+import { focusRingCss } from "../../focusRing.js";
 
 export interface TimelineHeaderProps {
   zoomLevel: number;
@@ -64,8 +65,7 @@ export function TimelineHeader({
     >
       <style>{`
         .${btnClass}:focus-visible {
-          outline: none;
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
+          ${focusRingCss()}
         }
         .${btnClass}:not(:disabled):hover {
           background: var(--stagebook-hover-bg, #f3f4f6);

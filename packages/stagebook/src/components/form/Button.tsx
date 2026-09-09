@@ -1,4 +1,5 @@
 import React, { useId } from "react";
+import { focusRingCss } from "../focusRing.js";
 
 export interface ButtonProps {
   children: React.ReactNode;
@@ -122,10 +123,7 @@ export function Button({
            navigation, not after a mouse click. Stacks on top of the
            base elevation shadow. */
         .${buttonClass}:focus-visible {
-          outline: none;
-          box-shadow:
-            0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25)),
-            0 1px 2px 0 rgba(0, 0, 0, 0.05);
+          ${focusRingCss("0 1px 2px 0 rgba(0, 0, 0, 0.05)")}
         }
         @media (prefers-reduced-motion: reduce) {
           .${buttonClass} {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useId, useMemo } from "react";
 import { useMessages, useIsRTL } from "../StagebookProvider.js";
+import { focusRingCss } from "../focusRing.js";
 
 export interface SliderProps {
   min?: number;
@@ -168,14 +169,16 @@ export function Slider({
         .${trackClass} {
           background-color: var(--stagebook-bg-track, #e5e7eb);
         }
-        /* Hover track uses a primary-tinted color (the same token as
-           the focus ring) rather than a darker gray. A darker-gray
-           track would blend visually with the gray snap-point ticks
-           and labeled ticks, hiding them on hover — the user reported
-           this. The primary-tint reads as "interactive / selected"
-           and keeps the gray ticks visible against it. */
+        /* Hover track uses a primary-tinted color rather than a darker
+           gray. A darker-gray track would blend visually with the gray
+           snap-point ticks and labeled ticks, hiding them on hover — the
+           user reported this. The primary-tint reads as "interactive /
+           selected" and keeps the gray ticks visible against it. This
+           borrowed --stagebook-focus-ring until #610, which had to make
+           the ring opaque; --stagebook-primary-tint is the translucent
+           half, split out so the hover track kept its tint. */
         .${trackClass}-wrapper:hover .${trackClass} {
-          background-color: var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
+          background-color: var(--stagebook-primary-tint, rgba(37, 99, 235, 0.25));
         }
         /* Base thumb elevation. Kept in CSS (not inline) so the
            focus-ring rule below can stack on top of it — inline
@@ -187,9 +190,12 @@ export function Slider({
         }
         /* Focus ring rendered on the visible thumb via the general
            sibling selector — the actual focused element is the
-           invisible range input, but the user sees the thumb. */
+           invisible range input, but the user sees the thumb. The
+           forced-colors outline focusRingCss() carries therefore lands
+           on the thumb too, which is the right place: it's the part
+           that's actually on screen. */
         .${inputClass}:focus-visible ~ [data-testid="slider-thumb"] {
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25)), 0 2px 4px rgba(0, 0, 0, 0.2);
+          ${focusRingCss("0 2px 4px rgba(0, 0, 0, 0.2)")}
         }
         @media (prefers-reduced-motion: reduce) {
           .${trackClass},
@@ -526,7 +532,16 @@ export function Slider({
           height: 0;
           background: transparent;
         }
-        input[type="range"]:focus {
+        /* Scoped to this slider's own input (#610). As a bare
+           input[type="range"] selector this suppressed the focus outline
+           on every range input on the host page — including ones
+           Stagebook doesn't own, and including under forced-colors,
+           where the outline is the only indicator left. Suppressing it
+           here is still right: the input is zero-size and invisible, and
+           the indicator is drawn on the thumb by the rule above.
+           (The sibling appearance resets above are still unscoped —
+           pre-existing, and a separate change.) */
+        .${inputClass}:focus {
           outline: none;
         }
       `}</style>
