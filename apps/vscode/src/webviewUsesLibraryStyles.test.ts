@@ -51,8 +51,29 @@ describe("webview renders with the library's real styles.css (#560)", () => {
 describe("preview suppresses only the host's mouse-focus outline (#610)", () => {
   it("scopes the suppression to :focus:not(:focus-visible)", () => {
     expect(extensionSrc).toMatch(
-      /#root :focus:not\(:focus-visible\)\s*\{\s*outline: none;/,
+      /#root \w+:focus:not\(:focus-visible\)[\s\S]{0,200}\{\s*outline: none;/,
     );
+  });
+
+  it("suppresses only the element types the host rule targets", () => {
+    // A bare `:focus` form would also outrank components that indicate focus
+    // on any modality — the Timeline's `.container:focus` ring means
+    // "keyboard shortcuts are live", which holds after a click too (#382).
+    // Killing its outline leaves nothing under forced-colors, where the
+    // box-shadow is dropped: #610 rebuilt one level up. Measured before
+    // scoping: `outline: none` + `box-shadow: none` on a clicked Timeline.
+    const css = extensionSrc.replace(/\/\*[\s\S]*?\*\//g, "");
+    const rules = [...css.matchAll(/([^{};]*:focus[^{};]*)\{([^}]*)\}/g)];
+    for (const [, selector, body] of rules) {
+      if (!/outline:\s*none/.test(body)) continue;
+      for (const part of selector.split(",")) {
+        if (!part.trim()) continue;
+        expect(
+          part,
+          `"${part.trim()}" suppresses focus outlines beyond the host's a/input/select/textarea rule`,
+        ).toMatch(/\b(?:a|input|select|textarea):focus/);
+      }
+    }
   });
 
   it("never suppresses a plain :focus or :focus-visible outline", () => {

@@ -852,9 +852,22 @@ function getWebviewContent(
      * keeps the transparent outline that forced-colors repaints, so the
      * accessibility guarantee survives inside the preview.
      *
-     * Specificity 1-2-0 against the host rule's 0-1-1; the host uses no
+     * Restricted to the four element types the host rule actually targets,
+     * rather than a bare ':focus'. A universal form also outranks components
+     * that deliberately indicate focus on any modality — the Timeline uses
+     * '.container:focus' because its ring means "keyboard shortcuts are live",
+     * which is true after a click too (#382). Suppressing its outline left it
+     * with no indicator at all under forced-colors, where the box-shadow is
+     * dropped: the #610 defect, rebuilt one level up. Measured, clicking the
+     * Timeline with the broad rule gave 'outline: none' + 'box-shadow: none';
+     * scoped, it keeps 'solid 2px'.
+     *
+     * Specificity 1-2-1 against the host rule's 0-1-1; the host uses no
      * !important, so no !important is needed here. */
-    #root :focus:not(:focus-visible) {
+    #root a:focus:not(:focus-visible),
+    #root input:focus:not(:focus-visible),
+    #root select:focus:not(:focus-visible),
+    #root textarea:focus:not(:focus-visible) {
       outline: none;
     }
   </style>
