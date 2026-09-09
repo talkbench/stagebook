@@ -11,6 +11,7 @@
 // refinement; a single gate is the low-friction starting form.
 import { test, expect } from "@playwright/experimental-ct-react";
 import AxeBuilder from "@axe-core/playwright";
+import type { Page } from "@playwright/test";
 import type { ReactNode } from "react";
 import type { MetadataType } from "../schemas/promptFile";
 
@@ -78,7 +79,16 @@ const dropdownPrompt = {
 
 // Each case is a participant-facing component in its correctly-used (named,
 // themed) form. The gate asserts none of them produce WCAG 2.2 AA violations.
-const cases: { name: string; node: ReactNode }[] = [
+// `prepare` runs after mount and before the scan, for a state the mounted
+// tree doesn't reach on its own (an open picker).
+const cases: {
+  name: string;
+  node: ReactNode;
+  prepare?: (page: Page) => Promise<void>;
+  // Skips the case on an engine without the customizable select, rather
+  // than scanning the closed control again and passing for nothing.
+  needsBaseSelect?: boolean;
+}[] = [
   {
     name: "RadioGroup",
     node: <RadioGroup options={options} onChange={() => {}} label="Pick one" />,
@@ -115,6 +125,30 @@ const cases: { name: string; node: ReactNode }[] = [
         disabled
       />
     ),
+  },
+  {
+    // Open (#627): under `appearance: base-select` the rows are in-page DOM
+    // — a top-layer popover, not the OS menu — so axe can reach them and
+    // scans the open picker's roles and names. Not its contrast: axe's
+    // color-contrast rule skips <option> outright, so the rows' colour
+    // pairings are the palette gate's job (styles.test.ts).
+    name: "Select (picker open)",
+    node: (
+      <Select
+        options={options}
+        value="b"
+        onChange={() => {}}
+        label="Choose an option"
+      />
+    ),
+    needsBaseSelect: true,
+    prepare: async (page) => {
+      const select = page.locator("select");
+      await select.click();
+      await expect
+        .poll(() => select.evaluate((el) => el.matches(":open")))
+        .toBe(true);
+    },
   },
   {
     name: "TextArea",
@@ -258,7 +292,13 @@ const cases: { name: string; node: ReactNode }[] = [
 
 for (const c of cases) {
   test(`a11y: ${c.name}`, async ({ mount, page }) => {
+    test.skip(
+      c.needsBaseSelect === true &&
+        !(await page.evaluate(() => CSS.supports("appearance", "base-select"))),
+      "the picker is the native popup here, outside the DOM scan",
+    );
     await mount(c.node);
+    await c.prepare?.(page);
     const results = await new AxeBuilder({ page })
       .include("#root")
       .withTags(WCAG_22_AA)

@@ -6,6 +6,7 @@ into a concrete, testable treatment, and corrects the palette work in [#535],
 which could not see this defect.
 
 [#610]: https://github.com/talkbench/stagebook/issues/610
+[#627]: https://github.com/talkbench/stagebook/issues/627
 [#535]: https://github.com/talkbench/stagebook/issues/535
 [#382]: https://github.com/talkbench/stagebook/issues/382
 [#213]: https://github.com/talkbench/stagebook/issues/213
@@ -108,10 +109,17 @@ wrapped link would ring each line fragment and read as a highlight. Markdown
 links and code blocks therefore use `focusOutlineCss()`. Forced-colors needs
 no special handling there — it already honors `outline`.
 
+Rows inside a scroll container take that outline _inset_ ([#627], the Select
+picker's options): the rows sit flush, so a halo would overlap the
+neighbouring rows and lose its edge at the scroll boundary, and a row's fill
+is never the accent, so no spacer is needed. That is `focusInsetOutlineCss()`,
+and the palette gate asserts it on both the surface and the hover fill.
+
 ## Decision 3 — One definition, in `focusRing.ts`, gated by a test
 
 The treatment lives in `packages/stagebook/src/components/focusRing.ts` as
-`focusRingCss()` / `focusOutlineCss()`, and every component interpolates it.
+`focusRingCss()` / `focusOutlineCss()` / `focusInsetOutlineCss()`, and every
+component interpolates it.
 It is a string helper rather than a class in `styles.css` because components
 carry their own scoped `<style>` blocks and must render correctly on a host
 that never loads our stylesheet ([#213]) — so the rule has to be inlined

@@ -33,6 +33,12 @@
  *
  * The same two layers are written out longhand for the native inputs in
  * `styles.css`, which can't import this. Change one, change both.
+ *
+ * Three treatments, one file: the halo for box-model controls
+ * (`focusRingCss`), a real outline for inline text (`focusOutlineCss`), and
+ * an inset outline for rows inside a scroll container
+ * (`focusInsetOutlineCss`, #627). Every focusable primitive is in
+ * `focus.gate.ct.tsx`, whichever it takes.
  */
 
 /**
@@ -90,4 +96,19 @@ export function focusRingCss(...beneath: string[]): string {
 export function focusOutlineCss(): string {
   return `outline: 2px solid ${FOCUS_RING_ACCENT};
           outline-offset: 2px;`;
+}
+
+/**
+ * The indicator for a row inside a scroll container — the Select picker's
+ * options (#627). Rows sit flush against each other and are clipped at the
+ * container's edge, so the outer halo would overlap the neighbouring rows
+ * and lose its top or bottom at the scroll boundary. Inset, the ring stays
+ * whole on every row. No page-colored spacer is needed: a row's fill is
+ * never the accent (the surface at rest, the hover fill when hovered or
+ * walked), and the palette gate asserts the ring at 3:1 on both.
+ * Forced-colors honors it as it does the inline-text outline.
+ */
+export function focusInsetOutlineCss(): string {
+  return `outline: 2px solid ${FOCUS_RING_ACCENT};
+          outline-offset: -2px;`;
 }
