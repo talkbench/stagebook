@@ -313,27 +313,12 @@ describe("styles.css uses theme variables for hardcoded values (#116)", () => {
 // --stagebook-* token through the two-tier alias graph (semantic → primitive)
 // to a hex and assert the contrast ratio, so a future value edit that breaks
 // contrast fails CI instead of shipping.
-describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
-  const css = readFileSync(stylesPath, "utf8");
-  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
-
-  // The main :root block (custom-property values use parens, never braces,
-  // so the first close-brace ends the block).
-  // The main :root block, for assertions that are specifically about it.
-  const rootBody = /:root\s*\{([\s\S]*?)\}/.exec(noComments)?.[1] ?? "";
-
-  // EVERY declaration of each token, in source order — not just the first
-  // (#612). The @supports(color-mix) block re-declares a dozen tokens, and on
-  // any browser that supports color-mix those overrides are the palette that
-  // actually renders. Reading only the first :root block asserted the static
-  // fallbacks and left the effective values untested.
-  const vars = new Map<string, string[]>();
-  for (const m of noComments.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
-    const prev = vars.get(m[1]) ?? [];
-    prev.push(m[2].trim().replace(/\s+/g, " "));
-    vars.set(m[1], prev);
-  }
-
+/**
+ * Resolver over a token -> declarations map. A factory rather than closure
+ * state so the resolution rules can be exercised against a synthetic palette
+ * (see the isolation tests below) and not only against the real styles.css.
+ */
+function makeResolver(vars: Map<string, string[]>) {
   /**
    * Resolve one declared value to a solid hex, or null when it has no single
    * opaque hex (a translucent rgba, or a mix with `transparent`) — a contrast
@@ -396,8 +381,15 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
   function resolveAllHexes(name: string, seen = new Set<string>()): string[] {
     if (seen.has(name)) return [];
     seen.add(name);
+    // A FRESH clone per declaration (#612 review). Sharing one mutable set
+    // across a token's declarations lets an earlier value that follows an
+    // alias poison the later ones: the alias lands in `seen`, and the next
+    // declaration referencing the same token is mistaken for a cycle and
+    // dropped. That silently removes an assertion — the exact failure mode
+    // this gate exists to prevent. Cloning keeps self-reference detection
+    // (the token itself is already in `seen`) while isolating siblings.
     return (vars.get(name) ?? [])
-      .map((v) => resolveValue(v, seen))
+      .map((v) => resolveValue(v, new Set(seen)))
       .filter((h): h is string => h !== null);
   }
 
@@ -405,6 +397,68 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
   function resolveHex(name: string, seen = new Set<string>()): string | null {
     return resolveAllHexes(name, seen)[0] ?? null;
   }
+  return { resolveHex, resolveAllHexes };
+}
+
+// #612 review. The resolver walks a token's declarations to find every opaque
+// value it can take. If those walks share one mutable cycle-tracking set, an
+// earlier declaration that follows an alias poisons the later ones — and the
+// symptom is a silently MISSING assertion, not a failing one, which is the
+// precise failure this gate was written to end.
+describe("the resolver isolates a token's declarations from each other", () => {
+  it("still resolves a color-mix override when the fallback aliases the same token", () => {
+    // Exactly the shape flagged in review: a static fallback that aliases
+    // --primary, then an @supports override that mixes the same token.
+    const { resolveAllHexes } = makeResolver(
+      new Map([
+        ["--primary", ["#2563eb"]],
+        [
+          "--tooltip-bg",
+          ["var(--primary)", "color-mix(in srgb, var(--primary) 80%, #000)"],
+        ],
+      ]),
+    );
+    // Both must survive. With a shared `seen`, the first declaration adds
+    // --primary to it and the mix is then dropped as a false cycle, leaving
+    // the effective browser value untested.
+    expect(resolveAllHexes("--tooltip-bg")).toEqual(["#2563eb", "#1e4fbc"]);
+  });
+
+  it("still detects a genuine self-referential cycle", () => {
+    // The isolation must not cost cycle protection: a token that resolves to
+    // itself has to terminate and yield nothing, not recurse.
+    const { resolveAllHexes } = makeResolver(
+      new Map([
+        ["--a", ["var(--b)"]],
+        ["--b", ["var(--a)"]],
+      ]),
+    );
+    expect(resolveAllHexes("--a")).toEqual([]);
+  });
+});
+
+describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
+  const css = readFileSync(stylesPath, "utf8");
+  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  // The main :root block (custom-property values use parens, never braces,
+  // so the first close-brace ends the block).
+  // The main :root block, for assertions that are specifically about it.
+  const rootBody = /:root\s*\{([\s\S]*?)\}/.exec(noComments)?.[1] ?? "";
+
+  // EVERY declaration of each token, in source order — not just the first
+  // (#612). The @supports(color-mix) block re-declares a dozen tokens, and on
+  // any browser that supports color-mix those overrides are the palette that
+  // actually renders. Reading only the first :root block asserted the static
+  // fallbacks and left the effective values untested.
+  const vars = new Map<string, string[]>();
+  for (const m of noComments.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
+    const prev = vars.get(m[1]) ?? [];
+    prev.push(m[2].trim().replace(/\s+/g, " "));
+    vars.set(m[1], prev);
+  }
+
+  const { resolveHex, resolveAllHexes } = makeResolver(vars);
 
   function relLum(hex: string): number {
     const h = hex.replace("#", "");
