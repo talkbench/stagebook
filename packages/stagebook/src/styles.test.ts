@@ -319,6 +319,25 @@ describe("styles.css uses theme variables for hardcoded values (#116)", () => {
  * (see the isolation tests below) and not only against the real styles.css.
  */
 function makeResolver(vars: Map<string, string[]>) {
+  /** Split on commas that are not inside parentheses. */
+  function splitTopLevel(input: string): string[] {
+    const parts: string[] = [];
+    let depth = 0;
+    let current = "";
+    for (const ch of input) {
+      if (ch === "(") depth += 1;
+      else if (ch === ")") depth -= 1;
+      if (ch === "," && depth === 0) {
+        parts.push(current);
+        current = "";
+        continue;
+      }
+      current += ch;
+    }
+    parts.push(current);
+    return parts;
+  }
+
   /** Split a hex (3- or 6-digit) into its r/g/b channels. */
   function channels(hex: string): number[] {
     const h = hex.replace("#", "");
@@ -369,20 +388,40 @@ function makeResolver(vars: Map<string, string[]>) {
       const ref = /var\(\s*(--[\w-]+)/.exec(v);
       return ref ? resolveAllHexes(ref[1], seen) : [];
     }
-    // `color-mix(in srgb, <color> N%, <color>)`. A mix toward `transparent`
-    // stays translucent and drops out; a mix toward an opaque color (e.g. the
-    // timeline tooltip's `… 80%, #000`) has a real hex worth asserting. Each
-    // side can itself be multi-valued, so the result is every combination.
-    const mix =
-      /^color-mix\(\s*in srgb\s*,\s*(.+?)\s+([\d.]+)%\s*,\s*(.+?)\s*\)$/i.exec(
-        v,
-      );
+    // `color-mix(in srgb, <color> [N%], <color> [N%])`. A mix toward
+    // `transparent` stays translucent and drops out; a mix toward an opaque
+    // color (e.g. the timeline tooltip's `… 80%, #000`) has a real hex worth
+    // asserting. Each side can itself be multi-valued, so the result is every
+    // combination.
+    //
+    // Both percentages are optional and either may carry one — all of
+    // `A 80%, B`, `A 80%, B 20%`, `A, B 20%` and `A, B` are valid CSS. An
+    // earlier version matched only the first form and silently dropped the
+    // rest, which (because the token usually also has an opaque fallback)
+    // left the effective override untested while the gate still looked green
+    // (#617 review).
+    const mix = /^color-mix\(\s*in srgb\s*,\s*(.+)\)$/i.exec(v);
     if (!mix) return [];
-    const [, aRaw, pctRaw, bRaw] = mix;
-    const p = parseFloat(pctRaw) / 100;
+    const sides = splitTopLevel(mix[1]);
+    if (sides.length !== 2) return [];
+    const parsed = sides.map((side) => {
+      const withPct = /^(.*?)\s+([\d.]+)%$/.exec(side.trim());
+      return withPct
+        ? { color: withPct[1].trim(), pct: parseFloat(withPct[2]) }
+        : { color: side.trim(), pct: null as number | null };
+    });
+    // Fill in the omitted weight, then normalize: CSS scales the pair to sum
+    // to 100% when they don't (so `40%, 40%` is an even mix, not a dark one).
+    const [rawP1, rawP2] = [parsed[0].pct, parsed[1].pct];
+    const p1 = rawP1 ?? (rawP2 === null ? 50 : 100 - rawP2);
+    const p2 = rawP2 ?? 100 - p1;
+    const total = p1 + p2;
+    if (total <= 0) return [];
+    const p = p1 / total;
+
     const out: string[] = [];
-    for (const a of resolveValues(aRaw, new Set(seen))) {
-      for (const b of resolveValues(bRaw, new Set(seen))) {
+    for (const a of resolveValues(parsed[0].color, new Set(seen))) {
+      for (const b of resolveValues(parsed[1].color, new Set(seen))) {
         out.push(blend(a, b, p));
       }
     }
@@ -453,6 +492,35 @@ describe("the resolver isolates a token's declarations from each other", () => {
       ]),
     );
     expect(resolveAllHexes("--link")).toEqual(["#2563eb", "#1e4fbc"]);
+  });
+
+  it.each([
+    // [declaration, expected hex, why this form exists]
+    ["color-mix(in srgb, #ffffff 80%, #000000)", "#cccccc", "one percentage"],
+    [
+      "color-mix(in srgb, #ffffff 80%, #000000 20%)",
+      "#cccccc",
+      "both percentages",
+    ],
+    [
+      "color-mix(in srgb, #ffffff, #000000 20%)",
+      "#cccccc",
+      "percentage on the second color only",
+    ],
+    ["color-mix(in srgb, #ffffff, #000000)", "#808080", "no percentage"],
+    [
+      "color-mix(in srgb, #ffffff 40%, #000000 40%)",
+      "#808080",
+      "weights that don't sum to 100 are normalized",
+    ],
+  ])("resolves %s -> %s (%s)", (decl, expected) => {
+    // All of these are valid CSS. A parser that only understands the
+    // single-percentage form drops the others — and because the token
+    // usually also has an opaque fallback, the "resolved to something"
+    // assertion still passes while the effective override goes untested.
+    // Silent under-assertion again (#617 review).
+    const { resolveAllHexes } = makeResolver(new Map([["--t", [decl]]]));
+    expect(resolveAllHexes("--t")).toEqual([expected]);
   });
 
   it("still detects a genuine self-referential cycle", () => {
