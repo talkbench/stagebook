@@ -394,6 +394,45 @@ function makeResolver(vars: Map<string, string[]>) {
     );
   }
 
+  /** Composite an r/g/b triple at alpha `a` over an opaque backdrop hex. */
+  function compositeOver(rgb: number[], a: number, backdrop: string): string {
+    const bd = channels(backdrop);
+    return (
+      "#" +
+      rgb
+        .map((v, i) =>
+          Math.round(v * a + bd[i] * (1 - a))
+            .toString(16)
+            .padStart(2, "0"),
+        )
+        .join("")
+    );
+  }
+
+  /**
+   * `rgb()` / `rgba()`. Opaque values give one hex. A translucent value has
+   * no single rendered color — it depends on the backdrop, which for the
+   * timeline tooltip may be a lane, a waveform bar or a selection range. So
+   * rather than guess (or skip it, which is exactly how #610 slipped past
+   * this gate), return the two colors that BOUND every possible backdrop:
+   * composited over pure white and pure black. Asserting both means the
+   * contrast floor holds whatever ends up behind it — white being the worst
+   * case for light text and black for dark text, so the pair covers either
+   * direction without the resolver needing to know the foreground.
+   */
+  function resolveRgb(v: string): string[] {
+    const m = /^rgba?\(([^)]+)\)$/i.exec(v);
+    if (!m) return [];
+    const parts = m[1].split(/[,/]/).map((x) => x.trim());
+    if (parts.length < 3 || parts.length > 4) return [];
+    const rgb = parts.slice(0, 3).map(Number);
+    if (rgb.some((n) => !Number.isFinite(n) || n < 0 || n > 255)) return [];
+    const a = parts.length === 4 ? Number(parts[3]) : 1;
+    if (!Number.isFinite(a) || a < 0 || a > 1) return [];
+    if (a === 1) return [compositeOver(rgb, 1, "#000000")];
+    return [compositeOver(rgb, a, "#ffffff"), compositeOver(rgb, a, "#000000")];
+  }
+
   /**
    * Every opaque hex one declared value can resolve to — a list, not a single
    * value, because a declaration may reach a token that itself has several
@@ -410,6 +449,7 @@ function makeResolver(vars: Map<string, string[]>) {
       const hex = opaqueHex(v);
       return hex ? [hex] : [];
     }
+    if (/^rgba?\(/i.test(v)) return resolveRgb(v);
     if (/^var\(\s*--[\w-]+\s*\)$/.test(v)) {
       const ref = /var\(\s*(--[\w-]+)/.exec(v);
       return ref ? resolveAllHexes(ref[1], seen) : [];
@@ -462,6 +502,27 @@ function makeResolver(vars: Map<string, string[]>) {
   }
 
   /**
+   * What each declaration of a token resolved to, keeping them separate.
+   *
+   * The pairing needs this, not just the flattened list: a token whose
+   * @supports override resolves and whose static fallback does not still
+   * produces a non-empty list, so a "resolved to something" check passes
+   * while the fallback — what a browser without color-mix actually paints —
+   * goes unscored (#617 review). Coverage has to be per declaration.
+   */
+  function resolveDeclarations(
+    name: string,
+    seen = new Set<string>(),
+  ): { value: string; hexes: string[] }[] {
+    if (seen.has(name)) return [];
+    seen.add(name);
+    return (vars.get(name) ?? []).map((value) => ({
+      value,
+      hexes: resolveValues(value, new Set(seen)),
+    }));
+  }
+
+  /**
    * Every resolvable opaque value a token can take — the static default and
    * any @supports override. Both ship, so both are asserted: the fallback is
    * what an old browser renders, the override is what everything else does.
@@ -486,7 +547,7 @@ function makeResolver(vars: Map<string, string[]>) {
   function resolveHex(name: string, seen = new Set<string>()): string | null {
     return resolveAllHexes(name, seen)[0] ?? null;
   }
-  return { resolveHex, resolveAllHexes };
+  return { resolveHex, resolveAllHexes, resolveDeclarations };
 }
 
 // #612 review. The resolver walks a token's declarations to find every opaque
@@ -568,11 +629,25 @@ describe("the resolver isolates a token's declarations from each other", () => {
     ["#ffffff80", [], "8-digit with real alpha is translucent"],
     ["#fffff", [], "5 digits is not valid CSS hex"],
     ["#fffffff", [], "7 digits is not valid CSS hex"],
+    // Translucent colors have no single rendered value — they depend on what
+    // is behind them, which for the timeline tooltip is a lane, a waveform
+    // bar or a selection range. Rather than guess a backdrop (or skip them,
+    // which is how #610 got in), resolve them to the two colors that BOUND
+    // every possible backdrop: composited over pure white and pure black.
+    // The pairing then asserts both, so the floor holds whatever is behind.
+    // White is the worst case for light text, black for dark text, so the
+    // pair covers either direction without knowing the foreground.
+    [
+      "rgba(30, 64, 175, 0.9)",
+      ["#3453b7", "#1b3a9e"],
+      "translucent: bounded over white and black",
+    ],
+    ["rgba(37, 99, 235, 1)", ["#2563eb"], "alpha 1 is just opaque"],
+    ["rgb(255, 255, 255)", ["#ffffff"], "rgb() with no alpha"],
     // Forms the gate cannot evaluate. These resolve to nothing, which fails
     // LOUDLY at the pairing (\"should resolve to at least one hex\") rather
     // than quietly scoring the wrong color — the safe direction to be wrong
     // in. Teach the resolver about them the day a pairing needs one.
-    ["rgb(255, 255, 255)", [], "rgb() is not parsed"],
     ["white", [], "named colors are not parsed"],
     ["var(--x, #ff0000)", [], "var() with a fallback is not parsed"],
     ["color-mix(in oklab, #fff 50%, #000)", [], "only srgb mixes are parsed"],
@@ -615,7 +690,7 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     vars.set(m[1], prev);
   }
 
-  const { resolveHex, resolveAllHexes } = makeResolver(vars);
+  const { resolveHex, resolveDeclarations } = makeResolver(vars);
 
   function relLum(hex: string): number {
     const h = hex.replace("#", "");
@@ -695,12 +770,26 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     // are hard-coded in a component and are not themeable, so asserting a
     // token "as a proxy" for them would compute a pairing that isn't on
     // screen the moment that token moves (#617 review).
-    const asHexes = (side: string) =>
-      side.startsWith("#") ? [side] : resolveAllHexes(side);
+    const asHexes = (side: string) => {
+      if (side.startsWith("#")) return [side];
+      // EVERY declaration has to be scoreable, not just one of them. A token
+      // whose @supports override resolves and whose static fallback doesn't
+      // would otherwise pass this check while the fallback — what a browser
+      // without color-mix paints — went untested (#617 review).
+      const decls = resolveDeclarations(side);
+      expect(decls, `${side} is not declared anywhere`).not.toEqual([]);
+      for (const d of decls) {
+        expect(
+          d.hexes,
+          `${side} declares \`${d.value}\`, which this gate cannot score — ` +
+            `teach the resolver that form, or the pairing is only checking ` +
+            `the other declarations`,
+        ).not.toEqual([]);
+      }
+      return decls.flatMap((d) => d.hexes);
+    };
     const fgHexes = asHexes(fg);
     const bgHexes = asHexes(bg);
-    expect(fgHexes, `${fg} should resolve to at least one hex`).not.toEqual([]);
-    expect(bgHexes, `${bg} should resolve to at least one hex`).not.toEqual([]);
     for (const fgHex of fgHexes) {
       for (const bgHex of bgHexes) {
         const ratio = contrast(fgHex, bgHex);
