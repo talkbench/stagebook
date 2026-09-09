@@ -1,7 +1,7 @@
-import React, { useId } from "react";
+import React, { useEffect, useId } from "react";
 import { focusRingCss } from "../focusRing.js";
 
-export interface ButtonProps {
+interface ButtonBaseProps {
   children: React.ReactNode;
   onClick?: React.MouseEventHandler<HTMLButtonElement> | null;
   className?: string;
@@ -12,7 +12,43 @@ export interface ButtonProps {
   disabled?: boolean;
   id?: string;
   "data-testid"?: string;
+  /**
+   * Native tooltip, forwarded verbatim to the `<button>` (#621). A
+   * tooltip is never the accessible name — touch and screen-reader users
+   * don't get it — so an icon-only button still needs `aria-label`.
+   */
+  title?: string;
 }
+
+/** A text button: its children are its accessible name. */
+export interface TextButtonProps extends ButtonBaseProps {
+  icon?: false;
+  /**
+   * Overrides the name computed from the children (#621). Forwarded
+   * verbatim, so an absent prop is an absent attribute and the text
+   * button's DOM is unchanged. When set, it must contain the visible text
+   * (WCAG 2.5.3, Label in Name) or voice-control users can't activate the
+   * button by what they see.
+   */
+  "aria-label"?: string;
+}
+
+/**
+ * An icon-only button (#622): a square, glyph-sized target sharing the
+ * text button's variants, tokens, focus halo and disabled treatment.
+ *
+ * `aria-label` is required — a glyph has no text to name the button by
+ * (WCAG 4.1.2) — and the glyph itself should be `aria-hidden`, so the
+ * name is the label alone. Draw it in `currentColor` and it inherits the
+ * variant's text colour, which clears 3:1 on both fills (WCAG 1.4.11).
+ * `title` may repeat the label as a tooltip; it never replaces it.
+ */
+export interface IconButtonProps extends ButtonBaseProps {
+  icon: true;
+  "aria-label": string;
+}
+
+export type ButtonProps = TextButtonProps | IconButtonProps;
 
 // Structural / dimensional styles live inline so the button survives
 // aggressive host CSS resets (#213). State-dependent properties
@@ -44,6 +80,36 @@ const baseInlineStyle: React.CSSProperties = {
   transition: "background-color 120ms ease-out, box-shadow 120ms ease-out",
 };
 
+// Icon-only geometry (#622), layered over the base style. The box is a
+// Select's, spelled out: its 1.25rem line-height plus 0.5rem padding
+// above and below plus a 1px border each side (38px), with the same
+// row-height token as its floor — so an icon button is level with a
+// Select in the same row by construction, and stays level when a host
+// raises the token for touch. Square by pinning both axes rather than via
+// `aspect-ratio`, whose min-size transfer differs across engines. Padding
+// is zero and the glyph is flex-centered: a 1.25rem glyph leaves 0.5rem
+// on every side, comfortably over the 24×24 floor of WCAG 2.5.8.
+// Addition only, one term per contribution: line-height, padding above,
+// padding below, both borders.
+const ICON_BOX = "calc(1.25rem + 0.5rem + 0.5rem + 2px)";
+const ICON_BOX_MIN = "var(--stagebook-row-min-height, 2.25rem)";
+const iconInlineStyle: React.CSSProperties = {
+  width: ICON_BOX,
+  height: ICON_BOX,
+  minWidth: ICON_BOX_MIN,
+  minHeight: ICON_BOX_MIN,
+  boxSizing: "border-box",
+  padding: 0,
+  justifyContent: "center",
+  // A one-character text glyph ("+", "?") would otherwise sit on a
+  // normal line box and look low in the square.
+  lineHeight: 1,
+  // A flex child with an explicit width still shrinks toward its
+  // min-content once a sibling claims 100% — exactly the "full-width
+  // Select plus a refresh control" row this is for.
+  flexShrink: 0,
+};
+
 export function Button({
   children,
   onClick = null,
@@ -55,6 +121,9 @@ export function Button({
   disabled = false,
   id = "",
   "data-testid": dataTestId,
+  icon = false,
+  "aria-label": ariaLabel,
+  title,
 }: ButtonProps) {
   const generatedId = useId();
   const buttonId = id || `button${generatedId}`;
@@ -64,6 +133,21 @@ export function Button({
   // else that might land in there.
   const safeId = generatedId.replace(/[^a-zA-Z0-9_-]/g, "");
   const buttonClass = `stagebook-button-${safeId}`;
+
+  // The type already refuses an icon button without a name; this is for
+  // JS consumers, who never see the type. Trimmed, because the accessible-
+  // name computation collapses whitespace: a label of spaces names nothing,
+  // same as an empty string. It reports rather than throws — a nameless
+  // button is a defect to fix, not a reason to take the stage down
+  // mid-session. Effect, not render body, so it fires once per change
+  // rather than on every re-render.
+  useEffect(() => {
+    if (icon && !ariaLabel?.trim()) {
+      console.error(
+        "[Stagebook] <Button icon> has no aria-label. An icon-only button has no text to name it by — pass aria-label (title is a tooltip, not a name).",
+      );
+    }
+  }, [icon, ariaLabel]);
 
   const stateStyle: React.CSSProperties = disabled
     ? {
@@ -144,10 +228,19 @@ export function Button({
         // that, so participants on Safari can keyboard-reach the
         // SubmitButton and other Stagebook buttons (#415 / #413).
         tabIndex={disabled ? -1 : 0}
-        style={{ ...baseInlineStyle, ...stateStyle, ...style }}
+        style={{
+          ...baseInlineStyle,
+          ...(icon ? iconInlineStyle : undefined),
+          ...stateStyle,
+          ...style,
+        }}
         id={buttonId}
         data-testid={dataTestId}
         disabled={disabled}
+        // Forwarded verbatim: React drops an undefined attribute, so a
+        // text button with neither prop renders neither (#621).
+        aria-label={ariaLabel}
+        title={title}
       >
         {children}
       </button>

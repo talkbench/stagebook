@@ -4,9 +4,12 @@
 import React from "react";
 import { Button, type ButtonProps } from "../form/Button.js";
 
-export interface ThemedButtonProps extends ButtonProps {
+// An intersection, not `extends`: `ButtonProps` is a union (text vs.
+// icon-only, which requires `aria-label`), and an interface can't extend
+// a union.
+export type ThemedButtonProps = ButtonProps & {
   themeOverrides?: Record<string, string>;
-}
+};
 
 export function ThemedButton({
   themeOverrides = {},

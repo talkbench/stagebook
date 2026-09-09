@@ -35,6 +35,21 @@ export interface SelectProps {
    * #545.
    */
   ariaLabelledBy?: string;
+  /**
+   * Forwarded as the `disabled` attribute on the `<select>` (#620). The
+   * control keeps rendering — its options, its placeholder — but can't
+   * take focus or open, and the visible label takes the muted colour.
+   * Same name and semantics as `Button`'s `disabled` and
+   * `SelectOption.disabled`, so there is one vocabulary.
+   *
+   * Use it to hold a picker still while its options are in flight. An
+   * empty picker (`options={[]}` plus a `placeholder` carrying the state
+   * message) is otherwise an *enabled* `<select>` with nothing
+   * selectable — it takes focus and opens to a single grey line, and
+   * reads as a working control that happens to be empty rather than one
+   * that is waiting.
+   */
+  disabled?: boolean;
   "data-testid"?: string;
 }
 
@@ -110,6 +125,7 @@ export function Select({
   placeholder,
   id,
   ariaLabelledBy,
+  disabled = false,
   "data-testid": dataTestId,
 }: SelectProps) {
   // Generate a unique id when the caller doesn't provide one — multiple
@@ -142,6 +158,16 @@ export function Select({
     onChange(e);
   };
 
+  // Disabled treatment mirrors Button (half opacity, not-allowed
+  // cursor). The UA greys a disabled <select> on its own, but our
+  // explicit `color` / `backgroundColor` are author-origin and beat the
+  // UA's `:disabled` rule, so without this a disabled picker would look
+  // exactly like an enabled one. No `pointer-events: none` — a disabled
+  // <select> already can't open, and the cursor is the visible cue.
+  const stateStyle: React.CSSProperties = disabled
+    ? { cursor: "not-allowed", opacity: 0.5 }
+    : {};
+
   return (
     <div style={{ marginTop: "1rem" }}>
       <style>{`
@@ -161,7 +187,12 @@ export function Select({
             display: "block",
             fontSize: "1rem",
             fontWeight: 500,
-            color: "var(--stagebook-text, #1f2937)",
+            // Muted while disabled — the same token the RadioGroup /
+            // CheckboxGroup captions use — so the label reads as part of
+            // the held control, not a live prompt above a dead one.
+            color: disabled
+              ? "var(--stagebook-text-muted, #6b7280)"
+              : "var(--stagebook-text, #1f2937)",
             marginBottom: "0.5rem",
           }}
         >
@@ -181,7 +212,8 @@ export function Select({
         value={currentValue}
         onChange={handleChange}
         aria-labelledby={ariaLabelledBy}
-        style={selectBaseStyle}
+        disabled={disabled}
+        style={{ ...selectBaseStyle, ...stateStyle }}
       >
         {placeholder !== undefined && (
           <option value={PLACEHOLDER_VALUE} disabled>
