@@ -21,7 +21,16 @@ export function zoomDecimals(zoomLevel: number): 1 | 2 {
 const TIMELINE_MONO_FONT =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
 
-/** Base styles shared between the playhead time box and handle tooltips. */
+/**
+ * Base styles shared between the playhead time box and handle tooltips.
+ *
+ * The colour is a token, not a literal (#619). Both surfaces this text lands
+ * on are themeable — the handle tooltip derives from the accent, the playhead
+ * box from --stagebook-playhead — so a hard-coded `white` meant a host could
+ * retune the background to something light and have no way to retune the text
+ * with it. Same shape as #610: a contrast guarantee that held for our palette
+ * and silently only ours.
+ */
 export const tooltipBaseStyle: React.CSSProperties = {
   fontSize: "0.65rem",
   fontFamily: TIMELINE_MONO_FONT,
@@ -30,7 +39,7 @@ export const tooltipBaseStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
   lineHeight: 1.4,
   pointerEvents: "none",
-  color: "white",
+  color: "var(--stagebook-timeline-tooltip-fg, #fff)",
 };
 
 /**

@@ -733,19 +733,25 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     // subtle input border and predates #535 — the WCAG 1.4.11 question for
     // form-control boundaries is a separate a11y decision, not asserted here.
     ["--stagebook-playhead", "--stagebook-bg", UI, "playhead marker (UI)"],
-    // #612. The tooltip's text is a hard-coded `white` in timelineStyles.ts,
-    // so the foreground here is the literal — NOT --stagebook-bg, which only
-    // happens to be white today. Using the token as a proxy would silently
-    // start asserting the wrong pairing the moment a host (or a future
-    // darker palette) moved it, while the rendered text stayed white
-    // (#617 review). The literal is pinned to its source by the test below.
-    // Only assertable at all now that the gate resolves the @supports form:
-    // this token's static fallback is translucent, its effective value is not.
+    // #619 gave this text its own token, so the pairing is token-to-token
+    // and a host retuning either side is checked on both. It was a literal
+    // #ffffff until then — the honest assertion while the component
+    // hard-coded `white`, but one that only described our own palette.
+    // Assertable at all only because the gate resolves the @supports form
+    // (#612): this background's static fallback is translucent.
     [
-      "#ffffff",
+      "--stagebook-timeline-tooltip-fg",
       "--stagebook-timeline-tooltip-bg",
       AA,
-      "timeline range tooltip text (literal white)",
+      "timeline range tooltip text",
+    ],
+    // The same text also renders on the playhead's time box, which is a
+    // different themeable surface — so it needs its own pairing.
+    [
+      "--stagebook-timeline-tooltip-fg",
+      "--stagebook-playhead",
+      AA,
+      "playhead time-box text",
     ],
     // #610: the focus ring is a non-text UI indicator (1.4.11), so it needs
     // 3:1 against everything it can abut. It was translucent until #610 —
@@ -801,16 +807,19 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     }
   });
 
-  it("pins the tooltip's hard-coded text color to the pairing above", () => {
-    // The pairing asserts a literal #ffffff because that is what renders.
-    // If the tooltip's text color ever changes, this fails and forces the
-    // pairing to be updated with it — otherwise the two drift silently and
-    // the contrast assertion quietly stops describing the screen.
+  it("keeps the timeline tooltip's text on its token, not a literal", () => {
+    // The pairings above are only meaningful while the component actually
+    // reads the token. Reverting to a hard-coded `white` would leave them
+    // asserting a colour nothing renders — and would restore the theming gap
+    // #619 closed, where a host could retune the tooltip background to
+    // something light with no way to retune the text with it.
     const timelineStyles = readFileSync(
       join(componentsDir, "elements", "timeline", "timelineStyles.ts"),
       "utf8",
     );
-    expect(timelineStyles).toMatch(/color:\s*"white"/);
+    expect(timelineStyles).toContain(
+      'color: "var(--stagebook-timeline-tooltip-fg, #fff)"',
+    );
   });
 
   it("honors a deprecated --stagebook-text-faint override through --stagebook-decoration", () => {
