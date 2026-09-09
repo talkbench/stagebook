@@ -830,6 +830,33 @@ function getWebviewContent(
       font-size: 14px;
       line-height: 1.5;
     }
+    /* The webview host paints its own focus outline on mouse click:
+     *
+     *   a:focus, input:focus, select:focus, textarea:focus {
+     *     outline: 1px solid -webkit-focus-ring-color;
+     *     outline-offset: -1px;
+     *   }
+     *
+     * That's a plain ':focus', so it fires on click — precisely the gap where
+     * Stagebook's own indicator deliberately stays silent (its rules are
+     * ':focus-visible', keyboard-only, so a mouse click leaves no lingering
+     * ring). The result is a preview that shows a focus treatment no
+     * participant will ever see: the runner is a plain browser page with no
+     * such rule. The preview is an inspection surface and has to mirror the
+     * library (#560), so suppress it.
+     *
+     * Deliberately ':focus:not(:focus-visible)' and NOT a blanket
+     * 'outline: none' — that pairing is exactly the defect #610 fixed across
+     * the library. This removes the outline only in the mouse-focus case the
+     * host added it for. Keyboard focus still gets Stagebook's halo, and
+     * keeps the transparent outline that forced-colors repaints, so the
+     * accessibility guarantee survives inside the preview.
+     *
+     * Specificity 1-2-0 against the host rule's 0-1-1; the host uses no
+     * !important, so no !important is needed here. */
+    #root :focus:not(:focus-visible) {
+      outline: none;
+    }
   </style>
 </head>
 <body>
