@@ -386,3 +386,92 @@ test("focus ring appears on the thumb when the range input is keyboard-focused",
     })
     .not.toBe(baseline);
 });
+
+// #613. The Slider zeroes the native thumb and track because it draws its own
+// thumb. Those resets were written as bare `input[type="range"]` selectors, so
+// mounting one Slider flattened every range input on the page — including ones
+// the host renders and Stagebook has no business restyling. (#610 fixed the
+// fifth rule in the same block, the focus-outline suppressor, because it was
+// destroying an accessibility affordance; these four are the rest.)
+test("does not flatten a host's own range input", async ({
+  mount,
+  browserName,
+}) => {
+  // The reset is only observable through the vendor pseudo-element, and each
+  // engine exposes its own: Chromium answers for ::-webkit-slider-thumb,
+  // Firefox for ::-moz-range-thumb, WebKit for neither (it returns empty
+  // strings for both), so there is nothing to assert there.
+  test.skip(
+    browserName === "webkit",
+    "WebKit exposes no computed style for the slider thumb pseudo-element",
+  );
+  const component = await mount(
+    <div>
+      <Slider min={0} max={100} interval={1} value={50} />
+      <input type="range" data-testid="foreign" aria-label="Not ours" />
+    </div>,
+  );
+
+  const thumb = await component
+    .locator('[data-testid="foreign"]')
+    .evaluate((el) => {
+      for (const pseudo of ["::-webkit-slider-thumb", "::-moz-range-thumb"]) {
+        const s = getComputedStyle(el, pseudo);
+        if (s.height) return { pseudo, height: s.height };
+      }
+      return null;
+    });
+
+  expect(thumb, "no engine exposed a thumb pseudo-element").not.toBeNull();
+  // A native thumb has height; ours is deliberately collapsed to 0.
+  expect(
+    thumb?.height,
+    `${thumb?.pseudo} was flattened on an input Stagebook doesn't own`,
+  ).not.toBe("0px");
+});
+
+// #613 follow-up. Scoping the resets must not LOWER their specificity.
+// `.${inputClass}::-webkit-slider-thumb` is 0-1-0, below the
+// `input[type="range"]::-webkit-slider-thumb` form it replaced (0-1-1) — so a
+// host styling its own sliders the conventional way would outrank Stagebook
+// and un-collapse the native thumb on *our* input. That's a measurement bug,
+// not a cosmetic one: a nonzero thumb shrinks the track's usable travel while
+// the visible thumb is still positioned across the full width, so the reported
+// value and the rendered position diverge near the endpoints. The `input`
+// qualifier restores 0-1-1.
+test("a host's own range-input styling cannot un-collapse our native thumb", async ({
+  mount,
+  page,
+  browserName,
+}) => {
+  // Firefox only, and not for the usual reason. WebKit exposes no computed
+  // style for the thumb pseudo-element at all; Chromium exposes one but it
+  // does not reflect author rules for *our* input (it reports an identical
+  // width/height whether or not the reset applies), so it cannot distinguish
+  // pass from fail here. Firefox reports the real used value.
+  test.skip(
+    browserName !== "firefox",
+    "only Firefox reports author-applied thumb metrics for this input",
+  );
+  const component = await mount(
+    <Slider min={0} max={100} interval={1} value={50} />,
+  );
+  // A host styling its range inputs the conventional way.
+  await page.addStyleTag({
+    content: `input[type="range"]::-moz-range-thumb {
+      width: 20px; height: 20px; background: red;
+    }`,
+  });
+
+  const thumb = await component
+    .locator('input[type="range"]')
+    .evaluate((el) => {
+      const s = getComputedStyle(el, "::-moz-range-thumb");
+      return { width: s.width, height: s.height };
+    });
+
+  expect(
+    thumb,
+    "a host rule outranked Stagebook's reset on its own slider input",
+  ).toEqual({ width: "0px", height: "0px" });
+});

@@ -40,6 +40,8 @@ export {
 export {
   Button,
   type ButtonProps,
+  type TextButtonProps,
+  type IconButtonProps,
   Separator,
   type SeparatorProps,
   RadioGroup,
