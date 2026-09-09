@@ -255,6 +255,11 @@ export function Select({
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            /* Border-box, so the token IS the row height rather than the
+             * content height with padding stacked on top (44px, which
+             * read as over-spaced in a single-line list). 2.25rem is the
+             * touch target the token's comment describes. */
+            box-sizing: border-box;
             min-height: var(--stagebook-row-min-height, 2.25rem);
             padding: 0.25rem 0.5rem;
             border-radius: 0.375rem;

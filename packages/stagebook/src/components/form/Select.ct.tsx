@@ -668,7 +668,7 @@ test.describe("Select: picker (#627)", () => {
     await select.click();
     await expect.poll(() => isOpen(select)).toBe(true);
     const row = component.locator('option[value="c"]');
-    expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(48);
+    expect((await row.boundingBox())!.height).toBe(48);
     await row.hover();
     await expect(row).toHaveCSS("background-color", "rgb(255, 0, 0)");
     expect(
@@ -696,9 +696,11 @@ test.describe("Select: picker (#627)", () => {
     const row = component.locator('option[value="c"]');
     const box = (await row.boundingBox())!;
     // The same token RadioGroup / CheckboxGroup rows use, so the three
-    // families agree on row height — and on the host's lever for raising
-    // it (--stagebook-row-min-height).
-    expect(box.height).toBeGreaterThanOrEqual(36);
+    // families agree on the host's lever for row height
+    // (--stagebook-row-min-height). Exactly the token, not the token plus
+    // padding: the row is border-box, so 2.25rem is the row a participant
+    // sees and taps, and a single-line list stays as dense as a menu.
+    expect(box.height).toBe(36);
 
     // Hover reads as "interactive" with the shared hover token (gray-100),
     // replacing the engine's currentColor tint.
