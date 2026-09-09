@@ -508,7 +508,14 @@ export function Slider({
       </div>
 
       <style>{`
-        input[type="range"]::-webkit-slider-thumb {
+        /* Collapse the native thumb and track — the Slider paints its own
+           thumb, and the real input is an invisible overlay (#613 scoped
+           these to this instance; as bare input[type="range"] selectors they
+           flattened every range input on the host page, including ones
+           Stagebook doesn't render). Each vendor pseudo-element gets its own
+           rule rather than a shared selector list: a list containing one
+           pseudo-element the engine doesn't recognise is dropped whole. */
+        .${inputClass}::-webkit-slider-thumb {
           -webkit-appearance: none;
           appearance: none;
           width: 0;
@@ -516,18 +523,18 @@ export function Slider({
           background: transparent;
           border: none;
         }
-        input[type="range"]::-moz-range-thumb {
+        .${inputClass}::-moz-range-thumb {
           width: 0;
           height: 0;
           background: transparent;
           border: none;
         }
-        input[type="range"]::-webkit-slider-runnable-track {
+        .${inputClass}::-webkit-slider-runnable-track {
           width: 100%;
           height: 0;
           background: transparent;
         }
-        input[type="range"]::-moz-range-track {
+        .${inputClass}::-moz-range-track {
           width: 100%;
           height: 0;
           background: transparent;
@@ -538,9 +545,7 @@ export function Slider({
            Stagebook doesn't own, and including under forced-colors,
            where the outline is the only indicator left. Suppressing it
            here is still right: the input is zero-size and invisible, and
-           the indicator is drawn on the thumb by the rule above.
-           (The sibling appearance resets above are still unscoped —
-           pre-existing, and a separate change.) */
+           the indicator is drawn on the thumb by the rule above. */
         .${inputClass}:focus {
           outline: none;
         }

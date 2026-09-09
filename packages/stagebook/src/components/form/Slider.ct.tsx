@@ -386,3 +386,46 @@ test("focus ring appears on the thumb when the range input is keyboard-focused",
     })
     .not.toBe(baseline);
 });
+
+// #613. The Slider zeroes the native thumb and track because it draws its own
+// thumb. Those resets were written as bare `input[type="range"]` selectors, so
+// mounting one Slider flattened every range input on the page — including ones
+// the host renders and Stagebook has no business restyling. (#610 fixed the
+// fifth rule in the same block, the focus-outline suppressor, because it was
+// destroying an accessibility affordance; these four are the rest.)
+test("does not flatten a host's own range input", async ({
+  mount,
+  browserName,
+}) => {
+  // The reset is only observable through the vendor pseudo-element, and each
+  // engine exposes its own: Chromium answers for ::-webkit-slider-thumb,
+  // Firefox for ::-moz-range-thumb, WebKit for neither (it returns empty
+  // strings for both), so there is nothing to assert there.
+  test.skip(
+    browserName === "webkit",
+    "WebKit exposes no computed style for the slider thumb pseudo-element",
+  );
+  const component = await mount(
+    <div>
+      <Slider min={0} max={100} interval={1} value={50} />
+      <input type="range" data-testid="foreign" aria-label="Not ours" />
+    </div>,
+  );
+
+  const thumb = await component
+    .locator('[data-testid="foreign"]')
+    .evaluate((el) => {
+      for (const pseudo of ["::-webkit-slider-thumb", "::-moz-range-thumb"]) {
+        const s = getComputedStyle(el, pseudo);
+        if (s.height) return { pseudo, height: s.height };
+      }
+      return null;
+    });
+
+  expect(thumb, "no engine exposed a thumb pseudo-element").not.toBeNull();
+  // A native thumb has height; ours is deliberately collapsed to 0.
+  expect(
+    thumb?.height,
+    `${thumb?.pseudo} was flattened on an input Stagebook doesn't own`,
+  ).not.toBe("0px");
+});
