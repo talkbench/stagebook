@@ -89,7 +89,9 @@ const baseInlineStyle: React.CSSProperties = {
 // `aspect-ratio`, whose min-size transfer differs across engines. Padding
 // is zero and the glyph is flex-centered: a 1.25rem glyph leaves 0.5rem
 // on every side, comfortably over the 24×24 floor of WCAG 2.5.8.
-const ICON_BOX = "calc(1.25rem + 2 * 0.5rem + 2px)";
+// Addition only, one term per contribution: line-height, padding above,
+// padding below, both borders.
+const ICON_BOX = "calc(1.25rem + 0.5rem + 0.5rem + 2px)";
 const ICON_BOX_MIN = "var(--stagebook-row-min-height, 2.25rem)";
 const iconInlineStyle: React.CSSProperties = {
   width: ICON_BOX,
@@ -133,12 +135,14 @@ export function Button({
   const buttonClass = `stagebook-button-${safeId}`;
 
   // The type already refuses an icon button without a name; this is for
-  // JS consumers, who never see the type. It reports rather than throws —
-  // a nameless button is a defect to fix, not a reason to take the stage
-  // down mid-session. Effect, not render body, so it fires once per
-  // change rather than on every re-render.
+  // JS consumers, who never see the type. Trimmed, because the accessible-
+  // name computation collapses whitespace: a label of spaces names nothing,
+  // same as an empty string. It reports rather than throws — a nameless
+  // button is a defect to fix, not a reason to take the stage down
+  // mid-session. Effect, not render body, so it fires once per change
+  // rather than on every re-render.
   useEffect(() => {
-    if (icon && !ariaLabel) {
+    if (icon && !ariaLabel?.trim()) {
       console.error(
         "[Stagebook] <Button icon> has no aria-label. An icon-only button has no text to name it by — pass aria-label (title is a tooltip, not a name).",
       );

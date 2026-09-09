@@ -489,8 +489,9 @@ test("icon variant shows the focus halo on keyboard focus", async ({
 
 // The type refuses the first two (`icon: true` requires `aria-label`,
 // pinned by Button.types.test.ts); the runtime check is for JS consumers,
-// who never see the type. The third — an empty string — the type accepts
-// but the accessible-name computation ignores, so the button would be
+// who never see the type. The last two — an empty string, and whitespace
+// only — the type accepts, but the accessible-name computation ignores
+// the one and collapses the other to nothing, so the button would be
 // nameless all the same. `title` alone is the case the docs rule out: a
 // browser will fall back to it for the name, but touch and screen-reader
 // users never get it, so Stagebook does not count it. The check reports
@@ -500,6 +501,10 @@ const namelessCases: [string, Record<string, unknown>][] = [
   ["no aria-label", { icon: true, primary: false }],
   ["only a title", { icon: true, primary: false, title: "Refresh devices" }],
   ["an empty aria-label", { icon: true, primary: false, "aria-label": "" }],
+  [
+    "a whitespace-only aria-label",
+    { icon: true, primary: false, "aria-label": "  \t " },
+  ],
 ];
 for (const [label, props] of namelessCases) {
   test(`icon variant with ${label} reports an error`, async ({
