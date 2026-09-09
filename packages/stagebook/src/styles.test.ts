@@ -319,44 +319,23 @@ describe("styles.css uses theme variables for hardcoded values (#116)", () => {
  * (see the isolation tests below) and not only against the real styles.css.
  */
 function makeResolver(vars: Map<string, string[]>) {
-  /**
-   * Resolve one declared value to a solid hex, or null when it has no single
-   * opaque hex (a translucent rgba, or a mix with `transparent`) — a contrast
-   * assertion against those would be meaningless, so the caller asserts that
-   * the token resolved at all.
-   */
-  function resolveValue(v: string, seen: Set<string>): string | null {
-    if (/^#[0-9a-f]{3,8}$/i.test(v)) return v;
-    if (/^var\(\s*--[\w-]+\s*\)$/.test(v)) {
-      const ref = /var\(\s*(--[\w-]+)/.exec(v);
-      return ref ? resolveHex(ref[1], seen) : null;
-    }
-    // `color-mix(in srgb, <color> N%, <color>)`. A mix toward `transparent`
-    // stays translucent and is skipped; a mix toward an opaque color (e.g.
-    // the timeline tooltip's `… 80%, #000`) has a real hex worth asserting.
-    const mix =
-      /^color-mix\(\s*in srgb\s*,\s*(.+?)\s+([\d.]+)%\s*,\s*(.+?)\s*\)$/i.exec(
-        v,
-      );
-    if (!mix) return null;
-    const [, aRaw, pctRaw, bRaw] = mix;
-    const a = resolveValue(aRaw, new Set(seen));
-    const b = resolveValue(bRaw, new Set(seen));
-    if (!a || !b) return null;
-    const p = parseFloat(pctRaw) / 100;
-    const chan = (hex: string) => {
-      const h = hex.replace("#", "");
-      const n =
-        h.length === 3
-          ? h
-              .split("")
-              .map((c) => c + c)
-              .join("")
-          : h;
-      return [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16));
-    };
-    const [ar, ag, ab] = chan(a);
-    const [br, bg, bb] = chan(b);
+  /** Split a hex (3- or 6-digit) into its r/g/b channels. */
+  function channels(hex: string): number[] {
+    const h = hex.replace("#", "");
+    const n =
+      h.length === 3
+        ? h
+            .split("")
+            .map((c) => c + c)
+            .join("")
+        : h;
+    return [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16));
+  }
+
+  /** Blend two opaque hexes: `a` at `p`, `b` at the remainder. */
+  function blend(a: string, b: string, p: number): string {
+    const [ar, ag, ab] = channels(a);
+    const [br, bg, bb] = channels(b);
     return (
       "#" +
       [
@@ -374,6 +353,43 @@ function makeResolver(vars: Map<string, string[]>) {
   }
 
   /**
+   * Every opaque hex one declared value can resolve to — a list, not a single
+   * value, because a declaration may reach a token that itself has several
+   * (#612 review). Collapsing to one here would re-open the effective-value
+   * blind spot one hop away: --stagebook-link aliases --stagebook-primary, so
+   * an @supports override on primary is what browsers render for links too.
+   *
+   * Empty when the value has no opaque hex at all — a translucent rgba, or a
+   * mix toward `transparent`. A contrast assertion against those would be
+   * meaningless, so the caller asserts the token resolved to something.
+   */
+  function resolveValues(v: string, seen: Set<string>): string[] {
+    if (/^#[0-9a-f]{3,8}$/i.test(v)) return [v];
+    if (/^var\(\s*--[\w-]+\s*\)$/.test(v)) {
+      const ref = /var\(\s*(--[\w-]+)/.exec(v);
+      return ref ? resolveAllHexes(ref[1], seen) : [];
+    }
+    // `color-mix(in srgb, <color> N%, <color>)`. A mix toward `transparent`
+    // stays translucent and drops out; a mix toward an opaque color (e.g. the
+    // timeline tooltip's `… 80%, #000`) has a real hex worth asserting. Each
+    // side can itself be multi-valued, so the result is every combination.
+    const mix =
+      /^color-mix\(\s*in srgb\s*,\s*(.+?)\s+([\d.]+)%\s*,\s*(.+?)\s*\)$/i.exec(
+        v,
+      );
+    if (!mix) return [];
+    const [, aRaw, pctRaw, bRaw] = mix;
+    const p = parseFloat(pctRaw) / 100;
+    const out: string[] = [];
+    for (const a of resolveValues(aRaw, new Set(seen))) {
+      for (const b of resolveValues(bRaw, new Set(seen))) {
+        out.push(blend(a, b, p));
+      }
+    }
+    return out;
+  }
+
+  /**
    * Every resolvable opaque value a token can take — the static default and
    * any @supports override. Both ship, so both are asserted: the fallback is
    * what an old browser renders, the override is what everything else does.
@@ -388,9 +404,10 @@ function makeResolver(vars: Map<string, string[]>) {
     // dropped. That silently removes an assertion — the exact failure mode
     // this gate exists to prevent. Cloning keeps self-reference detection
     // (the token itself is already in `seen`) while isolating siblings.
-    return (vars.get(name) ?? [])
-      .map((v) => resolveValue(v, new Set(seen)))
-      .filter((h): h is string => h !== null);
+    const all = (vars.get(name) ?? []).flatMap((v) =>
+      resolveValues(v, new Set(seen)),
+    );
+    return [...new Set(all)];
   }
 
   /** The token's primary (first-declared) resolvable value, or null. */
@@ -422,6 +439,20 @@ describe("the resolver isolates a token's declarations from each other", () => {
     // --primary to it and the mix is then dropped as a false cycle, leaving
     // the effective browser value untested.
     expect(resolveAllHexes("--tooltip-bg")).toEqual(["#2563eb", "#1e4fbc"]);
+  });
+
+  it("propagates every branch through an alias", () => {
+    // --stagebook-link aliases --stagebook-primary. If the aliased token ever
+    // gains an @supports override, browsers use it for the alias too — so
+    // resolving the alias to a single value re-opens the exact effective-value
+    // blind spot this gate closes, just one hop away.
+    const { resolveAllHexes } = makeResolver(
+      new Map([
+        ["--primary", ["#2563eb", "color-mix(in srgb, #2563eb 80%, #000)"]],
+        ["--link", ["var(--primary)"]],
+      ]),
+    );
+    expect(resolveAllHexes("--link")).toEqual(["#2563eb", "#1e4fbc"]);
   });
 
   it("still detects a genuine self-referential cycle", () => {
