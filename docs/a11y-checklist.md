@@ -18,6 +18,8 @@ to that one too.
 
 - [ ] Every interactive control has an accessible name — a `<label>`,
       `aria-label`, or `aria-labelledby`. Icon-only buttons need one too. (4.1.2)
+      `<Button icon>` requires `aria-label` for exactly this reason; `title` is
+      a tooltip, never the only name.
 - [ ] Prefer native elements (`<button>`, `<input>`, `<select>`, `<textarea>`);
       if you build a custom widget, give it the correct role and states.
 - [ ] Grouped inputs (radios/checkboxes) are associated with their question

@@ -343,3 +343,103 @@ test.describe("Select", () => {
     expect(fontFamily).toMatch(/Helvetica/);
   });
 });
+
+// ----------- disabled (#620) -----------
+
+test.describe("Select: disabled", () => {
+  test("renders <select disabled> when set, and selectOption() is refused", async ({
+    mount,
+  }) => {
+    let changes = 0;
+    const component = await mount(
+      <Select
+        options={options}
+        onChange={() => {
+          changes += 1;
+        }}
+        label="Camera"
+        disabled
+      />,
+    );
+    const select = component.locator("select");
+    await expect(select).toBeDisabled();
+    // Playwright's actionability check waits for an enabled control, so
+    // on a disabled <select> the call times out instead of selecting —
+    // the same refusal a participant gets.
+    await expect(select.selectOption("b", { timeout: 500 })).rejects.toThrow();
+    expect(changes).toBe(0);
+  });
+
+  test("is enabled by default", async ({ mount }) => {
+    const component = await mount(
+      <Select options={options} onChange={() => {}} label="Camera" />,
+    );
+    await expect(component.locator("select")).toBeEnabled();
+  });
+
+  test("an empty, disabled picker still shows its placeholder as the state message", async ({
+    mount,
+    page,
+  }) => {
+    // The consumer's shape (talkbench/runner#862): the picker always
+    // renders, and in a no-device state its only option is the disabled
+    // placeholder carrying the state copy. `disabled` is what makes that
+    // read as "waiting" rather than "a working control that happens to be
+    // empty" — the select can't take focus or open.
+    const component = await mount(
+      <Select
+        options={[]}
+        onChange={() => {}}
+        label="Camera"
+        placeholder="No camera found."
+        disabled
+      />,
+    );
+    const select = component.locator("select");
+    await expect(select).toBeDisabled();
+    await expect(select).toHaveValue("__stagebook_select_placeholder__");
+    await expect(component).toContainText("No camera found.");
+    await expect(component.locator("option")).toHaveCount(1);
+    // Held still: a disabled <select> is not in the tab order either.
+    await page.keyboard.press("Tab");
+    await expect(select).not.toBeFocused();
+  });
+
+  test("disabled greys the control and mutes its label", async ({ mount }) => {
+    const component = await mount(
+      <div>
+        <Select
+          options={options}
+          onChange={() => {}}
+          label="Camera"
+          id="off"
+          disabled
+        />
+        <Select
+          options={options}
+          onChange={() => {}}
+          label="Microphone"
+          id="on"
+        />
+      </div>,
+    );
+    const off = component.locator("select#off");
+    const on = component.locator("select#on");
+    await expect(off).toHaveCSS("cursor", "not-allowed");
+    await expect(on).toHaveCSS("cursor", "pointer");
+    const offOpacity = await off.evaluate((el) =>
+      parseFloat(window.getComputedStyle(el).opacity),
+    );
+    expect(offOpacity).toBeLessThan(1);
+    expect(offOpacity).toBeGreaterThan(0);
+
+    // The visible <label> takes the usual muted colour — the same token the
+    // RadioGroup / CheckboxGroup captions and the TextArea count use — and
+    // an enabled sibling keeps the text colour. Located by the `for`
+    // association, so this also holds the label to its control.
+    const offLabel = component.locator('label[for="off"]');
+    const onLabel = component.locator('label[for="on"]');
+    await expect(offLabel).toHaveCSS("color", "rgb(107, 114, 128)");
+    await expect(onLabel).toHaveCSS("color", "rgb(31, 41, 55)");
+  });
+});

@@ -20,6 +20,7 @@ import { Select } from "./form/Select";
 import { TextArea } from "./form/TextArea";
 import { Slider } from "./form/Slider";
 import { Button } from "./form/Button";
+import { RefreshGlyph } from "./testing/RefreshGlyph";
 import { Markdown } from "./form/Markdown";
 import { Separator } from "./form/Separator";
 import { MockListSorter } from "./testing/MockListSorter";
@@ -100,6 +101,22 @@ const cases: { name: string; node: ReactNode }[] = [
     ),
   },
   {
+    // Disabled and empty (#620): the runner's no-device state — the only
+    // option is the placeholder carrying the state copy, and the control is
+    // held still. A disabled control is exempt from the contrast minimum,
+    // but its label still has to name it and the axe rules still apply.
+    name: "Select (disabled, empty)",
+    node: (
+      <Select
+        options={[]}
+        onChange={() => {}}
+        label="Camera"
+        placeholder="No camera found."
+        disabled
+      />
+    ),
+  },
+  {
     name: "TextArea",
     node: <TextArea value="Some typed response" ariaLabel="Your answer" />,
   },
@@ -112,6 +129,17 @@ const cases: { name: string; node: ReactNode }[] = [
     node: <Slider min={0} max={100} interval={1} />,
   },
   { name: "Button", node: <Button>Continue</Button> },
+  {
+    // Icon-only (#621 / #622): the glyph is decorative and hidden from the
+    // name computation, so the name is the aria-label alone. This is the
+    // shape the checklist means by "icon-only buttons need one too".
+    name: "Button (icon-only)",
+    node: (
+      <Button icon aria-label="Refresh devices" primary={false}>
+        <RefreshGlyph />
+      </Button>
+    ),
+  },
   {
     name: "SubmitButton",
     node: (

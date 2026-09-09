@@ -1,4 +1,9 @@
-export { Button, type ButtonProps } from "./Button.js";
+export {
+  Button,
+  type ButtonProps,
+  type TextButtonProps,
+  type IconButtonProps,
+} from "./Button.js";
 export { Separator, type SeparatorProps } from "./Separator.js";
 export {
   RadioGroup,

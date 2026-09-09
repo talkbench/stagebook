@@ -27,6 +27,7 @@ import { Select } from "./form/Select";
 import { TextArea } from "./form/TextArea";
 import { Slider } from "./form/Slider";
 import { Button } from "./form/Button";
+import { RefreshGlyph } from "./testing/RefreshGlyph";
 import { Markdown } from "./form/Markdown";
 import { MockListSorter } from "./testing/MockListSorter";
 import { MockTimeline } from "./testing/MockTimeline";
@@ -68,6 +69,20 @@ const cases: Case[] = [
     // page-colored spacer makes the indicator visible at all.
     name: "Button (primary)",
     node: <Button primary>Continue</Button>,
+    target: "button",
+    kind: "halo",
+  },
+  {
+    // Icon-only (#622). Focus visibility matters more here than on a text
+    // button: there is no underline or colour shift to lean on, so the
+    // halo is the entire indicator. Secondary, because the bordered case
+    // is where the old translucent ring measured 1.03:1.
+    name: "Button (icon, secondary)",
+    node: (
+      <Button icon aria-label="Refresh devices" primary={false}>
+        <RefreshGlyph />
+      </Button>
+    ),
     target: "button",
     kind: "halo",
   },
