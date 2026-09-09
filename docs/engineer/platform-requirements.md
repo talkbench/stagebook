@@ -95,11 +95,21 @@ If a field is not populated, references to it resolve to `undefined` and conditi
 
 Stagebook components are tested against modern browsers. The platform should verify browser compatibility during onboarding, before loading the experiment. Minimum supported versions:
 
-- Chrome >= 89
-- Edge >= 89
-- Firefox >= 89
-- Safari >= 15
-- Opera >= 75
+- Chrome >= 93
+- Edge >= 93
+- Firefox >= 92
+- Safari >= 15.4
+- Opera >= 79
+
+This floor is the oldest version on which everything Stagebook ships actually works, derived from the features the participant-facing code relies on (September 2026, #624). What sets it:
+
+- `:focus-visible` — every focus indicator (see the [focus-indicator ADR](../decisions/2026-09-focus-indicator.md)). Chrome 86, Firefox 85, Safari 15.4. Below that a control shows no focus ring at all.
+- `Object.hasOwn` — in the exported markdown image-reference helper. Chrome 93, Firefox 92, Safari 15.4.
+- The compiled output targets ES2022 and is not down-levelled; the syntax it uses (optional chaining, nullish coalescing, class fields) is older than any of the above.
+
+Two things degrade rather than break below newer versions: `color-mix()` (Chrome 111, Firefox 113, Safari 16.2) sits behind a feature query in `styles.css`, and in the Timeline's blocked-range pulse an unsupported value only drops the tint; the scroll indicator's `backdrop-filter` is cosmetic.
+
+The component suite runs on current Chromium, WebKit and Firefox under Playwright, so the floor is derived from feature support rather than exercised directly. A long-term policy — a rolling window, and a compat check in CI so this list cannot drift from the code again — is tracked in #625. The runner states the same floor in its getting-started overview and enforces it in its onboarding gate; the three move together.
 
 Mobile devices are not supported for interactive experiments with video/audio. The platform should detect and block mobile browsers during onboarding.
 
