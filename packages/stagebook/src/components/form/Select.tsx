@@ -1,4 +1,5 @@
 import React, { useId } from "react";
+import { focusRingCss } from "../focusRing.js";
 
 export interface SelectOption {
   key: string;
@@ -145,8 +146,7 @@ export function Select({
     <div style={{ marginTop: "1rem" }}>
       <style>{`
         .${triggerClass}:focus-visible {
-          outline: none;
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
+          ${focusRingCss()}
         }
         @media (prefers-reduced-motion: reduce) {
           .${triggerClass} {

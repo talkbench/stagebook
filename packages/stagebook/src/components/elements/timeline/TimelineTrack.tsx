@@ -1,6 +1,7 @@
 import React, { useId } from "react";
 import { WaveformRenderer } from "./WaveformRenderer.js";
 import { useMessages, useIsRTL } from "../../StagebookProvider.js";
+import { focusRingCss } from "../../focusRing.js";
 
 export interface TimelineTrackProps {
   /** Label shown in the gutter (from trackLabels or the "Track N" fallback). */
@@ -62,8 +63,7 @@ export function TimelineTrack({
     >
       <style>{`
         .${muteClass}:focus-visible {
-          outline: none;
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25));
+          ${focusRingCss()}
         }
         .${muteClass}:hover {
           background: var(--stagebook-hover-bg, #f3f4f6);

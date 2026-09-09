@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useId } from "react";
 import { computeIntervalQuantiles } from "./typingQuantiles.js";
 import { useMessages, useIsRTL } from "../StagebookProvider.js";
+import { focusRingCss } from "../focusRing.js";
 
 export interface TypingStats {
   type: "typingStats";
@@ -507,8 +508,7 @@ export function TextArea({
            trailing 1px shadow preserves the textarea subtle elevation
            under the ring. */
         .${textareaClass}:focus-visible {
-          outline: none;
-          box-shadow: 0 0 0 2px var(--stagebook-focus-ring, rgba(37, 99, 235, 0.25)), 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+          ${focusRingCss("0 1px 2px 0 rgba(0, 0, 0, 0.05)")}
         }
 
         /* Animate a box-shadow glow instead of the text color, so the

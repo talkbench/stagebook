@@ -78,6 +78,60 @@ describe("styles.css custom property coverage", () => {
   });
 });
 
+// Issue #610: the focus ring went opaque, and the translucent value it used
+// to carry moved to --stagebook-primary-tint. The two have to stay split:
+// re-aliasing the tint to the accent turns the Slider's hover track solid
+// blue, and re-introducing alpha on the ring restores the 1.03:1 defect —
+// both silently, since neither is something the palette gate can catch (it
+// skips translucent tokens by design).
+describe("the focus ring is opaque and the tint is not (#610)", () => {
+  const css = readFileSync(stylesPath, "utf8");
+  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+  /** Every declared value for a token, including @supports overrides. */
+  function valuesOf(name: string): string[] {
+    return [
+      ...noComments.matchAll(new RegExp(`${name}\\s*:\\s*([^;]+);`, "g")),
+    ].map((m) => m[1].trim().replace(/\s+/g, " "));
+  }
+
+  it("--stagebook-focus-ring carries no alpha, in every branch", () => {
+    const values = valuesOf("--stagebook-focus-ring");
+    expect(values.length).toBeGreaterThan(0);
+    for (const v of values) {
+      expect(v, `${v} must be opaque`).not.toMatch(
+        /rgba|transparent|color-mix/,
+      );
+    }
+  });
+
+  it("--stagebook-primary-tint stays translucent, in every branch", () => {
+    // Two branches: the static rgba default and the color-mix upgrade. The
+    // palette gate reads only the first :root block, so it sees neither.
+    const values = valuesOf("--stagebook-primary-tint");
+    expect(values.length).toBe(2);
+    for (const v of values) {
+      expect(v, `${v} must be translucent`).toMatch(/rgba|transparent/);
+    }
+  });
+
+  it("the Slider hover track uses the tint, not the ring", () => {
+    const slider = readFileSync(
+      join(componentsDir, "form", "Slider.tsx"),
+      "utf8",
+    );
+    expect(slider).toContain("var(--stagebook-primary-tint,");
+    // The track's hover fill must not reach for the ring token again.
+    // The track fill inside a hovered wrapper — not the wrapper's own
+    // hover background, which is a different rule using a different token.
+    const hoverRule =
+      /-wrapper:hover \.\$\{trackClass\}\s*\{([^}]*)\}/.exec(slider)?.[1] ?? "";
+    expect(hoverRule).toContain("background-color");
+    expect(hoverRule).toContain("--stagebook-primary-tint");
+    expect(hoverRule).not.toContain("--stagebook-focus-ring");
+  });
+});
+
 // Issue #116: form resets, focus rings, and table styles previously
 // hardcoded values instead of referencing the --stagebook-* tokens declared
 // at :root. These tests pin the migration so hardcoded values can't sneak
@@ -174,12 +228,11 @@ describe("styles.css uses theme variables for hardcoded values (#116)", () => {
 
   it("derives focus ring box-shadow from --stagebook-primary", () => {
     // Either direct reference to --stagebook-primary, or to the derived
-    // --stagebook-focus-ring token. The focus-ring token must itself be
-    // derivable from --stagebook-primary, either unconditionally OR inside
-    // an @supports(color-mix) override — the unconditional default may be
-    // a static rgba so browsers without color-mix keep a visible ring.
+    // --stagebook-focus-ring token, which must itself resolve to the accent
+    // — as a plain alias (what #610 made it, now that the ring is opaque)
+    // or as a color-mix of it (what it was while the ring was translucent).
     const focusRingDerivesFromPrimary =
-      /--stagebook-focus-ring\s*:\s*color-mix\([^)]*var\(--stagebook-primary/;
+      /--stagebook-focus-ring\s*:\s*(?:var\(--stagebook-primary\)|color-mix\([^)]*var\(--stagebook-primary)/;
     expect(css).toMatch(focusRingDerivesFromPrimary);
     expect(outsideRoot).toMatch(
       /box-shadow:[^;]*var\(--stagebook-(?:primary|focus-ring)/,
@@ -329,6 +382,18 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     // subtle input border and predates #535 — the WCAG 1.4.11 question for
     // form-control boundaries is a separate a11y decision, not asserted here.
     ["--stagebook-playhead", "--stagebook-bg", UI, "playhead marker (UI)"],
+    // #610: the focus ring is a non-text UI indicator (1.4.11), so it needs
+    // 3:1 against everything it can abut. It was translucent until #610 —
+    // and resolveHex() returns null for a translucent value, so it slipped
+    // through this gate entirely while sitting at 1.03:1 against the very
+    // border it's drawn beside. Opaque now, and asserted against both.
+    ["--stagebook-focus-ring", "--stagebook-bg", UI, "focus ring on the page"],
+    [
+      "--stagebook-focus-ring",
+      "--stagebook-border",
+      UI,
+      "focus ring against a control's own border",
+    ],
   ];
 
   it.each(pairings)("%s on %s meets its contrast floor (%s)", (fg, bg, min) => {

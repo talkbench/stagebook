@@ -4551,6 +4551,12 @@ test("polish: container shows focus ring on keyboard focus (Tab)", async ({
   // focused. Before #382 the container had `outline: none` and no
   // replacement — participants doing keyboard annotation had no
   // visible signal that the timeline was armed.
+  //
+  // This asserts only that *a* ring appears. That is the assertion shape
+  // that let #610 live: it passes for a ring of any contrast, and says
+  // nothing about forced-colors, where the ring #382 added was in fact
+  // absent entirely. What the ring has to look like now belongs in
+  // focus.gate.ct.tsx — strengthen it there, not here.
   const component = await mount(
     <MockTimeline
       source="coding_video"
