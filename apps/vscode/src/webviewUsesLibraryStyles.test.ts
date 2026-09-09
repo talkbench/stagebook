@@ -39,3 +39,55 @@ describe("webview renders with the library's real styles.css (#560)", () => {
     expect(injectAt).toBeLessThan(mountAt);
   });
 });
+
+// The webview host injects its own `a/input/select/textarea:focus` outline
+// (see vs/workbench/contrib/webview/browser/pre/index.html). It's a plain
+// `:focus`, so it paints on mouse click — where Stagebook's `:focus-visible`
+// rules intentionally don't — making the preview show a focus treatment the
+// runner never renders. The chrome CSS suppresses it, but only for the
+// mouse-focus case: a blanket `outline: none` is the exact pattern #610
+// removed from the library, and reintroducing it here would strip the
+// indicator that forced-colors repaints.
+describe("preview suppresses only the host's mouse-focus outline (#610)", () => {
+  it("scopes the suppression to :focus:not(:focus-visible)", () => {
+    expect(extensionSrc).toMatch(
+      /#root \w+:focus:not\(:focus-visible\)[\s\S]{0,200}\{\s*outline: none;/,
+    );
+  });
+
+  it("suppresses only the element types the host rule targets", () => {
+    // A bare `:focus` form would also outrank components that indicate focus
+    // on any modality — the Timeline's `.container:focus` ring means
+    // "keyboard shortcuts are live", which holds after a click too (#382).
+    // Killing its outline leaves nothing under forced-colors, where the
+    // box-shadow is dropped: #610 rebuilt one level up. Measured before
+    // scoping: `outline: none` + `box-shadow: none` on a clicked Timeline.
+    const css = extensionSrc.replace(/\/\*[\s\S]*?\*\//g, "");
+    const rules = [...css.matchAll(/([^{};]*:focus[^{};]*)\{([^}]*)\}/g)];
+    for (const [, selector, body] of rules) {
+      if (!/outline:\s*none/.test(body)) continue;
+      for (const part of selector.split(",")) {
+        if (!part.trim()) continue;
+        expect(
+          part,
+          `"${part.trim()}" suppresses focus outlines beyond the host's a/input/select/textarea rule`,
+        ).toMatch(/\b(?:a|input|select|textarea):focus/);
+      }
+    }
+  });
+
+  it("never suppresses a plain :focus or :focus-visible outline", () => {
+    // Strip comments first — the rationale above the rule quotes the host's
+    // declaration verbatim, including the text this would otherwise match.
+    const css = extensionSrc.replace(/\/\*[\s\S]*?\*\//g, "");
+    const rules = [...css.matchAll(/([^{};]*:focus[^{};]*)\{([^}]*)\}/g)];
+    expect(rules.length).toBeGreaterThan(0);
+    for (const [, selector, body] of rules) {
+      if (!/outline:\s*none/.test(body)) continue;
+      expect(
+        selector,
+        `"${selector.trim()}" kills an outline without excluding :focus-visible`,
+      ).toContain(":not(:focus-visible)");
+    }
+  });
+});

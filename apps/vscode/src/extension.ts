@@ -830,6 +830,46 @@ function getWebviewContent(
       font-size: 14px;
       line-height: 1.5;
     }
+    /* The webview host paints its own focus outline on mouse click:
+     *
+     *   a:focus, input:focus, select:focus, textarea:focus {
+     *     outline: 1px solid -webkit-focus-ring-color;
+     *     outline-offset: -1px;
+     *   }
+     *
+     * That's a plain ':focus', so it fires on click — precisely the gap where
+     * Stagebook's own indicator deliberately stays silent (its rules are
+     * ':focus-visible', keyboard-only, so a mouse click leaves no lingering
+     * ring). The result is a preview that shows a focus treatment no
+     * participant will ever see: the runner is a plain browser page with no
+     * such rule. The preview is an inspection surface and has to mirror the
+     * library (#560), so suppress it.
+     *
+     * Deliberately ':focus:not(:focus-visible)' and NOT a blanket
+     * 'outline: none' — that pairing is exactly the defect #610 fixed across
+     * the library. This removes the outline only in the mouse-focus case the
+     * host added it for. Keyboard focus still gets Stagebook's halo, and
+     * keeps the transparent outline that forced-colors repaints, so the
+     * accessibility guarantee survives inside the preview.
+     *
+     * Restricted to the four element types the host rule actually targets,
+     * rather than a bare ':focus'. A universal form also outranks components
+     * that deliberately indicate focus on any modality — the Timeline uses
+     * '.container:focus' because its ring means "keyboard shortcuts are live",
+     * which is true after a click too (#382). Suppressing its outline left it
+     * with no indicator at all under forced-colors, where the box-shadow is
+     * dropped: the #610 defect, rebuilt one level up. Measured, clicking the
+     * Timeline with the broad rule gave 'outline: none' + 'box-shadow: none';
+     * scoped, it keeps 'solid 2px'.
+     *
+     * Specificity 1-2-1 against the host rule's 0-1-1; the host uses no
+     * !important, so no !important is needed here. */
+    #root a:focus:not(:focus-visible),
+    #root input:focus:not(:focus-visible),
+    #root select:focus:not(:focus-visible),
+    #root textarea:focus:not(:focus-visible) {
+      outline: none;
+    }
   </style>
 </head>
 <body>
