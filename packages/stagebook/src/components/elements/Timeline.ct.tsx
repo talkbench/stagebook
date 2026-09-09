@@ -4816,3 +4816,41 @@ test("polish: CSS variable overrides theme the range background", async ({
   const bg = await range.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(bg).toBe("rgb(0, 128, 0)");
 });
+
+// #619. The playhead time box and the range-handle tooltips share
+// `tooltipBaseStyle`, whose text colour was a hard-coded `white` sitting on
+// two themeable surfaces (--stagebook-playhead and a tooltip background
+// derived from the accent). A host retuning either to something light got
+// white-on-light with no way to retune the text — the #610 shape, where a
+// contrast guarantee silently held only for our own palette.
+test("timeline time-box text follows --stagebook-playhead-fg", async ({
+  mount,
+  page,
+}) => {
+  await mount(
+    <div
+      style={
+        {
+          // Set BOTH, to different values. The playhead must take its own,
+          // not the tooltip's — the surfaces are independently themeable, and
+          // one shared foreground would leave a host retuning only one of
+          // them with no value readable on both (#629 review).
+          "--stagebook-playhead-fg": "rgb(10, 20, 30)",
+          "--stagebook-timeline-tooltip-fg": "rgb(200, 0, 0)",
+        } as React.CSSProperties
+      }
+    >
+      <MockTimeline
+        source="coding_video"
+        playerName="coding_video"
+        name="interruptions"
+        selectionType="range"
+      />
+    </div>,
+  );
+  // The playhead's time box is always rendered and uses tooltipBaseStyle.
+  const timeBox = page.locator('[data-testid="playhead"] > div').first();
+  await expect
+    .poll(() => timeBox.evaluate((el) => getComputedStyle(el).color))
+    .toBe("rgb(10, 20, 30)");
+});
