@@ -745,13 +745,15 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
       AA,
       "timeline range tooltip text",
     ],
-    // The same text also renders on the playhead's time box, which is a
-    // different themeable surface — so it needs its own pairing.
+    // The playhead's time box is a different themeable surface, so it gets
+    // its own foreground token as well as its own pairing — one shared
+    // foreground would leave a host retuning only one background with no
+    // value readable on both (#629 review).
     [
-      "--stagebook-timeline-tooltip-fg",
+      "--stagebook-playhead-fg",
       "--stagebook-playhead",
       AA,
-      "playhead time-box text",
+      "playhead time-box text — Playhead.tsx:169/175",
     ],
     // #610: the focus ring is a non-text UI indicator (1.4.11), so it needs
     // 3:1 against everything it can abut. It was translucent until #610 —
@@ -807,19 +809,24 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     }
   });
 
-  it("keeps the timeline tooltip's text on its token, not a literal", () => {
-    // The pairings above are only meaningful while the component actually
-    // reads the token. Reverting to a hard-coded `white` would leave them
-    // asserting a colour nothing renders — and would restore the theming gap
-    // #619 closed, where a host could retune the tooltip background to
-    // something light with no way to retune the text with it.
+  it("keeps each timeline time box on its own foreground token", () => {
+    // The pairings above are only meaningful while the components actually
+    // read these tokens. Reverting to a hard-coded `white` would leave them
+    // asserting a colour nothing renders, and would restore the theming gap
+    // #619 closed. Asserting BOTH names also pins the split itself: collapsing
+    // them back to one shared foreground is the #629 finding, where a host
+    // retuning one of the two backgrounds has no value readable on both.
     const timelineStyles = readFileSync(
       join(componentsDir, "elements", "timeline", "timelineStyles.ts"),
       "utf8",
     );
     expect(timelineStyles).toContain(
-      'color: "var(--stagebook-timeline-tooltip-fg, #fff)"',
+      "var(--stagebook-timeline-tooltip-fg, #fff)",
     );
+    expect(timelineStyles).toContain("var(--stagebook-playhead-fg, #fff)");
+    // And the shared base must stay colourless, or one surface silently wins.
+    const base = /tooltipBaseStyle[^}]*}/s.exec(timelineStyles)?.[0] ?? "";
+    expect(base).not.toMatch(/color:/);
   });
 
   it("honors a deprecated --stagebook-text-faint override through --stagebook-decoration", () => {

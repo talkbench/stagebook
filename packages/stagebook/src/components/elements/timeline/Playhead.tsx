@@ -1,7 +1,11 @@
 import React, { useCallback, useRef } from "react";
 import { timeToPixel, pixelToTime } from "./timelineLayout.js";
 import { formatTime } from "../../../utils/formatTime.js";
-import { zoomDecimals, tooltipBaseStyle } from "./timelineStyles.js";
+import {
+  zoomDecimals,
+  tooltipBaseStyle,
+  PLAYHEAD_FG,
+} from "./timelineStyles.js";
 
 /**
  * How far off-screen (in pixels) the playhead can be before we skip
@@ -167,6 +171,7 @@ export function Playhead({
         onLostPointerCapture={handlePointerCancel}
         style={{
           ...tooltipBaseStyle,
+          color: PLAYHEAD_FG,
           position: "absolute",
           top: 0,
           left: "50%",

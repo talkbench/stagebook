@@ -22,14 +22,18 @@ const TIMELINE_MONO_FONT =
   "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
 
 /**
- * Base styles shared between the playhead time box and handle tooltips.
+ * Shape shared between the playhead time box and the handle tooltips.
  *
- * The colour is a token, not a literal (#619). Both surfaces this text lands
- * on are themeable — the handle tooltip derives from the accent, the playhead
- * box from --stagebook-playhead — so a hard-coded `white` meant a host could
- * retune the background to something light and have no way to retune the text
- * with it. Same shape as #610: a contrast guarantee that held for our palette
- * and silently only ours.
+ * Deliberately carries NO colour. The two consumers sit on different
+ * themeable surfaces — the handle tooltip on a background derived from the
+ * accent, the playhead box on --stagebook-playhead — and each sets its own
+ * foreground token.
+ *
+ * A single shared foreground was the first attempt at #619 and is wrong: a
+ * host retuning only one of the two backgrounds to something light has no
+ * value it can set that stays readable on both, because one token feeds both
+ * surfaces. Independently themeable backgrounds need independently themeable
+ * foregrounds (#629 review).
  */
 export const tooltipBaseStyle: React.CSSProperties = {
   fontSize: "0.65rem",
@@ -39,8 +43,13 @@ export const tooltipBaseStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
   lineHeight: 1.4,
   pointerEvents: "none",
-  color: "var(--stagebook-timeline-tooltip-fg, #fff)",
 };
+
+/** Text on a range-handle tooltip (background: --stagebook-timeline-tooltip-bg). */
+export const TOOLTIP_FG = "var(--stagebook-timeline-tooltip-fg, #fff)";
+
+/** Text on the playhead's time box (background: --stagebook-playhead). */
+export const PLAYHEAD_FG = "var(--stagebook-playhead-fg, #fff)";
 
 /**
  * Compute inline styles for a range-handle hover tooltip. Positions the
@@ -69,5 +78,6 @@ export function handleTooltipStyle(
     background: "var(--stagebook-timeline-tooltip-bg, rgba(30, 64, 175, 0.9))",
     zIndex: 5,
     ...tooltipBaseStyle,
+    color: TOOLTIP_FG,
   };
 }

@@ -240,6 +240,11 @@
    * `white`. A host retuning either to something light got white-on-light
    * with nothing to retune, which is the shape of #610 (#619). */
   --stagebook-timeline-tooltip-fg: var(--sb-white);
+  /* Text on the playhead's time box. Separate from the tooltip's foreground
+   * even though both default to white: the two sit on independently
+   * themeable backgrounds, so one shared token would leave a host who
+   * retunes only --stagebook-playhead with no value readable on both (#619). */
+  --stagebook-playhead-fg: var(--sb-white);
   --stagebook-timeline-track-label-bg: rgba(255, 255, 255, 0.85);
   --stagebook-timeline-minimap-viewport-border: rgba(37, 99, 235, 0.9);
   --stagebook-timeline-minimap-viewport-bg: rgba(37, 99, 235, 0.06);

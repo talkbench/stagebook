@@ -4823,7 +4823,7 @@ test("polish: CSS variable overrides theme the range background", async ({
 // derived from the accent). A host retuning either to something light got
 // white-on-light with no way to retune the text — the #610 shape, where a
 // contrast guarantee silently held only for our own palette.
-test("timeline time-box text follows --stagebook-timeline-tooltip-fg", async ({
+test("timeline time-box text follows --stagebook-playhead-fg", async ({
   mount,
   page,
 }) => {
@@ -4831,7 +4831,12 @@ test("timeline time-box text follows --stagebook-timeline-tooltip-fg", async ({
     <div
       style={
         {
-          "--stagebook-timeline-tooltip-fg": "rgb(10, 20, 30)",
+          // Set BOTH, to different values. The playhead must take its own,
+          // not the tooltip's — the surfaces are independently themeable, and
+          // one shared foreground would leave a host retuning only one of
+          // them with no value readable on both (#629 review).
+          "--stagebook-playhead-fg": "rgb(10, 20, 30)",
+          "--stagebook-timeline-tooltip-fg": "rgb(200, 0, 0)",
         } as React.CSSProperties
       }
     >
