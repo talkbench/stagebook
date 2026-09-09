@@ -478,6 +478,34 @@ test.describe("Select: picker (#627)", () => {
       "appearance",
       supported ? "base-select" : "none",
     );
+    if (!supported) {
+      // And the row rules stayed behind the @supports fence: the native
+      // popup honours some <option> styling, so a flex row here would be
+      // ours leaking onto the OS menu.
+      await expect(component.locator("option").first()).not.toHaveCSS(
+        "display",
+        "flex",
+      );
+    }
+  });
+
+  test("survives a host's own select reset (#213)", async ({ mount, page }) => {
+    // Inline, `appearance` was untouchable short of !important. As a class
+    // rule it is written at doubled specificity, so a host reset such as
+    // `.form select { appearance: auto }` — enough to beat a single class,
+    // and it would put the native arrow back under our chevron — still
+    // loses.
+    const component = await mount(
+      <div className="host">
+        <style>{`.host select { appearance: auto; }`}</style>
+        <Select options={options} onChange={() => {}} />
+      </div>,
+    );
+    const supported = await supportsBaseSelect(page);
+    await expect(component.locator("select")).toHaveCSS(
+      "appearance",
+      supported ? "base-select" : "none",
+    );
   });
 
   test("keeps its own chevron on both paths and hides the engine's, so the icon isn't doubled", async ({
@@ -563,6 +591,76 @@ test.describe("Select: picker (#627)", () => {
     );
     // And the rows stack into a column below it.
     expect(last.y).toBeGreaterThan(first.y);
+    // The gap under the trigger is the picker's own margin, sized to clear
+    // the trigger's 4px focus halo — not incidental border and padding.
+    const gap = await select.evaluate((el) =>
+      parseFloat(getComputedStyle(el, "::picker(select)").marginBlockStart),
+    );
+    expect(gap).toBeGreaterThanOrEqual(4);
+  });
+
+  test("flips above the trigger when there is no room below", async ({
+    mount,
+    page,
+  }) => {
+    test.skip(
+      !(await supportsBaseSelect(page)),
+      "native popup: the OS places its own menu",
+    );
+    // The UA's position-try fallbacks, which the docs rely on: with the
+    // control near the bottom of a short viewport the rows open upward.
+    await page.setViewportSize({ width: 800, height: 260 });
+    const component = await mount(
+      <div>
+        <div style={{ height: 180 }} />
+        <Select options={options} value="a" onChange={() => {}} />
+      </div>,
+    );
+    const select = component.locator("select");
+    await select.click();
+    await expect.poll(() => isOpen(select)).toBe(true);
+    const control = (await select.boundingBox())!;
+    const last = (await component.locator("option").last().boundingBox())!;
+    expect(last.y + last.height).toBeLessThanOrEqual(control.y);
+  });
+
+  test("the picker follows the host's token overrides: row height, hover fill, surface", async ({
+    mount,
+    page,
+  }) => {
+    test.skip(
+      !(await supportsBaseSelect(page)),
+      "native popup: the OS paints its own menu",
+    );
+    // styles.css and the inline fallbacks agree on every value, so a
+    // picker that read the fallbacks and ignored the tokens would pass the
+    // colour assertions elsewhere in this file. Retune three and check
+    // they reach the rows.
+    const component = await mount(
+      <div
+        style={
+          {
+            "--stagebook-row-min-height": "3rem",
+            "--stagebook-hover-bg": "rgb(255, 0, 0)",
+            "--stagebook-surface": "rgb(0, 255, 0)",
+          } as React.CSSProperties
+        }
+      >
+        <Select options={options} value="a" onChange={() => {}} />
+      </div>,
+    );
+    const select = component.locator("select");
+    await select.click();
+    await expect.poll(() => isOpen(select)).toBe(true);
+    const row = component.locator('option[value="c"]');
+    expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(48);
+    await row.hover();
+    await expect(row).toHaveCSS("background-color", "rgb(255, 0, 0)");
+    expect(
+      await select.evaluate(
+        (el) => getComputedStyle(el, "::picker(select)").backgroundColor,
+      ),
+    ).toBe("rgb(0, 255, 0)");
   });
 
   test("picker rows meet touch-target sizing (≥36px tall) and take the hover fill", async ({
@@ -674,6 +772,10 @@ test.describe("Select: picker (#627)", () => {
     await expect(placeholder).toBeVisible();
     await expect(placeholder).toHaveCSS("color", "rgb(107, 114, 128)"); // --stagebook-text-muted
     await expect(placeholder).toHaveCSS("cursor", "not-allowed");
+    // And no hover fill on a row that cannot be chosen — the disabled rule
+    // beats the hover rule by source order alone, so this pins the order.
+    await placeholder.hover();
+    await expect(placeholder).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   });
 
   test("long labels wrap inside the picker, which stays the trigger's width", async ({
@@ -690,12 +792,16 @@ test.describe("Select: picker (#627)", () => {
     // control at — with long labels wrapping into taller rows.
     const long =
       "A very long option label that goes on and on, well past the width of any sensible control";
+    // No break opportunity at all — a device id, a URL — wraps too
+    // (overflow-wrap: anywhere) rather than pushing the row past the edge.
+    const unbroken = "x".repeat(90);
     const component = await mount(
       <div style={{ width: 320 }}>
         <Select
           options={[
             { key: "a", value: "Short" },
             { key: "b", value: long },
+            { key: "c", value: unbroken },
           ]}
           value="a"
           onChange={() => {}}
@@ -707,13 +813,15 @@ test.describe("Select: picker (#627)", () => {
     await expect.poll(() => isOpen(select)).toBe(true);
     const control = (await select.boundingBox())!;
     const short = (await component.locator('option[value="a"]').boundingBox())!;
-    const wrapped = (await component
-      .locator('option[value="b"]')
-      .boundingBox())!;
-    expect(wrapped.x + wrapped.width).toBeLessThanOrEqual(
-      control.x + control.width,
-    );
-    expect(wrapped.height).toBeGreaterThan(short.height);
+    for (const key of ["b", "c"]) {
+      const wrapped = (await component
+        .locator(`option[value="${key}"]`)
+        .boundingBox())!;
+      expect(wrapped.x + wrapped.width).toBeLessThanOrEqual(
+        control.x + control.width,
+      );
+      expect(wrapped.height).toBeGreaterThan(short.height);
+    }
   });
 
   test("the trigger stays one line with a long selected label", async ({
@@ -802,11 +910,104 @@ test.describe("Select: picker (#627)", () => {
       parseFloat(getComputedStyle(el).outlineWidth),
     );
     expect(outlineWidth).toBeGreaterThanOrEqual(2);
+    // Inset — a negative offset — so the ring stays whole at the picker's
+    // scroll edge instead of being clipped like the outer halo would be.
+    const outlineOffset = await focusedRow.evaluate((el) =>
+      parseFloat(getComputedStyle(el).outlineOffset),
+    );
+    expect(outlineOffset).toBeLessThan(0);
+    // The walked row also takes the hover fill, so the ring sits on
+    // hover-bg — the pairing the palette gate asserts.
+    await expect(focusedRow).toHaveCSS(
+      "background-color",
+      "rgb(243, 244, 246)",
+    );
 
     await page.keyboard.press("Enter");
     await expect(
       component.locator('[data-testid="selected-value"]'),
     ).toHaveText("b");
     await expect.poll(() => isOpen(select)).toBe(false);
+  });
+
+  test("Escape closes the picker without committing, and focus returns to the trigger", async ({
+    mount,
+    page,
+  }) => {
+    test.skip(
+      !(await supportsBaseSelect(page)),
+      "native popup: keyboard handling belongs to the OS menu",
+    );
+    const component = await mount(
+      <MockSelect options={options} initialValue="a" />,
+    );
+    const select = component.locator("select");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Space");
+    await expect.poll(() => isOpen(select)).toBe(true);
+    // Native roles survive the opt-in: the rows are options, by name.
+    await expect(
+      component.getByRole("option", { name: "Option B" }),
+    ).toBeVisible();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Escape");
+    await expect.poll(() => isOpen(select)).toBe(false);
+    // Walking to a row is not choosing it.
+    await expect(select).toHaveValue("a");
+    await expect(
+      component.locator('[data-testid="selected-value"]'),
+    ).toHaveText("a");
+    await expect(select).toBeFocused();
+  });
+
+  test("the walked row's ring survives forced-colors", async ({
+    mount,
+    page,
+    browserName,
+  }) => {
+    // Same reasoning and mechanics as focus.gate.ct.tsx: forced-colors
+    // drops box-shadow and keeps outline, repainted from the system
+    // palette. The row's ring is an outline for exactly this reason.
+    test.skip(
+      browserName === "webkit",
+      "WebKit emulates the forced-colors media query but not its rendering",
+    );
+    test.skip(
+      !(await supportsBaseSelect(page)),
+      "native popup: the OS draws its own focus",
+    );
+    const component = await mount(
+      <MockSelect options={options} initialValue="a" />,
+    );
+    const select = component.locator("select");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Space");
+    await expect.poll(() => isOpen(select)).toBe(true);
+    await page.keyboard.press("ArrowDown");
+    const row = component.locator("option:focus-visible");
+    await expect(row).toHaveAttribute("value", "b");
+
+    await page.emulateMedia({ forcedColors: "active" });
+    const painted = () =>
+      row.evaluate((el) => {
+        const s = getComputedStyle(el);
+        const parts =
+          /^rgba?\(([^)]+)\)$/.exec(s.outlineColor)?.[1].split(",") ?? [];
+        return {
+          outlineStyle: s.outlineStyle,
+          outlineWidth: parseFloat(s.outlineWidth),
+          outlineColor: s.outlineColor,
+          outlineAlpha: parts.length === 4 ? parseFloat(parts[3]) : 1,
+        };
+      });
+    await expect
+      .poll(async () => (await painted()).outlineStyle)
+      .not.toBe("none");
+    const now = await painted();
+    expect(now.outlineWidth).toBeGreaterThanOrEqual(2);
+    expect(
+      now.outlineAlpha,
+      `outline stayed transparent (${now.outlineColor})`,
+    ).toBeGreaterThan(0);
   });
 });

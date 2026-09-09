@@ -743,6 +743,15 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     ],
     ["--stagebook-text", "--stagebook-hover-bg", AA, "hovered picker row text"],
     ["--stagebook-primary", "--stagebook-surface", UI, "picker checkmark (UI)"],
+    // The picker opens with the checked row walked, and a walked or hovered
+    // row takes the hover fill — so this is the first thing a keyboard user
+    // sees, not an edge case.
+    [
+      "--stagebook-primary",
+      "--stagebook-hover-bg",
+      UI,
+      "picker checkmark on a hovered / walked checked row (UI)",
+    ],
     [
       "--stagebook-focus-ring",
       "--stagebook-surface",

@@ -196,7 +196,13 @@ export function Select({
   return (
     <div style={{ marginTop: "1rem" }}>
       <style>{`
-        .${triggerClass} {
+        /* Doubled selector, (0,2,0): inline, this rule was untouchable
+         * short of !important, and a host reset such as
+         * ".form select { appearance: auto }" is (0,1,1) — enough to beat
+         * a single class, and it would put the native arrow back under
+         * our chevron. Doubling keeps the #213 property without
+         * !important. */
+        .${triggerClass}.${triggerClass} {
           -webkit-appearance: none;
           appearance: none;
           appearance: base-select;

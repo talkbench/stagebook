@@ -85,6 +85,9 @@ const cases: {
   name: string;
   node: ReactNode;
   prepare?: (page: Page) => Promise<void>;
+  // Skips the case on an engine without the customizable select, rather
+  // than scanning the closed control again and passing for nothing.
+  needsBaseSelect?: boolean;
 }[] = [
   {
     name: "RadioGroup",
@@ -126,9 +129,9 @@ const cases: {
   {
     // Open (#627): under `appearance: base-select` the rows are in-page DOM
     // — a top-layer popover, not the OS menu — so axe can reach them and
-    // this scans the picker's own contrast, names and roles. On an engine
-    // without base-select the click would only raise the native popup,
-    // which the DOM scan cannot see, so it is skipped there.
+    // scans the open picker's roles and names. Not its contrast: axe's
+    // color-contrast rule skips <option> outright, so the rows' colour
+    // pairings are the palette gate's job (styles.test.ts).
     name: "Select (picker open)",
     node: (
       <Select
@@ -138,11 +141,8 @@ const cases: {
         label="Choose an option"
       />
     ),
+    needsBaseSelect: true,
     prepare: async (page) => {
-      if (
-        !(await page.evaluate(() => CSS.supports("appearance", "base-select")))
-      )
-        return;
       const select = page.locator("select");
       await select.click();
       await expect
@@ -292,6 +292,11 @@ const cases: {
 
 for (const c of cases) {
   test(`a11y: ${c.name}`, async ({ mount, page }) => {
+    test.skip(
+      c.needsBaseSelect === true &&
+        !(await page.evaluate(() => CSS.supports("appearance", "base-select"))),
+      "the picker is the native popup here, outside the DOM scan",
+    );
     await mount(c.node);
     await c.prepare?.(page);
     const results = await new AxeBuilder({ page })
