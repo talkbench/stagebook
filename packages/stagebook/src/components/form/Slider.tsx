@@ -514,8 +514,18 @@ export function Slider({
            flattened every range input on the host page, including ones
            Stagebook doesn't render). Each vendor pseudo-element gets its own
            rule rather than a shared selector list: a list containing one
-           pseudo-element the engine doesn't recognise is dropped whole. */
-        .${inputClass}::-webkit-slider-thumb {
+           pseudo-element the engine doesn't recognise is dropped whole.
+
+           The 'input' qualifier is load-bearing, not decoration. A bare
+           '.${inputClass}' is 0-1-0, lower than the 'input[type=range]'
+           form it replaces (0-1-1) — so a host styling its own sliders the
+           conventional way would outrank this and un-collapse the native
+           thumb on OUR input. That's a measurement bug, not a cosmetic one:
+           a nonzero thumb shrinks the track's usable travel while the visible
+           thumb is still positioned across the full width, so the reported
+           value and the rendered position diverge near the endpoints.
+           Qualifying with 'input' restores the original 0-1-1. */
+        input.${inputClass}::-webkit-slider-thumb {
           -webkit-appearance: none;
           appearance: none;
           width: 0;
@@ -523,18 +533,18 @@ export function Slider({
           background: transparent;
           border: none;
         }
-        .${inputClass}::-moz-range-thumb {
+        input.${inputClass}::-moz-range-thumb {
           width: 0;
           height: 0;
           background: transparent;
           border: none;
         }
-        .${inputClass}::-webkit-slider-runnable-track {
+        input.${inputClass}::-webkit-slider-runnable-track {
           width: 100%;
           height: 0;
           background: transparent;
         }
-        .${inputClass}::-moz-range-track {
+        input.${inputClass}::-moz-range-track {
           width: 100%;
           height: 0;
           background: transparent;
@@ -546,7 +556,7 @@ export function Slider({
            where the outline is the only indicator left. Suppressing it
            here is still right: the input is zero-size and invisible, and
            the indicator is drawn on the thumb by the rule above. */
-        .${inputClass}:focus {
+        input.${inputClass}:focus {
           outline: none;
         }
       `}</style>

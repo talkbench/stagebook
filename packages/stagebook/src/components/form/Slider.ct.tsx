@@ -429,3 +429,49 @@ test("does not flatten a host's own range input", async ({
     `${thumb?.pseudo} was flattened on an input Stagebook doesn't own`,
   ).not.toBe("0px");
 });
+
+// #613 follow-up. Scoping the resets must not LOWER their specificity.
+// `.${inputClass}::-webkit-slider-thumb` is 0-1-0, below the
+// `input[type="range"]::-webkit-slider-thumb` form it replaced (0-1-1) — so a
+// host styling its own sliders the conventional way would outrank Stagebook
+// and un-collapse the native thumb on *our* input. That's a measurement bug,
+// not a cosmetic one: a nonzero thumb shrinks the track's usable travel while
+// the visible thumb is still positioned across the full width, so the reported
+// value and the rendered position diverge near the endpoints. The `input`
+// qualifier restores 0-1-1.
+test("a host's own range-input styling cannot un-collapse our native thumb", async ({
+  mount,
+  page,
+  browserName,
+}) => {
+  // Firefox only, and not for the usual reason. WebKit exposes no computed
+  // style for the thumb pseudo-element at all; Chromium exposes one but it
+  // does not reflect author rules for *our* input (it reports an identical
+  // width/height whether or not the reset applies), so it cannot distinguish
+  // pass from fail here. Firefox reports the real used value.
+  test.skip(
+    browserName !== "firefox",
+    "only Firefox reports author-applied thumb metrics for this input",
+  );
+  const component = await mount(
+    <Slider min={0} max={100} interval={1} value={50} />,
+  );
+  // A host styling its range inputs the conventional way.
+  await page.addStyleTag({
+    content: `input[type="range"]::-moz-range-thumb {
+      width: 20px; height: 20px; background: red;
+    }`,
+  });
+
+  const thumb = await component
+    .locator('input[type="range"]')
+    .evaluate((el) => {
+      const s = getComputedStyle(el, "::-moz-range-thumb");
+      return { width: s.width, height: s.height };
+    });
+
+  expect(
+    thumb,
+    "a host rule outranked Stagebook's reset on its own slider input",
+  ).toEqual({ width: "0px", height: "0px" });
+});
