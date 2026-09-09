@@ -923,6 +923,10 @@ test.describe("Select: picker (#627)", () => {
     await expect(select).toBeFocused();
     await page.keyboard.press("Space");
     await expect.poll(() => isOpen(select)).toBe(true);
+    // The picker opens with the checked row focused — a beat later under
+    // load in WebKit — so wait for it before walking, or the ArrowDown can
+    // land on the trigger instead.
+    await expect(component.locator('option[value="a"]')).toBeFocused();
 
     await page.keyboard.press("ArrowDown");
     const focusedRow = component.locator("option:focus-visible");
@@ -968,6 +972,10 @@ test.describe("Select: picker (#627)", () => {
     await page.keyboard.press("Tab");
     await page.keyboard.press("Space");
     await expect.poll(() => isOpen(select)).toBe(true);
+    // The picker opens with the checked row focused — a beat later under
+    // load in WebKit — so wait for it before walking, or the ArrowDown can
+    // land on the trigger instead.
+    await expect(component.locator('option[value="a"]')).toBeFocused();
     // Native roles survive the opt-in: the rows are options, by name.
     await expect(
       component.getByRole("option", { name: "Option B" }),
@@ -1006,6 +1014,10 @@ test.describe("Select: picker (#627)", () => {
     await page.keyboard.press("Tab");
     await page.keyboard.press("Space");
     await expect.poll(() => isOpen(select)).toBe(true);
+    // The picker opens with the checked row focused — a beat later under
+    // load in WebKit — so wait for it before walking, or the ArrowDown can
+    // land on the trigger instead.
+    await expect(component.locator('option[value="a"]')).toBeFocused();
     await page.keyboard.press("ArrowDown");
     const row = component.locator("option:focus-visible");
     await expect(row).toHaveAttribute("value", "b");

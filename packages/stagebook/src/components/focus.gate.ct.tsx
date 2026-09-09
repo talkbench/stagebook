@@ -133,6 +133,9 @@ const cases: Case[] = [
       await expect
         .poll(() => select.evaluate((el) => el.matches(":open")))
         .toBe(true);
+      // Focus lands on the checked row a beat after opening; wait for it
+      // so the ArrowDown walks from there.
+      await expect(page.locator('option[value="a"]')).toBeFocused();
       await page.keyboard.press("ArrowDown");
     },
   },
