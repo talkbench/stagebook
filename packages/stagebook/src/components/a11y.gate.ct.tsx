@@ -131,6 +131,12 @@ interface Known {
   kind: "fails" | "unmeasured";
   /** The ratio axe measured, to two decimals; matched within 0.05. */
   ratio?: number;
+  /**
+   * For `unmeasured`: axe's own reason (its `messageKey` — bgImage,
+   * bgOverlap, nonBmp, …), so a new obstruction on the same element does
+   * not ride on a waiver written for the old one.
+   */
+  reason?: string;
   why: string;
   /**
    * Covers a set of like nodes (the ruler's timestamps). Otherwise an entry
@@ -236,6 +242,7 @@ const SELECT_CHEVRON: Known = {
   rule: "color-contrast",
   within: "select",
   kind: "unmeasured",
+  reason: "bgImage",
   why: "the trigger's chevron is a background-image, which axe declines to see through; the text is measured as a mark",
 };
 const selectTriggerText: Mark = {
@@ -300,18 +307,21 @@ const TIMELINE_KNOWN: Known[] = [
     rule: "color-contrast",
     within: '[data-testid="time-ruler"]',
     kind: "unmeasured",
+    reason: "bgOverlap",
     why: "the playhead's line crosses the timestamp at 0:00; the others measure as the entry above",
   },
   {
     rule: "color-contrast",
     within: '[data-testid="playhead"]',
     kind: "unmeasured",
+    reason: "bgOverlap",
     why: "the time box overlaps the ruler; measured as a mark instead",
   },
   {
     rule: "color-contrast",
     within: '[data-testid="track-label"]',
     kind: "unmeasured",
+    reason: "bgOverlap",
     why: "#616: the label sits over the waveform canvas, which no reader here can see — 4.02:1 over a bar, by hand",
   },
 ];
@@ -697,6 +707,7 @@ const cases: Case[] = [
         within: '[data-testid="asset-placeholder"]',
         text: "▦",
         kind: "unmeasured",
+        reason: "nonBmp",
         why: "the ▦ glyph is outside the Basic Multilingual Plane, which axe will not score; it is aria-hidden decoration",
       },
     ],
@@ -953,6 +964,7 @@ const cases: Case[] = [
         within: '[data-testid="slider"]',
         text: "Super Hot",
         kind: "unmeasured",
+        reason: "elmPartiallyObscuring",
         engine: "firefox",
         why: "elmPartiallyObscuring on Firefox only: the end label overlaps its neighbour there",
       },
@@ -1163,6 +1175,13 @@ async function scan(page: Page, engine: string, label: string, s: Scan) {
   const known = (s.known ?? []).filter(
     (k) => k.engine === undefined || k.engine === engine,
   );
+  for (const k of known) {
+    if (k.kind === "unmeasured" && k.reason === undefined) {
+      throw new Error(
+        `${label}: unmeasured entry within ${k.within} needs axe's reason (its messageKey) — see \`Known.reason\``,
+      );
+    }
+  }
   const matches = await page.evaluate(
     ({ nodes, known }) => {
       // Each entry is consumed by one node unless it declares `many`, so an
@@ -1176,6 +1195,7 @@ async function scan(page: Page, engine: string, label: string, s: Scan) {
             (k.many === true || !used.has(j)) &&
             k.rule === n.rule &&
             k.kind === n.kind &&
+            (k.reason === undefined || k.reason === n.why) &&
             (ratio === undefined ||
               (n.ratio !== undefined && Math.abs(n.ratio - ratio) <= 0.05)) &&
             els.length > 0 &&
@@ -1208,7 +1228,7 @@ async function scan(page: Page, engine: string, label: string, s: Scan) {
       .filter((_, i) => !matches.includes(i))
       .map(
         (k) =>
-          `${k.kind}: ${k.rule}${k.ratio !== undefined ? ` at ${String(k.ratio)}:1` : ""} within ${k.within} (${k.why})`,
+          `${k.kind}${k.reason ? ` (${k.reason})` : ""}: ${k.rule}${k.ratio !== undefined ? ` at ${String(k.ratio)}:1` : ""} within ${k.within} (${k.why})`,
       ),
     `${label}: entries that matched nothing — the failure is fixed or the element moved; remove or update them`,
   ).toEqual([]);
