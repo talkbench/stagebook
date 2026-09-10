@@ -198,11 +198,11 @@ control styles are untouched. The YouTube API is stubbed, and third-party iframe
 chrome is outside this gate. These cases measure contrast, not media decoding,
 keyboard behavior, captions, or every authored video frame.
 
-The first measurements exposed existing gaps, recorded as known failures
-pending visual review in [#636]: white video icons reach about 2.05–2.19:1 on
-bright content, the buffered segment reaches about 2.75:1 there, and the
-unplayed track measures about 1.57–1.90:1 across the tested layouts/backdrops.
-The gate pins these failures within its existing 0.05 tolerance and requires
-them to remain below 3:1; both a regression and a fix require updating the
-record. All other measured indicators must pass 3:1. Screenshots and numeric
-readings are attached to the test report.
+The first measurements exposed gaps in [#636]: white video icons reached
+about 2.05–2.19:1 on bright content, the buffered segment about 2.75:1 there,
+and the unplayed track about 1.57–1.90:1 across the tested layouts/backdrops.
+Following visual review, the video gradient now stays dark behind the controls
+and fades above them, and the track uses 40% white instead of 20%. The same
+changes apply to Stagebook's YouTube controls. Button sizes and spacing are
+unchanged. The known-failure entries are removed: every measured indicator
+must pass 3:1. Screenshots and numeric readings are attached to the test report.

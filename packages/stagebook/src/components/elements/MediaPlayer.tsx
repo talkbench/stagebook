@@ -1217,7 +1217,7 @@ export function MediaPlayer({
                 left: 0,
                 right: 0,
                 background:
-                  "linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0) 100%)",
+                  "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.65) 70%, rgba(0,0,0,0) 100%)",
                 padding: "1.5rem 0.75rem 0.5rem",
                 display: "flex",
                 flexDirection: "column",
@@ -1399,7 +1399,7 @@ export function MediaPlayer({
                 left: 0,
                 right: 0,
                 background:
-                  "linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0) 100%)",
+                  "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.65) 70%, rgba(0,0,0,0) 100%)",
                 padding: "1.5rem 0.75rem 0.5rem",
                 display: "flex",
                 flexDirection: "column",

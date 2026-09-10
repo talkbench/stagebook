@@ -267,7 +267,7 @@ export function HTML5Controls({
                 right: 0,
                 height: 4,
                 borderRadius: 2,
-                background: "rgba(255,255,255,0.2)",
+                background: "rgba(255,255,255,0.4)",
               }}
             >
               {/* Buffered fill */}
@@ -474,7 +474,7 @@ export function YouTubeControls({
                 right: 0,
                 height: 4,
                 borderRadius: 2,
-                background: "rgba(255,255,255,0.2)",
+                background: "rgba(255,255,255,0.4)",
               }}
             >
               <div

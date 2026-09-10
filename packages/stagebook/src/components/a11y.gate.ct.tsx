@@ -1413,11 +1413,7 @@ for (const mode of ["audio", "video", "youtube"] as const) {
   const playVideo = mode !== "audio";
   const youtube = mode === "youtube";
   for (const backdrop of ["#000000", "#ffffff"]) {
-    test(`media contrast: ${mode} on ${backdrop}`, async ({
-      mount,
-      page,
-      browserName,
-    }) => {
+    test(`media contrast: ${mode} on ${backdrop}`, async ({ mount, page }) => {
       await page.setViewportSize({ width: 800, height: 650 });
       if (youtube) {
         // Stub only the third-party API; Stagebook still renders its own
@@ -1665,39 +1661,7 @@ for (const mode of ["audio", "video", "youtube"] as const) {
         contentType: "application/json",
       });
       for (const m of measurements) {
-        // Measured gaps discovered by #636. Keep them visible and pin their
-        // current ratios while the appearance change awaits visual review.
-        let knownRatio: number | undefined;
-        if (m.name.endsWith(": unbuffered")) {
-          knownRatio = playVideo
-            ? backdrop === "#ffffff"
-              ? 1.57
-              : 1.66
-            : backdrop === "#ffffff"
-              ? 1.9
-              : 1.88;
-        } else if (playVideo && backdrop === "#ffffff") {
-          if (m.name.endsWith(": buffered")) knownRatio = 2.75;
-          else if (m.name.includes("mediaPlayer-playPause")) knownRatio = 2.05;
-          else if (m.name.includes("mediaPlayer-")) {
-            // Firefox paints a slightly lighter background at this sample;
-            // keep its measured ratio explicit instead of widening tolerance.
-            knownRatio = browserName === "firefox" ? 2.1 : 2.19;
-          }
-        }
-        assertRatio(
-          m.name,
-          m.ratio,
-          m.floor,
-          knownRatio === undefined
-            ? undefined
-            : {
-                ratio: knownRatio,
-                why: "#636: video gradient / unplayed track awaits visual review",
-              },
-          hex(m.fg),
-          hex(m.bg),
-        );
+        assertRatio(m.name, m.ratio, m.floor, undefined, hex(m.fg), hex(m.bg));
       }
     });
   }
