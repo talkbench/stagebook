@@ -132,6 +132,12 @@ interface Known {
   /** The ratio axe measured, to two decimals; matched within 0.05. */
   ratio?: number;
   why: string;
+  /**
+   * Covers a set of like nodes (the ruler's timestamps). Otherwise an entry
+   * is consumed by exactly one node, so a second node of the same shape
+   * fails closed instead of riding on an entry written for one.
+   */
+  many?: boolean;
   /** Expected on this engine only, when the others score the node. */
   engine?: "chromium" | "webkit" | "firefox";
 }
@@ -157,8 +163,11 @@ interface Mark {
   fg: Side;
   bg: Side;
   min: number;
-  /** A known failure: asserted to still fall short, with its reference. */
-  fails?: string;
+  /**
+   * A known failure: asserted to still measure this ratio (within 0.05),
+   * with its reference — so it can neither quietly pass nor quietly worsen.
+   */
+  fails?: { ratio: number; why: string };
 }
 
 /**
@@ -170,7 +179,7 @@ interface Pixel {
   at: string;
   beside: [number, number];
   min: number;
-  fails?: string;
+  fails?: { ratio: number; why: string };
 }
 
 interface Scan {
@@ -284,6 +293,7 @@ const TIMELINE_KNOWN: Known[] = [
     within: '[data-testid="time-ruler"]',
     kind: "fails",
     ratio: 2.53,
+    many: true,
     why: "#616: --stagebook-decoration timestamps, 2.53:1 on --stagebook-bg (TimeRuler.tsx)",
   },
   {
@@ -332,7 +342,7 @@ const playheadMarks: Mark[] = [
 ];
 
 /** The timer's fill on its track. */
-const timerFill = (fails?: string): Mark => ({
+const timerFill = (fails?: Mark["fails"]): Mark => ({
   name: "fill on the track",
   fg: { el: '[data-testid="timer-fill"]', prop: "background-color" },
   bg: {
@@ -354,7 +364,16 @@ const tickPixels = (track: string): Pixel[] => [
     at: SNAP_TICK,
     beside: [6, 0],
     min: UI,
-    fails: `#616: --stagebook-decoration at opacity 0.4 (Slider.tsx) — ${track === "hovered" ? "~1.24:1 over --stagebook-primary-tint" : "found by this probe"}`,
+    fails:
+      track === "hovered"
+        ? {
+            ratio: 1.21,
+            why: "#616: --stagebook-decoration at opacity 0.4 over --stagebook-primary-tint (Slider.tsx)",
+          }
+        : {
+            ratio: 1.31,
+            why: "#633: --stagebook-decoration at opacity 0.4 over --stagebook-bg-track (Slider.tsx) — not in #616; found by this probe",
+          },
   },
   {
     name: `labelled tick on the ${track} track`,
@@ -383,9 +402,18 @@ const checkedFill = (input: string): Mark => ({
 // The track's mute button is an icon-only control whose glyph takes
 // --stagebook-decoration — the same 2.53:1 the ruler's timestamps get, on
 // a control rather than decoration. Not among #616's seven; found here.
-const MUTE_GLYPH =
-  "#633: --stagebook-decoration as the mute glyph, 2.53:1 on the page and 2.31:1 on the hover fill (TimelineTrack.tsx)";
-const muteGlyph = (fails?: string): Mark => ({
+const MUTE_GLYPH_REST = {
+  ratio: 2.53,
+  why: "#633: --stagebook-decoration as the mute glyph, on the page (TimelineTrack.tsx)",
+};
+// Still on the page when hovered: the button's inline `background:
+// transparent` outranks its :hover rule, so the hover fill never paints
+// (#635). Pinning the ratio is what found that.
+const MUTE_GLYPH_HOVERED = {
+  ratio: 2.54,
+  why: "#633: --stagebook-decoration as the mute glyph, on the page — the hover fill is blocked by an inline style (#635)",
+};
+const muteGlyph = (fails?: Mark["fails"]): Mark => ({
   name: "mute glyph on its button",
   fg: { el: '[data-testid="track-mute"]', prop: "color" },
   bg: {
@@ -542,8 +570,10 @@ const cases: Case[] = [
         fg: { el: "textarea", prop: "border-top-color" },
         bg: PAGE,
         min: UI,
-        fails:
-          "#616: --stagebook-border is gray-300, 1.47:1 on white — a design decision about every control's edge",
+        fails: {
+          ratio: 1.47,
+          why: "#616: --stagebook-border is gray-300 on white — a design decision about every control's edge",
+        },
       },
     ],
   },
@@ -681,8 +711,8 @@ const cases: Case[] = [
   },
   {
     // Ranges restored from a save, so the range fills, their handles and
-    // the ruler all render; the mute button takes the row hover fill; a
-    // hovered handle shows its time tooltip.
+    // the ruler all render; a hovered handle shows its time tooltip; the
+    // mute button is read hovered and muted.
     name: "Timeline (ranges)",
     node: (
       <MockTimeline
@@ -702,13 +732,13 @@ const cases: Case[] = [
       />
     ),
     known: TIMELINE_KNOWN,
-    marks: [...playheadMarks, muteGlyph(MUTE_GLYPH)],
+    marks: [...playheadMarks, muteGlyph(MUTE_GLYPH_REST)],
     states: [
       {
         name: "mute hovered",
         enter: hover('[data-testid="track-mute"]'),
         known: TIMELINE_KNOWN,
-        marks: [muteGlyph(MUTE_GLYPH)],
+        marks: [muteGlyph(MUTE_GLYPH_HOVERED)],
       },
       {
         // Muted, the glyph takes the danger colour — on the hover fill,
@@ -772,9 +802,10 @@ const cases: Case[] = [
     name: "KitchenTimer",
     node: <MockKitchenTimer startTime={0} endTime={60} elapsedTime={20} />,
     marks: [
-      timerFill(
-        "#616: --stagebook-timer-fill is blue-400, 2.05:1 on --stagebook-bg-track",
-      ),
+      timerFill({
+        ratio: 2.05,
+        why: "#616: --stagebook-timer-fill is blue-400 on --stagebook-bg-track",
+      }),
     ],
   },
   {
@@ -967,12 +998,16 @@ function contrast(a: number[], b: number[]): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/** Assert a measured ratio against its floor, or against a known failure. */
+/**
+ * Assert a measured ratio against its floor — or, for a known failure,
+ * against the ratio recorded for it, so a fix is noticed and so is a
+ * regression to something worse.
+ */
 function assertRatio(
   label: string,
   ratio: number,
   min: number,
-  fails: string | undefined,
+  fails: Mark["fails"],
   fg: string,
   bg: string,
 ) {
@@ -980,8 +1015,12 @@ function assertRatio(
   if (fails) {
     expect(
       ratio,
-      `${label}: known failure now passes (${measured}) — drop its \`fails\` so it is asserted. Was: ${fails}`,
+      `${label}: known failure now passes (${measured}) — drop its \`fails\` so it is asserted. Was: ${fails.why}`,
     ).toBeLessThan(min);
+    expect(
+      Math.abs(ratio - fails.ratio),
+      `${label}: known failure measures ${measured}, recorded as ${String(fails.ratio)}:1 (${fails.why}) — update the record if the change is intended`,
+    ).toBeLessThanOrEqual(0.05);
   } else {
     expect(ratio, `${label}: ${measured}`).toBeGreaterThanOrEqual(min);
   }
@@ -1109,12 +1148,16 @@ async function scan(page: Page, engine: string, label: string, s: Scan) {
     (k) => k.engine === undefined || k.engine === engine,
   );
   const matches = await page.evaluate(
-    ({ nodes, known }) =>
-      nodes.map((n) => {
+    ({ nodes, known }) => {
+      // Each entry is consumed by one node unless it declares `many`, so an
+      // entry written for one node cannot absorb a second of the same shape.
+      const used = new Set<number>();
+      return nodes.map((n) => {
         const els = [...document.querySelectorAll(n.target)];
-        return known.findIndex((k) => {
+        const i = known.findIndex((k, j) => {
           const { text, ratio } = k;
           return (
+            (k.many === true || !used.has(j)) &&
             k.rule === n.rule &&
             k.kind === n.kind &&
             (ratio === undefined ||
@@ -1125,7 +1168,10 @@ async function scan(page: Page, engine: string, label: string, s: Scan) {
               els.every((el) => (el.textContent ?? "").includes(text)))
           );
         });
-      }),
+        if (i >= 0) used.add(i);
+        return i;
+      });
+    },
     { nodes, known },
   );
 

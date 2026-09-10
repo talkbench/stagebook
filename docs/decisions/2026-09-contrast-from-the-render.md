@@ -9,6 +9,7 @@ into how colour contrast is checked, and retires the palette gate that
 [#628]: https://github.com/talkbench/stagebook/pull/628
 [#617]: https://github.com/talkbench/stagebook/pull/617
 [#616]: https://github.com/talkbench/stagebook/issues/616
+[#635]: https://github.com/talkbench/stagebook/issues/635
 [#610]: https://github.com/talkbench/stagebook/issues/610
 [#535]: https://github.com/talkbench/stagebook/issues/535
 
@@ -105,8 +106,9 @@ warning status pairs are declared for hosts only.
   gate to still fail, at the ratio recorded, and the seventh — the track
   label over the waveform — is recorded as unmeasurable. The new readers
   found two more: the snap ticks fail on the resting track too (1.31:1), and
-  the track's mute glyph is drawn in the decoration grey (2.53:1 on the
-  page). They also corrected one row: the labelled ticks [#616] listed with
+  the track's mute glyph is drawn in the decoration grey (2.54:1 on the
+  page — hovered too, since its hover fill never paints, [#635]). They also
+  corrected one row: the labelled ticks [#616] listed with
   the snap ticks measure 3.12:1 on the hovered track and pass. Each failure
   is a separate design decision, left to [#616].
 
