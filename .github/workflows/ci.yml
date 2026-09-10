@@ -13,6 +13,19 @@ on:
   # green WITHOUT running the suite, merging the combined state untested.
   merge_group:
 
+# Cancel a PR's superseded run when a newer push lands on the same branch
+# (#573): only the latest commit's run gates merge, so the older one is wasted
+# minutes. Non-PR events (push to main, merge_group) get a unique group per run
+# so they are never cancelled or queued behind each other — a cancelled merge-
+# queue run would fail `CI Gate` and eject the PR from the queue. Keyed on
+# `github.workflow` so this workflow only ever cancels its own runs, not
+# validate-examples.yml's. Keyed on the PR number rather than `github.head_ref`:
+# branch names are author-chosen and not fork-unique, so two forks' `patch-1`
+# PRs would share a group and cancel each other's runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Declared here rather than inherited from the org/repo default, which is
 # `read` today but lives outside this file. Every job in this workflow runs
 # untrusted PR code (`npm ci` executes lifecycle scripts from the PR's own
