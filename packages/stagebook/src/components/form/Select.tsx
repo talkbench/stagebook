@@ -293,7 +293,7 @@ export function Select({
             visibility: hidden;
           }
           .${triggerClass} option:disabled {
-            color: var(--stagebook-text-muted, #6b7280);
+            color: var(--stagebook-text-muted, #626977);
             background-color: transparent;
             cursor: not-allowed;
           }
@@ -315,7 +315,7 @@ export function Select({
             // CheckboxGroup captions use — so the label reads as part of
             // the held control, not a live prompt above a dead one.
             color: disabled
-              ? "var(--stagebook-text-muted, #6b7280)"
+              ? "var(--stagebook-text-muted, #626977)"
               : "var(--stagebook-text, #1f2937)",
             marginBottom: "0.5rem",
           }}

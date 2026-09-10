@@ -95,7 +95,7 @@ export function TimelineFooter({
         padding: "0.25rem 0.5rem",
         borderTop: "1px solid var(--stagebook-border, #d1d5db)",
         fontSize: "0.75rem",
-        color: "var(--stagebook-text-muted, #6b7280)",
+        color: "var(--stagebook-text-muted, #626977)",
         userSelect: "none",
       }}
     >

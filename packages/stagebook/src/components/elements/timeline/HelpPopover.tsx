@@ -167,7 +167,7 @@ export function HelpPopover({
               </td>
               <td
                 style={{
-                  color: "var(--stagebook-text-muted, #6b7280)",
+                  color: "var(--stagebook-text-muted, #626977)",
                   verticalAlign: "top",
                 }}
               >

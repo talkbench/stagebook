@@ -82,7 +82,7 @@ function ListItem({
             style={{
               // Glyph size scaled up from 1rem — at body text size the
               // ⠿ Braille pattern reads anemic against a sortable row.
-              color: "var(--stagebook-text-muted, #6b7280)",
+              color: "var(--stagebook-text-muted, #626977)",
               fontSize: "1.5rem",
               lineHeight: 1,
               userSelect: "none",
@@ -117,7 +117,7 @@ function List({ items, itemClass }: { items: string[]; itemClass: string }) {
           padding: "0.5rem",
           alignContent: "start",
           gap: "0.5rem",
-          color: "var(--stagebook-text-muted, #6b7280)",
+          color: "var(--stagebook-text-muted, #626977)",
           fontSize: "0.875rem",
         }}
       >

@@ -63,7 +63,7 @@ const label: React.CSSProperties = {
 
 const uriText: React.CSSProperties = {
   fontSize: "0.75rem",
-  color: "var(--stagebook-text-muted, #6b7280)",
+  color: "var(--stagebook-text-muted, #626977)",
   backgroundColor: "var(--stagebook-surface, #fff)",
   padding: "0.2rem 0.45rem",
   borderRadius: "0.25rem",
@@ -74,7 +74,7 @@ const uriText: React.CSSProperties = {
 
 const hint: React.CSSProperties = {
   fontSize: "0.75rem",
-  color: "var(--stagebook-decoration, #9ca3af)",
+  color: "var(--stagebook-text-muted, #626977)",
   margin: 0,
   textAlign: "center",
 };

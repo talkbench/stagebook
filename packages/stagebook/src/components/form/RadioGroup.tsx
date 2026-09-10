@@ -45,7 +45,7 @@ const radioBaseStyle: React.CSSProperties = {
   // border). See #367 for the repro.
   borderWidth: "1px",
   borderStyle: "solid",
-  borderColor: "var(--stagebook-border, #d1d5db)",
+  borderColor: "var(--stagebook-choice-border, #858c99)",
   borderRadius: "9999px",
   backgroundColor: "var(--stagebook-surface, #fff)",
   backgroundSize: "100% 100%",
@@ -70,7 +70,7 @@ const radioCheckedStyle: React.CSSProperties = {
 const radioRowStyle: React.CSSProperties = {
   fontWeight: 400,
   fontSize: "0.875rem",
-  color: "var(--stagebook-text-muted, #6b7280)",
+  color: "var(--stagebook-text-muted, #626977)",
   cursor: "pointer",
   display: "flex",
   alignItems: "center",

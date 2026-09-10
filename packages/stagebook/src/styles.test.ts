@@ -367,14 +367,17 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
     "--stagebook-danger-bg": "ElementErrorBoundary",
     "--stagebook-playhead": "Timeline — the line, and the time box",
     "--stagebook-playhead-fg": "Timeline — the time box",
-    "--stagebook-timer-fill": "KitchenTimer (a known failure, #616)",
+    "--stagebook-timer-fill": "KitchenTimer",
     "--stagebook-text": "every case with body text",
     "--stagebook-text-secondary":
       "Button (secondary); KitchenTimer; AssetPlaceholder",
     "--stagebook-text-muted":
       "RadioGroup and CheckboxGroup labels; Display; Prompt: slider labels; Select (placeholder) trigger",
-    "--stagebook-decoration":
-      "AssetPlaceholder hint, Timeline ruler and mute glyph (known failures, #616 and #633); Slider (ticks)",
+    "--stagebook-choice-border":
+      "RadioGroup and CheckboxGroup unchecked outlines, including hovered rows",
+    "--stagebook-slider-tick":
+      "Slider (ticks), including the known minor-tick contrast shortfall (#616)",
+    "--stagebook-timeline-ruler-text": "Timeline ruler timestamps",
     "--stagebook-border": "TextArea (a known failure, #616)",
     "--stagebook-bg":
       "Slider (ticks) value badge text; the page, which the gate paints from it and reads behind every PAGE-backed mark",
@@ -407,6 +410,8 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
    * checked: the token must stay unread, or it has to move to MEASURED.
    */
   const EXCLUDED: Record<string, string> = {
+    "--stagebook-decoration":
+      "aria-hidden AssetPlaceholder icon and Loading arc; readable text and functional indicators have separate tokens (#616)",
     "--stagebook-warning":
       "a 300ms glow around the character counter on an overflow attempt (TextArea.tsx): transient motion beside the counter text, not an indicator a participant has to read",
     "--stagebook-success-bg":

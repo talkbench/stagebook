@@ -155,7 +155,7 @@ export function TimeRuler({
         width: `${String(width)}px`,
         overflow: "visible",
         fontSize: "0.72rem",
-        color: "var(--stagebook-decoration, #9ca3af)",
+        color: "var(--stagebook-timeline-ruler-text, #737373)",
         userSelect: "none",
         cursor: onSeek ? "pointer" : "default",
       }}

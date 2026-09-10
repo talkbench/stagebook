@@ -444,7 +444,7 @@ const notepadChipRowStyle: React.CSSProperties = {
 // preview chrome rather than as participant-facing copy.
 const notepadStandInNoteStyle: React.CSSProperties = {
   fontSize: "0.6875rem",
-  color: "var(--stagebook-text-muted, #6b7280)",
+  color: "var(--stagebook-text-muted, #626977)",
 };
 
 // Copied from the runner's SharedChip so the pill in the preview matches the
@@ -458,7 +458,7 @@ const notepadChipStyle: React.CSSProperties = {
   lineHeight: 1,
   padding: "3px 8px",
   borderRadius: "9999px",
-  color: "var(--stagebook-text-muted, #6b7280)",
+  color: "var(--stagebook-text-muted, #626977)",
   background: "var(--stagebook-bg-muted, #f9fafb)",
   border: "1px solid var(--stagebook-border, #d1d5db)",
   whiteSpace: "nowrap",

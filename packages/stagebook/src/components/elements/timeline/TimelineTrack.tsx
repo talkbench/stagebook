@@ -111,7 +111,7 @@ export function TimelineTrack({
             cursor: "pointer",
             color: muted
               ? "var(--stagebook-danger, #b91c1c)"
-              : "var(--stagebook-decoration, #9ca3af)",
+              : "var(--stagebook-text-muted, #626977)",
           }}
         >
           {muted ? <SpeakerMutedIcon /> : <SpeakerIcon />}
@@ -137,7 +137,7 @@ export function TimelineTrack({
             padding: "1px 6px",
             fontSize: "0.7rem",
             lineHeight: 1.4,
-            color: "var(--stagebook-text-muted, #6b7280)",
+            color: "var(--stagebook-text-muted, #626977)",
             background:
               "var(--stagebook-timeline-track-label-bg, rgba(255, 255, 255, 0.85))",
             border: "1px solid var(--stagebook-border, #d1d5db)",

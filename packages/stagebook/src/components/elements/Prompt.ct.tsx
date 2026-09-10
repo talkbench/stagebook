@@ -232,7 +232,7 @@ test.describe("Open Response", () => {
       />,
     );
     const counter = component.locator('[data-testid="char-counter"]');
-    await expect(counter).toHaveCSS("color", "rgb(107, 114, 128)");
+    await expect(counter).toHaveCSS("color", "rgb(98, 105, 119)");
   });
 
   test("counter is green when in valid range", async ({ mount }) => {

@@ -26,7 +26,7 @@
 //     (<option> rows, a trigger with a background image). Two computed
 //     styles and the WCAG ratio; a translucent value fails loudly.
 //   - `pixels`, for a mark whose colour is only knowable from the paint:
-//     the Slider's ticks are drawn at opacity 0.4 over a translucent tint,
+//     the Slider's ticks are drawn at opacity 0.7 over a translucent tint,
 //     which no computed style expresses. Two screenshot pixels.
 // Focus indicators have no axe rule and live in focus.gate.ct.tsx. Canvas
 // is invisible to all three readers; the waveform's tokens are excluded
@@ -334,22 +334,14 @@ const pickerRow = (value: string, checked = false): Mark[] => {
 };
 
 // The timeline's text sits over its own chrome in ways axe cannot resolve,
-// and the ruler's timestamps are a recorded failure.
+// so the overlap exceptions below identify text axe cannot resolve.
 const TIMELINE_KNOWN: Known[] = [
-  {
-    rule: "color-contrast",
-    within: '[data-testid="time-ruler"]',
-    kind: "fails",
-    ratio: 2.53,
-    many: true,
-    why: "#616: --stagebook-decoration timestamps, 2.53:1 on --stagebook-bg (TimeRuler.tsx)",
-  },
   {
     rule: "color-contrast",
     within: '[data-testid="time-ruler"]',
     kind: "unmeasured",
     reason: "bgOverlap",
-    why: "the playhead's line crosses the timestamp at 0:00; the others measure as the entry above",
+    why: "the playhead's line crosses the timestamp at 0:00; axe measures the other timestamps",
   },
   {
     rule: "color-contrast",
@@ -363,7 +355,7 @@ const TIMELINE_KNOWN: Known[] = [
     within: '[data-testid="track-label"]',
     kind: "unmeasured",
     reason: "bgOverlap",
-    why: "#616: the label sits over the waveform canvas, which no reader here can see — 4.02:1 over a bar, by hand",
+    why: "the label sits over the waveform canvas; the full-height-waveform case measures its text against painted padding",
   },
 ];
 const playheadMarks: Mark[] = [
@@ -405,7 +397,7 @@ const timerFill = (fails?: Mark["fails"]): Mark => ({
 });
 
 // The Slider's ticks, read from the paint (see `Pixel`). Snap ticks are
-// gray at opacity 0.4; labelled ticks are opaque. Each against the track
+// gray at opacity 0.7; labelled ticks are opaque. Each against the track
 // 6px to its right — the next tick is 10% of the width away.
 const SNAP_TICK = ':nth-match([data-testid="slider-snap-tick"], 2)';
 const LABEL_TICK = ':nth-match([data-testid="slider-label-tick"], 2)';
@@ -418,12 +410,12 @@ const tickPixels = (track: string): Pixel[] => [
     fails:
       track === "hovered"
         ? {
-            ratio: 1.21,
-            why: "#616: --stagebook-decoration at opacity 0.4 over --stagebook-primary-tint (Slider.tsx)",
+            ratio: 2.12,
+            why: "#616: approved minor-tick hierarchy, --stagebook-slider-tick at 0.7 opacity; necessity of the 3:1 floor remains under review",
           }
         : {
-            ratio: 1.31,
-            why: "#633: --stagebook-decoration at opacity 0.4 over --stagebook-bg-track (Slider.tsx) — not in #616; found by this probe",
+            ratio: 2.43,
+            why: "#616: approved minor-tick hierarchy at rest; below the provisional 3:1 floor",
           },
   },
   {
@@ -434,14 +426,6 @@ const tickPixels = (track: string): Pixel[] => [
   },
 ];
 
-const MUTED_LABEL_ON_HOVER: Known = {
-  rule: "color-contrast",
-  within: '[data-testid="option"]',
-  kind: "fails",
-  ratio: 4.39,
-  why: "#616: --stagebook-text-muted label on --stagebook-hover-bg, 4.39:1",
-};
-
 /** A checked control's accent fill on the row it sits in (1.4.11). */
 const checkedFill = (input: string): Mark => ({
   name: "checked control fill on its row",
@@ -450,19 +434,6 @@ const checkedFill = (input: string): Mark => ({
   min: UI,
 });
 
-// The track's mute button is an icon-only control whose glyph takes
-// --stagebook-decoration — the same 2.53:1 the ruler's timestamps get, on
-// a control rather than decoration. Not among #616's seven; found here.
-const MUTE_GLYPH_REST = {
-  ratio: 2.53,
-  why: "#633: --stagebook-decoration as the mute glyph, on the page (TimelineTrack.tsx)",
-};
-// #635 restores the hover fill. The glyph remains a known contrast failure
-// (#616); measure it against the background that now actually paints.
-const MUTE_GLYPH_HOVERED = {
-  ratio: 2.31,
-  why: "#616: --stagebook-decoration as the mute glyph on --stagebook-hover-bg (#635 restores the fill)",
-};
 const muteGlyph = (fails?: Mark["fails"]): Mark => ({
   name: "mute glyph on its button",
   fg: { el: '[data-testid="track-mute"]', prop: "color" },
@@ -473,6 +444,18 @@ const muteGlyph = (fails?: Mark["fails"]): Mark => ({
   },
   min: UI,
   fails,
+});
+
+/** An unchecked choice is identified by its outline, including on hover. */
+const choiceBorder = (input: string): Mark => ({
+  name: "unchecked choice outline on its row",
+  fg: { el: `${input}:not(:checked)`, prop: "border-top-color" },
+  bg: {
+    el: '[data-testid="option"]:has(input:not(:checked))',
+    prop: "background-color",
+    behind: PAGE,
+  },
+  min: UI,
 });
 
 /** The slider's thumb on the track beside it. */
@@ -500,13 +483,23 @@ const cases: Case[] = [
         label="Pick one"
       />
     ),
-    marks: [checkedFill('input[type="radio"]')],
+    marks: [
+      checkedFill('input[type="radio"]'),
+      choiceBorder('input[type="radio"]'),
+    ],
     states: [
       {
         name: "row hovered",
         enter: hover('[data-testid="option"]'),
-        known: [MUTED_LABEL_ON_HOVER],
-        marks: [checkedFill('input[type="radio"]')],
+        marks: [
+          checkedFill('input[type="radio"]'),
+          choiceBorder('input[type="radio"]'),
+        ],
+      },
+      {
+        name: "unchecked row hovered",
+        enter: hover('[data-testid="option"]:has(input:not(:checked))'),
+        marks: [choiceBorder('input[type="radio"]')],
       },
     ],
   },
@@ -520,13 +513,23 @@ const cases: Case[] = [
         label="Select all"
       />
     ),
-    marks: [checkedFill('input[type="checkbox"]')],
+    marks: [
+      checkedFill('input[type="checkbox"]'),
+      choiceBorder('input[type="checkbox"]'),
+    ],
     states: [
       {
         name: "row hovered",
         enter: hover('[data-testid="option"]'),
-        known: [MUTED_LABEL_ON_HOVER],
-        marks: [checkedFill('input[type="checkbox"]')],
+        marks: [
+          checkedFill('input[type="checkbox"]'),
+          choiceBorder('input[type="checkbox"]'),
+        ],
+      },
+      {
+        name: "unchecked row hovered",
+        enter: hover('[data-testid="option"]:has(input:not(:checked))'),
+        marks: [choiceBorder('input[type="checkbox"]')],
       },
     ],
   },
@@ -638,7 +641,7 @@ const cases: Case[] = [
         min: UI,
         fails: {
           ratio: 1.47,
-          why: "#616: --stagebook-border is gray-300 on white — a design decision about every control's edge",
+          why: "#616: reviewed light field outline retained; the text-area boundary remains an open accessibility question",
         },
       },
     ],
@@ -746,14 +749,6 @@ const cases: Case[] = [
       {
         rule: "color-contrast",
         within: '[data-testid="asset-placeholder"]',
-        text: "not available here",
-        kind: "fails",
-        ratio: 2.42,
-        why: "#616: --stagebook-decoration hint text, 2.42:1 on --stagebook-bg-muted (AssetPlaceholder.tsx)",
-      },
-      {
-        rule: "color-contrast",
-        within: '[data-testid="asset-placeholder"]',
         text: "▦",
         kind: "unmeasured",
         reason: "nonBmp",
@@ -817,13 +812,13 @@ const cases: Case[] = [
       />
     ),
     known: TIMELINE_KNOWN,
-    marks: [...playheadMarks, muteGlyph(MUTE_GLYPH_REST)],
+    marks: [...playheadMarks, muteGlyph()],
     states: [
       {
         name: "mute hovered",
         enter: hover('[data-testid="track-mute"]'),
         known: TIMELINE_KNOWN,
-        marks: [muteGlyph(MUTE_GLYPH_HOVERED)],
+        marks: [muteGlyph()],
       },
       {
         // Muted, the glyph takes the danger colour — on the hover fill,
@@ -876,6 +871,30 @@ const cases: Case[] = [
     node: <MockTimeline source="player" name="orphan" selectionType="range" />,
   },
   {
+    name: "Timeline (track label over waveform)",
+    node: (
+      <MockTimeline
+        source="player"
+        playerName="player"
+        name="label-contrast"
+        selectionType="range"
+        mockDuration={8}
+        mockChannelCount={1}
+        mockPeaks={[[-1, 1, -1, 1, -1, 1, -1, 1]]}
+        trackLabels={["Interviewer"]}
+      />
+    ),
+    known: TIMELINE_KNOWN,
+    marks: [
+      {
+        name: "track label on its painted background over a waveform bar",
+        fg: { el: '[data-testid="track-label"]', prop: "color" },
+        bg: { inside: '[data-testid="track-label"]' },
+        min: AA,
+      },
+    ],
+  },
+  {
     name: "MediaPlayer",
     node: <MockMediaPlayer url="/sample-video.mp4" name="video" />,
   },
@@ -914,12 +933,7 @@ const cases: Case[] = [
   {
     name: "KitchenTimer",
     node: <MockKitchenTimer startTime={0} endTime={60} elapsedTime={20} />,
-    marks: [
-      timerFill({
-        ratio: 2.05,
-        why: "#616: --stagebook-timer-fill is blue-400 on --stagebook-bg-track",
-      }),
-    ],
+    marks: [timerFill()],
   },
   {
     // Inside the warning window: the fill swaps to the danger colour.
