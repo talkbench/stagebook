@@ -206,8 +206,8 @@ test("renders the empty state (no peaks) without a waveform", async ({
 });
 
 // #600: a canvas existing (or containing some bars) does not establish that
-// sound is aligned with time. Use the original report's full-canvas census:
-// columns with >3 opaque pixels distinguish loud bars from the silent baseline
+// sound is aligned with time. Use a full-canvas column census like the report:
+// columns with >3 bar pixels distinguish loud bars from the silent baseline
 // at both DPRs, and can be compared with the playhead's coordinate space.
 function loudInterval(canvas: Locator) {
   return canvas.evaluate((el) => {
@@ -217,11 +217,13 @@ function loudInterval(canvas: Locator) {
     const { data } = ctx.getImageData(0, 0, c.width, c.height);
     const loud = [];
     for (let x = 0; x < c.width; x++) {
-      let opaque = 0;
+      let barPixels = 0;
       for (let y = 0; y < c.height; y++) {
-        if (data[(y * c.width + x) * 4 + 3] === 255) opaque++;
+        // Allow antialiased edges of fractional per-bucket bars; the lane
+        // has alpha 38, well below this threshold.
+        if (data[(y * c.width + x) * 4 + 3] > 200) barPixels++;
       }
-      if (opaque > 3) loud.push(x);
+      if (barPixels > 3) loud.push(x);
     }
     return {
       width: c.width,
@@ -296,7 +298,7 @@ for (const dpr of [1, 2]) {
           ).toBeLessThanOrEqual(2);
           // Fractional per-bucket bars have gaps and antialiased edges.
           // Still require substantial coverage, not just two endpoint bars.
-          expect(actual.count, evidence).toBeGreaterThan(actual.width / 12);
+          expect(actual.count, evidence).toBeGreaterThan(actual.width / 6);
           expect(
             await playheadLeft(component.locator(PLAYHEAD)),
             evidence,
