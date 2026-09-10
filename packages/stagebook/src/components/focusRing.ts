@@ -52,7 +52,7 @@
  * hard-coded blue and ignore their accent entirely. Reaching through to
  * `--stagebook-primary` first keeps the "retuning the accent retunes the
  * ring" promise true in both configurations — as long as that accent itself
- * clears 3:1 on the host's page color, which the palette gate asserts for
+ * clears 3:1 on the host's page color, which a11y.gate.ct.tsx measures for
  * ours.
  */
 export const FOCUS_RING_ACCENT =
@@ -105,7 +105,7 @@ export function focusOutlineCss(): string {
  * and lose its top or bottom at the scroll boundary. Inset, the ring stays
  * whole on every row. No page-colored spacer is needed: a row's fill is
  * never the accent (the surface at rest, the hover fill when hovered or
- * walked), and the palette gate asserts the ring at 3:1 on both.
+ * walked), and focus.gate.ct.tsx reads the ring on the walked row.
  * Forced-colors honors it as it does the inline-text outline.
  */
 export function focusInsetOutlineCss(): string {
