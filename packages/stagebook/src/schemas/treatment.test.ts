@@ -1305,6 +1305,17 @@ test("durationSchema accepts exactly 5 seconds", () => {
   expect(durationSchema.safeParse(5).success).toBe(true);
 });
 
+test("durationSchema rejects a non-integer duration (whole seconds only)", () => {
+  // Pins `.int()` alongside the floor: a refactor to `z.number().min(5)`
+  // would let `7.5` through here and detonate at an Empirica host's
+  // `int().gte(5)` at game start — the class #588 exists to remove.
+  const result = durationSchema.safeParse(5.5);
+  expect(result.success).toBe(false);
+  if (!result.success) {
+    expect(result.error.issues[0]?.message).toContain("Expected integer");
+  }
+});
+
 test("stageSchema rejects a 4-second stage and points at `duration`", () => {
   const result = stageSchema.safeParse({
     name: "blink",

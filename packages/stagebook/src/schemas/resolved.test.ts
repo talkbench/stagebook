@@ -911,4 +911,8 @@ describe("resolvedStageSchema enforces the 5-second duration floor (#588)", () =
   test("accepts a 5-second resolved stage", () => {
     expect(resolvedStageSchema.safeParse(stage(5)).success).toBe(true);
   });
+
+  test("rejects a 5.5-second resolved stage (whole seconds only)", () => {
+    expect(resolvedStageSchema.safeParse(stage(5.5)).success).toBe(false);
+  });
 });

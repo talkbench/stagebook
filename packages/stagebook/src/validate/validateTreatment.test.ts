@@ -118,11 +118,17 @@ treatments:
       );
       expect(durationError).toBeDefined();
       expect(durationError!.severity).toBe("error");
-      // The squiggle lands on the offending value, not an ancestor.
-      const durationLine = src
-        .split("\n")
-        .findIndex((l) => l.includes("duration: 4"));
-      expect(durationError!.range?.startLine).toBe(durationLine);
+      // The squiggle lands on the offending value token, not the key or
+      // an ancestor node.
+      const lines = src.split("\n");
+      const durationLine = lines.findIndex((l) => l.includes("duration: 4"));
+      const durationCol = lines[durationLine]!.indexOf("4");
+      expect(durationError!.range).toEqual({
+        startLine: durationLine,
+        startCol: durationCol,
+        endLine: durationLine,
+        endCol: durationCol + 1,
+      });
     });
 
     it("reports invalid element types", () => {
