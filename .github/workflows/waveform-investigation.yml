@@ -1,0 +1,35 @@
+# Temporary diagnostic workflow for #600; removed after collecting evidence.
+name: Waveform investigation
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/waveform-investigation.yml
+permissions:
+  contents: read
+jobs:
+  original-webkit:
+    name: Original Linux WebKit (Playwright 1.58.2)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: mcr.microsoft.com/playwright:v1.58.2-noble
+      options: --user 1001
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Install the original report's Playwright version
+        run: npm install --workspace stagebook --no-save --package-lock=false playwright@1.58.2 @playwright/experimental-ct-react@1.58.2
+      - name: Check resolved version and waveform placement
+        working-directory: packages/stagebook
+        run: |
+          npx playwright --version
+          npx playwright test --config playwright-ct.config.ts WaveformTimeline.ct.tsx --project=webkit --workers=1 --retries=0 --reporter=line
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: original-webkit-waveform
+          path: packages/stagebook/test-results/
