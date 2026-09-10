@@ -195,7 +195,7 @@ export function Select({
     : {};
 
   return (
-    <div style={{ marginTop: "1rem" }}>
+    <div>
       <style>{`
         /* Doubled selector, (0,2,0): inline, this rule was untouchable
          * short of !important, and a host reset such as

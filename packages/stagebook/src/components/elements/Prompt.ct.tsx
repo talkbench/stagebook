@@ -395,6 +395,32 @@ _Choose the house that fits you best._`,
 };
 
 test.describe("Dropdown", () => {
+  test("preserves the study prompt's dropdown gap (#605)", async ({
+    mount,
+  }) => {
+    const component = await mount(
+      <div>
+        <Prompt
+          {...dropdown}
+          name="testDropdownSpacing"
+          value={undefined}
+          save={() => {}}
+        />
+      </div>,
+    );
+    const select = component.getByRole("combobox");
+    const gap = await select.evaluate((element) => {
+      const body = document.getElementById(
+        element.getAttribute("aria-labelledby")!,
+      )!;
+      return (
+        element.getBoundingClientRect().top -
+        body.getBoundingClientRect().bottom
+      );
+    });
+    expect(gap).toBeCloseTo(16, 1);
+  });
+
   test("renders a select with each option", async ({ mount }) => {
     const component = await mount(
       <Prompt

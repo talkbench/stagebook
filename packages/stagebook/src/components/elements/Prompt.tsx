@@ -298,22 +298,26 @@ export function Prompt({
         // numeric values they should use multipleChoice + numeric
         // labels (which gives them the radio UI that pairs naturally
         // with point-anchored Likert scales).
-        <Select
-          options={responses.map((choice) => ({
-            key: choice,
-            value: choice,
-          }))}
-          value={value as string | undefined}
-          placeholder={metadata.placeholder}
-          // Name the <select> by the visible prompt body so it isn't an
-          // unnamed control (axe `select-name`, WCAG 4.1.2 / 1.3.1) — see
-          // #545. Preferred over a visible `label`, which would duplicate
-          // the body the participant already reads.
-          ariaLabelledBy={bodyId}
-          onChange={(e) =>
-            debouncedSaveInteractive(e.target.value, record, e.target.value)
-          }
-        />
+        <div style={{ marginTop: "1rem" }}>
+          {/* Preserve study-prompt spacing here; standalone Select lets
+              its host own the surrounding layout (#605). */}
+          <Select
+            options={responses.map((choice) => ({
+              key: choice,
+              value: choice,
+            }))}
+            value={value as string | undefined}
+            placeholder={metadata.placeholder}
+            // Name the <select> by the visible prompt body so it isn't an
+            // unnamed control (axe `select-name`, WCAG 4.1.2 / 1.3.1) — see
+            // #545. Preferred over a visible `label`, which would duplicate
+            // the body the participant already reads.
+            ariaLabelledBy={bodyId}
+            onChange={(e) =>
+              debouncedSaveInteractive(e.target.value, record, e.target.value)
+            }
+          />
+        </div>
       )}
 
       {promptType === "openResponse" && !shared && (
