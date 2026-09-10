@@ -339,12 +339,12 @@ Display another participant's response:
 
 ### String Content
 
-| Comparator       | Description                | Value Type     |
-| ---------------- | -------------------------- | -------------- |
-| `includes`       | Contains substring         | string         |
-| `doesNotInclude` | Does not contain substring | string         |
-| `matches`        | Matches regular expression | string (regex) |
-| `doesNotMatch`   | Does not match regex       | string (regex) |
+| Comparator       | Description                                                                                                    | Value Type     |
+| ---------------- | -------------------------------------------------------------------------------------------------------------- | -------------- |
+| `includes`       | Contains substring; on a `select: multiple` response, the option text is among the checked options             | string         |
+| `doesNotInclude` | Does not contain substring; on a `select: multiple` response, the option text is not among the checked options | string         |
+| `matches`        | Matches regular expression                                                                                     | string (regex) |
+| `doesNotMatch`   | Does not match regex                                                                                           | string (regex) |
 
 ### Set Membership
 
@@ -401,7 +401,7 @@ groupComposition:
 
 ## Consent gating
 
-Gated consent (#481) uses ordinary element conditions — a submit button in a consent step conditioned on acknowledgement checkboxes in the **same step** is the sanctioned pattern. Element conditions re-evaluate live against in-memory responses, so the "I consent" button enables the moment the boxes are checked:
+Gated consent (#481) uses ordinary element conditions — a submit button in a consent step conditioned on an acknowledgement prompt in the **same step** is the sanctioned pattern. Element conditions re-evaluate live against in-memory responses, so the "I consent" button appears the moment the acknowledgement is selected:
 
 ```yaml
 consent:

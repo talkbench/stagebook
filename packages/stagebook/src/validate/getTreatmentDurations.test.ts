@@ -825,17 +825,22 @@ describe("over real hydrated example studies", () => {
   });
 
   test("component-gallery: a real study can outlive a room's join cutoff", async () => {
-    // The hazard #585 exists to surface is reachable with a file in this
-    // repo: a game that runs past a host's room cutoff. For a Daily room
-    // that is a JOIN cutoff — the call survives it, a recovery rejoin
-    // does not — and this report is how a host learns whether a design
-    // can cross it.
+    // A real study in this repo, read end to end, against the illustrative
+    // cutoff: a game that runs past a host's room cutoff is the hazard
+    // #585 exists to surface. For a Daily room that is a JOIN cutoff —
+    // the call survives it, a recovery rejoin does not — and this report
+    // is how a host learns whether a design can cross it.
     const report = getTreatmentDurations(
       await hydrate("component-gallery/component-gallery.stagebook.yaml"),
     );
+    // Exact, not just "over the floor": twelve 600-second stages plus one
+    // of 60, so a reader that drops or double-counts stages is caught
+    // even while the total stays above the illustrative cutoff.
+    expect(report.overall.gameStages).toBe(13);
+    expect(report.overall.gameSeconds).toBe(7260);
+    expect(report.overall.unresolvedStages).toBe(0);
     expect(report.overall.gameSeconds).toBeGreaterThan(
       ILLUSTRATIVE_ROOM_CUTOFF_SECONDS,
     );
-    expect(report.overall.unresolvedStages).toBe(0);
   });
 });

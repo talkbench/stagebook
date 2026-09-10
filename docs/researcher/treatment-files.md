@@ -193,7 +193,9 @@ consent:
 
 ### The gated-submit pattern
 
-The example above is the sanctioned way to gate consent: an "I consent" submit button conditioned on acknowledgement checkboxes in the same step. Element conditions re-evaluate live against in-memory responses, so the button enables as soon as the boxes are checked — no extra machinery. Multi-step arms work the same way: a later consent step may reference responses from an earlier step in the same arm.
+The example above is the sanctioned way to gate consent: an "I consent" submit button conditioned on an acknowledgement prompt in the same step. Element conditions re-evaluate live against in-memory responses, so the button appears as soon as the acknowledgement is selected — no extra machinery. Multi-step arms work the same way: a later consent step may reference responses from an earlier step in the same arm.
+
+> **`exists` suits a single-choice acknowledgement** (the default for `multipleChoice`). If the acknowledgement is a `select: multiple` checkbox list, gate on `includes` with the option text instead: a box that is checked and then unchecked leaves an empty list, which still `exists`, so the button would stay available with nothing acknowledged.
 
 **Recommended: make the consent text the acknowledgement prompt's body.** The example above keeps the consent information and the acknowledgement in two prompt files. The recommended variant folds them into one `multipleChoice` prompt whose body _is_ the full consent text and whose single option is the acknowledgement, with the submit gated on that prompt's key:
 
@@ -232,10 +234,10 @@ confidentiality, contact details.)
 
 Two things follow from the single-prompt layout:
 
-- **Active acknowledgement.** The option renders only alongside the text, and the button can't enable until it is selected, so a reflexive click can't advance the step.
+- **Active acknowledgement.** The option renders only alongside the text, and the button appears only once it is selected, so a reflexive click can't advance the step.
 - **Provenance.** A prompt's saved record carries its body next to the response, so the exact text the participant agreed to is stored with the acknowledgement — [the responses are the record](#the-responses-are-the-record), with nothing extra to keep in sync.
 
-This is a recommendation, not a requirement: nothing enforces it, and the two-prompt form above is equally valid. If the acknowledgement is a `select: multiple` checkbox rather than the default single choice, gate on `includes` with the option text instead of `exists` — a box that is unchecked again leaves an empty list, which still `exists`.
+This is a recommendation, not a requirement: nothing enforces it, and the two-prompt form above is equally valid. The same `exists`-versus-`includes` note applies: a single-choice acknowledgement gates on `exists`, a `select: multiple` one on `includes`.
 
 ### Consent responses are audit-only
 
