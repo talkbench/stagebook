@@ -453,16 +453,18 @@ test("font respects --stagebook-font override", async ({ mount }) => {
   expect(fontFamily).toMatch(/Helvetica/);
 });
 
-test("prefers-reduced-motion: the focus-ring transition is off (#630)", async ({
+test("prefers-reduced-motion switches the focus-ring transition off (#630)", async ({
   mount,
   page,
 }) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
   const component = await mount(<TextArea />);
-  await expect(component.locator("textarea")).toHaveCSS(
-    "transition-duration",
-    "0s",
-  );
+  const textarea = component.locator("textarea");
+  // Pinned in both directions: the 120ms halo is a baked-in instrument
+  // constant, so deleting the transition can't pass as "fixing" the
+  // reduced-motion override.
+  await expect(textarea).toHaveCSS("transition-duration", "0.12s");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(textarea).toHaveCSS("transition-duration", "0s");
 });
 
 test("box metrics render at their pinned pixel values (#593)", async ({

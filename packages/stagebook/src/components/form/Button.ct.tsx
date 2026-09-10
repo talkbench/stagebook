@@ -541,14 +541,16 @@ test("a named icon button reports nothing", async ({ mount, page }) => {
   expect(errors).toEqual([]);
 });
 
-test("prefers-reduced-motion: hover and focus transitions are off (#630)", async ({
+test("prefers-reduced-motion switches the hover and focus transitions off (#630)", async ({
   mount,
   page,
 }) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
   const component = await mount(<Button>Go</Button>);
-  await expect(component.locator("button")).toHaveCSS(
-    "transition-duration",
-    "0s",
-  );
+  const button = component.locator("button");
+  // Pinned in both directions (background-color and box-shadow): the
+  // 120ms motion is a baked-in instrument constant, so deleting the
+  // transition can't pass as "fixing" the reduced-motion override.
+  await expect(button).toHaveCSS("transition-duration", "0.12s, 0.12s");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(button).toHaveCSS("transition-duration", "0s");
 });

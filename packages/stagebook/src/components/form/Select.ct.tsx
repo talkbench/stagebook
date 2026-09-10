@@ -1084,17 +1084,19 @@ test.describe("Select: always-controlled (#606)", () => {
     await expect(select).not.toHaveValue("b");
   });
 
-  test("prefers-reduced-motion: the trigger's focus transition is off (#630)", async ({
+  test("prefers-reduced-motion switches the trigger's focus transition off (#630)", async ({
     mount,
     page,
   }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
     const component = await mount(
       <Select options={options} onChange={() => {}} />,
     );
-    await expect(component.locator("select")).toHaveCSS(
-      "transition-duration",
-      "0s",
-    );
+    const select = component.locator("select");
+    // Pinned in both directions: the 120ms fill is a baked-in instrument
+    // constant, so deleting the transition can't pass as "fixing" the
+    // reduced-motion override.
+    await expect(select).toHaveCSS("transition-duration", "0.12s");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(select).toHaveCSS("transition-duration", "0s");
   });
 });

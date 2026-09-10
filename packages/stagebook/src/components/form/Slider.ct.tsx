@@ -476,19 +476,24 @@ test("a host's own range-input styling cannot un-collapse our native thumb", asy
   ).toEqual({ width: "0px", height: "0px" });
 });
 
-test("prefers-reduced-motion: wrapper, track and thumb transitions are off (#630)", async ({
+test("prefers-reduced-motion switches the wrapper, track and thumb transitions off (#630)", async ({
   mount,
   page,
 }) => {
-  await page.emulateMedia({ reducedMotion: "reduce" });
   const component = await mount(
     <Slider min={0} max={100} interval={1} value={50} />,
   );
-  for (const el of [
-    component.locator('[role="presentation"]'),
-    component.getByTestId("slider-track"),
-    component.getByTestId("slider-thumb"),
-  ]) {
+  const wrapper = component.locator('[role="presentation"]');
+  const track = component.getByTestId("slider-track");
+  const thumb = component.getByTestId("slider-thumb");
+  // Pinned in both directions: the 120ms motion is a baked-in instrument
+  // constant, so deleting a transition can't pass as "fixing" the
+  // reduced-motion override. The track animates two properties.
+  await expect(wrapper).toHaveCSS("transition-duration", "0.12s");
+  await expect(track).toHaveCSS("transition-duration", "0.12s, 0.12s");
+  await expect(thumb).toHaveCSS("transition-duration", "0.12s");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const el of [wrapper, track, thumb]) {
     await expect(el).toHaveCSS("transition-duration", "0s");
   }
 });

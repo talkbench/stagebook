@@ -289,10 +289,13 @@ test.describe("CheckboxGroup: label validity, null value, reduced motion", () =>
     const component = await mount(
       <CheckboxGroup options={options} onChange={() => {}} label="Pick some" />,
     );
+    // `HTMLLabelElement.control` is null both when the id is missing and
+    // when it points at something that isn't labelable, so the browser
+    // judges validity rather than a lookup a stray id could satisfy.
     const dangling = await component.evaluate((root) =>
-      Array.from(root.querySelectorAll("label[for]"))
-        .map((l) => l.getAttribute("for") ?? "")
-        .filter((id) => !document.getElementById(id)),
+      Array.from(root.querySelectorAll<HTMLLabelElement>("label[for]"))
+        .filter((l) => l.control === null)
+        .map((l) => l.getAttribute("for")),
     );
     expect(dangling).toEqual([]);
   });
@@ -316,15 +319,19 @@ test.describe("CheckboxGroup: label validity, null value, reduced motion", () =>
     }
   });
 
-  test("prefers-reduced-motion: the row's hover transition is off (#630)", async ({
+  test("prefers-reduced-motion switches the row's hover transition off (#630)", async ({
     mount,
     page,
   }) => {
-    await page.emulateMedia({ reducedMotion: "reduce" });
     const component = await mount(
       <CheckboxGroup options={options} onChange={() => {}} />,
     );
     const row = component.locator('[data-testid="option"]').first();
+    // Pinned in both directions: the 120ms fill is a baked-in instrument
+    // constant, so deleting the transition can't pass as "fixing" the
+    // reduced-motion override.
+    await expect(row).toHaveCSS("transition-duration", "0.12s");
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await expect(row).toHaveCSS("transition-duration", "0s");
   });
 });
