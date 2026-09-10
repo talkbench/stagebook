@@ -156,7 +156,13 @@ interface Known {
 type Side =
   | {
       el: string;
-      prop: "color" | "background-color" | "border-top-color" | "outline-color";
+      prop:
+        | "color"
+        | "background-color"
+        | "border-top-color"
+        | "outline-color"
+        | "fill"
+        | "stroke";
       pseudo?: string;
       /** What shows through when the property is fully transparent. */
       behind?: Side;
@@ -1396,6 +1402,303 @@ for (const c of cases) {
       await c.prepare?.(page);
       await s.state?.enter(page);
       await scan(page, browserName, `${c.name}${s.suffix}`, s.scan);
+    });
+  }
+}
+
+// #636: exercise actual transport chrome over controlled content backdrops.
+// Only the media image is replaced; the overlay, SVGs and scrubber retain
+// their production styles. These are contrast tests, not media-decode tests.
+for (const mode of ["audio", "video", "youtube"] as const) {
+  const playVideo = mode !== "audio";
+  const youtube = mode === "youtube";
+  for (const backdrop of ["#000000", "#ffffff"]) {
+    test(`media contrast: ${mode} on ${backdrop}`, async ({
+      mount,
+      page,
+      browserName,
+    }) => {
+      await page.setViewportSize({ width: 800, height: 650 });
+      if (youtube) {
+        // Stub only the third-party API; Stagebook still renders its own
+        // YouTube overlay and transport controls. No external iframe/network.
+        await page.evaluate(() => {
+          window.YT = {
+            PlayerState: {
+              UNSTARTED: -1,
+              ENDED: 0,
+              PLAYING: 1,
+              PAUSED: 2,
+              BUFFERING: 3,
+              CUED: 5,
+            },
+            Player: class {
+              state = 2;
+              onStateChange?: (event: { data: number }) => void;
+              constructor(
+                _el: HTMLElement,
+                opts: ConstructorParameters<
+                  NonNullable<typeof window.YT>["Player"]
+                >[1],
+              ) {
+                this.onStateChange = opts.events?.onStateChange;
+                queueMicrotask(() => {
+                  opts.events?.onReady?.();
+                  this.onStateChange?.({ data: 2 });
+                });
+              }
+              playVideo() {
+                this.state = 1;
+                this.onStateChange?.({ data: 1 });
+              }
+              pauseVideo() {
+                this.state = 2;
+                this.onStateChange?.({ data: 2 });
+              }
+              seekTo() {}
+              getCurrentTime() {
+                return 10;
+              }
+              getDuration() {
+                return 30;
+              }
+              getPlayerState() {
+                return this.state;
+              }
+              destroy() {}
+            },
+          };
+        });
+      }
+      await mount(
+        <MockMediaPlayer
+          url={youtube ? "https://youtu.be/QC8iQqtG0hg" : "/sample-video.mp4"}
+          name="contrast"
+          playVideo={playVideo}
+          controls={{ playPause: true, seek: true, step: true, speed: true }}
+        />,
+      );
+      const video = page.getByTestId("mediaPlayer-video");
+      if (!youtube) {
+        await expect
+          .poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState))
+          .toBeGreaterThanOrEqual(1);
+        await video.evaluate((el: HTMLVideoElement) => {
+          el.pause();
+          Object.defineProperty(el, "currentTime", {
+            configurable: true,
+            get: () => el.duration / 3,
+          });
+          Object.defineProperty(el, "buffered", {
+            configurable: true,
+            get: () => ({
+              length: 1,
+              start: () => 0,
+              end: () => (el.duration * 2) / 3,
+            }),
+          });
+          el.dispatchEvent(new Event("timeupdate"));
+          el.dispatchEvent(new Event("progress"));
+        });
+      }
+      await page.evaluate(
+        ({ playVideo, backdrop }) => {
+          if (playVideo) {
+            const video = document.querySelector<HTMLElement>(
+              '[data-testid="mediaPlayer-video"], [data-testid="mediaPlayer-youtube"]',
+            )!;
+            video.style.visibility = "hidden";
+            video.parentElement!.style.backgroundColor = backdrop;
+          } else {
+            document.documentElement.style.backgroundColor = backdrop;
+          }
+        },
+        { playVideo, backdrop },
+      );
+      const controls = page.getByTestId("mediaPlayer-controls");
+      await expect(controls).toBeVisible();
+      await controls.hover();
+      await settle(page);
+      await expect(page.getByTestId("mediaPlayer-scrubBar")).toHaveAttribute(
+        "aria-valuenow",
+        /[1-9]/,
+      );
+      const measurements: {
+        name: string;
+        fg: number[];
+        bg: number[];
+        ratio: number;
+        floor: number;
+      }[] = [];
+      // Read every painted SVG child (filled play/pause and stroked seek/step),
+      // rather than the button's color: a hardcoded fill must not escape.
+      for (const state of ["paused", "playing"]) {
+        if (state === "playing") {
+          if (youtube) await page.getByTestId("mediaPlayer-playPause").click();
+          else await video.dispatchEvent("play");
+          await settle(page);
+        }
+        const samples = await controls.evaluate((root) => {
+          const points: {
+            name: string;
+            x: number;
+            y: number;
+            ink?: { el: string; prop: "fill" | "stroke" };
+            floor: number;
+          }[] = [];
+          for (const button of root.querySelectorAll("button")) {
+            for (const [index, shape] of [
+              ...button.querySelectorAll(
+                "svg > path, svg > rect, svg > polyline",
+              ),
+            ].entries()) {
+              const style = getComputedStyle(shape);
+              const box = shape.getBoundingClientRect();
+              const buttonBox = button.getBoundingClientRect();
+              const prop = style.fill === "none" ? "stroke" : "fill";
+              // Sample beside the top of the ink: the video's gradient is
+              // lightest there. The control's side padding contains no ink.
+              points.push({
+                name: `${button.dataset.testid} ${shape.tagName}`,
+                x: buttonBox.x + 2,
+                y: box.y,
+                ink: {
+                  el: `[data-testid="${button.dataset.testid}"] svg > :nth-child(${String(index + 1)})`,
+                  prop,
+                },
+                floor: 3,
+              });
+            }
+          }
+          const scrub = root.querySelector(
+            '[data-testid="mediaPlayer-scrubBar"]',
+          )!;
+          const track = scrub.children[0];
+          const trackBox = track.getBoundingClientRect();
+          const cy = trackBox.y + trackBox.height / 2;
+          // All three spans have interior pixels; currentTime and buffered
+          // are fixed above to one third and two thirds of the duration.
+          for (const [name, fraction] of [
+            ["played", 1 / 6],
+            ["buffered", 1 / 2],
+            ["unbuffered", 5 / 6],
+          ] as const) {
+            if (
+              name === "buffered" &&
+              !root.querySelector('[data-testid="mediaPlayer-buffered"]')
+            )
+              continue;
+            const x = trackBox.x + trackBox.width * fraction;
+            points.push({ name, x, y: cy, floor: 3 });
+            // Same-height padding preserves the gradient's local colour.
+            points.push({
+              name: `${name} backdrop`,
+              x: trackBox.x - 4,
+              y: cy,
+              floor: 3,
+            });
+          }
+          const thumb = scrub.children[1].getBoundingClientRect();
+          points.push({
+            name: "thumb",
+            x: thumb.x + thumb.width / 2,
+            y: thumb.y + 2,
+            floor: 3,
+          });
+          points.push({
+            name: "thumb backdrop",
+            x: thumb.x - 3,
+            y: thumb.y + 2,
+            floor: 3,
+          });
+          return points;
+        });
+        expect(samples.filter((s) => s.ink).length).toBe(
+          (youtube ? 5 : 7) + (state === "playing" ? 1 : 0),
+        );
+        const screenshot = await page.screenshot({ scale: "css" });
+        await test.info().attach(`${state}-controls`, {
+          body: await controls.screenshot({ scale: "css" }),
+          contentType: "image/png",
+        });
+        const readings = await page.evaluate(
+          async ({ b64, samples }) => {
+            const img = new Image();
+            img.src = `data:image/png;base64,${b64}`;
+            await img.decode();
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d")!;
+            ctx.drawImage(img, 0, 0);
+            return samples.map((s) => {
+              const rgb = [
+                ...ctx.getImageData(Math.floor(s.x), Math.floor(s.y), 1, 1)
+                  .data,
+              ].slice(0, 3);
+              return { ...s, rgb };
+            });
+          },
+          { b64: screenshot.toString("base64"), samples },
+        );
+        for (let i = 0; i < readings.length; i++) {
+          const reading = readings[i];
+          let fg: number[], bg: number[];
+          if (reading.ink) {
+            fg = await computed(page, reading.ink);
+            bg = reading.rgb;
+          } else {
+            fg = reading.rgb;
+            bg = readings[++i].rgb;
+          }
+          measurements.push({
+            name: `${state}: ${reading.name}`,
+            fg,
+            bg,
+            ratio: contrast(fg, bg),
+            floor: reading.floor,
+          });
+        }
+      }
+      await test.info().attach("contrast-measurements", {
+        body: JSON.stringify(measurements, null, 2),
+        contentType: "application/json",
+      });
+      for (const m of measurements) {
+        // Measured gaps discovered by #636. Keep them visible and pin their
+        // current ratios while the appearance change awaits visual review.
+        let knownRatio: number | undefined;
+        if (m.name.endsWith(": unbuffered")) {
+          knownRatio = playVideo
+            ? backdrop === "#ffffff"
+              ? 1.57
+              : 1.66
+            : backdrop === "#ffffff"
+              ? 1.9
+              : 1.88;
+        } else if (playVideo && backdrop === "#ffffff") {
+          if (m.name.endsWith(": buffered")) knownRatio = 2.75;
+          else if (m.name.includes("mediaPlayer-playPause")) knownRatio = 2.05;
+          else if (m.name.includes("mediaPlayer-")) {
+            // Firefox paints a slightly lighter background at this sample;
+            // keep its measured ratio explicit instead of widening tolerance.
+            knownRatio = browserName === "firefox" ? 2.1 : 2.19;
+          }
+        }
+        assertRatio(
+          m.name,
+          m.ratio,
+          m.floor,
+          knownRatio === undefined
+            ? undefined
+            : {
+                ratio: knownRatio,
+                why: "#636: video gradient / unplayed track awaits visual review",
+              },
+          hex(m.fg),
+          hex(m.bg),
+        );
+      }
     });
   }
 }
