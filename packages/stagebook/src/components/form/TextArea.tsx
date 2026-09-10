@@ -461,6 +461,8 @@ export function TextArea({
         onPaste={handlePaste}
         onKeyDown={handleKeyDown}
         style={{
+          // Keep the native surface and scrollbar light under host/OS themes.
+          colorScheme: "light",
           display: "block",
           width: "100%",
           boxSizing: "border-box",

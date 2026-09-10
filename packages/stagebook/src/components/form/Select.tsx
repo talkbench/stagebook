@@ -130,14 +130,6 @@ const selectBaseStyle: React.CSSProperties = {
   fontSize: "0.875rem",
   lineHeight: "1.25rem",
   cursor: "pointer",
-  // Caret SVG drawn inline so no font / icon dependency is needed.
-  // The `none` appearance removes the platform native arrow; this
-  // fills in for it.
-  backgroundImage:
-    "url(\"data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3e%3cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.4a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3e%3c/svg%3e\")",
-  backgroundRepeat: "no-repeat",
-  backgroundPosition: "right 0.5rem center",
-  backgroundSize: "1.25em",
   // The focus box-shadow transition lives in the class-scoped <style>
   // block, not here: an inline `transition` outranks the class rule
   // that turns it off under prefers-reduced-motion, so that override
@@ -167,6 +159,7 @@ export function Select({
   // safe set so the regex doesn't drift if React's format changes.
   const safeId = generatedId.replace(/[^a-zA-Z0-9_-]/g, "");
   const triggerClass = `stagebook-select-trigger-${safeId}`;
+  const chevronClass = `stagebook-select-chevron-${safeId}`;
 
   // Always-controlled value. When the caller hasn't set `value`, pass
   // the placeholder sentinel (if a placeholder exists) or an empty
@@ -214,6 +207,13 @@ export function Select({
         .${triggerClass} {
           transition: box-shadow 120ms ease-out;
         }
+        .${chevronClass} {
+          color: var(--stagebook-select-chevron, #6b7280);
+        }
+        @media (forced-colors: active) {
+          .${chevronClass} { color: ButtonText; }
+          .${triggerClass}:disabled + .${chevronClass} { color: GrayText; }
+        }
         .${triggerClass}:focus-visible {
           ${focusRingCss()}
         }
@@ -223,8 +223,8 @@ export function Select({
           }
         }
         @supports (appearance: base-select) {
-          /* The engine's own disclosure icon. Ours is the background
-           * chevron on the trigger, which is what the native path shows
+          /* The engine's own disclosure icon. Ours is the SVG beside
+           * the trigger, which is what the native path shows
            * too, so hide this one rather than double up. */
           .${triggerClass}::picker-icon {
             display: none;
@@ -323,39 +323,69 @@ export function Select({
           {label}
         </label>
       )}
-      <select
-        id={selectId}
-        // On the <select>, not the wrapper: the testid names the
-        // element a test drives, and Playwright's selectOption()
-        // requires a real <select> (inputValue(), a form control), so
-        // both throw on a wrapper <div> (#601). Same placement as
-        // Button. Composite controls (RadioGroup, CheckboxGroup) keep
-        // theirs on the group wrapper — no single element to name.
-        data-testid={dataTestId ?? selectId}
-        className={triggerClass}
-        value={currentValue}
-        onChange={handleChange}
-        aria-labelledby={ariaLabelledBy}
-        disabled={disabled}
-        style={{ ...selectBaseStyle, ...stateStyle }}
-      >
-        {placeholder !== undefined && (
-          <option value={PLACEHOLDER_VALUE} disabled>
-            {placeholder}
-          </option>
-        )}
-        {options
-          .filter((option) => !option.hidden)
-          .map((option) => (
-            <option
-              key={`${selectId}_${option.key}`}
-              value={option.key}
-              disabled={option.disabled}
-            >
-              {option.value}
+      {/* The grid keeps the overlay centered on the control, excluding the
+          label. The SVG ignores pointer events so the native select owns clicks. */}
+      <div style={{ position: "relative", display: "grid" }}>
+        <select
+          id={selectId}
+          // On the <select>, not the wrapper: the testid names the
+          // element a test drives, and Playwright's selectOption()
+          // requires a real <select> (inputValue(), a form control), so
+          // both throw on a wrapper <div> (#601). Same placement as
+          // Button. Composite controls (RadioGroup, CheckboxGroup) keep
+          // theirs on the group wrapper — no single element to name.
+          data-testid={dataTestId ?? selectId}
+          className={triggerClass}
+          value={currentValue}
+          onChange={handleChange}
+          aria-labelledby={ariaLabelledBy}
+          disabled={disabled}
+          style={{ ...selectBaseStyle, ...stateStyle }}
+        >
+          {placeholder !== undefined && (
+            <option value={PLACEHOLDER_VALUE} disabled>
+              {placeholder}
             </option>
-          ))}
-      </select>
+          )}
+          {options
+            .filter((option) => !option.hidden)
+            .map((option) => (
+              <option
+                key={`${selectId}_${option.key}`}
+                value={option.key}
+                disabled={option.disabled}
+              >
+                {option.value}
+              </option>
+            ))}
+        </select>
+        <svg
+          data-testid="select-chevron"
+          className={chevronClass}
+          aria-hidden="true"
+          focusable="false"
+          viewBox="0 0 20 20"
+          style={{
+            position: "absolute",
+            top: "50%",
+            // Match the old background image's padding-box origin.
+            right: "calc(0.5rem + 1px)",
+            transform: "translateY(-50%)",
+            fontSize: "0.875rem",
+            width: "1.25em",
+            height: "1.25em",
+            fill: "currentColor",
+            pointerEvents: "none",
+            opacity: disabled ? 0.5 : 1,
+          }}
+        >
+          <path
+            fillRule="evenodd"
+            clipRule="evenodd"
+            d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.4a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z"
+          />
+        </svg>
+      </div>
     </div>
   );
 }

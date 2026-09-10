@@ -143,9 +143,10 @@ Not covered, by design:
   colour to hold a floor against; the tokens drawn over them are excluded in
   the ledger with that reason, and the MediaPlayer's controls are tracked in
   [#636].
-- Indicators drawn as background images (the Select chevron, [#636]): a thin
-  anti-aliased stroke has no pixel that reliably belongs to it. The fix is
-  to draw it with a token, which a computed-style mark can then read.
+- Other indicators drawn as background images: a thin anti-aliased stroke
+  has no pixel that reliably belongs to it. The Select chevron now uses a
+  token-colored SVG path read by the gate; see the
+  [native-control theme decision](2026-09-native-control-themes.md).
 - A host that paints its page a colour other than `--stagebook-bg` without
   retuning the token.
 

@@ -375,6 +375,8 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
       "RadioGroup and CheckboxGroup labels; Display; Prompt: slider labels; Select (placeholder) trigger",
     "--stagebook-choice-border":
       "RadioGroup and CheckboxGroup unchecked outlines, including hovered rows",
+    "--stagebook-select-chevron":
+      "Select disclosure SVG path on the control surface",
     "--stagebook-slider-tick":
       "Slider (ticks), including the known minor-tick contrast shortfall (#616)",
     "--stagebook-timeline-ruler-text": "Timeline ruler timestamps",

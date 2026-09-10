@@ -173,6 +173,8 @@
   /* Unchecked radio/checkbox outlines identify the choice itself. Keep
    * these separate from field and panel borders (#616). */
   --stagebook-choice-border: var(--sb-gray-450);
+  /* Select disclosure arrow: independent of its field border and text. */
+  --stagebook-select-chevron: var(--sb-gray-500);
   /* Tick color is independent of labels: major ticks stay at full
    * strength; shorter minor ticks use 0.7 opacity in Slider. */
   --stagebook-slider-tick: var(--sb-gray-500);

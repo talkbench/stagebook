@@ -277,14 +277,12 @@ const withoutColorMix = async (page: Page) => {
 // measures; the ADR says so.
 const PAGE: Side = { el: "html", prop: "background-color" };
 
-// The Select trigger draws its chevron as a background image, and axe will
-// not score text over one. The trigger's text is a mark instead.
-const SELECT_CHEVRON: Known = {
-  rule: "color-contrast",
-  within: "select",
-  kind: "unmeasured",
-  reason: "bgImage",
-  why: "the trigger's chevron is a background-image, which axe declines to see through; the text is measured as a mark",
+// The chevron is a real SVG, so its painted path's fill can be read.
+const selectChevron: Mark = {
+  name: "Select chevron on the control surface",
+  fg: { el: '[data-testid="select-chevron"] path', prop: "fill" },
+  bg: { el: "select", prop: "background-color" },
+  min: UI,
 };
 const selectTriggerText: Mark = {
   name: "trigger text on the control surface",
@@ -538,8 +536,7 @@ const cases: Case[] = [
     node: (
       <Select options={options} onChange={() => {}} label="Choose an option" />
     ),
-    known: [SELECT_CHEVRON],
-    marks: [selectTriggerText],
+    marks: [selectTriggerText, selectChevron],
   },
   {
     // Nothing chosen yet, so the trigger shows the placeholder in the muted
@@ -554,8 +551,7 @@ const cases: Case[] = [
         placeholder="Pick one…"
       />
     ),
-    known: [SELECT_CHEVRON],
-    marks: [selectTriggerText],
+    marks: [selectTriggerText, selectChevron],
   },
   {
     // Disabled and empty (#620): the runner's no-device state — the only
@@ -591,19 +587,16 @@ const cases: Case[] = [
     ),
     needsBaseSelect: true,
     prepare: openPicker,
-    known: [SELECT_CHEVRON],
     marks: [...pickerRow("a"), ...pickerRow("b", true)],
     states: [
       {
         name: "checked row hovered",
         enter: hover('option[value="b"]'),
-        known: [SELECT_CHEVRON],
         marks: pickerRow("b", true),
       },
       {
         name: "row hovered",
         enter: hover('option[value="c"]'),
-        known: [SELECT_CHEVRON],
         marks: pickerRow("c"),
       },
       {
@@ -617,7 +610,6 @@ const cases: Case[] = [
           await page.keyboard.press("ArrowDown");
           await expect(page.locator('option[value="c"]')).toBeFocused();
         },
-        known: [SELECT_CHEVRON],
         marks: [
           ...pickerRow("c"),
           {
@@ -1091,8 +1083,7 @@ const cases: Case[] = [
         value={undefined}
       />
     ),
-    known: [SELECT_CHEVRON],
-    marks: [selectTriggerText],
+    marks: [selectTriggerText, selectChevron],
   },
 ];
 
