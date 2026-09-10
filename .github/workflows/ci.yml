@@ -91,8 +91,8 @@ jobs:
               - '**/*.js'
               - '**/*.json'
               - '.prettierrc'
-              # All workflow files, so `format:check` guards them — a PR that
-              # edits only a workflow (e.g. release-vscode.yml) still runs lint.
+              # Workflow-only PRs still run the lint job. `format:check`
+              # currently covers library source files, not workflow YAML.
               - '.github/workflows/*.yml'
             action:
               - 'validate-action/**'
