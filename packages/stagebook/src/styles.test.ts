@@ -372,7 +372,7 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
     "--stagebook-text-secondary":
       "Button (secondary); KitchenTimer; AssetPlaceholder",
     "--stagebook-text-muted":
-      "RadioGroup and CheckboxGroup labels; Display; Prompt: slider labels",
+      "RadioGroup and CheckboxGroup labels; Display; Prompt: slider labels; Select (placeholder) trigger",
     "--stagebook-decoration":
       "AssetPlaceholder hint, Timeline ruler and mute glyph (known failures, #616 and #633); Slider (ticks)",
     "--stagebook-border": "TextArea (a known failure, #616)",

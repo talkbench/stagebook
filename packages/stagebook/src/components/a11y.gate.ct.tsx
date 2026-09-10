@@ -489,6 +489,22 @@ const cases: Case[] = [
     marks: [selectTriggerText],
   },
   {
+    // Nothing chosen yet, so the trigger shows the placeholder in the muted
+    // text colour — the one pairing on the control surface the other Select
+    // cases never render (Codex review on #634).
+    name: "Select (placeholder)",
+    node: (
+      <Select
+        options={options}
+        onChange={() => {}}
+        label="Choose an option"
+        placeholder="Pick one…"
+      />
+    ),
+    known: [SELECT_CHEVRON],
+    marks: [selectTriggerText],
+  },
+  {
     // Disabled and empty (#620): the runner's no-device state — the only
     // option is the placeholder carrying the state copy, and the control is
     // held still. A disabled control is exempt from the contrast minimum,
