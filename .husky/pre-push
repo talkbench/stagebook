@@ -21,4 +21,6 @@ if [ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]; then
   fi
 fi
 
-npm run lint && npm test
+# Viewer and VS Code tests resolve stagebook through its dist/ exports.
+# Build first so fresh worktrees work and tests never consume a stale build.
+npm run lint && npm run build -w stagebook && npm test
