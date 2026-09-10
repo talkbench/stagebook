@@ -13,7 +13,8 @@ interface ButtonBaseProps {
   id?: string;
   "data-testid"?: string;
   /**
-   * Native tooltip, forwarded verbatim to the `<button>` (#621). A
+   * Native tooltip, forwarded verbatim to the `<button>` (#621).
+   * Disabled buttons retain pointer hit-testing for tooltip hover (#623). A
    * tooltip is never the accessible name — touch and screen-reader users
    * don't get it — so an icon-only button still needs `aria-label`.
    */
@@ -154,12 +155,9 @@ export function Button({
     ? {
         cursor: "not-allowed",
         opacity: 0.5,
-        // Belt-and-suspenders: the `disabled` attr on the <button>
-        // already prevents click events, but `pointer-events: none`
-        // additionally guards against hover-state CSS firing on a
-        // disabled button (which would visually contradict the
-        // "disabled" semantic).
-        pointerEvents: "none",
+        // Keep pointer hit-testing for native title tooltips. The native
+        // disabled attribute blocks activation; CSS guards below prevent
+        // enabled hover/active fills from painting on disabled buttons.
       }
     : {
         cursor: "pointer",
@@ -192,19 +190,19 @@ export function Button({
            already a token for theming consistency). Secondary tints
            with --stagebook-hover-bg, the same token Radio /
            Checkbox rows use for their hover. */
-        .${buttonClass}[data-variant="primary"]:hover {
+        .${buttonClass}[data-variant="primary"]:not(:disabled):hover {
           background-color: var(--stagebook-primary-hover, #1d4ed8);
         }
-        .${buttonClass}[data-variant="secondary"]:hover {
+        .${buttonClass}[data-variant="secondary"]:not(:disabled):hover {
           background-color: var(--stagebook-hover-bg, #f3f4f6);
         }
         /* Active / pressed — a touch darker than hover. Provides
            tactile feedback during the click; without it the button
            feels unresponsive on slow clicks. */
-        .${buttonClass}[data-variant="primary"]:active {
+        .${buttonClass}[data-variant="primary"]:not(:disabled):active {
           background-color: var(--stagebook-primary-active, #1e40af);
         }
-        .${buttonClass}[data-variant="secondary"]:active {
+        .${buttonClass}[data-variant="secondary"]:not(:disabled):active {
           background-color: var(--stagebook-bg-track, #e5e7eb);
         }
         /* :focus-visible so the focus ring appears only on keyboard
