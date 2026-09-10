@@ -75,10 +75,10 @@ const checkboxRowStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "0.5rem",
-  // Touch-target sizing — see RadioGroup for the rationale. Defaults
-  // to 36px via `--stagebook-row-min-height`; hosts targeting
-  // mobile-first can override to 2.75rem to hit HIG's 44px.
-  minHeight: "var(--stagebook-row-min-height, 2.25rem)",
+  // Whole-label target, including padding; matches RadioGroup's 44px
+  // default and preserves the current appearance while fixing overrides.
+  boxSizing: "border-box",
+  minHeight: "var(--stagebook-row-min-height, 2.75rem)",
   padding: "0.25rem 0.5rem",
   borderRadius: "0.375rem",
   // The hover-fill transition lives in the class-scoped <style> block,

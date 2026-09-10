@@ -180,10 +180,11 @@
    * for this; the ring had to go opaque and would have turned the hover
    * track solid blue. */
   --stagebook-primary-tint: rgba(37, 99, 235, 0.25);
-  /* Minimum height for interactive rows. 2.25rem (36px) balances HIG's
-   * 44px touch target against vertical density on long Likert scales;
-   * mobile-first deployments can override to "2.75rem". */
-  --stagebook-row-min-height: 2.25rem;
+  /* Minimum border-box height for interactive rows: 2.75rem (44px at
+   * the default root size), following WCAG 2.5.5's enhanced target size.
+   * Includes padding/borders; wrapped content and taller component floors
+   * can grow beyond it. See #632 and the row-target-size ADR. */
+  --stagebook-row-min-height: 2.75rem;
 
   /* Form control surface — kept distinct from --stagebook-bg so hosts can
    * tint controls separately from the page (e.g. darker cards on white). */

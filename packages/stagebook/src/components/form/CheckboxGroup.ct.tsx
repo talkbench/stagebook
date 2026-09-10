@@ -239,7 +239,7 @@ test.describe("CheckboxGroup", () => {
     await expect(legend).toHaveText("Pick all that apply");
   });
 
-  test("row meets touch-target sizing (≥36px tall)", async ({ mount }) => {
+  test("row meets touch-target sizing (44px tall)", async ({ mount }) => {
     const component = await mount(
       <CheckboxGroup options={options} value={[]} onChange={() => {}} />,
     );
@@ -248,7 +248,7 @@ test.describe("CheckboxGroup", () => {
       .first()
       .boundingBox();
     expect(rowBox).not.toBeNull();
-    expect(rowBox!.height).toBeGreaterThanOrEqual(36);
+    expect(rowBox!.height).toBe(44);
   });
 
   test("inline styles survive an aggressive host CSS reset (issue #213)", async ({

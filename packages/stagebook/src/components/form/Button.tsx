@@ -88,12 +88,12 @@ const baseInlineStyle: React.CSSProperties = {
 // Select in the same row by construction, and stays level when a host
 // raises the token for touch. Square by pinning both axes rather than via
 // `aspect-ratio`, whose min-size transfer differs across engines. Padding
-// is zero and the glyph is flex-centered: a 1.25rem glyph leaves 0.5rem
-// on every side, comfortably over the 24×24 floor of WCAG 2.5.8.
+// is zero and the glyph is flex-centered. The default row-height floor
+// raises the natural 38px box to a 44px target (#632).
 // Addition only, one term per contribution: line-height, padding above,
 // padding below, both borders.
 const ICON_BOX = "calc(1.25rem + 0.5rem + 0.5rem + 2px)";
-const ICON_BOX_MIN = "var(--stagebook-row-min-height, 2.25rem)";
+const ICON_BOX_MIN = "var(--stagebook-row-min-height, 2.75rem)";
 const iconInlineStyle: React.CSSProperties = {
   width: ICON_BOX,
   height: ICON_BOX,

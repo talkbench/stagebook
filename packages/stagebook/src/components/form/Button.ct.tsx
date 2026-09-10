@@ -312,7 +312,7 @@ test("icon variant is square and level with a Select in the same row (#622)", as
   expect(button!.width).toBeCloseTo(button!.height, 0);
   expect(button!.height).toBeCloseTo(select!.height, 0);
   // Comfortably above the 24×24 floor of WCAG 2.5.8.
-  expect(button!.width).toBeGreaterThanOrEqual(36);
+  expect(button!.width).toBeGreaterThanOrEqual(44);
 });
 
 test("icon variant grows with --stagebook-row-min-height, alongside the Select", async ({
@@ -361,7 +361,7 @@ test("icon variant stays square with a narrow text glyph", async ({
   const box = await component.getByRole("button").boundingBox();
   expect(box).not.toBeNull();
   expect(box!.width).toBeCloseTo(box!.height, 0);
-  expect(box!.width).toBeGreaterThanOrEqual(36);
+  expect(box!.width).toBeGreaterThanOrEqual(44);
 });
 
 test("icon variant does not shrink inside a flex row", async ({ mount }) => {
@@ -379,7 +379,7 @@ test("icon variant does not shrink inside a flex row", async ({ mount }) => {
   );
   const box = await component.getByRole("button").boundingBox();
   expect(box).not.toBeNull();
-  expect(box!.width).toBeGreaterThanOrEqual(36);
+  expect(box!.width).toBeGreaterThanOrEqual(44);
   expect(box!.width).toBeCloseTo(box!.height, 0);
 });
 

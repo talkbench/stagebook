@@ -107,7 +107,8 @@ const selectBaseStyle: React.CSSProperties = {
   textOverflow: "ellipsis",
   // Touch-target sizing — reuses the same token as RadioGroup /
   // CheckboxGroup so the three families agree on row height.
-  minHeight: "var(--stagebook-row-min-height, 2.25rem)",
+  boxSizing: "border-box",
+  minHeight: "var(--stagebook-row-min-height, 2.75rem)",
   padding: "0.5rem 2rem 0.5rem 0.75rem",
   // Border longhands rather than the `border` shorthand. The focus
   // state below overrides `borderColor` (longhand); mixing shorthand
@@ -259,12 +260,10 @@ export function Select({
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            /* Border-box, so the token IS the row height rather than the
-             * content height with padding stacked on top (44px, which
-             * read as over-spaced in a single-line list). 2.25rem is the
-             * touch target the token's comment describes. */
+            /* The 44px target includes padding; long option labels can
+             * grow beyond that minimum (#632). */
             box-sizing: border-box;
-            min-height: var(--stagebook-row-min-height, 2.25rem);
+            min-height: var(--stagebook-row-min-height, 2.75rem);
             padding: 0.25rem 0.5rem;
             border-radius: 0.375rem;
             color: var(--stagebook-text, #1f2937);
