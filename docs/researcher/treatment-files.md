@@ -265,7 +265,7 @@ Each game stage has:
 | Field        | Type    | Required | Description                                                                       |
 | ------------ | ------- | -------- | --------------------------------------------------------------------------------- |
 | `name`       | string  | yes      | Identifier for logging (not shown to participants)                                |
-| `duration`   | integer | yes      | Stage length in seconds                                                           |
+| `duration`   | integer | yes      | Stage length in seconds (minimum 5)                                               |
 | `discussion` | object  | no       | Video/text chat configuration (see [Discussions](discussions.md))                 |
 | `elements`   | array   | yes      | UI elements displayed during the stage                                            |
 | `notes`      | string  | no       | Researcher-facing rationale, citations, or design decisions (see [Notes](#notes)) |

@@ -526,7 +526,7 @@ describe("getTreatmentDurations", () => {
   });
 
   test("gameSeconds stays finite and JSON-safe under an enormous sum", () => {
-    // `durationSchema` is `z.number().int().positive()` with no upper
+    // `durationSchema` is `z.number().int().min(5)` with no upper
     // bound, and `Number.isInteger(1e308)` is true — so this file is
     // schema-valid. An `Infinity` here would reach a host as `null`
     // through JSON, and `now + Infinity` is a nonsense room expiry.

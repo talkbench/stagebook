@@ -880,3 +880,35 @@ describe("resolved groupComposition enforces the self-only rule (#526)", () => {
     expect(result.success).toBe(true);
   });
 });
+
+// ----------- Resolved stage duration floor (#588) -----------
+//
+// `resolvedStageSchema.duration` reuses `durationSchema` without the
+// `${field}` escape hatch, so the 5-second floor applies post-fill too — a
+// template field that substitutes in `3` is caught here.
+
+describe("resolvedStageSchema enforces the 5-second duration floor (#588)", () => {
+  const stage = (duration: number) => ({
+    name: "stage1",
+    duration,
+    elements: [{ type: "submitButton" }],
+  });
+
+  test("rejects a 4-second resolved stage with the author-facing message", () => {
+    const result = resolvedStageSchema.safeParse(stage(4));
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find(
+        (i) => i.path.join(".") === "duration",
+      );
+      expect(issue).toBeDefined();
+      expect(issue?.message).toContain(
+        "Stage duration must be at least 5 seconds",
+      );
+    }
+  });
+
+  test("accepts a 5-second resolved stage", () => {
+    expect(resolvedStageSchema.safeParse(stage(5)).success).toBe(true);
+  });
+});

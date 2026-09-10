@@ -5,6 +5,7 @@ import {
   conditionSchema,
   conditionsSchema,
   discussionSchema,
+  durationSchema,
   elementsSchema,
   elementSchema,
   introExitStepSchema,
@@ -1281,6 +1282,64 @@ test("elementsSchema accepts timeline alongside mediaPlayer", () => {
     { type: "submitButton", buttonText: "Submit" },
   ]);
   if (!result.success) console.log(result.error.message);
+  expect(result.success).toBe(true);
+});
+
+// ----------- Stage duration floor (#588) -----------
+//
+// A stage of 1-4 seconds cannot be perceived or acted on, so it is an
+// authoring error every time (a typo or a ms/s mix-up). The floor is set on
+// the DSL's own terms; it also happens to be >= every known host's floor.
+
+test("durationSchema rejects a duration below 5 seconds with an author-facing message", () => {
+  const result = durationSchema.safeParse(4);
+  expect(result.success).toBe(false);
+  if (!result.success) {
+    expect(result.error.issues[0]?.message).toContain(
+      "Stage duration must be at least 5 seconds",
+    );
+  }
+});
+
+test("durationSchema accepts exactly 5 seconds", () => {
+  expect(durationSchema.safeParse(5).success).toBe(true);
+});
+
+test("stageSchema rejects a 4-second stage and points at `duration`", () => {
+  const result = stageSchema.safeParse({
+    name: "blink",
+    duration: 4,
+    elements: [{ type: "submitButton" }],
+  });
+  expect(result.success).toBe(false);
+  if (!result.success) {
+    const issue = result.error.issues.find(
+      (i) => i.path.join(".") === "duration",
+    );
+    expect(issue).toBeDefined();
+    expect(issue?.message).toContain(
+      "Stage duration must be at least 5 seconds",
+    );
+  }
+});
+
+test("stageSchema accepts a 5-second stage", () => {
+  const result = stageSchema.safeParse({
+    name: "probe",
+    duration: 5,
+    elements: [{ type: "submitButton" }],
+  });
+  if (!result.success) console.log(result.error.issues);
+  expect(result.success).toBe(true);
+});
+
+test("stageSchema still accepts a `${field}` placeholder duration (authoring form)", () => {
+  const result = stageSchema.safeParse({
+    name: "templated",
+    duration: "${stageLength}",
+    elements: [{ type: "submitButton" }],
+  });
+  if (!result.success) console.log(result.error.issues);
   expect(result.success).toBe(true);
 });
 

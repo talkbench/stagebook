@@ -97,6 +97,34 @@ treatments:
       expect(rangedErrors.length).toBeGreaterThan(0);
     });
 
+    it("reports a sub-5-second stage duration on the `duration:` line (#588)", () => {
+      const src = `introSequences:
+  - name: intro1
+    introSteps:
+      - name: welcome
+        elements:
+          - type: submitButton
+treatments:
+  - name: study1
+    playerCount: 1
+    gameStages:
+      - name: stage1
+        duration: 4
+        elements:
+          - type: submitButton`;
+      const result = validateTreatmentSource(src);
+      const durationError = result.diagnostics.find((d) =>
+        d.message.includes("Stage duration must be at least 5 seconds"),
+      );
+      expect(durationError).toBeDefined();
+      expect(durationError!.severity).toBe("error");
+      // The squiggle lands on the offending value, not an ancestor.
+      const durationLine = src
+        .split("\n")
+        .findIndex((l) => l.includes("duration: 4"));
+      expect(durationError!.range?.startLine).toBe(durationLine);
+    });
+
     it("reports invalid element types", () => {
       const src = `introSequences:
   - name: intro1
