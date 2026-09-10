@@ -10,6 +10,27 @@ const options = [
 ];
 
 test.describe("Select", () => {
+  test("lets the host own the caption gap (#605)", async ({ mount }) => {
+    const component = await mount(
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <label htmlFor="device">Microphone</label>
+        <Select id="device" options={options} onChange={() => {}} />
+      </div>,
+    );
+    const label = await component.locator("label").boundingBox();
+    const select = await component.getByRole("combobox").boundingBox();
+    expect(select!.y - (label!.y + label!.height)).toBeCloseTo(4, 1);
+  });
+
+  test("keeps the built-in label gap (#605)", async ({ mount }) => {
+    const component = await mount(
+      <Select label="Microphone" options={options} onChange={() => {}} />,
+    );
+    const label = await component.locator("label").boundingBox();
+    const select = await component.getByRole("combobox").boundingBox();
+    expect(select!.y - (label!.y + label!.height)).toBeCloseTo(8, 1);
+  });
+
   test("renders all options", async ({ mount }) => {
     const component = await mount(
       <Select options={options} onChange={() => {}} />,
