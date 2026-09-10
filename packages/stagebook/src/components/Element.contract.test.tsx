@@ -86,3 +86,35 @@ describe("Element → Qualtrics attributes wiring (#473)", () => {
     consoleError.mockRestore();
   });
 });
+
+// #584: `discussion` is a stage-level key rendered by Stage.tsx, NOT an
+// element type — `elementSchema`'s discriminated union has no `discussion`
+// member. Downstream hosts rely on at most one discussion rendering per
+// stage, so an element config that claims `type: "discussion"` must take the
+// unknown-type path rather than reach the host's `renderDiscussion` slot.
+describe("Element → no element-level discussion (#584)", () => {
+  test('`type: "discussion"` does not invoke renderDiscussion and falls through to the unknown-type path', () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const renderDiscussion = vi.fn(() => <div data-testid="discussion" />);
+    const ctx = makeContext({ renderDiscussion });
+
+    const container = document.createElement("div");
+    act(() => {
+      createRoot(container).render(
+        <StagebookProvider value={ctx}>
+          <Element
+            element={{ type: "discussion", chatType: "video" }}
+            onSubmit={() => {}}
+          />
+        </StagebookProvider>,
+      );
+    });
+
+    expect(renderDiscussion).not.toHaveBeenCalled();
+    expect(container.innerHTML).toBe("");
+    expect(consoleWarn).toHaveBeenCalledWith(
+      "Unknown element type: discussion",
+    );
+    consoleWarn.mockRestore();
+  });
+});
