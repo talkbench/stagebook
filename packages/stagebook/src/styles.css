@@ -158,7 +158,11 @@
    * next release. */
   --stagebook-decoration: var(--stagebook-text-faint, var(--sb-gray-400));
 
-  /* Borders and backgrounds */
+  /* Borders and backgrounds. --stagebook-bg is the page: components take
+   * the page to be painted with it (the focus halo's spacer is drawn in
+   * it, and the a11y gate measures every indicator that sits on the page
+   * against it), so a host whose page is another colour retunes this
+   * token rather than leaving it. */
   --stagebook-border: var(--sb-gray-300);
   --stagebook-bg: var(--sb-white);
   --stagebook-bg-muted: var(--sb-gray-50);

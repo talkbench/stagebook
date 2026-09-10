@@ -946,7 +946,8 @@ test.describe("Select: picker (#627)", () => {
     );
     expect(outlineOffset).toBeLessThan(0);
     // The walked row also takes the hover fill, so the ring sits on
-    // hover-bg — the pairing the palette gate asserts.
+    // hover-bg — the fill a11y.gate.ct.tsx reads the row's text and
+    // checkmark against.
     await expect(focusedRow).toHaveCSS(
       "background-color",
       "rgb(243, 244, 246)",
