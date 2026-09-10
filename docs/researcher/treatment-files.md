@@ -183,7 +183,8 @@ consent:
             buttonText: I consent
             conditions:
               - reference: self.prompt.acknowledge
-                comparator: exists
+                comparator: includes
+                value: I have read and understood the information above
 ```
 
 - **The host selects one arm by name** (a `consentName`-style batch-config field). Arm names must be unique within `consent:` only — collection namespaces are separate, so a consent arm, an intro sequence, and a treatment may all be named `default`.
@@ -193,7 +194,7 @@ consent:
 
 ### The gated-submit pattern
 
-The example above is the sanctioned way to gate consent: an "I consent" submit button conditioned on an acknowledgement prompt in the same step. Element conditions re-evaluate live against in-memory responses, so the button appears as soon as the acknowledgement is selected — no extra machinery. Multi-step arms work the same way: a later consent step may reference responses from an earlier step in the same arm.
+The example above uses a separate `select: multiple` acknowledgement prompt, with a checkbox whose option text is exactly `I have read and understood the information above`. The "I consent" submit button is conditioned on that option in the same step. Element conditions re-evaluate live against in-memory responses, so the button appears as soon as the acknowledgement is selected — no extra machinery. Multi-step arms work the same way: a later consent step may reference responses from an earlier step in the same arm.
 
 > **`exists` suits a single-choice acknowledgement** (the default for `multipleChoice`). If the acknowledgement is a `select: multiple` checkbox list, gate on `includes` with the option text instead: a box that is checked and then unchecked leaves an empty list, which still `exists`, so the button would stay available with nothing acknowledged.
 
@@ -231,6 +232,8 @@ confidentiality, contact details.)
 
 - I have read the information above and agree to take part
 ```
+
+For a complete example validated in CI, see the [annotated walkthrough](../../examples/annotated-walkthrough/README.md#consent-acknowledgement), its [consent arm](../../examples/annotated-walkthrough/walkthrough.stagebook.yaml), and its [combined consent prompt](../../examples/annotated-walkthrough/prompts/consent.prompt.md).
 
 Two things follow from the single-prompt layout:
 

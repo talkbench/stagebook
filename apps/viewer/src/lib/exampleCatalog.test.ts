@@ -165,7 +165,7 @@ describe("exampleCatalog (discovered via import.meta.glob)", () => {
     expect(walkthrough?.notes).toBeTruthy();
     // Every referenced prompt is bundled.
     expect(walkthrough?.prompts["prompts/consent.prompt.md"]).toContain(
-      "noResponse",
+      "type: multipleChoice",
     );
   });
 

@@ -130,7 +130,7 @@ templates:
                 - reference: 0.prompt.${topic}_changed
                   comparator: exists
                 - reference:
-                    position: '1'
+                    position: "1"
                     source: prompt
                     name: ${topic}_changed
                     path:
@@ -169,6 +169,38 @@ templates:
             - type: qualtrics
               name: exit_qualtrics
               url: https://example.qualtrics.com/jfe/form/SV_example
+consent:
+  - name: study-consent
+    locale: en
+    notes: |
+      Consent runs before onboarding; the host selects this arm by name.
+      Its responses are audit-only: intro, game, and exit steps cannot
+      reference them. The viewer previews consent as its own unit.
+    steps:
+      - name: Consent
+        notes: |
+          The consent text and acknowledgement live in one single-choice
+          prompt, so the saved prompt body records what was agreed to.
+          The submit button appears only after the participant selects
+          the acknowledgement in this same step.
+        elements:
+          - type: prompt
+            name: consentAcknowledgement
+            file: prompts/consent.prompt.md
+            notes: |
+              A multipleChoice prompt defaults to single selection.
+              Its body is the consent text; its one option is the
+              participant's active acknowledgement.
+          - type: submitButton
+            buttonText: I AGREE
+            conditions:
+              - reference: self.prompt.consentAcknowledgement
+                comparator: exists
+            notes: |
+              This same-step condition re-evaluates live. `exists` is
+              appropriate for a single choice. For `select: multiple`
+              checkboxes, use `includes` with the required option text:
+              unchecking every box saves [], which still exists.
 introSequences:
   - name: onboarding
     notes: |
@@ -178,13 +210,6 @@ introSequences:
       `submitButton`, a `survey`, a `qualtrics`, or a `mediaPlayer`
       with `submitOnComplete: true`.
     introSteps:
-      - name: Consent
-        elements:
-          - type: prompt
-            file: prompts/consent.prompt.md
-            notes: Informational `noResponse` prompt — text only, no input collected.
-          - type: submitButton
-            buttonText: I consent
       - name: Familiarity
         elements:
           - type: prompt

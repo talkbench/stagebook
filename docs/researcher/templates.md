@@ -159,7 +159,8 @@ templates:
               buttonText: ${agreeLabel}
               conditions:
                 - reference: self.prompt.acknowledge
-                  comparator: exists
+                  comparator: includes
+                  value: ${acknowledgementText}
 
 consent:
   - template: localized-consent
@@ -167,11 +168,15 @@ consent:
       d0:
         - locale: en
           agreeLabel: I consent
+          acknowledgementText: I have read and understood the information above
         - locale: he
           agreeLabel: אני מסכים/ה
+          acknowledgementText: קראתי והבנתי את המידע שלמעלה
 ```
 
 This expands to two arms, `consent-en` and `consent-he`, structurally identical by construction — edit the template once and every locale updates together. Element names may repeat across arms (a participant only ever sees one arm, so `acknowledge` in both is not a collision). The host selects an arm by name at batch time. The related content type `consent` (the whole array) works the same way for reusing a larger block, as does `exitSteps` for a run of exit steps — including the trailing debrief steps. To fold the consent text into the acknowledgement prompt itself — so the agreed-to text is saved with the response — see [the gated-submit pattern](treatment-files.md#the-gated-submit-pattern); the template shape is unchanged, just one `prompt` element fewer.
+
+Here `acknowledge.prompt.md` is a `select: multiple` checkbox prompt. Each `acknowledgementText` must match its locale's option text exactly. `includes` makes the button disappear again if the participant unchecks the acknowledgement; `exists` would accept the resulting empty list. The [i18n gallery](../../examples/i18n-gallery/i18n-gallery.stagebook.yaml) is a validated example of this two-prompt pattern.
 
 ## The `prefix:` convention for reusable modules
 
