@@ -19,9 +19,11 @@ on:
 # so they are never cancelled or queued behind each other — a cancelled merge-
 # queue run would fail `CI Gate` and eject the PR from the queue. Keyed on
 # `github.workflow` so this workflow only ever cancels its own runs, not
-# validate-examples.yml's.
+# validate-examples.yml's. Keyed on the PR number rather than `github.head_ref`:
+# branch names are author-chosen and not fork-unique, so two forks' `patch-1`
+# PRs would share a group and cancel each other's runs.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Declared here rather than inherited from the org/repo default, which is

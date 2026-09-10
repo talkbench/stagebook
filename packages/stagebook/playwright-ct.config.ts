@@ -1,5 +1,16 @@
 import { defineConfig, devices } from "@playwright/experimental-ct-react";
 
+// Validated rather than coerced: `Number("3l23")` is NaN, which ct-core
+// treats as unset and quietly falls back to 3100 — the shared port this
+// override exists to escape — with no sign the value was ignored.
+const rawCtPort = process.env.PW_CT_PORT;
+const ctPort = rawCtPort ? Number(rawCtPort) : 3110;
+if (!Number.isInteger(ctPort) || ctPort < 1 || ctPort > 65535) {
+  throw new Error(
+    `PW_CT_PORT must be a port number (1-65535), got ${JSON.stringify(rawCtPort)}`,
+  );
+}
+
 export default defineConfig({
   testDir: "./src",
   testMatch: "**/*.ct.tsx",
@@ -19,7 +30,7 @@ export default defineConfig({
     // Playwright's default and what sibling repos (talkbench/runner) use, so
     // default to a repo-distinct port and let a second worktree of this repo
     // pick its own: `PW_CT_PORT=3123 npm run test:ct`. See #603.
-    ctPort: Number(process.env.PW_CT_PORT || 3110),
+    ctPort,
   },
   projects: [
     {
