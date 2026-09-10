@@ -452,3 +452,33 @@ test("font respects --stagebook-font override", async ({ mount }) => {
   );
   expect(fontFamily).toMatch(/Helvetica/);
 });
+
+test("prefers-reduced-motion switches the focus-ring transition off (#630)", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(<TextArea />);
+  const textarea = component.locator("textarea");
+  // Pinned in both directions: the 120ms halo is a baked-in instrument
+  // constant, so deleting the transition can't pass as "fixing" the
+  // reduced-motion override.
+  await expect(textarea).toHaveCSS("transition-duration", "0.12s");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(textarea).toHaveCSS("transition-duration", "0s");
+});
+
+test("box metrics render at their pinned pixel values (#593)", async ({
+  mount,
+}) => {
+  // Literal px on purpose, not derived from TEXTAREA_METRICS: deriving
+  // would only prove the textarea reads the constant, never that the
+  // constant is what we think it is. The runner pins its CodeMirror
+  // theme and the viewer's notepad stand-in to these same numbers.
+  const component = await mount(<TextArea />);
+  const textarea = component.locator("textarea");
+  await expect(textarea).toHaveCSS("font-size", "14px");
+  await expect(textarea).toHaveCSS("line-height", "20px");
+  await expect(textarea).toHaveCSS("padding", "8px 12px");
+  await expect(textarea).toHaveCSS("border-radius", "6px");
+  await expect(textarea).toHaveCSS("border-width", "1px");
+});

@@ -85,9 +85,10 @@ const radioRowStyle: React.CSSProperties = {
   minHeight: "var(--stagebook-row-min-height, 2.25rem)",
   padding: "0.25rem 0.5rem",
   borderRadius: "0.375rem",
-  // Smooth the hover-fill transition; respects prefers-reduced-motion
-  // via the media query in the style block below.
-  transition: "background-color 120ms ease-out",
+  // The hover-fill transition lives in the class-scoped <style> block,
+  // not here: an inline `transition` outranks the class rule that turns
+  // it off under prefers-reduced-motion, so that override never
+  // applied (#630).
 };
 
 export function RadioGroup({
@@ -117,6 +118,10 @@ export function RadioGroup({
   const inputClass = `stagebook-radio-input-${safeId}`;
   const groupId = id ?? `radioGroup-${reactId}`;
   const labelId = `${groupId}-label`;
+  // The group label carries `labelId` for the radiogroup's
+  // aria-labelledby and no `htmlFor`: it names a group, not a single
+  // control, and nothing carries id={groupId} — the reference dangled
+  // and the association was invalid HTML (#595).
   // `data-testid` keeps the literal default ("radioGroup") for
   // back-compat with existing tests; only the HTML `id`/`name` need
   // to be DOM-unique.
@@ -129,6 +134,9 @@ export function RadioGroup({
       style={{ marginTop: "1rem" }}
     >
       <style>{`
+        .${rowClass} {
+          transition: background-color 120ms ease-out;
+        }
         .${rowClass}:hover {
           background-color: var(--stagebook-hover-bg, #f3f4f6);
         }
@@ -144,7 +152,6 @@ export function RadioGroup({
       {label && (
         <label
           id={labelId}
-          htmlFor={groupId}
           style={{
             display: "block",
             fontSize: "1rem",

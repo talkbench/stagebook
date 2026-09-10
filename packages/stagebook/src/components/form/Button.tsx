@@ -75,9 +75,10 @@ const baseInlineStyle: React.CSSProperties = {
   fontSize: "0.875rem",
   fontWeight: 500,
   borderRadius: "0.375rem",
-  // The reduced-motion media query in the <style> block disables
-  // these transitions.
-  transition: "background-color 120ms ease-out, box-shadow 120ms ease-out",
+  // The hover / focus transitions live in the class-scoped <style>
+  // block, not here: an inline `transition` outranks the class rule
+  // that turns them off under prefers-reduced-motion, so that override
+  // never applied (#630).
 };
 
 // Icon-only geometry (#622), layered over the base style. The box is a
@@ -177,6 +178,9 @@ export function Button({
           background-color: var(--stagebook-primary, #2563eb);
           border-color: transparent;
           box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+          transition:
+            background-color 120ms ease-out,
+            box-shadow 120ms ease-out;
         }
         .${buttonClass}[data-variant="secondary"] {
           color: var(--stagebook-text-secondary, #374151);

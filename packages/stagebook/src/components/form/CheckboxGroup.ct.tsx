@@ -278,3 +278,60 @@ test.describe("CheckboxGroup", () => {
     expect(borderRadius).not.toBe("0px");
   });
 });
+
+test.describe("CheckboxGroup: label validity, null value, reduced motion", () => {
+  test("group label carries no dangling for/id reference (#595)", async ({
+    mount,
+  }) => {
+    // The group label names the group through aria-labelledby. A `for`
+    // attribute pointing at an id nothing carries is invalid HTML and
+    // focuses nothing when the label is clicked.
+    const component = await mount(
+      <CheckboxGroup options={options} onChange={() => {}} label="Pick some" />,
+    );
+    // `HTMLLabelElement.control` is null both when the id is missing and
+    // when it points at something that isn't labelable, so the browser
+    // judges validity rather than a lookup a stray id could satisfy.
+    const dangling = await component.evaluate((root) =>
+      Array.from(root.querySelectorAll<HTMLLabelElement>("label[for]"))
+        .filter((l) => l.control === null)
+        .map((l) => l.getAttribute("for")),
+    );
+    expect(dangling).toEqual([]);
+  });
+
+  test("value={null} renders nothing checked instead of throwing (#606)", async ({
+    mount,
+  }) => {
+    // JS consumers can pass null before async data arrives. The default
+    // parameter only covers `undefined`, so null must be guarded too.
+    const component = await mount(
+      <CheckboxGroup
+        options={options}
+        value={null as unknown as string[]}
+        onChange={() => {}}
+      />,
+    );
+    const boxes = component.locator('input[type="checkbox"]');
+    await expect(boxes).toHaveCount(3);
+    for (const box of await boxes.all()) {
+      await expect(box).not.toBeChecked();
+    }
+  });
+
+  test("prefers-reduced-motion switches the row's hover transition off (#630)", async ({
+    mount,
+    page,
+  }) => {
+    const component = await mount(
+      <CheckboxGroup options={options} onChange={() => {}} />,
+    );
+    const row = component.locator('[data-testid="option"]').first();
+    // Pinned in both directions: the 120ms fill is a baked-in instrument
+    // constant, so deleting the transition can't pass as "fixing" the
+    // reduced-motion override.
+    await expect(row).toHaveCSS("transition-duration", "0.12s");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(row).toHaveCSS("transition-duration", "0s");
+  });
+});

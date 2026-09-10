@@ -168,6 +168,9 @@ export function Slider({
            rule below isn't blocked by inline-style specificity. */
         .${trackClass} {
           background-color: var(--stagebook-bg-track, #e5e7eb);
+          transition:
+            background-color 120ms ease-out,
+            box-shadow 120ms ease-out;
         }
         /* Hover track uses a primary-tinted color rather than a darker
            gray. A darker-gray track would blend visually with the gray
@@ -187,6 +190,7 @@ export function Slider({
            per-instance <style> block doesn't paint other sliders. */
         .${trackClass} [data-testid="slider-thumb"] {
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+          transition: box-shadow 120ms ease-out;
         }
         /* Focus ring rendered on the visible thumb via the general
            sibling selector — the actual focused element is the
@@ -198,6 +202,7 @@ export function Slider({
           ${focusRingCss("0 2px 4px rgba(0, 0, 0, 0.2)")}
         }
         @media (prefers-reduced-motion: reduce) {
+          .${trackClass}-wrapper,
           .${trackClass},
           .${trackClass} [data-testid="slider-thumb"] {
             transition: none;
@@ -319,12 +324,11 @@ export function Slider({
               position: "relative",
               width: "100%",
               height: `${TRACK_HEIGHT}px`,
-              // backgroundColor lives in the class-scoped <style>
-              // block so the hover rule isn't blocked by inline-style
-              // specificity.
+              // backgroundColor and transition live in the class-scoped
+              // <style> block so the hover rule and the reduced-motion
+              // override aren't blocked by inline-style specificity
+              // (#630).
               borderRadius: `${TRACK_HEIGHT / 2}px`,
-              transition:
-                "background-color 120ms ease-out, box-shadow 120ms ease-out",
             }}
           >
             {/* Snap-point micro-ticks — subtle marks at every snap
@@ -447,11 +451,11 @@ export function Slider({
                   borderWidth: "2px",
                   borderStyle: "solid",
                   borderColor: "white",
-                  // box-shadow lives in the class-scoped <style>
-                  // block above so the focus-ring rule can stack on
-                  // top of the elevation shadow.
+                  // box-shadow and transition live in the class-scoped
+                  // <style> block above so the focus-ring rule can stack
+                  // on top of the elevation shadow and the reduced-motion
+                  // rule can switch the transition off (#630).
                   pointerEvents: "none",
-                  transition: "box-shadow 120ms ease-out",
                 }}
               />
             )}

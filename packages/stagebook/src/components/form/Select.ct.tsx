@@ -1049,3 +1049,55 @@ test.describe("Select: picker (#627)", () => {
     ).toBeGreaterThan(0);
   });
 });
+
+test.describe("Select: always-controlled (#606)", () => {
+  // React gates controlled-ness on `value != null`, so the `value ?? …`
+  // in the implementation is load-bearing: a default parameter only
+  // fires for `undefined`, would let `value={null}` through, and leave
+  // the element uncontrolled — at which point a pick the parent never
+  // adopted sticks (the talkbench/runner#731 bug).
+  test("value={null}: a pick the parent ignores does not stick", async ({
+    mount,
+  }) => {
+    const component = await mount(
+      <Select
+        options={options}
+        value={null as unknown as string}
+        placeholder="Choose…"
+        onChange={() => {}}
+      />,
+    );
+    const select = component.locator("select");
+    await select.selectOption("b");
+    await expect(select).not.toHaveValue("b");
+    // Restored to the controlled value: the disabled placeholder row.
+    await expect(select.locator("option:checked")).toHaveText("Choose…");
+  });
+
+  test("value omitted: the other branch of `??` is controlled too", async ({
+    mount,
+  }) => {
+    const component = await mount(
+      <Select options={options} onChange={() => {}} />,
+    );
+    const select = component.locator("select");
+    await select.selectOption("b");
+    await expect(select).not.toHaveValue("b");
+  });
+
+  test("prefers-reduced-motion switches the trigger's focus transition off (#630)", async ({
+    mount,
+    page,
+  }) => {
+    const component = await mount(
+      <Select options={options} onChange={() => {}} />,
+    );
+    const select = component.locator("select");
+    // Pinned in both directions: the 120ms fill is a baked-in instrument
+    // constant, so deleting the transition can't pass as "fixing" the
+    // reduced-motion override.
+    await expect(select).toHaveCSS("transition-duration", "0.12s");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(select).toHaveCSS("transition-duration", "0s");
+  });
+});

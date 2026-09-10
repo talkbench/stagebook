@@ -484,12 +484,11 @@ export function TextArea({
           lineHeight: `${TEXTAREA_METRICS.lineHeightRem}rem`,
           color: "var(--stagebook-text, #1f2937)",
           resize: "vertical",
-          // Note on `box-shadow`: kept in the class-scoped <style>
-          // block (not inline) so the `:focus-visible` rule can
-          // stack the focus ring on top of the elevation shadow.
-          // Inline `boxShadow` would win specificity over the class
-          // selector, blocking the focus ring.
-          transition: "box-shadow 120ms ease-out",
+          // Note on `box-shadow` and `transition`: both kept in the
+          // class-scoped <style> block (not inline). The `:focus-visible`
+          // rule stacks the focus ring on top of the elevation shadow,
+          // and the prefers-reduced-motion rule turns the transition
+          // off — an inline declaration would outrank either (#630).
         }}
       />
       {renderCharacterCount()}
@@ -499,6 +498,7 @@ export function TextArea({
            losing to an inline-style boxShadow on specificity. */
         .${textareaClass} {
           box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+          transition: box-shadow 120ms ease-out;
         }
         /* Focus ring on the textarea — uses :focus-visible (not
            :focus). Browsers apply :focus-visible to text inputs even
