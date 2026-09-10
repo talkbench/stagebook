@@ -419,6 +419,8 @@ consent:
                 comparator: exists
 ```
 
+Recommended, not required: make the consent text itself the body of that acknowledgement prompt, so the option can only be selected alongside the rendered text and the agreed-to text is saved with the response — see [the gated-submit pattern](treatment-files.md#the-gated-submit-pattern).
+
 References travel the other way only inside consent: a later consent step may read an earlier one in the same arm, but a reference **into** consent from anywhere else — intro, game, exit, or `groupComposition` — is an error. Consent responses are audit-only (see [Consent](treatment-files.md#consent)); if downstream logic needs an answer, collect it in an intro step instead.
 
 ## Stage-level conditions

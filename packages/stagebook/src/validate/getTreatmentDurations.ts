@@ -7,15 +7,29 @@
 // tree, hand the host a fact about the design it would otherwise
 // re-derive itself.
 //
-// A host that provisions infrastructure has runtime bounds the design
-// knows nothing about and has to check the design against them. The
-// concrete case: the runner creates a Daily room per game with a
-// hard-coded one-hour `exp`, and nothing checks a treatment's total
-// stage duration against it — a study longer than 60 minutes loses its
-// room mid-session (talkbench/runner#542 §3). Deriving the number
-// host-side is exactly the rot this family exists to prevent: where
-// durations live, which of them bound a GAME versus a whole session,
-// and how templates expand into stages are all facts about the DSL.
+// A host has bounds the design knows nothing about and has to check
+// the design against them, and nothing sums a treatment's stage
+// durations for it unless it asks the design. Two concrete consumers:
+//
+//   * PAYMENT / TOTAL PARTICIPANT TIME. The manager estimates what a
+//     session asks of a participant: the game sum plus its own
+//     per-step estimate over the self-paced counts (see below). A
+//     design fact, so this consumer does not rot with the runtime.
+//   * A PER-GAME RESOURCE BOUND. The runner creates a Daily room per
+//     game with a 24-hour `exp` (`ROOM_EXP_SECONDS` in its Daily
+//     provider). Daily's `exp` is a JOIN CUTOFF, not a session cap: an
+//     in-progress call survives it, because the runner does not set
+//     `eject_at_room_exp`, but no NEW connection succeeds after it —
+//     and a recovery reconnect is a new connection. So a game that
+//     outlasts the cutoff has a rejoin that fails even though the call
+//     itself would have survived (runner `VENDOR-BEHAVIOUR.md`
+//     D11/D12). Whether a design can reach that ceiling is a fact
+//     about the design, and this report is how a host learns it.
+//
+// Deriving the number host-side is exactly the rot this family exists
+// to prevent: where durations live, which of them bound a GAME versus
+// a whole session, and how templates expand into stages are all facts
+// about the DSL.
 //
 // UPPER BOUND, NOT A PREDICTION. Every number here is the most the
 // design can consume, never the expected value:
@@ -67,26 +81,30 @@
 // matters most here is the quiet one: a caller passes a merely
 // import-merged tree whose arms are still template INVOCATIONS
 // (`- template: std`), every list this reads is absent, and a
-// zero-everything report sails back. The runner would compute
-// `max(3600, 0 + slack)` and silently fall back to exactly the
-// hard-coded hour #585 exists to remove. So an arm position whose
-// contents can't be read counts as one unit AND raises the matching
-// `unresolved*` flag for its phase: no position is ever dropped in
-// silence.
+// zero-everything report sails back. A host sizing a resource as
+// `max(floor, 0 + slack)` would silently fall back to its own fixed
+// constant — the stand-in for the design's number that #585 exists to
+// replace — and a participant-time estimate would price the game at
+// nothing. So an arm position whose contents can't be read counts as
+// one unit AND raises the matching `unresolved*` flag for its phase: no
+// position is ever dropped in silence.
 
 /** Everything the DSL can tell a host about one scope's length. All
  *  values are UPPER BOUNDS (see the file header). */
 export interface TreatmentDurations {
   /**
    * Upper bound on a GAME's wall-clock length, in seconds: the sum of
-   * every `gameStages[].duration` in scope. This is the number a
-   * per-game runtime resource must cover — the runner's Daily room
-   * `exp`, which is stamped at game start (talkbench/runner#542 §3).
-   * Always zero for an intro sequence or consent arm; neither hosts
-   * game stages. Guaranteed finite and JSON-safe: a sum that would
-   * exceed `Number.MAX_SAFE_INTEGER` is clamped there and flagged in
-   * `unresolvedStages` rather than escaping as `Infinity` (which
-   * `JSON.stringify` would hand a host as `null`).
+   * every `gameStages[].duration` in scope. This is the timed part of
+   * a host's total-participant-time estimate, and the number a
+   * per-game runtime resource must cover — e.g. the runner's Daily
+   * room `exp`, stamped at room creation as a 24-hour JOIN CUTOFF (the
+   * call survives it; a recovery rejoin after it does not — runner
+   * `VENDOR-BEHAVIOUR.md` D11). Always zero for an intro sequence or
+   * consent arm; neither hosts game stages. Guaranteed finite and
+   * JSON-safe: a sum that would exceed `Number.MAX_SAFE_INTEGER` is
+   * clamped there and flagged in `unresolvedStages` rather than
+   * escaping as `Infinity` (which `JSON.stringify` would hand a host as
+   * `null`).
    */
   gameSeconds: number;
   /** How many game stages are in scope, whether or not each one's

@@ -195,6 +195,48 @@ consent:
 
 The example above is the sanctioned way to gate consent: an "I consent" submit button conditioned on acknowledgement checkboxes in the same step. Element conditions re-evaluate live against in-memory responses, so the button enables as soon as the boxes are checked — no extra machinery. Multi-step arms work the same way: a later consent step may reference responses from an earlier step in the same arm.
 
+**Recommended: make the consent text the acknowledgement prompt's body.** The example above keeps the consent information and the acknowledgement in two prompt files. The recommended variant folds them into one `multipleChoice` prompt whose body _is_ the full consent text and whose single option is the acknowledgement, with the submit gated on that prompt's key:
+
+```yaml
+consent:
+  - name: consent-en
+    locale: en
+    steps:
+      - name: consent
+        elements:
+          - type: prompt
+            file: consent/en/consent_acknowledge.prompt.md # the consent text IS this prompt's body
+            name: consentAcknowledgement
+          - type: submitButton
+            buttonText: I agree
+            conditions:
+              - reference: self.prompt.consentAcknowledgement
+                comparator: exists
+```
+
+```markdown
+---
+type: multipleChoice
+name: consentAcknowledgement
+---
+
+# Consent to participate
+
+(The full consent text: purpose, procedures, risks and benefits,
+confidentiality, contact details.)
+
+---
+
+- I have read the information above and agree to take part
+```
+
+Two things follow from the single-prompt layout:
+
+- **Active acknowledgement.** The option renders only alongside the text, and the button can't enable until it is selected, so a reflexive click can't advance the step.
+- **Provenance.** A prompt's saved record carries its body next to the response, so the exact text the participant agreed to is stored with the acknowledgement — [the responses are the record](#the-responses-are-the-record), with nothing extra to keep in sync.
+
+This is a recommendation, not a requirement: nothing enforces it, and the two-prompt form above is equally valid. If the acknowledgement is a `select: multiple` checkbox rather than the default single choice, gate on `includes` with the option text instead of `exists` — a box that is unchecked again leaves an empty list, which still `exists`.
+
 ### Consent responses are audit-only
 
 Consent responses join the same flat key namespace as everything else and ride the normal save/export machinery — but they are a **closed scope**. Referencing a consent key from anywhere outside consent (intro, game, exit, `groupComposition`) is a validation error. Within-arm references are legal (that's the gating pattern), and consent steps can't reference later-phase data (consent runs first). If a decision downstream should depend on something a participant tells you, ask it in an intro step, not in consent.
