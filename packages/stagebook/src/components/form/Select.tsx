@@ -137,9 +137,10 @@ const selectBaseStyle: React.CSSProperties = {
   backgroundRepeat: "no-repeat",
   backgroundPosition: "right 0.5rem center",
   backgroundSize: "1.25em",
-  // Smooth box-shadow transition on focus; respects
-  // prefers-reduced-motion via the media query in the style block.
-  transition: "box-shadow 120ms ease-out",
+  // The focus box-shadow transition lives in the class-scoped <style>
+  // block, not here: an inline `transition` outranks the class rule
+  // that turns it off under prefers-reduced-motion, so that override
+  // never applied (#630).
 };
 
 export function Select({
@@ -208,6 +209,9 @@ export function Select({
           -webkit-appearance: none;
           appearance: none;
           appearance: base-select;
+        }
+        .${triggerClass} {
+          transition: box-shadow 120ms ease-out;
         }
         .${triggerClass}:focus-visible {
           ${focusRingCss()}

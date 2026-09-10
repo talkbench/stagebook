@@ -81,14 +81,15 @@ const checkboxRowStyle: React.CSSProperties = {
   minHeight: "var(--stagebook-row-min-height, 2.25rem)",
   padding: "0.25rem 0.5rem",
   borderRadius: "0.375rem",
-  // Smooth hover-fill transition; respects prefers-reduced-motion
-  // via the media query in the style block below.
-  transition: "background-color 120ms ease-out",
+  // The hover-fill transition lives in the class-scoped <style> block,
+  // not here: an inline `transition` outranks the class rule that turns
+  // it off under prefers-reduced-motion, so that override never
+  // applied (#630).
 };
 
 export function CheckboxGroup({
   options,
-  value = [],
+  value,
   onChange,
   label = "",
   layout = "vertical",
@@ -96,6 +97,10 @@ export function CheckboxGroup({
   "data-testid": dataTestId,
 }: CheckboxGroupProps) {
   const isRTL = useIsRTL();
+  // A default parameter only covers `undefined`. A JS consumer can hand
+  // over `null` before async data arrives, and `null.includes` would
+  // take the stage down; treat both as "nothing selected" (#606).
+  const selected = value ?? [];
   // Stable per-instance id for the group + label association.
   const reactId = useId();
   // `useId` returns an opaque string the React docs explicitly call
@@ -107,13 +112,17 @@ export function CheckboxGroup({
   const inputClass = `stagebook-checkbox-input-${safeId}`;
   const groupId = id ?? `checkboxGroup-${reactId}`;
   const labelId = `${groupId}-label`;
+  // The group label carries `labelId` for the group's aria-labelledby
+  // and no `htmlFor`: it names a group, not a single control, and
+  // nothing carries id={groupId} — the reference dangled and the
+  // association was invalid HTML (#595).
   // `data-testid` keeps the literal default ("checkboxGroup") for
   // back-compat with existing tests; only the HTML `id` needs to be
   // DOM-unique.
   const testId = dataTestId ?? "checkboxGroup";
 
   const handleToggle = (key: string) => {
-    const selectedSet = new Set(value);
+    const selectedSet = new Set(selected);
     if (selectedSet.has(key)) {
       selectedSet.delete(key);
     } else {
@@ -129,6 +138,9 @@ export function CheckboxGroup({
       style={{ marginTop: "1rem" }}
     >
       <style>{`
+        .${rowClass} {
+          transition: background-color 120ms ease-out;
+        }
         .${rowClass}:hover {
           background-color: var(--stagebook-hover-bg, #f3f4f6);
         }
@@ -144,7 +156,6 @@ export function CheckboxGroup({
       {label && (
         <label
           id={labelId}
-          htmlFor={groupId}
           style={{
             display: "block",
             fontSize: "1rem",
@@ -172,7 +183,7 @@ export function CheckboxGroup({
         }}
       >
         {options.map(({ key, value: optionValue }) => {
-          const checked = value.includes(key);
+          const checked = selected.includes(key);
           return (
             <label
               key={`${groupId}_${key}`}

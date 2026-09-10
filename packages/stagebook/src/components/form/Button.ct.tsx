@@ -540,3 +540,15 @@ test("a named icon button reports nothing", async ({ mount, page }) => {
   await page.waitForTimeout(100);
   expect(errors).toEqual([]);
 });
+
+test("prefers-reduced-motion: hover and focus transitions are off (#630)", async ({
+  mount,
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const component = await mount(<Button>Go</Button>);
+  await expect(component.locator("button")).toHaveCSS(
+    "transition-duration",
+    "0s",
+  );
+});

@@ -299,3 +299,53 @@ test.describe("RadioGroup", () => {
     expect(borderRadius).not.toBe("0px");
   });
 });
+
+test.describe("RadioGroup: label validity, null value, reduced motion", () => {
+  test("group label carries no dangling for/id reference (#595)", async ({
+    mount,
+  }) => {
+    // The group label names the radiogroup through aria-labelledby. A
+    // `for` attribute pointing at an id nothing carries is invalid HTML
+    // and focuses nothing when the label is clicked.
+    const component = await mount(
+      <RadioGroup options={options} onChange={() => {}} label="Pick one" />,
+    );
+    const dangling = await component.evaluate((root) =>
+      Array.from(root.querySelectorAll("label[for]"))
+        .map((l) => l.getAttribute("for") ?? "")
+        .filter((id) => !document.getElementById(id)),
+    );
+    expect(dangling).toEqual([]);
+  });
+
+  test("value={null} renders nothing checked and stays controlled (#606)", async ({
+    mount,
+  }) => {
+    // JS consumers can pass null before async data arrives. `checked`
+    // must stay a boolean so the input never flips to uncontrolled and
+    // a pick the parent ignored never sticks.
+    const component = await mount(
+      <RadioGroup
+        options={options}
+        value={null as unknown as string}
+        onChange={() => {}}
+      />,
+    );
+    const b = component.locator('input[value="b"]');
+    await expect(b).not.toBeChecked();
+    await b.click();
+    await expect(b).not.toBeChecked();
+  });
+
+  test("prefers-reduced-motion: the row's hover transition is off (#630)", async ({
+    mount,
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const component = await mount(
+      <RadioGroup options={options} onChange={() => {}} />,
+    );
+    const row = component.locator('[data-testid="option"]').first();
+    await expect(row).toHaveCSS("transition-duration", "0s");
+  });
+});

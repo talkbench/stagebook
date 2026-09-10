@@ -278,3 +278,53 @@ test.describe("CheckboxGroup", () => {
     expect(borderRadius).not.toBe("0px");
   });
 });
+
+test.describe("CheckboxGroup: label validity, null value, reduced motion", () => {
+  test("group label carries no dangling for/id reference (#595)", async ({
+    mount,
+  }) => {
+    // The group label names the group through aria-labelledby. A `for`
+    // attribute pointing at an id nothing carries is invalid HTML and
+    // focuses nothing when the label is clicked.
+    const component = await mount(
+      <CheckboxGroup options={options} onChange={() => {}} label="Pick some" />,
+    );
+    const dangling = await component.evaluate((root) =>
+      Array.from(root.querySelectorAll("label[for]"))
+        .map((l) => l.getAttribute("for") ?? "")
+        .filter((id) => !document.getElementById(id)),
+    );
+    expect(dangling).toEqual([]);
+  });
+
+  test("value={null} renders nothing checked instead of throwing (#606)", async ({
+    mount,
+  }) => {
+    // JS consumers can pass null before async data arrives. The default
+    // parameter only covers `undefined`, so null must be guarded too.
+    const component = await mount(
+      <CheckboxGroup
+        options={options}
+        value={null as unknown as string[]}
+        onChange={() => {}}
+      />,
+    );
+    const boxes = component.locator('input[type="checkbox"]');
+    await expect(boxes).toHaveCount(3);
+    for (const box of await boxes.all()) {
+      await expect(box).not.toBeChecked();
+    }
+  });
+
+  test("prefers-reduced-motion: the row's hover transition is off (#630)", async ({
+    mount,
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const component = await mount(
+      <CheckboxGroup options={options} onChange={() => {}} />,
+    );
+    const row = component.locator('[data-testid="option"]').first();
+    await expect(row).toHaveCSS("transition-duration", "0s");
+  });
+});

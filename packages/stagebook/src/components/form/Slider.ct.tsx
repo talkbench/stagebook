@@ -475,3 +475,20 @@ test("a host's own range-input styling cannot un-collapse our native thumb", asy
     "a host rule outranked Stagebook's reset on its own slider input",
   ).toEqual({ width: "0px", height: "0px" });
 });
+
+test("prefers-reduced-motion: wrapper, track and thumb transitions are off (#630)", async ({
+  mount,
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const component = await mount(
+    <Slider min={0} max={100} interval={1} value={50} />,
+  );
+  for (const el of [
+    component.locator('[role="presentation"]'),
+    component.getByTestId("slider-track"),
+    component.getByTestId("slider-thumb"),
+  ]) {
+    await expect(el).toHaveCSS("transition-duration", "0s");
+  }
+});
