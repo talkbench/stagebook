@@ -44,7 +44,7 @@ const VARIANT_STYLES: Record<
   thick: {
     ...baseStyle,
     height: "5px",
-    backgroundColor: "var(--stagebook-text-muted, #6b7280)",
+    backgroundColor: "var(--stagebook-text-muted, #626977)",
   },
 };
 

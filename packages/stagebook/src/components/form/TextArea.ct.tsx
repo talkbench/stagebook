@@ -88,7 +88,7 @@ test("min only: shows required count in gray when under", async ({ mount }) => {
   await expect(component).toContainText("(2 / 50+ characters required)");
   // Gray color when under minimum
   const counter = component.locator('[data-testid="char-counter"]');
-  await expect(counter).toHaveCSS("color", "rgb(107, 114, 128)");
+  await expect(counter).toHaveCSS("color", "rgb(98, 105, 119)");
 });
 
 test("min only: shows green when at minimum", async ({ mount }) => {
@@ -112,7 +112,7 @@ test("max only: shows count in gray when under", async ({ mount }) => {
   );
   await expect(component).toContainText("(5 / 200 characters max)");
   const counter = component.locator('[data-testid="char-counter"]');
-  await expect(counter).toHaveCSS("color", "rgb(107, 114, 128)");
+  await expect(counter).toHaveCSS("color", "rgb(98, 105, 119)");
 });
 
 test("max only: at max is steady gray, not error red (#333)", async ({
@@ -126,7 +126,7 @@ test("max only: at max is steady gray, not error red (#333)", async ({
   );
   await expect(component).toContainText("(5 / 5 characters max)");
   const counter = component.locator('[data-testid="char-counter"]');
-  await expect(counter).toHaveCSS("color", "rgb(107, 114, 128)");
+  await expect(counter).toHaveCSS("color", "rgb(98, 105, 119)");
   await expect(counter).toHaveAttribute("data-state", "default");
 });
 
@@ -143,7 +143,7 @@ test("min+max: gray when under minimum", async ({ mount }) => {
   );
   await expect(component).toContainText("(2 / 10-50 characters)");
   const counter = component.locator('[data-testid="char-counter"]');
-  await expect(counter).toHaveCSS("color", "rgb(107, 114, 128)");
+  await expect(counter).toHaveCSS("color", "rgb(98, 105, 119)");
 });
 
 test("min+max: green when in range", async ({ mount }) => {

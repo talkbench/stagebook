@@ -45,7 +45,7 @@ const checkboxBaseStyle: React.CSSProperties = {
   // border). Same root cause as #367 for RadioGroup.
   borderWidth: "1px",
   borderStyle: "solid",
-  borderColor: "var(--stagebook-border, #d1d5db)",
+  borderColor: "var(--stagebook-choice-border, #858c99)",
   borderRadius: "0.125rem",
   backgroundColor: "var(--stagebook-surface, #fff)",
   backgroundSize: "100% 100%",
@@ -70,7 +70,7 @@ const checkboxCheckedStyle: React.CSSProperties = {
 const checkboxRowStyle: React.CSSProperties = {
   fontWeight: 400,
   fontSize: "0.875rem",
-  color: "var(--stagebook-text-muted, #6b7280)",
+  color: "var(--stagebook-text-muted, #626977)",
   cursor: "pointer",
   display: "flex",
   alignItems: "center",

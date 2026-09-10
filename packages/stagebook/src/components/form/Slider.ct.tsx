@@ -1,6 +1,31 @@
 import { test, expect } from "@playwright/experimental-ct-react";
 import { Slider } from "./Slider";
 import { MockSlider } from "../testing/MockSlider";
+import type { CSSProperties } from "react";
+
+for (const [theme, color] of [
+  ["initial", "rgb(107, 114, 128)"],
+  ["#005a99", "rgb(0, 90, 153)"],
+] as const) {
+  test(`minor ticks stay subordinate with tick color ${theme} (#616)`, async ({
+    mount,
+  }) => {
+    const component = await mount(
+      <div style={{ "--stagebook-slider-tick": theme } as CSSProperties}>
+        <Slider min={0} max={100} interval={10} labelPts={[0, 50, 100]} />
+      </div>,
+    );
+    const minor = component.getByTestId("slider-snap-tick").first();
+    const major = component.getByTestId("slider-label-tick").first();
+    await expect(minor).toHaveCSS("background-color", color);
+    await expect(major).toHaveCSS("background-color", color);
+    await expect(minor).toHaveCSS("height", "6px");
+    await expect(major).toHaveCSS("height", "16px");
+    await expect(minor).toHaveCSS("opacity", "0.7");
+    await expect(major).toHaveCSS("opacity", "1");
+    await expect(component.getByTestId("slider-thumb")).toHaveCount(0);
+  });
+}
 
 test("renders without thumb initially (no anchoring)", async ({ mount }) => {
   const component = await mount(<Slider min={0} max={100} interval={1} />);

@@ -231,7 +231,7 @@ export function TrackedLink({
         <p
           style={{
             fontSize: "0.75rem",
-            color: "var(--stagebook-text-muted, #6b7280)",
+            color: "var(--stagebook-text-muted, #626977)",
             margin: 0,
           }}
         >

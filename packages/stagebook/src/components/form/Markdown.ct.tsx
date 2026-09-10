@@ -1083,7 +1083,7 @@ test("blockquote uses muted text color (not body text)", async ({ mount }) => {
     .locator(":scope > div > p")
     .first()
     .evaluate((el) => getComputedStyle(el).color);
-  // The default mute is #6b7280, body is #1f2937. Whatever the
+  // The default mute is #626977, body is #1f2937. Whatever the
   // exact computed values, they should differ.
   expect(blockquoteColor).not.toBe(bodyColor);
 });
@@ -1100,7 +1100,7 @@ test("list markers are muted (not body text color)", async ({ mount }) => {
     .locator("li")
     .first()
     .evaluate((el) => getComputedStyle(el, "::marker").color);
-  // Default --stagebook-text-muted is #6b7280 = rgb(107, 114, 128).
+  // Default --stagebook-text-muted is #626977 = rgb(98, 105, 119).
   // We don't pin the exact rgb (browsers may compute differently);
   // just assert it's not the body color (#1f2937 = rgb(31, 41, 55)).
   expect(markerColor).not.toBe("rgb(31, 41, 55)");

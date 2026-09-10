@@ -461,7 +461,7 @@ test.describe("Select: disabled", () => {
     // association, so this also holds the label to its control.
     const offLabel = component.locator('label[for="off"]');
     const onLabel = component.locator('label[for="on"]');
-    await expect(offLabel).toHaveCSS("color", "rgb(107, 114, 128)");
+    await expect(offLabel).toHaveCSS("color", "rgb(98, 105, 119)");
     await expect(onLabel).toHaveCSS("color", "rgb(31, 41, 55)");
   });
 });
@@ -808,7 +808,7 @@ test.describe("Select: picker (#627)", () => {
       'option[value="__stagebook_select_placeholder__"]',
     );
     await expect(placeholder).toBeVisible();
-    await expect(placeholder).toHaveCSS("color", "rgb(107, 114, 128)"); // --stagebook-text-muted
+    await expect(placeholder).toHaveCSS("color", "rgb(98, 105, 119)"); // --stagebook-text-muted
     await expect(placeholder).toHaveCSS("cursor", "not-allowed");
     // And no hover fill on a row that cannot be chosen — the disabled rule
     // beats the hover rule by source order alone, so this pins the order.

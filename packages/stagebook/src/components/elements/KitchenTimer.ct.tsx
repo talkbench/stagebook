@@ -83,7 +83,7 @@ test("blue fill when not in warning zone", async ({ mount }) => {
   );
   await expect(component).toHaveAttribute("data-state", "normal");
   const fill = component.locator('[data-testid="timer-fill"]');
-  await expect(fill).toHaveCSS("background-color", "rgb(96, 165, 250)");
+  await expect(fill).toHaveCSS("background-color", "rgb(37, 99, 235)");
 });
 
 test("red fill when in warning zone", async ({ mount }) => {

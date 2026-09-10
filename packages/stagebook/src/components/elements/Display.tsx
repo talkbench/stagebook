@@ -40,7 +40,7 @@ const blockquoteStyle: React.CSSProperties = {
   borderInlineStartStyle: "solid",
   borderInlineStartColor: "var(--stagebook-blockquote-border, #9ca3af)",
   background: "var(--stagebook-blockquote-bg, #f9fafb)",
-  color: "var(--stagebook-text-muted, #6b7280)",
+  color: "var(--stagebook-text-muted, #626977)",
 };
 
 export function Display({ reference, values }: DisplayProps) {

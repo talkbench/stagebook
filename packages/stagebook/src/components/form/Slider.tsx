@@ -308,7 +308,7 @@ export function Slider({
                 transform: `translateX(${isRTL ? "50%" : "-50%"})`,
                 fontSize: "0.75rem",
                 lineHeight: 1,
-                color: "var(--stagebook-text-muted, #6b7280)",
+                color: "var(--stagebook-text-muted, #626977)",
                 whiteSpace: "nowrap",
                 pointerEvents: "none",
               }}
@@ -351,9 +351,9 @@ export function Slider({
                     top: "50%",
                     transform: `translate(${isRTL ? "50%" : "-50%"}, -50%)`,
                     width: "2px",
-                    height: `${TRACK_HEIGHT - 2}px`,
-                    backgroundColor: "var(--stagebook-decoration, #9ca3af)",
-                    opacity: 0.4,
+                    height: `${TRACK_HEIGHT - 4}px`,
+                    backgroundColor: "var(--stagebook-slider-tick, #6b7280)",
+                    opacity: 0.7,
                     pointerEvents: "none",
                   }}
                 />
@@ -374,7 +374,7 @@ export function Slider({
                   transform: `translate(${isRTL ? "50%" : "-50%"}, -50%)`,
                   width: "2px",
                   height: `${TRACK_HEIGHT + 6}px`,
-                  backgroundColor: "var(--stagebook-text-muted, #6b7280)",
+                  backgroundColor: "var(--stagebook-slider-tick, #6b7280)",
                   pointerEvents: "none",
                 }}
               />
@@ -500,7 +500,7 @@ export function Slider({
                     // `body-small` and Mantine's mark-label size.
                     fontSize: "0.875rem",
                     lineHeight: 1.25,
-                    color: "var(--stagebook-text-muted, #6b7280)",
+                    color: "var(--stagebook-text-muted, #626977)",
                   }}
                 >
                   {labels[idx]}

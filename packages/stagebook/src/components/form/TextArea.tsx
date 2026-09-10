@@ -346,7 +346,7 @@ export function TextArea({
     if (!showCharacterCount) return null;
 
     let countText = "";
-    let countColor = "var(--stagebook-text-muted, #6b7280)";
+    let countColor = "var(--stagebook-text-muted, #626977)";
     let countState = "default";
     // Count UTF-16 code units (String.length) ON PURPOSE — do NOT "fix" this to
     // grapheme clusters via Intl.Segmenter. Stagebook is a measurement

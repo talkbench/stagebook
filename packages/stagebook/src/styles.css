@@ -72,9 +72,9 @@
   /* ---------------------------------------------------------------- */
   /* Primitives — the raw color ramp (PRIVATE).                        */
   /* Not part of the public override API. Theme via the semantic        */
-  /* --stagebook-* tokens below, which alias these. Steps are named     */
-  /* points on a widely used, perceptually even scale — the color       */
-  /* analog of choosing Inter: robust and standard, not bespoke.        */
+  /* --stagebook-* tokens below, which alias these. The base scales     */
+  /* use familiar palette steps; intermediate neutrals preserve the    */
+  /* visual hierarchy approved in the #616 contrast review.            */
   /* ---------------------------------------------------------------- */
 
   /* Accent — one blue scale */
@@ -83,14 +83,17 @@
   --sb-blue-700: #1d4ed8;
   --sb-blue-800: #1e40af;
 
-  /* Neutrals — one gray ramp */
+  /* Neutrals — gray ramp, including the reviewed #616 contrast steps. */
   --sb-white: #ffffff;
   --sb-gray-50: #f9fafb;
   --sb-gray-100: #f3f4f6;
   --sb-gray-200: #e5e7eb;
   --sb-gray-300: #d1d5db;
   --sb-gray-400: #9ca3af;
+  --sb-gray-450: #858c99;
   --sb-gray-500: #6b7280;
+  --sb-gray-550: #626977;
+  --sb-neutral-500: #737373;
   --sb-gray-700: #374151;
   --sb-gray-800: #1f2937;
 
@@ -140,15 +143,18 @@
   --stagebook-playhead: var(--sb-rose-700);
 
   /* Timer */
-  --stagebook-timer-fill: var(--sb-blue-400);
+  /* Leave the optional override invalid so KitchenTimer resolves its
+   * primary-color fallback where it renders. A :root alias would capture
+   * the root primary and ignore scoped host themes (#651). */
+  --stagebook-timer-fill: initial;
   --stagebook-timer-warn: var(--stagebook-danger);
   --stagebook-timer-track: var(--sb-gray-200);
 
   /* Text */
   --stagebook-text: var(--sb-gray-800);
   --stagebook-text-secondary: var(--sb-gray-700);
-  --stagebook-text-muted: var(--sb-gray-500);
-  /* Non-text decoration (slider ticks, placeholder, spinner arc, quote
+  --stagebook-text-muted: var(--sb-gray-550);
+  /* Non-text decoration (placeholder icon, spinner arc, quote
    * rail). NOT readable text — it intentionally doesn't meet text contrast.
    * Renamed from --stagebook-text-faint, which mislabeled it as text.
    * @deprecated back-compat: decoration falls THROUGH a host's old
@@ -164,6 +170,14 @@
    * against it), so a host whose page is another colour retunes this
    * token rather than leaving it. */
   --stagebook-border: var(--sb-gray-300);
+  /* Unchecked radio/checkbox outlines identify the choice itself. Keep
+   * these separate from field and panel borders (#616). */
+  --stagebook-choice-border: var(--sb-gray-450);
+  /* Tick color is independent of labels: major ticks stay at full
+   * strength; shorter minor ticks use 0.7 opacity in Slider. */
+  --stagebook-slider-tick: var(--sb-gray-500);
+  /* Readable but subordinate to labels and the mute control. */
+  --stagebook-timeline-ruler-text: var(--sb-neutral-500);
   --stagebook-bg: var(--sb-white);
   --stagebook-bg-muted: var(--sb-gray-50);
   --stagebook-bg-track: var(--sb-gray-200);

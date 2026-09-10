@@ -345,7 +345,7 @@ const blockquoteStyle: React.CSSProperties = {
   borderInlineStartStyle: "solid",
   borderInlineStartColor: "var(--stagebook-blockquote-border, #9ca3af)",
   background: "var(--stagebook-blockquote-bg, #f9fafb)",
-  color: "var(--stagebook-text-muted, #6b7280)",
+  color: "var(--stagebook-text-muted, #626977)",
 };
 
 const imgStyle: React.CSSProperties = {
@@ -465,7 +465,7 @@ export function Markdown({ text, resolveURL }: MarkdownProps) {
         /* List markers — muted so the bullet/number reads as
            structure, not weight-competing with body text. */
         .${rootClass} li::marker {
-          color: var(--stagebook-text-muted, #6b7280);
+          color: var(--stagebook-text-muted, #626977);
         }
         /* Tables — zebra striping (every other body row) +
            row hover. Cells already have borders + padding from
