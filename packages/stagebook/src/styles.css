@@ -143,7 +143,10 @@
   --stagebook-playhead: var(--sb-rose-700);
 
   /* Timer */
-  --stagebook-timer-fill: var(--stagebook-primary);
+  /* Leave the optional override invalid so KitchenTimer resolves its
+   * primary-color fallback where it renders. A :root alias would capture
+   * the root primary and ignore scoped host themes (#651). */
+  --stagebook-timer-fill: initial;
   --stagebook-timer-warn: var(--stagebook-danger);
   --stagebook-timer-track: var(--sb-gray-200);
 

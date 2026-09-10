@@ -55,25 +55,49 @@ for (const theme of ["default", "fallback", "custom"] as const) {
   });
 }
 
-test("timer falls back to the host primary color and accepts a dedicated override (#616)", async ({
-  mount,
-}) => {
-  const component = await mount(
-    <div
-      style={
-        {
-          "--stagebook-primary": "#005a99",
-          "--stagebook-timer-fill": "initial",
-        } as CSSProperties
-      }
-    >
-      <MockKitchenTimer startTime={0} endTime={60} elapsedTime={20} />
-    </div>,
-  );
-  const fill = component.getByTestId("timer-fill");
-  await expect(fill).toHaveCSS("background-color", "rgb(0, 90, 153)");
-  await component.evaluate((el) =>
-    (el as HTMLElement).style.setProperty("--stagebook-timer-fill", "#626977"),
-  );
-  await expect(fill).toHaveCSS("background-color", "rgb(98, 105, 119)");
-});
+for (const stylesheet of [true, false]) {
+  test(`timer follows scoped primary colors and honors an inherited fill override (stylesheet=${String(stylesheet)}, #616)`, async ({
+    mount,
+    page,
+  }) => {
+    if (!stylesheet) {
+      await page.evaluate(() => {
+        document
+          .querySelectorAll('style, link[rel="stylesheet"]')
+          .forEach((el) => el.remove());
+      });
+    }
+    const component = await mount(
+      <div>
+        <div
+          data-testid="theme"
+          style={{ "--stagebook-primary": "#005a99" } as CSSProperties}
+        >
+          <Button primary>Continue</Button>
+          <MockKitchenTimer startTime={0} endTime={60} elapsedTime={20} />
+        </div>
+      </div>,
+    );
+    const theme = component.getByTestId("theme");
+    const fill = component.getByTestId("timer-fill");
+    const button = component.getByRole("button");
+    await expect(button).toHaveCSS("background-color", "rgb(0, 90, 153)");
+    await expect(fill).toHaveCSS("background-color", "rgb(0, 90, 153)");
+    await theme.evaluate((el) =>
+      (el as HTMLElement).style.setProperty("--stagebook-primary", "#15803d"),
+    );
+    await expect(fill).toHaveCSS("background-color", "rgb(21, 128, 61)");
+    // A dedicated override on an ancestor must still beat the local primary.
+    await component.evaluate((el) =>
+      (el as HTMLElement).style.setProperty(
+        "--stagebook-timer-fill",
+        "#626977",
+      ),
+    );
+    await expect(fill).toHaveCSS("background-color", "rgb(98, 105, 119)");
+    await component.evaluate((el) =>
+      (el as HTMLElement).style.removeProperty("--stagebook-timer-fill"),
+    );
+    await expect(fill).toHaveCSS("background-color", "rgb(21, 128, 61)");
+  });
+}

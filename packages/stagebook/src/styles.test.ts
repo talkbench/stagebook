@@ -611,7 +611,9 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
       if (!ref) return value;
       if (seen.has(ref.name)) return undefined;
       const decl = declared.get(ref.name);
-      return decl === undefined
+      // `initial` gives an unregistered custom property the guaranteed-invalid
+      // value, so the browser uses this reference's fallback (#651).
+      return decl === undefined || decl === "initial"
         ? ref.fallback === undefined
           ? undefined
           : withStylesheet(ref.fallback, seen)
@@ -647,7 +649,7 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
           bare.push(`${file}: var(${v.name}) has no fallback`);
           continue;
         }
-        const expected = withStylesheet(`var(${v.name})`);
+        const expected = withStylesheet(`var(${v.name}, ${v.fallback})`);
         const actual = withoutStylesheet(v.fallback);
         if (
           expected === undefined ||

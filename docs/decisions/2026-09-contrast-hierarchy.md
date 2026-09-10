@@ -32,7 +32,11 @@ text: `--stagebook-choice-border`, `--stagebook-slider-tick`, and
 `--stagebook-timeline-ruler-text`. Hosts that previously used the general border,
 muted-text or decoration tokens to theme these parts should now set the specific
 token. The timer's normal fill now consumes `--stagebook-timer-fill`, which
-defaults to the primary color; its inline fallback also follows the primary color.
+defaults to `initial` (the guaranteed-invalid custom-property value). The
+component's nested fallback resolves the primary color where the timer renders,
+so a host can set `--stagebook-primary` on any ancestor, with or without the
+stylesheet. Aliasing the fill to primary at `:root` would capture the root color
+and ignore scoped primary overrides. An explicit timer-fill override still wins.
 
 ## Verification and remaining questions
 
