@@ -22,10 +22,20 @@ jobs:
           node-version: 24
       - run: npm ci
       - name: Install the original report's Playwright version
-        run: npm install --workspace stagebook --no-save --package-lock=false playwright@1.58.2 @playwright/experimental-ct-react@1.58.2
+        run: |
+          node <<'JS'
+          const fs = require("node:fs");
+          const path = "packages/stagebook/package.json";
+          const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
+          pkg.devDependencies.playwright = "1.58.2";
+          pkg.devDependencies["@playwright/experimental-ct-react"] = "1.58.2";
+          fs.writeFileSync(path, JSON.stringify(pkg, null, 2));
+          JS
+          npm install --ignore-scripts --no-audit --no-fund
       - name: Check resolved version and waveform placement
         working-directory: packages/stagebook
         run: |
+          node -e 'for (const p of ["playwright", "@playwright/experimental-ct-react"]) { const v = require(p + "/package.json").version; console.log(p, v); if (v !== "1.58.2") process.exit(1); }'
           npx playwright --version
           npx playwright test --config playwright-ct.config.ts WaveformTimeline.ct.tsx --project=webkit --workers=1 --retries=0 --reporter=line
       - uses: actions/upload-artifact@v4
