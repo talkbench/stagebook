@@ -13,16 +13,26 @@ import { expandAndValidateWithImports } from "./expandAndValidate.js";
 /**
  * `getTreatmentDurations` (#585) — the fourth host-facing analysis
  * primitive. It answers "how long can this treatment run?" as an UPPER
- * BOUND, so a host can size a runtime resource (the runner's Daily room
- * `exp`, talkbench/runner#542 §3) against the design instead of pinning
- * it to a guess.
+ * BOUND, so a host can check the design against bounds the design knows
+ * nothing about — a payment / total-participant-time estimate, or a
+ * per-game resource such as the runner's Daily room `exp`, a join cutoff
+ * that a long game's recovery rejoin can fall past (runner
+ * `VENDOR-BEHAVIOUR.md` D11) — instead of pinning it to a guess.
  *
  * Two properties carry most of the risk and get the most tests here:
  * the report must never silently read zero from an un-hydrated tree (a
- * host would under-provision and lose the room mid-session), and it
+ * host would under-provision, or price the game at nothing), and it
  * must never let author-controlled content outside a real DSL position
  * inflate the bound.
  */
+
+/**
+ * An ILLUSTRATIVE host room cutoff for the consumer-pattern tests below.
+ * Deliberately not the runner's value (24 hours — `ROOM_EXP_SECONDS` in
+ * its Daily provider, `VENDOR-BEHAVIOUR.md` D11): the tests exercise the
+ * shape of the check, and a host's constant is the host's to pin.
+ */
+const ILLUSTRATIVE_ROOM_CUTOFF_SECONDS = 3600;
 
 const ZERO: TreatmentDurations = {
   gameSeconds: 0,
@@ -735,11 +745,31 @@ describe("mergeTreatmentDurations", () => {
       exitSteps: 1,
     });
 
-    // The runner's use: size the call room to the game, plus slack, with
-    // the current hour as a floor so nothing regresses.
-    expect(selected.unresolvedStages).toBe(0);
-    const roomLifetime = Math.max(3600, selected.gameSeconds + 600);
-    expect(roomLifetime).toBe(3600);
+    // The payment / participant-time use: the game sum plus the host's
+    // own per-step estimate over the self-paced counts (1 + 2 + 1 here).
+    expect(
+      selected.unresolvedStages +
+        selected.unresolvedConsentSteps +
+        selected.unresolvedIntroSteps +
+        selected.unresolvedExitSteps,
+    ).toBe(0);
+    const SECONDS_PER_STEP = 90;
+    const participantSeconds =
+      selected.gameSeconds +
+      (selected.consentSteps + selected.introSteps + selected.exitSteps) *
+        SECONDS_PER_STEP;
+    expect(participantSeconds).toBe(1800 + 4 * 90);
+
+    // The resource-bound use: cover the game plus slack, with the host's
+    // own cutoff as a floor so nothing regresses below what it provisions
+    // today. The design's number wins only once it exceeds the floor.
+    const SLACK_SECONDS = 600;
+    const roomLifetime = (d: TreatmentDurations) =>
+      Math.max(ILLUSTRATIVE_ROOM_CUTOFF_SECONDS, d.gameSeconds + SLACK_SECONDS);
+    expect(roomLifetime(selected)).toBe(ILLUSTRATIVE_ROOM_CUTOFF_SECONDS);
+    expect(
+      roomLifetime(mergeTreatmentDurations(report.byTreatment.unused)),
+    ).toBe(99999 + SLACK_SECONDS);
   });
 });
 
@@ -794,13 +824,23 @@ describe("over real hydrated example studies", () => {
     expect(report.overall.unresolvedExitSteps).toBe(0);
   });
 
-  test("component-gallery: a real study already outlives a one-hour room", async () => {
-    // The hazard #585 exists to surface is reachable with a file in this
-    // repo — the runner's hard-coded 3600s `exp` would expire mid-game.
+  test("component-gallery: a real study can outlive a room's join cutoff", async () => {
+    // A real study in this repo, read end to end, against the illustrative
+    // cutoff: a game that runs past a host's room cutoff is the hazard
+    // #585 exists to surface. For a Daily room that is a JOIN cutoff —
+    // the call survives it, a recovery rejoin does not — and this report
+    // is how a host learns whether a design can cross it.
     const report = getTreatmentDurations(
       await hydrate("component-gallery/component-gallery.stagebook.yaml"),
     );
-    expect(report.overall.gameSeconds).toBeGreaterThan(3600);
+    // Exact, not just "over the floor": twelve 600-second stages plus one
+    // of 60, so a reader that drops or double-counts stages is caught
+    // even while the total stays above the illustrative cutoff.
+    expect(report.overall.gameStages).toBe(13);
+    expect(report.overall.gameSeconds).toBe(7260);
     expect(report.overall.unresolvedStages).toBe(0);
+    expect(report.overall.gameSeconds).toBeGreaterThan(
+      ILLUSTRATIVE_ROOM_CUTOFF_SECONDS,
+    );
   });
 });

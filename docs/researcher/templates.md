@@ -171,7 +171,7 @@ consent:
           agreeLabel: אני מסכים/ה
 ```
 
-This expands to two arms, `consent-en` and `consent-he`, structurally identical by construction — edit the template once and every locale updates together. Element names may repeat across arms (a participant only ever sees one arm, so `acknowledge` in both is not a collision). The host selects an arm by name at batch time. The related content type `consent` (the whole array) works the same way for reusing a larger block, as does `exitSteps` for a run of exit steps — including the trailing debrief steps.
+This expands to two arms, `consent-en` and `consent-he`, structurally identical by construction — edit the template once and every locale updates together. Element names may repeat across arms (a participant only ever sees one arm, so `acknowledge` in both is not a collision). The host selects an arm by name at batch time. The related content type `consent` (the whole array) works the same way for reusing a larger block, as does `exitSteps` for a run of exit steps — including the trailing debrief steps. To fold the consent text into the acknowledgement prompt itself — so the agreed-to text is saved with the response — see [the gated-submit pattern](treatment-files.md#the-gated-submit-pattern); the template shape is unchanged, just one `prompt` element fewer.
 
 ## The `prefix:` convention for reusable modules
 

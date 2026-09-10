@@ -198,7 +198,7 @@ Expects a **fully hydrated** tree — imports merged **and** templates expanded 
 
 ### `getTreatmentDurations(hydratedFile)`
 
-Host bounds primitive (#585): **how long can this treatment run?** The fourth member of the host-facing analysis family. A host that provisions infrastructure has runtime bounds the design knows nothing about and must check the design against them — the runner creates a Daily room per game with a hard-coded one-hour `exp`, and nothing sums a treatment's stage durations against it, so a study longer than 60 minutes loses its room mid-session (talkbench/runner#542 §3).
+Host bounds primitive (#585): **how long can this treatment run?** The fourth member of the host-facing analysis family. A host has bounds the design knows nothing about and must check the design against them, and nothing sums a treatment's stage durations for it unless it asks the design. Two consumers: the manager's **payment / total-participant-time estimate** (the game sum plus its own per-step estimate over the self-paced counts — a design fact, so it does not rot with the runtime), and a **per-game resource bound** — the runner creates a Daily room per game with a 24-hour `exp` (`ROOM_EXP_SECONDS` in its Daily provider). Daily's `exp` is a _join cutoff_, not a session cap: an in-progress call survives it (the runner does not set `eject_at_room_exp`), but no new connection succeeds after it, and a recovery reconnect is a new connection — so a game that outlasts the cutoff has a rejoin that fails even though the call itself would have survived (runner `VENDOR-BEHAVIOUR.md` D11/D12). Whether a design can reach that ceiling is a fact about the design, and this report is how a host learns it.
 
 ```typescript
 import {
@@ -222,11 +222,14 @@ const bound = mergeTreatmentDurations(
   report.byConsent[selectedConsentName],
 );
 
-// runner: size the call room to the game, plus slack, with the current
-// hour as a floor so nothing regresses. Check the flag first — a non-zero
+// runner: size the call room to the game, plus slack, with the host's own
+// cutoff as a floor so nothing regresses below what it provisions today
+// (the floor is the host's constant — for the runner, its 24-hour join
+// cutoff — not a fact about the DSL). Check the flag first — a non-zero
 // unresolvedStages means gameSeconds is an under-count (see below).
 if (bound.unresolvedStages > 0) throw new Error("treatment is not hydrated");
-const roomExp = now + Math.max(3600, bound.gameSeconds + SLACK_SECONDS);
+const roomExp =
+  now + Math.max(ROOM_CUTOFF_SECONDS, bound.gameSeconds + SLACK_SECONDS);
 
 // manager: participant time for payment estimation. The self-paced phases
 // carry no duration in the DSL (see below), so the host applies its own
@@ -266,7 +269,7 @@ const participantSeconds =
 
 **Pure and synchronous** — unlike `getRequiredServices`, every duration is already in the treatment tree, so there is no loader to inject. Accepts `unknown`; a non-object yields a zero report.
 
-**Un-hydrated input is flagged, never a silent zero.** Expects the same **hydrated** tree (imports merged **and** templates expanded) — but note that hydrated does _not_ mean fully resolved. `parseTreatmentSource` runs `fillTemplates({ allowUnresolved: true })` deliberately, so editor and preview surfaces can render a partially-authored file; its output is in-contract input here and may still carry `duration: "${stageLength}"`. That is why this **reports rather than throws** — refusing unresolved input would reject the recommended pipeline's own output — and why checking the flags is the caller's job rather than an optional nicety. The dangerous failure here is the quiet one: `altTemplateContext` wraps every arm collection, every step list and every stage, so a merely import-merged tree can hold a template _invocation_ at any of those levels — the whole collection (`treatments: {template: all_arms}`), one arm (`- template: std`), a list (`gameStages: {template: rounds}`), or a single position (`introSteps: [{template: checks}]`). A naive reader finds no durations, reports a clean zero, and lets a host compute `max(3600, 0 + slack)` — silently falling back to exactly the hard-coded hour this primitive exists to remove. A `broadcast:` invocation compounds it, fanning one position out into several units. So **every position that can't be read counts as one unit and raises the `unresolved*` counter for its phase**; nothing is dropped in silence. Check the flag for the number you are about to use.
+**Un-hydrated input is flagged, never a silent zero.** Expects the same **hydrated** tree (imports merged **and** templates expanded) — but note that hydrated does _not_ mean fully resolved. `parseTreatmentSource` runs `fillTemplates({ allowUnresolved: true })` deliberately, so editor and preview surfaces can render a partially-authored file; its output is in-contract input here and may still carry `duration: "${stageLength}"`. That is why this **reports rather than throws** — refusing unresolved input would reject the recommended pipeline's own output — and why checking the flags is the caller's job rather than an optional nicety. The dangerous failure here is the quiet one: `altTemplateContext` wraps every arm collection, every step list and every stage, so a merely import-merged tree can hold a template _invocation_ at any of those levels — the whole collection (`treatments: {template: all_arms}`), one arm (`- template: std`), a list (`gameStages: {template: rounds}`), or a single position (`introSteps: [{template: checks}]`). A naive reader finds no durations, reports a clean zero, and lets a host compute `max(floor, 0 + slack)` — silently falling back to its own fixed constant, the stand-in for the design's number this primitive exists to replace (and pricing the game at nothing in a participant-time estimate). A `broadcast:` invocation compounds it, fanning one position out into several units. So **every position that can't be read counts as one unit and raises the `unresolved*` counter for its phase**; nothing is dropped in silence. Check the flag for the number you are about to use.
 
 `unnamedArms` is the report-level counterpart, and a narrowing host must check it. The per-arm counters can't carry this warning: narrowing looks arms up by name, an unreadable arm has no name (`templateContextSchema` is `{ template, fields?, broadcast? }` — no `name`), so `byTreatment[selected]` is `undefined`, `mergeTreatmentDurations` skips it, and the narrowed bound comes back all-zero **and** all-clear. `overall` is unaffected — it covers every entry regardless of name — and `unnamedArms` is zero for any fully hydrated file, since every arm the schema accepts carries a `name`.
 
