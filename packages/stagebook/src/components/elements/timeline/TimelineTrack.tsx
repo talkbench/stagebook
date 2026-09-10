@@ -62,6 +62,9 @@ export function TimelineTrack({
       }}
     >
       <style>{`
+        .${muteClass} {
+          background: transparent;
+        }
         .${muteClass}:focus-visible {
           ${focusRingCss()}
         }
@@ -103,7 +106,6 @@ export function TimelineTrack({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "transparent",
             border: "none",
             borderRadius: "0.25rem",
             cursor: "pointer",

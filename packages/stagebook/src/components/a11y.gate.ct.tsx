@@ -457,12 +457,11 @@ const MUTE_GLYPH_REST = {
   ratio: 2.53,
   why: "#633: --stagebook-decoration as the mute glyph, on the page (TimelineTrack.tsx)",
 };
-// Still on the page when hovered: the button's inline `background:
-// transparent` outranks its :hover rule, so the hover fill never paints
-// (#635). Pinning the ratio is what found that.
+// #635 restores the hover fill. The glyph remains a known contrast failure
+// (#616); measure it against the background that now actually paints.
 const MUTE_GLYPH_HOVERED = {
-  ratio: 2.54,
-  why: "#633: --stagebook-decoration as the mute glyph, on the page — the hover fill is blocked by an inline style (#635)",
+  ratio: 2.31,
+  why: "#616: --stagebook-decoration as the mute glyph on --stagebook-hover-bg (#635 restores the fill)",
 };
 const muteGlyph = (fails?: Mark["fails"]): Mark => ({
   name: "mute glyph on its button",
@@ -774,7 +773,16 @@ const cases: Case[] = [
       />
     ),
   },
-  { name: "Loading", node: <Loading /> },
+  {
+    name: "Loading",
+    node: <Loading />,
+    states: [
+      {
+        name: "reduced motion",
+        enter: (page) => page.emulateMedia({ reducedMotion: "reduce" }),
+      },
+    ],
+  },
   {
     name: "WaveformTimeline",
     node: (

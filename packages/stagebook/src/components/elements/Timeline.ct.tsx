@@ -2966,6 +2966,38 @@ test("showWaveform=false does NOT call requestWaveformCapture", async ({
 
 // -- Per-track mute controls (#52) --
 
+for (const [name, token, expected] of [
+  ["default", undefined, "rgb(243, 244, 246)"],
+  ["host override", "#dbeafe", "rgb(219, 234, 254)"],
+] as const) {
+  test(`mute hover fill paints and clears with ${name} (#635)`, async ({
+    mount,
+    page,
+  }) => {
+    const component = await mount(
+      <div style={{ ["--stagebook-hover-bg" as never]: token }}>
+        <MockTimeline
+          source="player"
+          playerName="player"
+          name="hover"
+          selectionType="range"
+          mockDuration={60}
+          mockChannelCount={1}
+        />
+      </div>,
+    );
+    const button = component.getByTestId("track-mute");
+    await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await button.hover();
+    await expect(button).toHaveCSS("background-color", expected);
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect(button).toHaveCSS("background-color", expected);
+    await page.mouse.move(0, 0);
+    await expect(button).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  });
+}
+
 test("renders a mute button per track, defaulting to unmuted", async ({
   mount,
 }) => {
