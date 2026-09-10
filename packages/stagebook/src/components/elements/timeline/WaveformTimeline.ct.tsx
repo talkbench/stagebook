@@ -205,6 +205,10 @@ test("renders the empty state (no peaks) without a waveform", async ({
   expect((await pixelCensus(canvas)).translucent).toBeGreaterThan(0);
 });
 
+// The isolated component passes on Linux WebKit 1.58.2 and 1.59.1; the
+// original runner integration failure in #600 remains unexplained. Evidence:
+// https://github.com/talkbench/stagebook/pull/653
+//
 // #600: a canvas existing (or containing some bars) does not establish that
 // sound is aligned with time. Use a full-canvas column census like the report:
 // columns with >3 bar pixels distinguish loud bars from the silent baseline
