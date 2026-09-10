@@ -377,7 +377,7 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
       "AssetPlaceholder hint, Timeline ruler and mute glyph (known failures, #616 and #633); Slider (ticks)",
     "--stagebook-border": "TextArea (a known failure, #616)",
     "--stagebook-bg":
-      "Slider (ticks) value badge text; the page behind every mark, via its PAGE probe",
+      "Slider (ticks) value badge text; the page, which the gate paints from it and reads behind every PAGE-backed mark",
     "--stagebook-bg-muted":
       "AssetPlaceholder; Display; Markdown (rich) table header; ListSorter",
     "--stagebook-bg-track":
@@ -546,5 +546,121 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
     // marker: it aliases its own primitive, not another semantic token.
     expect(declared.get("--stagebook-playhead")).toBe("var(--sb-rose-700)");
     expect(declared.get("--sb-rose-700")).toBe("#be123c");
+  });
+
+  it("every inline fallback equals its token's default, so a stylesheet-free host renders this palette's static branch (#213)", () => {
+    // Components carry `var(--stagebook-x, <literal>)` so they render on a
+    // host that never imports this stylesheet. Each literal is a second
+    // copy of the default, and copies drift — #535 retuned the accent and
+    // the old blue lingered in inline literals. Holding every copy to its
+    // declaration means the stylesheet-free render IS the static branch the
+    // gate already scans, so it needs no scan of its own. Alias-following
+    // only: no colour arithmetic. (Two canvas tokens are read in JS with a
+    // `||` fallback instead; the ledger excludes them as canvas.)
+
+    /** First top-level comma in `s`, or -1. */
+    const topLevelComma = (s: string): number => {
+      let depth = 0;
+      for (let i = 0; i < s.length; i += 1) {
+        if (s[i] === "(") depth += 1;
+        else if (s[i] === ")") depth -= 1;
+        else if (s[i] === "," && depth === 0) return i;
+      }
+      return -1;
+    };
+    /** Every `var(…)` in `src`, by balanced parens: its span, name and fallback. */
+    const varsIn = (src: string) => {
+      const out: { end: number; name: string; fallback?: string }[] = [];
+      for (
+        let i = src.indexOf("var(");
+        i >= 0;
+        i = src.indexOf("var(", i + 4)
+      ) {
+        let depth = 0;
+        let j = i + 3;
+        for (; j < src.length; j += 1) {
+          if (src[j] === "(") depth += 1;
+          else if (src[j] === ")" && (depth -= 1) === 0) break;
+        }
+        const inner = src.slice(i + 4, j);
+        const comma = topLevelComma(inner);
+        out.push({
+          end: j,
+          name: (comma < 0 ? inner : inner.slice(0, comma)).trim(),
+          fallback: comma < 0 ? undefined : inner.slice(comma + 1).trim(),
+        });
+      }
+      return out;
+    };
+    /** `value` when it is exactly one `var(…)`, parsed; else null. */
+    const asVar = (value: string) => {
+      const v = value.startsWith("var(") ? varsIn(value)[0] : undefined;
+      return v && v.end === value.length - 1 ? v : null;
+    };
+    /** A value with the stylesheet: itself, or the default of the token it aliases. */
+    const withStylesheet = (
+      value: string,
+      seen = new Set<string>(),
+    ): string | undefined => {
+      const ref = asVar(value);
+      if (!ref) return value;
+      if (seen.has(ref.name)) return undefined;
+      const decl = declared.get(ref.name);
+      return decl === undefined
+        ? ref.fallback === undefined
+          ? undefined
+          : withStylesheet(ref.fallback, seen)
+        : withStylesheet(decl, new Set(seen).add(ref.name));
+    };
+    /** A value without the stylesheet: every token is undefined, so its fallback. */
+    const withoutStylesheet = (value: string): string | undefined => {
+      const ref = asVar(value);
+      if (!ref) return value;
+      return ref.fallback === undefined
+        ? undefined
+        : withoutStylesheet(ref.fallback);
+    };
+    // Whitespace and hex shorthand are the only differences a copy may have.
+    const normalise = (s: string) =>
+      s
+        .toLowerCase()
+        .replace(/\s+/g, "")
+        .replace(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/, "#$1$1$2$2$3$3");
+
+    const sources: [string, string][] = collectFiles(componentsDir)
+      .filter((f) => !/\.(test|ct)\.tsx?$/.test(f) && !f.includes("/testing/"))
+      .map((f) => [f.slice(here.length + 1), readFileSync(f, "utf8")]);
+    // The stylesheet's own rule bodies carry fallbacks too (its form reset).
+    sources.push(["styles.css", noComments.replace(/:root\s*\{[^}]*\}/g, "")]);
+
+    const drifted: string[] = [];
+    const bare: string[] = [];
+    for (const [file, src] of sources) {
+      for (const v of varsIn(src)) {
+        if (!v.name.startsWith("--stagebook-")) continue;
+        if (v.fallback === undefined) {
+          bare.push(`${file}: var(${v.name}) has no fallback`);
+          continue;
+        }
+        const expected = withStylesheet(`var(${v.name})`);
+        const actual = withoutStylesheet(v.fallback);
+        if (
+          expected === undefined ||
+          actual === undefined ||
+          normalise(expected) !== normalise(actual)
+        ) {
+          drifted.push(
+            `${file}: var(${v.name}, ${v.fallback}) — the default is ${expected ?? "not declared"}`,
+          );
+        }
+      }
+    }
+    expect(
+      drifted,
+      "inline fallbacks that differ from the token's default",
+    ).toEqual([]);
+    expect(bare, "references a stylesheet-free host cannot resolve").toEqual(
+      [],
+    );
   });
 });

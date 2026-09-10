@@ -630,7 +630,7 @@ export function SelectionOverlay({
               ? "var(--stagebook-timeline-range-active, rgba(37, 99, 235, 0.35))"
               : "var(--stagebook-timeline-range-inactive, rgba(37, 99, 235, 0.18))",
             border: isActive
-              ? "1px solid var(--stagebook-timeline-range-active-border, rgba(37, 99, 235, 1))"
+              ? "1px solid var(--stagebook-timeline-range-active-border, #2563eb)"
               : "1px solid var(--stagebook-timeline-range-inactive-border, rgba(37, 99, 235, 0.6))",
             boxSizing: "border-box",
             cursor: "pointer",
@@ -676,7 +676,7 @@ export function SelectionOverlay({
               handle="start"
               color={
                 isActive && activeHandle === "start"
-                  ? "var(--stagebook-timeline-handle-active, rgba(37, 99, 235, 1))"
+                  ? "var(--stagebook-timeline-handle-active, #2563eb)"
                   : "var(--stagebook-timeline-handle-inactive, rgba(37, 99, 235, 0.7))"
               }
             />
@@ -718,7 +718,7 @@ export function SelectionOverlay({
               handle="end"
               color={
                 isActive && activeHandle === "end"
-                  ? "var(--stagebook-timeline-handle-active, rgba(37, 99, 235, 1))"
+                  ? "var(--stagebook-timeline-handle-active, #2563eb)"
                   : "var(--stagebook-timeline-handle-inactive, rgba(37, 99, 235, 0.7))"
               }
             />
@@ -776,7 +776,7 @@ export function SelectionOverlay({
               width: 2,
               height: "100%",
               background: isActive
-                ? "var(--stagebook-timeline-handle-active, rgba(37, 99, 235, 1))"
+                ? "var(--stagebook-timeline-handle-active, #2563eb)"
                 : "var(--stagebook-timeline-handle-inactive, rgba(37, 99, 235, 0.7))",
             }}
           />
@@ -789,7 +789,7 @@ export function SelectionOverlay({
               height: 10,
               borderRadius: "50%",
               background: isActive
-                ? "var(--stagebook-timeline-handle-active, rgba(37, 99, 235, 1))"
+                ? "var(--stagebook-timeline-handle-active, #2563eb)"
                 : "var(--stagebook-timeline-handle-inactive, rgba(37, 99, 235, 0.7))",
             }}
           />

@@ -104,6 +104,54 @@ Writing the ledger found `--stagebook-timer-track` and
 `--stagebook-bg-track` and `--stagebook-danger`), and that the success and
 warning status pairs are declared for hosts only.
 
+## What the gate covers, and what it does not
+
+A gate that measures the render can only measure the renders it produces,
+and the space of renders is a product: engines, stylesheet branches, host
+configurations, states, indicators. It cannot be complete by enumeration,
+and review of [#634] showed what happens when one tries — every round found
+one more cell. So the boundary is written down here, and a cell outside it
+is added deliberately, through the checklist, rather than under review
+pressure.
+
+Covered:
+
+- Current Chromium, WebKit and Firefox under Playwright, with the stylesheet
+  loaded and the page painted from `--stagebook-bg` — the token components
+  already take the page to be, and the one a host retunes if its page is
+  another colour.
+- Both branches of the `@supports (color-mix)` block, the second by dropping
+  the block from the CSSOM.
+- The states listed per case. A state that changes a colour and is not
+  listed is not scanned; the checklist asks for it when a component is
+  added.
+- Text, through axe; opaque non-text indicators, through computed styles;
+  the paint, through pixels, where only the paint knows.
+
+Covered by an invariant rather than a scan:
+
+- **Stylesheet-free hosts.** Components carry an inline fallback on every
+  token they read, so a host that never imports the stylesheet renders those
+  literals. `styles.test.ts` holds every fallback equal to its token's
+  declared default (alias-following, no colour arithmetic), which makes that
+  render the static branch the gate already scans. A scan mode with the
+  stylesheet removed would double the suite to measure the same palette.
+
+Not covered, by design:
+
+- Content backdrops — the waveform canvas, a video frame. There is no fixed
+  colour to hold a floor against; the tokens drawn over them are excluded in
+  the ledger with that reason, and the MediaPlayer's controls are tracked in
+  [#636].
+- Indicators drawn as background images (the Select chevron, [#636]): a thin
+  anti-aliased stroke has no pixel that reliably belongs to it. The fix is
+  to draw it with a token, which a computed-style mark can then read.
+- A host that paints its page a colour other than `--stagebook-bg` without
+  retuning the token.
+
+[#634]: https://github.com/talkbench/stagebook/pull/634
+[#636]: https://github.com/talkbench/stagebook/issues/636
+
 ## What we did not change
 
 - `focus.gate.ct.tsx`. Axe has no focus-indicator rule; the ring is its own

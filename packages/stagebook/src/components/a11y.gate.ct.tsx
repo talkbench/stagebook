@@ -269,9 +269,13 @@ const withoutColorMix = async (page: Page) => {
   expect(dropped, "the stylesheet's color-mix @supports block").toBe(1);
 };
 
-// The page colour, for a mark whose backdrop is the host page rather than
-// an element of ours: the stylesheet tells hosts to paint it with this.
-const PAGE: Side = { value: "var(--stagebook-bg, #fff)" };
+// The page, for a mark whose backdrop is the host page rather than an
+// element of ours. `scan` paints the page with --stagebook-bg — the token
+// components already take the page to be (the focus halo's spacer is drawn
+// in it) — so this reads a render, not a token. A host that paints its page
+// another colour without retuning the token is outside what the gate
+// measures; the ADR says so.
+const PAGE: Side = { el: "html", prop: "background-color" };
 
 // The Select trigger draws its chevron as a background image, and axe will
 // not score text over one. The trigger's text is a mark instead.
@@ -1222,6 +1226,16 @@ const hex = (rgb: number[]) =>
   "#" + rgb.map((c) => c.toString(16).padStart(2, "0")).join("");
 
 async function scan(page: Page, engine: string, label: string, s: Scan) {
+  // The harness leaves the page the UA's white; paint it from the token so
+  // both axe and the PAGE-backed marks read the page a themed host has. On
+  // the root element, not <body>: WebKit and Firefox lay the body's box
+  // short of a heading's collapsed top margin, and axe then reports the
+  // heading partially obscured. The root is under every point on every
+  // engine.
+  await page.evaluate(() => {
+    document.documentElement.style.backgroundColor =
+      "var(--stagebook-bg, #fff)";
+  });
   await settle(page);
   const results = await new AxeBuilder({ page })
     .include("#root")
