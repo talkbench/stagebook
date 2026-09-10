@@ -4,11 +4,16 @@ Stagebook targets **WCAG 2.2 AA** for its participant-facing components (see the
 [ADR](decisions/2026-07-accessibility.md)). Run through this before shipping a
 new component. The axe regression gate
 (`packages/stagebook/src/components/a11y.gate.ct.tsx`) catches a subset
-automatically — **add your component to it**.
+automatically — **add your component to it**, in every state that changes a
+colour (hovered, pressed, checked, open). Contrast is measured there from the
+render, not from the stylesheet (see the
+[ADR](decisions/2026-09-contrast-from-the-render.md)).
 
-Note what the axe gate does _not_ cover: axe has no rule for focus-indicator
-contrast (1.4.11) and none for forced-colors, so it ran green through the
-whole of [#610]. The focus indicator has its own gate
+Note what axe does _not_ cover: its contrast rule is text-only, so a non-text
+indicator (a border, a fill, a tick, a glyph) needs a `marks` entry in the
+same gate, and it has no rule for focus-indicator contrast (1.4.11) or for
+forced-colors, so it ran green through the whole of [#610]. The focus
+indicator has its own gate
 (`packages/stagebook/src/components/focus.gate.ct.tsx`) — add your component
 to that one too.
 
@@ -47,7 +52,12 @@ to that one too.
 ## Color & contrast
 
 - [ ] Text ≥ 4.5:1, and UI components / large text ≥ 3:1, against the actual
-      background. (1.4.3) Use the theme tokens — they are AA-by-construction.
+      background. (1.4.3 / 1.4.11) Use the theme tokens, then let the gate
+      measure the result: a token is only as good as the surface it lands on
+      (`--stagebook-text-muted` passes on the page and fails on the hover
+      fill, #616). A new colour token has to be classified in the ledger in
+      `packages/stagebook/src/styles.test.ts` — measured by a gate case, or
+      excluded with a reason.
 - [ ] Meaning is never conveyed by color alone. (1.4.1)
 
 ## Targets & motion
@@ -67,7 +77,9 @@ to that one too.
 ## Verify
 
 - [ ] Add the component to `a11y.gate.ct.tsx` (axe, WCAG 2.2 AA) — it must pass
-      in its correctly-used (named, themed) form.
+      in its correctly-used (named, themed) form, and in each state a
+      participant puts it in. Non-text indicators get a `marks` entry. Then
+      break the thing each new check watches and confirm it fails.
 - [ ] Do a manual keyboard walkthrough — axe catches only ~a third to a half of
       WCAG issues.
 
