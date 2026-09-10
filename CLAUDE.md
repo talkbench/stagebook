@@ -94,6 +94,16 @@ Stagebook components are **measurement instruments**, not general-purpose UI. Th
 - **No external UI library dependencies.** Don't import Radix, shadcn, etc. Use them as references to audit our implementations for accessibility and edge cases, but keep full ownership so upstream changes can't alter experiment behavior.
 - **Slider initializes without a visible thumb** to avoid anchoring participants' responses.
 - **New participant-facing components** must meet WCAG 2.2 AA — run the [accessibility checklist](docs/a11y-checklist.md) and add the component to the axe gate (`packages/stagebook/src/components/a11y.gate.ct.tsx`). See the [ADR](docs/decisions/2026-07-accessibility.md).
+- **Whenever you touch colour** — a new `--stagebook-*` token, a changed value,
+  or a component drawing one colour on another — check whether the palette gate
+  (`packages/stagebook/src/styles.test.ts`) needs a new pairing. The gate
+  asserts a hand-maintained list, so it only knows about combinations someone
+  added; a new token is refused until it is either paired or excluded with a
+  reason, but a new _combination_ of existing tokens is not caught
+  automatically. Ask: is anything now drawn on, or immediately beside,
+  something else? If so add the pairing (4.5:1 for text, 3:1 for non-text
+  indicators under 1.4.11). This is how a 1.03:1 focus ring shipped (#610) —
+  both its tokens were fine individually and nothing checked them together.
 - **Two tiers of components:**
   - **Standalone** (Markdown, Button, Separator, form components) — no StagebookProvider needed, usable anywhere
   - **Context-dependent** (Element, Prompt, Display, conditionals) — require StagebookProvider, error clearly without one

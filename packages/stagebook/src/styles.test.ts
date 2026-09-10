@@ -450,9 +450,21 @@ function makeResolver(vars: Map<string, string[]>) {
       return hex ? [hex] : [];
     }
     if (/^rgba?\(/i.test(v)) return resolveRgb(v);
-    if (/^var\(\s*--[\w-]+\s*\)$/.test(v)) {
-      const ref = /var\(\s*(--[\w-]+)/.exec(v);
-      return ref ? resolveAllHexes(ref[1], seen) : [];
+    if (/^var\(/.test(v)) {
+      const parts = splitTopLevel(v.slice(4, -1));
+      const ref = parts[0].trim();
+      // Whether the variable is DECLARED decides which branch renders —
+      // not whether this resolver happened to understand its value. A
+      // declared token whose value we cannot parse must resolve to nothing
+      // and fail loudly, because the browser paints that value, not the
+      // fallback; substituting the fallback would score a colour that never
+      // appears (#628 review).
+      if (vars.has(ref)) return resolveAllHexes(ref, seen);
+      // Undeclared: the fallback is what renders. This is how
+      // --stagebook-decoration reaches gray-400, through a deprecated alias
+      // that no longer exists.
+      const fallback = parts.slice(1).join(",").trim();
+      return fallback ? resolveValues(fallback, new Set(seen)) : [];
     }
     // `color-mix(in srgb, <color> [N%], <color> [N%])`. A mix toward
     // `transparent` stays translucent and drops out; a mix toward an opaque
@@ -547,7 +559,58 @@ function makeResolver(vars: Map<string, string[]>) {
   function resolveHex(name: string, seen = new Set<string>()): string | null {
     return resolveAllHexes(name, seen)[0] ?? null;
   }
-  return { resolveHex, resolveAllHexes, resolveDeclarations };
+  /**
+   * Every colour `value` can render as when painted onto `backdrop` — for a
+   * translucent value, the actual composite rather than the white/black
+   * bounds used when the backdrop is unknown.
+   */
+  function compositeOnto(name: string, backdrop: string): string[] {
+    const decls = vars.get(name) ?? [];
+    const out: string[] = [];
+    for (const d of decls) {
+      const m = /^rgba?\(([^)]+)\)$/i.exec(d.trim());
+      if (m) {
+        const parts = m[1].split(/[,/]/).map((x) => x.trim());
+        const rgb = parts.slice(0, 3).map(Number);
+        const a = parts.length === 4 ? Number(parts[3]) : 1;
+        if (rgb.every((n) => Number.isFinite(n)) && Number.isFinite(a)) {
+          out.push(compositeOver(rgb, a, backdrop));
+          continue;
+        }
+      }
+      // An alias must be followed WITH the backdrop still in hand. Falling
+      // through to resolveValues here returned the target's white/black
+      // endpoint bounds and then treated them as opaque colours, discarding
+      // the backdrop the caller explicitly named — so an alias to
+      // rgba(128,128,128,0.15) over #677080 scored as ~#ececec and ~#131313
+      // (both clearing 3:1) when it actually renders at ~1:1 (#628 review).
+      const alias = /^var\(\s*(--[\w-]+)\s*\)$/.exec(d.trim());
+      if (alias) {
+        const via = compositeOnto(alias[1], backdrop);
+        if (via.length === 0) return [];
+        out.push(...via);
+        continue;
+      }
+      // Opaque (or otherwise resolvable) values ignore the backdrop.
+      const resolved = resolveValues(d, new Set());
+      // A declaration this path cannot composite — a translucent
+      // color-mix(..., transparent) override, say — must take the whole
+      // side down rather than vanish, leaving only the branches we happened
+      // to understand. Dropping it silently is how an @supports override
+      // would go unmeasured while its static fallback carried the
+      // assertion (#628 review).
+      if (resolved.length === 0) return [];
+      out.push(...resolved);
+    }
+    return [...new Set(out)];
+  }
+
+  return {
+    resolveHex,
+    resolveAllHexes,
+    resolveDeclarations,
+    compositeOnto,
+  };
 }
 
 // #612 review. The resolver walks a token's declarations to find every opaque
@@ -649,11 +712,38 @@ describe("the resolver isolates a token's declarations from each other", () => {
     // than quietly scoring the wrong color — the safe direction to be wrong
     // in. Teach the resolver about them the day a pairing needs one.
     ["white", [], "named colors are not parsed"],
-    ["var(--x, #ff0000)", [], "var() with a fallback is not parsed"],
+    [
+      "var(--x, #ff0000)",
+      ["#ff0000"],
+      "var() falls through to its fallback when the token is undeclared",
+    ],
     ["color-mix(in oklab, #fff 50%, #000)", [], "only srgb mixes are parsed"],
   ])("resolves %s -> %j (%s)", (decl, expected) => {
     const { resolveAllHexes } = makeResolver(new Map([["--t", [decl]]]));
     expect(resolveAllHexes("--t")).toEqual(expected);
+  });
+
+  it("composites through an alias onto the NAMED backdrop", () => {
+    // "A over B" where A aliases a translucent token. Following the alias
+    // without carrying the backdrop returns the target's white/black
+    // endpoint bounds and treats them as opaque — so a 15% grey over
+    // #677080, which actually renders at ~#6b7280, scored as ~#ececec and
+    // ~#131313 instead. Both of those clear 3:1 against #6b7280 while the
+    // real thing is ~1:1 (#628 review).
+    //
+    // No shipped token has this shape today, so nothing in styles.css
+    // exercises it — which is exactly why it needs a fixture rather than
+    // trusting the stylesheet to catch it later.
+    const { compositeOnto } = makeResolver(
+      new Map([
+        ["--tint", ["rgba(128, 128, 128, 0.15)"]],
+        ["--alias", ["var(--tint)"]],
+      ]),
+    );
+    expect(compositeOnto("--alias", "#677080")).toEqual(
+      compositeOnto("--tint", "#677080"),
+    );
+    expect(compositeOnto("--alias", "#677080")).toEqual(["#6b7280"]);
   });
 
   it("still detects a genuine self-referential cycle", () => {
@@ -690,7 +780,7 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     vars.set(m[1], prev);
   }
 
-  const { resolveHex, resolveDeclarations } = makeResolver(vars);
+  const { resolveHex, resolveDeclarations, compositeOnto } = makeResolver(vars);
 
   function relLum(hex: string): number {
     const h = hex.replace("#", "");
@@ -790,11 +880,148 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
       AA,
       "playhead time-box text — Playhead.tsx:169/175",
     ],
-    // #610: the focus ring is a non-text UI indicator (1.4.11), so it needs
-    // 3:1 against everything it can abut. It was translucent until #610 —
-    // and resolveHex() returns null for a translucent value, so it slipped
-    // through this gate entirely while sitting at 1.03:1 against the very
-    // border it's drawn beside. Opaque now, and asserted against both.
+    // #616. Everything below renders today and was simply never listed — the
+    // gate only ever checked what someone remembered to add, which is how a
+    // 1.03:1 focus ring shipped (#610).
+    //
+    // Each carries the source line that justifies it. That is not decoration:
+    // the first draft of this list named a plausible-looking token rather
+    // than the rendered one in five of fifteen cases (asserting
+    // --stagebook-text on hover rows that actually use --stagebook-text-muted,
+    // and "certifying" a timeline handle against a background it never sits
+    // on). A pairing that checks the wrong colours is worse than none — it
+    // reads as coverage. If you add one, open the component first.
+    [
+      "--stagebook-text-secondary",
+      "--stagebook-hover-bg",
+      AA,
+      "secondary button label, hover — Button.tsx:182/195",
+    ],
+    [
+      "--stagebook-text-secondary",
+      "--stagebook-bg-track",
+      AA,
+      "secondary button label, active — Button.tsx:182/204",
+    ],
+    [
+      "--stagebook-text",
+      "--stagebook-surface",
+      AA,
+      "control text on a control surface — Select.tsx:98-99",
+    ],
+    [
+      "--stagebook-text-muted",
+      "--stagebook-surface",
+      AA,
+      "asset URI text on a surface chip — AssetPlaceholder.tsx:66-67",
+    ],
+    // Inline code inherits its colour, so --stagebook-text is the default
+    // case (Markdown.tsx:157-160). Excluded until this PR added "over",
+    // on the reasoning that the gate could not express a tint composited
+    // onto the page — a reason that went stale the moment it could, which
+    // is its own small lesson about exemptions written as capability gaps.
+    [
+      "--stagebook-text",
+      "--stagebook-code-bg over --stagebook-bg",
+      AA,
+      "inline code text — Markdown.tsx:157",
+    ],
+    // Code used AS link text inherits the anchor's colour rather than body
+    // gray (Markdown.tsx:157-163, deliberately). So every link state also
+    // renders on the code chip, and only --stagebook-text was checked. All
+    // three pass today, but the normal link is marginal at 4.54:1, so a
+    // change to --stagebook-code-bg would take it under without this.
+    [
+      "--stagebook-link",
+      "--stagebook-code-bg over --stagebook-bg",
+      AA,
+      "inline code inside a link — Markdown.tsx:157-163",
+    ],
+    [
+      "--stagebook-link-hover",
+      "--stagebook-code-bg over --stagebook-bg",
+      AA,
+      "inline code inside a hovered link",
+    ],
+    [
+      "--stagebook-link-visited",
+      "--stagebook-code-bg over --stagebook-bg",
+      AA,
+      "inline code inside a visited link",
+    ],
+    [
+      "--stagebook-text-muted",
+      "--stagebook-blockquote-bg",
+      AA,
+      "Display blockquote text — Display.tsx:42-43",
+    ],
+    // The primary Button's label is a hard-coded `#fff`, not a token, so the
+    // literal is what renders and --stagebook-bg would be a proxy that stops
+    // describing the screen the moment a host moves it. Same shape as the
+    // timeline tooltip before #619; filed for Button as its own issue.
+    [
+      "#ffffff",
+      "--stagebook-primary",
+      AA,
+      "primary button label — Button.tsx:176-177 (literal #fff)",
+    ],
+    [
+      "#ffffff",
+      "--stagebook-primary-hover",
+      AA,
+      "primary button label, hover — Button.tsx:192 (literal #fff)",
+    ],
+    [
+      "#ffffff",
+      "--stagebook-primary-active",
+      AA,
+      "primary button label, active — Button.tsx:201 (literal #fff)",
+    ],
+    ["--stagebook-link-hover", "--stagebook-bg", AA, "link text, hover"],
+    [
+      "--stagebook-scroll-indicator-fg",
+      "--stagebook-scroll-indicator-bg",
+      AA,
+      "scroll indicator pill",
+    ],
+    // Body cells sit on three backgrounds: even zebra rows take
+    // --stagebook-bg-muted, odd rows inherit the page, hovered rows take
+    // --stagebook-hover-bg (Markdown.tsx:473-477). One pairing covered one.
+    [
+      "--stagebook-table-text",
+      "--stagebook-bg-muted",
+      AA,
+      "table cell text, even zebra row — Markdown.tsx:473-475",
+    ],
+    [
+      "--stagebook-table-text",
+      "--stagebook-bg",
+      AA,
+      "table cell text, odd row (inherits the page)",
+    ],
+    [
+      "--stagebook-table-text",
+      "--stagebook-hover-bg",
+      AA,
+      "table cell text, hovered row — Markdown.tsx:476-477",
+    ],
+    [
+      "--stagebook-table-header-text",
+      "--stagebook-bg-muted",
+      AA,
+      "table header text — Markdown.tsx:386-388",
+    ],
+
+    [
+      "--stagebook-danger",
+      "--stagebook-bg-track",
+      UI,
+      "timer bar, warning state (UI) — KitchenTimer.tsx:73/111. The component " +
+        "reads --stagebook-danger here, NOT --stagebook-timer-warn; pairing " +
+        "the latter certified a token nothing renders",
+    ],
+    // Restored from #610 / #617 — these predate this PR and were lost in an
+    // over-broad edit here, which the classification guard below caught.
     ["--stagebook-focus-ring", "--stagebook-bg", UI, "focus ring on the page"],
     [
       "--stagebook-focus-ring",
@@ -804,7 +1031,384 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     ],
   ];
 
+  /**
+   * Colour tokens deliberately absent from `pairings`, each with the reason.
+   *
+   * This list is the point of the exercise (#616). Before it, the gate
+   * checked whatever someone had remembered to add and said nothing about
+   * the rest — which is how a 1.03:1 focus ring shipped (#610). An
+   * unasserted token is now a decision someone wrote down, not a silence.
+   */
+  const EXCLUDED: [string, string][] = [
+    // --- Fails today. Tracked, not forgotten. See #616. ---
+    [
+      "--stagebook-timer-fill",
+      "FAILS 1.4.11 at 2.05:1 on --stagebook-bg-track (needs 3.0). Fixing it " +
+        "means blue-600; blue-500 only reaches 2.97. Tracked in #616.",
+    ],
+    // Two more known failures are absent from BOTH lists, and deliberately:
+    // they are failing *combinations* of tokens that are each asserted
+    // elsewhere and pass there, so neither the pairing list nor the
+    // exclusion list is the right home. Adding either pairing turns this
+    // suite red, which is the honest reason they are not here yet:
+    //
+    //   --stagebook-border on --stagebook-bg    1.47:1 (needs 3.0, 1.4.11)
+    //   --stagebook-text on --stagebook-hover-bg 4.39:1 (needs 4.5)
+    //
+    // The border one is a real design decision, not a nudge: passing means
+    // gray-500, a visibly much heavier edge on every control. Both tracked
+    // in #616.
+
+    // --- Tints that composite onto a surface, where "contrast" needs to
+    // know the surface. The resolver bounds a translucent value over pure
+    // white and pure black (#617), which is right for something floating
+    // over unknown content but pessimistic for a tint painted onto the page:
+    // the black bound describes a backdrop this palette never produces. ---
+    [
+      "--stagebook-primary-tint",
+      "Slider hover track fill. NOT a bare bar, as an earlier draft of this " +
+        "entry claimed: Slider.tsx:340-375 draws snap and labelled ticks on " +
+        "top of it, and at 40% opacity over the tinted track those measure " +
+        "~1.24:1 — a real 1.4.11 failure (#616). It is excluded rather than " +
+        "recorded as a known failure because the translucency comes from a " +
+        "component's `opacity: 0.4`, not from a token value, so no pairing " +
+        "of tokens describes what renders. That is a limit of asserting " +
+        "colour from the stylesheet, and the reason to measure the render " +
+        "instead.",
+    ],
+    [
+      "--stagebook-timeline-track-label-bg",
+      "85% white behind a track label; the label's own pairing is what " +
+        "matters and the backdrop varies with the waveform beneath.",
+    ],
+
+    // --- Decorative: no contrast requirement under 1.4.11, which exempts
+    // pure decoration. Listed so the exemption is a claim someone made. ---
+    ["--stagebook-blockquote-border", "Decorative quote rail."],
+    ["--stagebook-spinner-track", "Unfilled half of a spinner."],
+    ["--stagebook-spinner-arc", "Spinner arc; motion carries it, not colour."],
+    ["--stagebook-timer-track", "Unfilled half of the timer bar."],
+    [
+      "--stagebook-waveform-color",
+      "Waveform bars, drawn on the lane above. Same variable-backdrop " +
+        "problem as the lane itself: neither is assertable until the canvas " +
+        "has a known background. Tracked in #616.",
+    ],
+    [
+      "--stagebook-waveform-track-bg",
+      "15% grey lane painted onto a canvas WaveformRenderer clears to " +
+        "transparent (:51), with no background behind it — so the lane's " +
+        "rendered colour is the host's surface, which we cannot name. " +
+        "Briefly paired against --stagebook-waveform-color here, which was " +
+        "unsound: 4.09:1 over white and 3.84:1 over black, but 1:1 over " +
+        "~#677080, because the bars' luminance falls inside the range the " +
+        "lane can reach. Give the canvas a known backdrop and this becomes " +
+        "assertable with 'over'. Tracked in #616.",
+    ],
+    [
+      "--stagebook-timer-warn",
+      "Declared but never consumed: KitchenTimer.tsx:73 reads " +
+        "--stagebook-danger for the warning bar. Their defaults coincide, so " +
+        "the dead token stays invisible until a host retunes one and nothing " +
+        "happens. Wire it up or drop it — tracked in #616.",
+    ],
+
+    // --- Timeline range/minimap fills and borders. These sit on the
+    // waveform, whose colour varies per clip, so there is no fixed backdrop
+    // to assert against. Their job is to distinguish states from EACH OTHER
+    // rather than from a surface — a comparison this gate cannot express.
+    // Worth revisiting if the gate learns state-vs-state pairings. ---
+    ["--stagebook-timeline-range-active", "Selection fill over the waveform."],
+    ["--stagebook-timeline-range-active-border", "Selection edge."],
+    ["--stagebook-timeline-range-inactive", "Unfocused selection fill."],
+    ["--stagebook-timeline-range-inactive-border", "Unfocused selection edge."],
+    ["--stagebook-timeline-preview-bg", "Drag preview fill."],
+    ["--stagebook-timeline-preview-border", "Drag preview edge."],
+    [
+      "--stagebook-timeline-handle-active",
+      "Focused range handle. Briefly paired against --stagebook-bg here, " +
+        "which was wrong: SelectionOverlay draws it over the waveform and " +
+        "the selection fill, not the page, so that pairing certified it " +
+        "against a backdrop it never sits on (~1.07:1 against a grey " +
+        "waveform bar). Same variable-backdrop problem as its siblings.",
+    ],
+    ["--stagebook-timeline-handle-inactive", "Unfocused range handle."],
+    ["--stagebook-timeline-minimap-range", "Minimap range block."],
+    ["--stagebook-timeline-minimap-point", "Minimap point marker."],
+    ["--stagebook-timeline-minimap-viewport-bg", "Minimap viewport wash."],
+    ["--stagebook-timeline-minimap-viewport-border", "Minimap viewport edge."],
+  ];
+
+  it("every colour token is either asserted or excluded with a reason", () => {
+    // The structural half of #616. Adding a colour token now forces a
+    // decision: pair it, or say in one line why it needs no pairing. What it
+    // can no longer do is appear and be silently unchecked, which is the
+    // state that let #610 through.
+    //
+    // This deliberately does NOT judge whether a pairing is the *right* one
+    // — that is human work. It only refuses to let a token pass unmentioned.
+    // Fail SAFE: a token counts as colour unless its value is clearly
+    // something else. The first version listed the syntaxes it knew — hex,
+    // rgb(), color-mix(), var() — which let `hsl()`, `oklch()`, a named
+    // colour, `currentColor` or `transparent` walk straight past (#628
+    // review). A guard whose job is to force a decision cannot have a syntax
+    // allowlist; the unknown case has to be the one that stops you.
+    // Exempted by EXACT NAME, never by a substring of one. A `skip` regex
+    // over name fragments let `--stagebook-font-color` (or anything else
+    // containing "size", "width", "font"…) slip past the guard before it
+    // was ever classified — a name-based exemption inside the very test
+    // written to stop classification by name (#628 review).
+    const NON_COLOUR_TOKENS = new Set([
+      "--stagebook-font",
+      "--stagebook-code-font",
+      "--stagebook-row-min-height",
+      "--stagebook-prompt-max-width",
+      "--stagebook-prompt-text-size",
+      "--stagebook-prompt-line-height",
+      "--stagebook-prompt-h1-size",
+      "--stagebook-prompt-h2-size",
+      "--stagebook-prompt-h3-size",
+      "--stagebook-prompt-h4-size",
+      "--stagebook-prompt-h5-size",
+      "--stagebook-prompt-h6-size",
+      "--stagebook-prompt-h1-weight",
+      "--stagebook-prompt-h2-weight",
+      "--stagebook-prompt-h3-weight",
+      "--stagebook-prompt-h4-weight",
+      "--stagebook-prompt-h5-weight",
+      "--stagebook-prompt-h6-weight",
+    ]);
+    const excluded = new Set(EXCLUDED.map(([name]) => name));
+    // A side may name two tokens ("A over B"); both are classified by it.
+    const namesIn = (side: string) => side.split(" over ").map((x) => x.trim());
+    const mentioned = new Set([
+      ...pairings.flatMap(([fg, bg]) => [...namesIn(fg), ...namesIn(bg)]),
+      // A token recorded as a known failure is classified too — it is the
+      // most deliberate statement of all, not an omission.
+      ...KNOWN_FAILING.flatMap(([fg, bg]) => [...namesIn(fg), ...namesIn(bg)]),
+      ...excluded,
+    ]);
+
+    const unclassified = [...vars.entries()]
+      .filter(([name]) => name.startsWith("--stagebook-"))
+      .filter(([name]) => !NON_COLOUR_TOKENS.has(name))
+      .map(([name]) => name)
+      .filter((name) => !mentioned.has(name))
+      .sort();
+
+    expect(
+      unclassified,
+      "colour tokens with no pairing and no documented exclusion — add each " +
+        "to `pairings` if something is drawn on or against it, or to " +
+        "`EXCLUDED` with the reason it needs none",
+    ).toEqual([]);
+  });
+
+  it("no token used as a foreground is excluded as non-text", () => {
+    // The check that would have caught --stagebook-decoration. I excluded it
+    // as "decorative rule/divider colour" on the strength of its NAME;
+    // TimeRuler.tsx:158 reads it as a `color:` for 0.72rem timestamps and
+    // TimelineTrack.tsx:112 for the speaker icon, at 2.54:1. Classifying by
+    // name is guessing, and this test replaces the guess with the source.
+    //
+    // Anything a component sets `color:` from is text or an icon, so it
+    // needs a pairing (or a KNOWN_FAILING entry) — never a bare exclusion.
+    const foregrounds = new Set<string>();
+    for (const file of collectFiles(componentsDir)) {
+      if (/\.(test|ct)\.tsx?$/.test(file)) continue;
+      const src = readFileSync(file, "utf8");
+      for (const m of src.matchAll(
+        /(^|[^-\w])color:\s*[^;\n,]{0,80}?var\(\s*(--stagebook-[\w-]+)/gm,
+      )) {
+        foregrounds.add(m[2]);
+      }
+    }
+    expect(
+      foregrounds.size,
+      "the scan found no foregrounds at all",
+    ).toBeGreaterThan(0);
+
+    const excludedNames = new Set(EXCLUDED.map(([name]) => name));
+    const misclassified = [...foregrounds]
+      .filter((name) => excludedNames.has(name))
+      .sort();
+    expect(
+      misclassified,
+      "these tokens are read as a `color:` by a component, so they render " +
+        "text or an icon and cannot be excluded as needing no contrast — " +
+        "pair them with the backgrounds they appear on",
+    ).toEqual([]);
+  });
+
+  it("no token is both asserted and excluded", () => {
+    // A token that gained a pairing should lose its exclusion, or the
+    // exclusion's reasoning silently rots.
+    const paired = new Set(
+      pairings.flatMap(([fg, bg]) =>
+        [fg, bg].flatMap((side) => side.split(" over ").map((x) => x.trim())),
+      ),
+    );
+    const both = EXCLUDED.map(([n]) => n).filter((n) => paired.has(n));
+    expect(both).toEqual([]);
+  });
+
+  /**
+   * Resolve one side of a pairing to every colour it can render as.
+   *
+   * Shared by the pairing assertion and the known-failure assertion — they
+   * had separate implementations briefly, and the xfail's copy did not
+   * understand composites, so it measured nothing while looking green.
+   *
+   * A side is a token, a literal `#hex`, or `A over B` for a translucent A
+   * painted onto B.
+   */
+  const sideHexes = (side: string): string[] => {
+    if (side.startsWith("#")) return [side];
+    if (side.includes(" over ")) {
+      const [top, bottom] = side.split(" over ").map((x) => x.trim());
+      return sideHexes(bottom).flatMap((bd) => compositeOnto(top, bd));
+    }
+    // EVERY declaration must be scoreable, not just one of them — a token
+    // whose @supports override resolves and whose static fallback does not
+    // would otherwise pass while the fallback went untested (#617 review).
+    const decls = resolveDeclarations(side);
+    expect(decls, `${side} is not declared anywhere`).not.toEqual([]);
+    for (const d of decls) {
+      expect(
+        d.hexes,
+        `${side} declares \`${d.value}\`, which this gate cannot score — ` +
+          "teach the resolver that form, or the pairing is only checking " +
+          "the other declarations",
+      ).not.toEqual([]);
+    }
+    return decls.flatMap((d) => d.hexes);
+  };
+
+  /**
+   * Combinations that render today and FAIL their floor.
+   *
+   * Not in `pairings`, because adding them turns the suite red and each is a
+   * separate palette decision (#616). Not left as a comment either: a
+   * comment is exactly the documented-but-unenforced hole this gate exists
+   * to remove, and the first draft of this PR did leave one, which review
+   * caught. Asserting the failure keeps it visible AND catches the happy
+   * case — fix the palette and the expectation flips, telling you to promote
+   * the pairing rather than letting the fix pass unnoticed.
+   */
+  const KNOWN_FAILING: [string, string, number, string][] = [
+    [
+      "--stagebook-text-muted",
+      "--stagebook-hover-bg",
+      AA,
+      "radio/checkbox option label on a hovered row — RadioGroup.tsx:73/133",
+    ],
+    [
+      "--stagebook-timer-fill",
+      "--stagebook-bg-track",
+      UI,
+      "timer progress bar — KitchenTimer.tsx:111",
+    ],
+    ["--stagebook-border", "--stagebook-bg", UI, "form control boundary"],
+    [
+      "--stagebook-decoration",
+      "--stagebook-hover-bg",
+      UI,
+      "unmuted speaker icon on a hovered track row — TimelineTrack.tsx:68-70 " +
+        "paints the hover background beneath the icon at :110-112. The UI " +
+        "floor, not the text one, since it is an icon",
+    ],
+    [
+      "--stagebook-decoration",
+      "--stagebook-bg-muted",
+      AA,
+      "AssetPlaceholder hint — AssetPlaceholder.tsx:47/75-77, 0.75rem text " +
+        "on the muted placeholder panel. A different rendered combination " +
+        "from the ruler one below, and the one axe reports at 2.42:1 the " +
+        "moment that component is mounted",
+    ],
+    [
+      "--stagebook-decoration",
+      "--stagebook-bg",
+      AA,
+      "timeline ruler timestamps — TimeRuler.tsx:158 (0.72rem TEXT, so 4.5 " +
+        "not 3.0; also the unmuted speaker icon, TimelineTrack.tsx:112). An " +
+        "earlier draft excluded this as 'decorative' purely because of the " +
+        "token's NAME — it is read as a color: in two components",
+    ],
+    [
+      "--stagebook-text-muted",
+      "--stagebook-timeline-track-label-bg over --stagebook-waveform-color",
+      AA,
+      "track label over a waveform bar — TimelineTrack.tsx:138/140. Derived " +
+        "from both tokens rather than pinned as a literal, so a palette edit " +
+        "updates the measurement instead of leaving it describing a screen " +
+        "nobody sees",
+    ],
+  ];
+
+  it.each(KNOWN_FAILING)(
+    "%s on %s is STILL failing (%s) — tracked in #616",
+    (fg, bg, min) => {
+      // The MINIMUM across every shipped combination. Math.max would call a
+      // known failure fixed as soon as any one combination cleared the
+      // floor — so fixing an @supports override while leaving the static
+      // fallback inaccessible would tell you to promote a pairing that the
+      // pairing test would then immediately reject (#628 review).
+      const ratio = Math.min(
+        ...sideHexes(fg).flatMap((fh) =>
+          sideHexes(bg).map((bh) => contrast(fh, bh)),
+        ),
+      );
+      // Guard the guard: Math.min of an empty list is +Infinity, so an
+      // unresolvable pairing would look "fixed" and this xfail would report
+      // a promotion that never happened.
+      expect(
+        Number.isFinite(ratio),
+        `${fg} on ${bg} did not resolve to a comparable colour`,
+      ).toBe(true);
+      expect(
+        ratio,
+        `${fg} on ${bg} now measures ${ratio.toFixed(2)}:1, at or above its ` +
+          `${String(min)} floor — the palette was fixed. Move this into ` +
+          "`pairings` so it is asserted from now on.",
+      ).toBeLessThan(min);
+    },
+  );
+
+  /** True when a side's colour depends on a backdrop the gate cannot name. */
+  const hasUnknownBackdrop = (side: string): boolean => {
+    if (side.startsWith("#") || side.includes(" over ")) return false;
+    return (vars.get(side) ?? []).some(
+      (d) => /rgba\(/i.test(d) || /transparent/i.test(d),
+    );
+  };
+
   it.each(pairings)("%s on %s meets its contrast floor (%s)", (fg, bg, min) => {
+    // Bounding a translucent colour over pure white and pure black is only
+    // SOUND when the other side sits outside the range the composite can
+    // reach. If it falls inside, some backdrop makes the two identical and
+    // the true worst case is 1:1 — in the interior, where neither endpoint
+    // check looks. The waveform lane is exactly that: 15% grey over an
+    // unpainted canvas, against #6b7280 bars, is 4.09:1 over white and
+    // 3.84:1 over black but 1:1 over ~#677080 (#628 review).
+    for (const [a, b] of [
+      [fg, bg],
+      [bg, fg],
+    ]) {
+      if (!hasUnknownBackdrop(a) || hasUnknownBackdrop(b)) continue;
+      const lums = sideHexes(a).map(relLum);
+      const other = Math.max(...sideHexes(b).map(relLum));
+      if (other > Math.min(...lums) && other < Math.max(...lums)) {
+        throw new Error(
+          `${a} is translucent over a backdrop this gate cannot name, and ` +
+            `${b}'s luminance falls inside the range ${a} can reach — so ` +
+            "some backdrop renders them identical (1:1) and bounding over " +
+            "white and black proves nothing. Name the backdrop with " +
+            `"${a} over <token>", or move it to EXCLUDED as a ` +
+            "variable-backdrop case.",
+        );
+      }
+    }
     // Every shipped value of each token, not just the first (#612): a token
     // re-declared under @supports has two, and both render somewhere — the
     // static one on a browser without color-mix, the override everywhere
@@ -813,26 +1417,8 @@ describe("styles.css palette meets WCAG 2.2 AA by construction (#535)", () => {
     // are hard-coded in a component and are not themeable, so asserting a
     // token "as a proxy" for them would compute a pairing that isn't on
     // screen the moment that token moves (#617 review).
-    const asHexes = (side: string) => {
-      if (side.startsWith("#")) return [side];
-      // EVERY declaration has to be scoreable, not just one of them. A token
-      // whose @supports override resolves and whose static fallback doesn't
-      // would otherwise pass this check while the fallback — what a browser
-      // without color-mix paints — went untested (#617 review).
-      const decls = resolveDeclarations(side);
-      expect(decls, `${side} is not declared anywhere`).not.toEqual([]);
-      for (const d of decls) {
-        expect(
-          d.hexes,
-          `${side} declares \`${d.value}\`, which this gate cannot score — ` +
-            `teach the resolver that form, or the pairing is only checking ` +
-            `the other declarations`,
-        ).not.toEqual([]);
-      }
-      return decls.flatMap((d) => d.hexes);
-    };
-    const fgHexes = asHexes(fg);
-    const bgHexes = asHexes(bg);
+    const fgHexes = sideHexes(fg);
+    const bgHexes = sideHexes(bg);
     for (const fgHex of fgHexes) {
       for (const bgHex of bgHexes) {
         const ratio = contrast(fgHex, bgHex);
