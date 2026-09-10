@@ -1723,6 +1723,12 @@ export function getValidKeysForPlayer(): string[] {
   return Object.keys(playerBaseSchema.shape);
 }
 
+// No `discussionSchema` in this union on purpose (#584). `discussion` is a
+// single optional stage-level key (`stageSchema`), rendered once per stage by
+// Stage.tsx. Downstream hosts rely on at most one discussion rendering per
+// stage, so adding an element-level discussion must first answer the
+// multiplicity question (e.g. a `stageSchema` superRefine forbidding a
+// stage-level and an element-level discussion from co-occurring).
 export const elementSchema = altTemplateContext(
   z
     .discriminatedUnion("type", [

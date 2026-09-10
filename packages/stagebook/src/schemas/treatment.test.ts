@@ -2263,6 +2263,24 @@ test("element: type 'sharedNotepad' is rejected (removed in #250)", () => {
   }
 });
 
+// #584: `discussion` is a stage-level key, never an element type. The
+// renderer's element switch has no branch for it, and downstream hosts
+// rely on at most one discussion rendering per stage; this pins the
+// schema half of that invariant so adding `discussionSchema` to the
+// union is a deliberate decision, not a side effect.
+test("element: type 'discussion' is rejected — discussion is stage-level only (#584)", () => {
+  const result = elementSchema.safeParse({
+    type: "discussion",
+    chatType: "video",
+  });
+  expect(result.success).toBe(false);
+  if (!result.success) {
+    expect(
+      result.error.issues.some((i) => i.code === "invalid_union_discriminator"),
+    ).toBe(true);
+  }
+});
+
 test("element: type 'survey' still accepted with a one-time deprecation warning", async () => {
   const { vi } = await import("vitest");
   const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});

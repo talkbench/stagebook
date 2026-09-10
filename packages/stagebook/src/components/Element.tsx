@@ -122,7 +122,6 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
     getAssetURL,
     progressLabel,
     renderSharedNotepad,
-    renderDiscussion,
     renderSurvey,
     setAllowIdle,
     onContractViolation,
@@ -495,9 +494,12 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
       );
     }
 
-    case "discussion":
-      return renderDiscussion?.(element as never) ?? null;
-
+    // No `case "discussion"` here on purpose (#584). `discussion` is a
+    // stage-level key rendered once per stage by Stage.tsx, and
+    // `elementSchema`'s union has no `discussion` member. Downstream hosts
+    // rely on at most one discussion rendering per stage, so adding an
+    // element-level branch must first answer the multiplicity question
+    // rather than springing to life as a side effect of a union change.
     default:
       console.warn(`Unknown element type: ${element.type}`);
       return null;
