@@ -1,6 +1,6 @@
 ---
-type: noResponse
-name: Consent
+type: multipleChoice
+name: consentAcknowledgement
 ---
 
 # Welcome
@@ -15,4 +15,8 @@ Thanks for taking part in this short workplace-policy study. You will:
 Your responses are confidential and will only be used in aggregate. You
 can stop at any time.
 
-Click **I consent** below to begin.
+Select the acknowledgement below, then click **I AGREE** to begin.
+
+---
+
+- I have read and understood the information above, and I consent to participate.

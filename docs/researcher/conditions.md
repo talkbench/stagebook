@@ -419,7 +419,9 @@ consent:
                 comparator: exists
 ```
 
-Recommended, not required: make the consent text itself the body of that acknowledgement prompt, so the option can only be selected alongside the rendered text and the agreed-to text is saved with the response — see [the gated-submit pattern](treatment-files.md#the-gated-submit-pattern).
+This `exists` gate assumes a single-choice `multipleChoice` prompt. For `select: multiple` checkboxes, use `comparator: includes` and `value:` set to the exact required option text. Unchecking every box saves `[]`, which still passes `exists`. If several acknowledgements are required, add an `includes` condition for each one.
+
+Recommended, not required: make the consent text itself the body of that acknowledgement prompt, so the option can only be selected alongside the rendered text and the agreed-to text is saved with the response — see [the gated-submit pattern](treatment-files.md#the-gated-submit-pattern) and the [validated annotated walkthrough](../../examples/annotated-walkthrough/README.md#consent-acknowledgement).
 
 References travel the other way only inside consent: a later consent step may read an earlier one in the same arm, but a reference **into** consent from anywhere else — intro, game, exit, or `groupComposition` — is an error. Consent responses are audit-only (see [Consent](treatment-files.md#consent)); if downstream logic needs an answer, collect it in an intro step instead.
 
