@@ -360,7 +360,7 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
       "Button, Markdown link and TrackedLink, hovered",
     "--stagebook-primary-active": "Button, pressed",
     "--stagebook-primary-tint":
-      "Slider (ticks), track hovered — the backdrop the ticks and thumb are read against",
+      "Slider (ticks), track hovered — the backdrop the ticks and thumb are read against, in both its color-mix and static branches",
     "--stagebook-success": "Prompt: open response (within limits)",
     "--stagebook-danger":
       "ElementErrorBoundary; KitchenTimer (warning); Timeline (no player); Timeline (ranges), track muted",
@@ -388,8 +388,10 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
       "Select trigger and picker rows; TextArea, through the stylesheet's form reset",
     "--stagebook-focus-ring":
       "Button — the ring resolved on a probe against the page; Select (picker open), row walked — the inset ring on the row's fill. Its layering, opacity and forced-colors survival are focus.gate.ct.tsx's (#610)",
-    "--stagebook-timeline-tooltip-bg": "Timeline (ranges), handle hovered",
-    "--stagebook-timeline-tooltip-fg": "Timeline (ranges), handle hovered",
+    "--stagebook-timeline-tooltip-bg":
+      "Timeline (ranges), handle hovered — the color-mix branch by axe, the static fallback from the paint",
+    "--stagebook-timeline-tooltip-fg":
+      "Timeline (ranges), handle hovered, in both branches",
     "--stagebook-link": "Markdown",
     "--stagebook-link-hover": "Markdown, link hovered",
     "--stagebook-link-visited":

@@ -81,6 +81,14 @@ background image. A gate case can therefore also declare:
 The only colour maths that survives is the WCAG relative-luminance formula on
 two rgb triples.
 
+The stylesheet's `@supports (color: color-mix(…))` block has static fallbacks
+that render on supported hosts without `color-mix` (Firefox 92–112, Safari
+15.4–16.1) and never on the engines the gate runs. A case can scan that
+branch too, by doing what such a browser does: dropping the block from the
+loaded stylesheet's CSSOM before the scan. The one fallback carrying text —
+the range tooltip's translucent background over the waveform canvas — is
+read from its own padding pixel, since axe will not composite over a canvas.
+
 ## Decision 3 — The stylesheet keeps a ledger, not a scorer
 
 Axe can only see what renders. It cannot tell you about a token nobody wired

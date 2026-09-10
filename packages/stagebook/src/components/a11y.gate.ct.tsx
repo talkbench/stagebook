@@ -161,7 +161,14 @@ type Side =
       /** What shows through when the property is fully transparent. */
       behind?: Side;
     }
-  | { value: string };
+  | { value: string }
+  /**
+   * The paint just inside an element's left edge at mid-height — its own
+   * padding, where its background shows without text. For a background
+   * only the paint knows: translucent over a canvas, which axe will not
+   * composite.
+   */
+  | { inside: string };
 
 /** A contrast floor measured from two computed styles. */
 interface Mark {
@@ -230,6 +237,36 @@ const openPicker = async (page: Page) => {
   await expect
     .poll(() => select.evaluate((el) => el.matches(":open")))
     .toBe(true);
+};
+
+/**
+ * Render the stylesheet's static fallbacks. styles.css re-declares its
+ * translucent accent derivatives under `@supports (color: color-mix(…))`,
+ * so on an engine here the override branch is what renders and the static
+ * branch — what a supported host without color-mix paints (Firefox 92–112,
+ * Safari 15.4–16.1; docs/engineer/platform-requirements.md) — never does.
+ * Dropping that block from the CSSOM is exactly what such a browser does
+ * with it, so the scan then reads the fallback branch from the render.
+ */
+const withoutColorMix = async (page: Page) => {
+  const dropped = await page.evaluate(() => {
+    let n = 0;
+    for (const sheet of document.styleSheets) {
+      const rules = sheet.cssRules;
+      for (let i = rules.length - 1; i >= 0; i -= 1) {
+        const rule = rules[i];
+        if (
+          rule instanceof CSSSupportsRule &&
+          rule.conditionText.includes("color-mix")
+        ) {
+          sheet.deleteRule(i);
+          n += 1;
+        }
+      }
+    }
+    return n;
+  });
+  expect(dropped, "the stylesheet's color-mix @supports block").toBe(1);
 };
 
 // The page colour, for a mark whose backdrop is the host page rather than
@@ -639,6 +676,15 @@ const cases: Case[] = [
         enter: hover('[data-testid="slider-track"]'),
         pixels: [...tickPixels("hovered"), thumbPixel("hovered")],
       },
+      {
+        // The hover tint's static fallback, for hosts without color-mix.
+        name: "track hovered, without color-mix",
+        enter: async (page) => {
+          await withoutColorMix(page);
+          await hover('[data-testid="slider-track"]')(page);
+        },
+        pixels: [...tickPixels("hovered"), thumbPixel("hovered")],
+      },
     ],
   },
   {
@@ -781,6 +827,34 @@ const cases: Case[] = [
         name: "handle hovered",
         enter: hover('[data-testid="range-0-handle-end"]'),
         known: TIMELINE_KNOWN,
+      },
+      {
+        // The tooltip's background is the one color-mix token that carries
+        // text; its static fallback is a translucent rgba the override
+        // branch never shows.
+        name: "handle hovered, without color-mix",
+        enter: async (page) => {
+          await withoutColorMix(page);
+          await hover('[data-testid="range-0-handle-end"]')(page);
+        },
+        known: [
+          ...TIMELINE_KNOWN,
+          {
+            rule: "color-contrast",
+            within: '[data-testid="handle-tooltip"]',
+            kind: "unmeasured",
+            reason: "imgNode",
+            why: "the fallback background is translucent over the waveform canvas, which axe will not composite; read from the paint below",
+          },
+        ],
+        marks: [
+          {
+            name: "tooltip text on its fallback background",
+            fg: { el: '[data-testid="handle-tooltip"]', prop: "color" },
+            bg: { inside: '[data-testid="handle-tooltip"]' },
+            min: AA,
+          },
+        ],
       },
     ],
   },
@@ -1061,6 +1135,15 @@ function assertRatio(
  * axe and the pixel reader are for.
  */
 async function computed(page: Page, side: Side): Promise<number[]> {
+  if ("inside" in side) {
+    const box = await page.locator(side.inside).boundingBox();
+    if (!box) throw new Error(`${side.inside} is not rendered`);
+    return pixel(
+      page,
+      Math.floor(box.x + 2),
+      Math.floor(box.y + box.height / 2),
+    );
+  }
   const out = await page.evaluate((s) => {
     let raw: string;
     let opacity = "1";
