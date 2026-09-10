@@ -458,7 +458,7 @@ Stagebook uses render slots for elements tightly coupled to external services. T
 
 ### Video Calls
 
-Required for `discussion` elements with `chatType: "video"` or `"audio"`.
+Required for stages whose `discussion` block has `chatType: "video"` or `"audio"`.
 
 The platform must:
 
@@ -476,7 +476,7 @@ Provide via: `renderDiscussion(config)` on StagebookProvider.
 
 ### Text Chat
 
-Required for `discussion` elements with `chatType: "text"`.
+Required for stages whose `discussion` block has `chatType: "text"`.
 
 The platform must:
 

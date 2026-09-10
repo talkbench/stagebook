@@ -95,26 +95,29 @@ describe("Element → Qualtrics attributes wiring (#473)", () => {
 describe("Element → no element-level discussion (#584)", () => {
   test('`type: "discussion"` does not invoke renderDiscussion and falls through to the unknown-type path', () => {
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const renderDiscussion = vi.fn(() => <div data-testid="discussion" />);
-    const ctx = makeContext({ renderDiscussion });
+    try {
+      const renderDiscussion = vi.fn(() => <div data-testid="discussion" />);
+      const ctx = makeContext({ renderDiscussion });
 
-    const container = document.createElement("div");
-    act(() => {
-      createRoot(container).render(
-        <StagebookProvider value={ctx}>
-          <Element
-            element={{ type: "discussion", chatType: "video" }}
-            onSubmit={() => {}}
-          />
-        </StagebookProvider>,
+      const container = document.createElement("div");
+      act(() => {
+        createRoot(container).render(
+          <StagebookProvider value={ctx}>
+            <Element
+              element={{ type: "discussion", chatType: "video" }}
+              onSubmit={() => {}}
+            />
+          </StagebookProvider>,
+        );
+      });
+
+      expect(renderDiscussion).not.toHaveBeenCalled();
+      expect(container.innerHTML).toBe("");
+      expect(consoleWarn).toHaveBeenCalledWith(
+        "Unknown element type: discussion",
       );
-    });
-
-    expect(renderDiscussion).not.toHaveBeenCalled();
-    expect(container.innerHTML).toBe("");
-    expect(consoleWarn).toHaveBeenCalledWith(
-      "Unknown element type: discussion",
-    );
-    consoleWarn.mockRestore();
+    } finally {
+      consoleWarn.mockRestore();
+    }
   });
 });
