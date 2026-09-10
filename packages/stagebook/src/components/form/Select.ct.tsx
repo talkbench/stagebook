@@ -10,22 +10,28 @@ const options = [
 ];
 
 test.describe("Select", () => {
-  test("lets the host own the caption gap (#605)", async ({ mount }) => {
+  test("lets the host own the caption gap (#605)", async ({ mount, page }) => {
     const component = await mount(
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <label htmlFor="device">Microphone</label>
         <Select id="device" options={options} onChange={() => {}} />
       </div>,
     );
+    // Wait for Inter before separate geometry reads; a font swap between
+    // them changes the label height by 2px and produces a false gap failure.
+    await page.evaluate(() => document.fonts.ready);
     const label = await component.locator("label").boundingBox();
     const select = await component.getByRole("combobox").boundingBox();
     expect(select!.y - (label!.y + label!.height)).toBeCloseTo(4, 1);
   });
 
-  test("keeps the built-in label gap (#605)", async ({ mount }) => {
+  test("keeps the built-in label gap (#605)", async ({ mount, page }) => {
     const component = await mount(
       <Select label="Microphone" options={options} onChange={() => {}} />,
     );
+    // Wait for Inter before separate geometry reads; a font swap between
+    // them changes the label height by 2px and produces a false gap failure.
+    await page.evaluate(() => document.fonts.ready);
     const label = await component.locator("label").boundingBox();
     const select = await component.getByRole("combobox").boundingBox();
     expect(select!.y - (label!.y + label!.height)).toBeCloseTo(8, 1);
@@ -537,12 +543,11 @@ test.describe("Select: picker (#627)", () => {
       <Select options={options} onChange={() => {}} />,
     );
     const select = component.locator("select");
-    // The chevron is a background image on the trigger — the one part of
-    // the control that renders identically on both paths.
-    const background = await select.evaluate(
-      (el) => getComputedStyle(el).backgroundImage,
-    );
-    expect(background).toContain("data:image/svg+xml");
+    const chevron = component.getByTestId("select-chevron");
+    await expect(chevron).toBeVisible();
+    await expect(chevron).toHaveAttribute("aria-hidden", "true");
+    await expect(chevron).toHaveCSS("pointer-events", "none");
+    await expect(select).toHaveCSS("background-image", "none");
     if (await supportsBaseSelect(page)) {
       // base-select draws its own disclosure icon through ::picker-icon.
       // Left alone, the trigger shows two arrows.
@@ -1121,4 +1126,64 @@ test.describe("Select: always-controlled (#606)", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await expect(select).toHaveCSS("transition-duration", "0s");
   });
+});
+
+// The color must be read from the actual drawing, not a disconnected token.
+test("chevron follows a scoped host color without changing the native control (#636)", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <div
+      style={{ "--stagebook-select-chevron": "#005a99" } as React.CSSProperties}
+    >
+      <Select options={options} label="Choose" onChange={() => {}} />
+    </div>,
+  );
+  const chevron = component.getByTestId("select-chevron");
+  await expect(chevron.locator("path")).toHaveCSS("fill", "rgb(0, 90, 153)");
+  await expect(component.getByRole("combobox")).toHaveCSS(
+    "border-color",
+    "rgb(209, 213, 219)",
+  );
+  const box = await chevron.boundingBox();
+  const control = await component.getByRole("combobox").boundingBox();
+  expect(box).not.toBeNull();
+  expect(control).not.toBeNull();
+  if (!box || !control) throw new Error("missing geometry");
+  expect(box.width).toBeCloseTo(17.5, 1);
+  expect(box.y + box.height / 2).toBeCloseTo(control.y + control.height / 2, 1);
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  if (await page.evaluate(() => CSS.supports("appearance", "base-select"))) {
+    await expect
+      .poll(() =>
+        component.getByRole("combobox").evaluate((el) => el.matches(":open")),
+      )
+      .toBe(true);
+  } else {
+    await expect(component.getByRole("combobox")).toBeFocused();
+  }
+  await page.keyboard.press("Escape");
+});
+
+test("chevron remains readable in forced colors (#636)", async ({
+  mount,
+  page,
+  browserName,
+}) => {
+  test.skip(
+    browserName === "webkit",
+    "WebKit emulates the media query but not forced-color rendering",
+  );
+  const component = await mount(
+    <Select options={options} label="Choose" onChange={() => {}} />,
+  );
+  await page.emulateMedia({ forcedColors: "active" });
+  const text = await component
+    .getByRole("combobox")
+    .evaluate((el) => getComputedStyle(el).color);
+  await expect(
+    component.getByTestId("select-chevron").locator("path"),
+  ).toHaveCSS("fill", text);
+  await expect(component.getByTestId("select-chevron")).toBeVisible();
 });

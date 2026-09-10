@@ -403,6 +403,7 @@ export function Slider({
                 // keyboard-reach the slider thumb (#415 / #413).
                 tabIndex={0}
                 style={{
+                  colorScheme: "light",
                   position: "absolute",
                   top: "50%",
                   insetInlineStart: 0,
