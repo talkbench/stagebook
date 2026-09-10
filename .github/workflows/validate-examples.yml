@@ -16,6 +16,14 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel a PR's superseded run when a newer push lands on the same branch
+# (#573). Push-to-main runs get a unique group per run so they are never
+# cancelled or queued behind each other. Keyed on `github.workflow` so this
+# workflow only ever cancels its own runs, not ci.yml's.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
