@@ -134,22 +134,6 @@ test("secondary variant also shows the focus ring on keyboard focus", async ({
     .not.toBe(baseline);
 });
 
-test("disabled button has pointer-events: none (no hover state fires)", async ({
-  mount,
-}) => {
-  // Even though the `disabled` attr already prevents click events,
-  // `pointer-events: none` additionally guards against any hover
-  // CSS firing — without it a hover over a disabled button would
-  // briefly darken before the click is ignored, contradicting
-  // the "disabled" semantic.
-  const component = await mount(<Button disabled>Disabled</Button>);
-  const button = component.getByRole("button");
-  const pointerEvents = await button.evaluate(
-    (el) => window.getComputedStyle(el).pointerEvents,
-  );
-  expect(pointerEvents).toBe("none");
-});
-
 test("disabled button has reduced opacity", async ({ mount }) => {
   const component = await mount(<Button disabled>Disabled</Button>);
   const button = component.getByRole("button");
@@ -162,28 +146,73 @@ test("disabled button has reduced opacity", async ({ mount }) => {
   expect(opacity).toBeGreaterThan(0);
 });
 
-test("disabled button does NOT darken on hover (pointer-events: none)", async ({
-  mount,
-}) => {
-  // The strongest test of the `pointer-events: none` rule. Without
-  // it, hovering a disabled button would briefly fire the hover
-  // CSS — visually contradicting the "disabled" semantic ("looks
-  // interactive, isn't"). With it, the hover state can't fire.
-  const component = await mount(<Button disabled>Disabled</Button>);
-  const button = component.getByRole("button");
-  const before = await button.evaluate(
-    (el) => window.getComputedStyle(el).backgroundColor,
-  );
-  // Force the hover with a CSS state — Playwright's .hover() can't
-  // hover a pointer-events: none element. We test that even when
-  // we artificially apply :hover-equivalent state, nothing changes.
-  await button.hover({ force: true }).catch(() => {});
-  await new Promise((r) => setTimeout(r, 300));
-  const after = await button.evaluate(
-    (el) => window.getComputedStyle(el).backgroundColor,
-  );
-  expect(after).toBe(before);
-});
+for (const primary of [true, false]) {
+  for (const icon of [false, true]) {
+    test(`disabled ${primary ? "primary" : "secondary"} ${icon ? "icon" : "text"} button allows tooltip hover without styling or activation (#623)`, async ({
+      mount,
+      page,
+    }) => {
+      // Make any incorrect hover/active fill observable immediately.
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      let clicks = 0;
+      let submissions = 0;
+      const component = await mount(
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            submissions++;
+          }}
+        >
+          <Button>Before</Button>
+          <Button
+            primary={primary}
+            icon={icon}
+            aria-label="Refresh devices"
+            title="Scanning devices"
+            disabled
+            type="submit"
+            onClick={() => {
+              clicks++;
+            }}
+          >
+            {icon ? <RefreshGlyph /> : "Refresh devices"}
+          </Button>
+          <Button>After</Button>
+        </form>,
+      );
+      const button = component.getByRole("button", { name: "Refresh devices" });
+      await expect(button).toBeDisabled();
+      await expect(button).toHaveAttribute("title", "Scanning devices");
+      await expect(button).toHaveCSS("pointer-events", "auto");
+      await expect(button).toHaveCSS("cursor", "not-allowed");
+      await expect(button).toHaveCSS("opacity", "0.5");
+      const baseline = await button.evaluate(
+        (el) => getComputedStyle(el).backgroundColor,
+      );
+
+      // A real hit on the button is required for a native title tooltip.
+      // Browser-chrome tooltip pixels are outside Playwright's DOM reader.
+      await button.hover();
+      expect(await button.evaluate((el) => el.matches(":hover"))).toBe(true);
+      await expect(button).toHaveCSS("background-color", baseline);
+      await page.mouse.down();
+      await expect(button).toHaveCSS("background-color", baseline);
+      await page.mouse.up();
+
+      // Removing the pointer blocker must leave native disabled semantics
+      // intact, including no accidental form submission and no tab stop.
+      await component
+        .getByRole("button", { name: "Before", exact: true })
+        .focus();
+      await page.keyboard.press("Tab");
+      await expect(
+        component.getByRole("button", { name: "After", exact: true }),
+      ).toBeFocused();
+      expect(clicks).toBe(0);
+      expect(submissions).toBe(0);
+    });
+  }
+}
 
 test("primary button :active state is darker than hover (tactile feedback)", async ({
   mount,
@@ -454,7 +483,7 @@ test("icon variant shares the text button's disabled treatment", async ({
   );
   const button = component.getByRole("button");
   await expect(button).toBeDisabled();
-  await expect(button).toHaveCSS("pointer-events", "none");
+  await expect(button).toHaveCSS("pointer-events", "auto");
   const opacity = await button.evaluate((el) =>
     parseFloat(window.getComputedStyle(el).opacity),
   );
