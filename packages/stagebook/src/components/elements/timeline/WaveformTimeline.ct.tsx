@@ -204,3 +204,111 @@ test("renders the empty state (no peaks) without a waveform", async ({
   await expect.poll(() => pixelCensus(canvas)).toMatchObject({ opaque: 0 });
   expect((await pixelCensus(canvas)).translucent).toBeGreaterThan(0);
 });
+
+// The isolated component passes on Linux WebKit 1.58.2 and 1.59.1; the
+// original runner integration failure in #600 remains unexplained. Evidence:
+// https://github.com/talkbench/stagebook/pull/653
+//
+// #600: a canvas existing (or containing some bars) does not establish that
+// sound is aligned with time. Use a full-canvas column census like the report:
+// columns with >3 bar pixels distinguish loud bars from the silent baseline
+// at both DPRs, and can be compared with the playhead's coordinate space.
+function loudInterval(canvas: Locator) {
+  return canvas.evaluate((el) => {
+    const c = el as HTMLCanvasElement;
+    const ctx = c.getContext("2d");
+    if (!ctx) throw new Error("No canvas context");
+    const { data } = ctx.getImageData(0, 0, c.width, c.height);
+    const loud = [];
+    for (let x = 0; x < c.width; x++) {
+      let barPixels = 0;
+      for (let y = 0; y < c.height; y++) {
+        // Allow antialiased edges of fractional per-bucket bars; the lane
+        // has alpha 38, well below this threshold.
+        if (data[(y * c.width + x) * 4 + 3] > 200) barPixels++;
+      }
+      if (barPixels > 3) loud.push(x);
+    }
+    return {
+      width: c.width,
+      height: c.height,
+      first: loud[0] ?? -1,
+      end: loud.length ? loud[loud.length - 1] + 1 : -1,
+      count: loud.length,
+      dpr: window.devicePixelRatio,
+    };
+  });
+}
+
+for (const dpr of [1, 2]) {
+  test.describe(`waveform bar placement at DPR ${String(dpr)} (#600)`, () => {
+    test.use({ deviceScaleFactor: dpr });
+    for (const buckets of [300, 1200]) {
+      test(`${String(buckets)} buckets: sound stays in the middle third through redraws`, async ({
+        mount,
+      }) => {
+        const peaks = Array.from({ length: buckets * 2 }, (_, i) => {
+          const bucket = Math.floor(i / 2);
+          return bucket >= buckets / 3 && bucket < (buckets * 2) / 3
+            ? i % 2 === 0
+              ? -0.8
+              : 0.8
+            : 0;
+        });
+        const component = await mount(
+          <MockWaveformTimeline
+            label="Placement probe"
+            duration={30}
+            currentTime={10}
+            width={672}
+            mockPeaks={null}
+          />,
+        );
+        const canvas = component.getByTestId("waveform-canvas");
+        await expect(canvas).toHaveAttribute("width", String(672 * dpr));
+        expect((await loudInterval(canvas)).count).toBe(0);
+        // The original report used 1200 buckets and 672 CSS px. Repeated
+        // resizes also exercise backing-store resets and DPR transforms.
+        for (const width of [672, 336, 672]) {
+          await component.update(
+            <MockWaveformTimeline
+              label="Placement probe"
+              duration={30}
+              currentTime={10}
+              width={width}
+              mockPeaks={peaks}
+            />,
+          );
+          await expect(canvas).toHaveAttribute("width", String(width * dpr));
+          await expect
+            .poll(async () => (await loudInterval(canvas)).count)
+            .toBeGreaterThan(0);
+          const actual = await loudInterval(canvas);
+          const evidence = JSON.stringify({
+            buckets,
+            cssWidth: width,
+            ...actual,
+          });
+          expect(actual.dpr, evidence).toBe(dpr);
+          expect(actual.height, evidence).toBe(48 * dpr);
+          // At most two device pixels for fractional bucket/bar boundaries.
+          expect(
+            Math.abs(actual.first - actual.width / 3),
+            evidence,
+          ).toBeLessThanOrEqual(2);
+          expect(
+            Math.abs(actual.end - (actual.width * 2) / 3),
+            evidence,
+          ).toBeLessThanOrEqual(2);
+          // Fractional per-bucket bars have gaps and antialiased edges.
+          // Still require substantial coverage, not just two endpoint bars.
+          expect(actual.count, evidence).toBeGreaterThan(actual.width / 6);
+          expect(
+            await playheadLeft(component.locator(PLAYHEAD)),
+            evidence,
+          ).toBeCloseTo(width / 3, 1);
+        }
+      });
+    }
+  });
+}
