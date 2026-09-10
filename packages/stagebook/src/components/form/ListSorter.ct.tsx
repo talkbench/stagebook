@@ -144,11 +144,11 @@ test.describe("ListSorter", () => {
       .not.toBe(baseline);
   });
 
-  test("rows meet touch-target sizing (≥36px tall)", async ({ mount }) => {
+  test("rows preserve their existing 54px height (#632)", async ({ mount }) => {
     const component = await mount(<MockListSorter items={testItems} />);
     const rowBox = await component.getByTestId("draggable-0").boundingBox();
     expect(rowBox).not.toBeNull();
-    expect(rowBox!.height).toBeGreaterThanOrEqual(36);
+    expect(rowBox!.height).toBe(54);
   });
 
   test("prefers-reduced-motion: rows disable the hover transition", async ({

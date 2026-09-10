@@ -75,14 +75,12 @@ const radioRowStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "0.5rem",
-  // Touch-target sizing — HIG / Material both recommend ~44px for
-  // pointer-coarse targets; 2.25rem (36px) balances target size
-  // against vertical density on long Likert-style scales. Hosts that
-  // want a different target size (e.g., mobile-first deployments
-  // wanting full 44px) override via `--stagebook-row-min-height`.
-  // Padding bakes into the hover-fill area so the visual affordance
-  // covers the full clickable region.
-  minHeight: "var(--stagebook-row-min-height, 2.25rem)",
+  // The whole label is the target: 44px by default, including padding.
+  // Border-box preserves the existing 44px appearance (previously a
+  // 36px content box + 8px padding) and makes host overrides exact (#632).
+  // minHeight lets long answers wrap into taller clickable rows.
+  boxSizing: "border-box",
+  minHeight: "var(--stagebook-row-min-height, 2.75rem)",
   padding: "0.25rem 0.5rem",
   borderRadius: "0.375rem",
   // The hover-fill transition lives in the class-scoped <style> block,

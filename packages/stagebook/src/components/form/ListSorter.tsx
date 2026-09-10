@@ -13,6 +13,12 @@ import { focusRingCss } from "../focusRing.js";
 // `⇅` which read more like a "sort" icon than a drag handle.
 const DRAG_HANDLE_GLYPH = "⠿";
 
+// Preserve the sorter's existing 54px row (36px content + 16px padding
+// + 2px border) when the shared token becomes a border-box minimum (#632).
+// Larger host targets still win, and position numbers use the same floor.
+const SORTER_ROW_MIN =
+  "max(var(--stagebook-row-min-height, 2.75rem), calc(3.25rem + 2px))";
+
 const reorder = (
   list: string[],
   startIndex: number,
@@ -48,10 +54,8 @@ function ListItem({
           style={{
             ...provided.draggableProps.style,
             padding: "0.5rem 0.75rem",
-            // Touch-target sizing — matches the form-input row
-            // height token used by Radio / Checkbox so drag rows
-            // are comfortably tappable on touch.
-            minHeight: "var(--stagebook-row-min-height, 2.25rem)",
+            boxSizing: "border-box",
+            minHeight: SORTER_ROW_MIN,
             display: "flex",
             alignItems: "center",
             gap: "0.5rem",
@@ -77,7 +81,7 @@ function ListItem({
             aria-hidden="true"
             style={{
               // Glyph size scaled up from 1rem — at body text size the
-              // ⠿ Braille pattern reads anemic against a 2.25rem row.
+              // ⠿ Braille pattern reads anemic against a sortable row.
               color: "var(--stagebook-text-muted, #6b7280)",
               fontSize: "1.5rem",
               lineHeight: 1,
@@ -128,7 +132,8 @@ function List({ items, itemClass }: { items: string[]; itemClass: string }) {
               // corresponding draggable rows. Without the transparent
               // border the rows are 2px taller per item, causing the
               // numbers to drift 12px out of alignment by row 6.
-              minHeight: "var(--stagebook-row-min-height, 2.25rem)",
+              boxSizing: "border-box",
+              minHeight: SORTER_ROW_MIN,
               borderTop: "1px solid transparent",
               borderBottom: "1px solid transparent",
               lineHeight: "1.25rem",

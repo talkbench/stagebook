@@ -152,8 +152,9 @@ test.describe("RadioGroup", () => {
 
     // Tab into the page — first Tab lands on the first focusable
     // element inside the mount root, which is the first radio.
-    await page.keyboard.press("Tab");
     const focused = component.locator('input[value="a"]');
+    await expect(focused).toBeVisible();
+    await page.keyboard.press("Tab");
     await expect(focused).toBeFocused();
     const shadowOnKeyboardFocus = await focused.evaluate(
       (el) => window.getComputedStyle(el).boxShadow,
@@ -209,7 +210,7 @@ test.describe("RadioGroup", () => {
     mount,
   }) => {
     // Guard against a regression where someone sets a fixed
-    // `height: 2.25rem` on the row instead of `minHeight`. With
+    // `height: 2.75rem` on the row instead of `minHeight`. With
     // minHeight the row grows to fit a wrapping label; with a fixed
     // height the label would visually overflow and the hover-fill
     // background wouldn't cover the wrapped lines.
@@ -229,7 +230,7 @@ test.describe("RadioGroup", () => {
     const longRow = component.locator('[data-testid="option"]').first();
     const box = await longRow.boundingBox();
     expect(box).not.toBeNull();
-    // A single 36px row can't fit ~26 words at 240px wide; expect at
+    // A single 44px row can't fit ~26 words at 240px wide; expect at
     // least two lines worth (≥ ~50px).
     expect(box!.height).toBeGreaterThan(50);
   });
@@ -253,9 +254,8 @@ test.describe("RadioGroup", () => {
     await expect(legend).toHaveText("Pick your favorite");
   });
 
-  test("row meets touch-target sizing (≥36px tall)", async ({ mount }) => {
-    // 36px (2.25rem) — balances HIG's 44px recommendation against
-    // vertical density on long Likert-style scales.
+  test("row meets touch-target sizing (44px tall)", async ({ mount }) => {
+    // Exact total height: includes padding and preserves the existing layout.
     const component = await mount(
       <RadioGroup options={options} onChange={() => {}} />,
     );
@@ -264,7 +264,7 @@ test.describe("RadioGroup", () => {
       .first()
       .boundingBox();
     expect(rowBox).not.toBeNull();
-    expect(rowBox!.height).toBeGreaterThanOrEqual(36);
+    expect(rowBox!.height).toBe(44);
   });
 
   test("inline styles survive an aggressive host CSS reset (issue #213)", async ({

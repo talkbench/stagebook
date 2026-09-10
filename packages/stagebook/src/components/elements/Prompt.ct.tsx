@@ -520,12 +520,15 @@ const customOrderMultipleChoice = {
 
 async function readRadioOrder(
   component: import("@playwright/test").Locator,
+  expectedCount: number,
 ): Promise<string[]> {
-  return component
-    .locator('input[type="radio"]')
-    .evaluateAll((nodes) =>
-      nodes.map((n) => (n as HTMLInputElement).value ?? ""),
-    );
+  const radios = component.locator('input[type="radio"]');
+  // evaluateAll does not wait for mounting to finish; on WebKit it can
+  // read an empty list and misreport a shuffle/order regression.
+  await expect(radios).toHaveCount(expectedCount);
+  return radios.evaluateAll((nodes) =>
+    nodes.map((n) => (n as HTMLInputElement).value ?? ""),
+  );
 }
 
 test.describe("Multiple Choice option order", () => {
@@ -542,7 +545,7 @@ test.describe("Multiple Choice option order", () => {
         getElapsedTime={() => 0}
       />,
     );
-    const order = await readRadioOrder(component);
+    const order = await readRadioOrder(component, SHUFFLE_OPTIONS.length);
     // Same set membership.
     expect([...order].sort()).toEqual([...SHUFFLE_OPTIONS].sort());
     // Different from the source order. With 8 options, the chance of a
@@ -564,7 +567,7 @@ test.describe("Multiple Choice option order", () => {
         getElapsedTime={() => 0}
       />,
     );
-    const firstOrder = await readRadioOrder(component);
+    const firstOrder = await readRadioOrder(component, SHUFFLE_OPTIONS.length);
     // Re-mount with the same props (different `value`) — the rendered
     // order must match what was captured on first render.
     await component.update(
@@ -577,7 +580,7 @@ test.describe("Multiple Choice option order", () => {
         getElapsedTime={() => 0}
       />,
     );
-    const secondOrder = await readRadioOrder(component);
+    const secondOrder = await readRadioOrder(component, SHUFFLE_OPTIONS.length);
     expect(secondOrder).toEqual(firstOrder);
   });
 
@@ -597,7 +600,7 @@ test.describe("Multiple Choice option order", () => {
         getElapsedTime={() => 0}
       />,
     );
-    const order = await readRadioOrder(component);
+    const order = await readRadioOrder(component, customOrderOptions.length);
     expect(order).toEqual([...customOrderOptions]);
   });
 });

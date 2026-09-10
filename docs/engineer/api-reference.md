@@ -367,6 +367,8 @@ Requires StagebookProvider. Dispatches to the appropriate element component base
 
 `ButtonProps` is a union of `TextButtonProps` and `IconButtonProps` (both exported). To type a wrapper, intersect or rest-destructure — `type MyProps = ButtonProps & { … }` — rather than `extends ButtonProps` (an interface can't extend a union) or `Omit<ButtonProps, …>` (which collapses the union and loses the `icon` ⇒ `aria-label` requirement).
 
+**Row target size.** `--stagebook-row-min-height` defaults to `2.75rem` (44 px at a 16 px root size). It measures the total target height, including padding and borders, for radio/checkbox rows, Select triggers and customizable picker rows, and icon buttons. Wrapped labels may grow taller. ListSorter retains its existing 54 px minimum, while honoring larger shared-token values. Hosts that set this token should supply the desired total minimum; padding is no longer added on top. See the [row target size decision](../decisions/2026-09-row-target-size.md).
+
 **`Select` spacing.** The standalone component adds no outer margin; its host owns spacing through the surrounding layout. The optional built-in `label` keeps its 0.5rem gap above the control. Dropdown study prompts preserve their existing 1rem gap below the prompt body.
 
 **`Select disabled`.** Forwarded to the `<select>`; the control keeps rendering (options and placeholder included) but can't take focus or open, and its label takes the muted colour. An empty picker — `options={[]}` plus a `placeholder` carrying the state message — is otherwise an enabled control with nothing selectable; `disabled` is what makes it read as waiting.

@@ -285,13 +285,13 @@ test.describe("Select", () => {
   // sense for the radio/checkbox option-row case where the entire
   // row is a click target without an explicit affordance.
 
-  test("trigger meets touch-target sizing (≥36px tall)", async ({ mount }) => {
+  test("trigger meets touch-target sizing (44px tall)", async ({ mount }) => {
     const component = await mount(
       <Select options={options} onChange={() => {}} />,
     );
     const box = await component.locator("select").boundingBox();
     expect(box).not.toBeNull();
-    expect(box!.height).toBeGreaterThanOrEqual(36);
+    expect(box!.height).toBe(44);
   });
 
   test("focused-then-blurred trigger doesn't leave a stuck border color (no #367-style bleed)", async ({
@@ -699,7 +699,7 @@ test.describe("Select: picker (#627)", () => {
     ).toBe("rgb(0, 255, 0)");
   });
 
-  test("picker rows meet touch-target sizing (≥36px tall) and take the hover fill", async ({
+  test("picker rows render the 44px accessibility minimum (#632) and take the hover fill", async ({
     mount,
     page,
   }) => {
@@ -719,9 +719,9 @@ test.describe("Select: picker (#627)", () => {
     // The same token RadioGroup / CheckboxGroup rows use, so the three
     // families agree on the host's lever for row height
     // (--stagebook-row-min-height). Exactly the token, not the token plus
-    // padding: the row is border-box, so 2.25rem is the row a participant
+    // padding: the row is border-box, so 2.75rem is the row a participant
     // sees and taps, and a single-line list stays as dense as a menu.
-    expect(box.height).toBe(36);
+    expect(box.height).toBe(44);
 
     // Hover reads as "interactive" with the shared hover token (gray-100),
     // replacing the engine's currentColor tint.
