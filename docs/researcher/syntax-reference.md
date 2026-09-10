@@ -14,7 +14,7 @@ treatments: # required: array of treatment objects
 ## 2. Primitives
 
 - **Names**: 1-64 chars; `[a-zA-Z0-9 _-]` plus `${field}` placeholders.
-- **Durations**: positive integer (seconds).
+- **Durations**: integer seconds, at least 5 — a shorter stage cannot be perceived or acted on, so the validator treats it as an authoring error (a typo or a milliseconds/seconds mix-up).
 - **Positions**: zero-based nonnegative integers.
 - **Visibility**: `showToPositions` / `hideFromPositions` — nonempty int arrays.
 - **Time gates**: `displayTime` (nonnegative int), `hideTime` (positive int) — seconds into stage.

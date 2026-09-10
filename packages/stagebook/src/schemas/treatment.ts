@@ -253,8 +253,19 @@ export const promptFilePathSchema = fileSchema.refine(
   },
 );
 
-// stage duration:
-export const durationSchema = z.number().int().positive(); // min: 1 second
+// Stage duration, in seconds, with a 5-second floor. A stage of 1-4 seconds
+// cannot be read, perceived, or acted on by a participant, so there is no
+// study design it expresses — it is an authoring error every time, most
+// plausibly a typo or a milliseconds/seconds mix-up. The floor is chosen on
+// the DSL's own terms and is deliberately host-independent; it also happens
+// to be >= every known host's own floor (Empirica throws below 5 at game
+// start), so the mistake surfaces at authoring time rather than as a runtime
+// failure. Larger would invent a constraint we cannot justify: a six-second
+// transition slide or a brief attention probe is a legitimate design (#588).
+export const durationSchema = z.number().int().min(5, {
+  message:
+    "Stage duration must be at least 5 seconds — a shorter stage cannot be perceived or acted on, so this is usually a typo or a milliseconds/seconds mix-up",
+});
 export type DurationType = z.infer<typeof durationSchema>;
 
 export const displayTimeSchema = z.number().int().nonnegative();
