@@ -547,6 +547,10 @@ export function Timeline({
   // Keyboard handler — delegates to keyboardActions.ts for the key-to-action
   // mapping. Returns null when the key should fall through to MediaPlayer.
   const onKeyDown = (e: React.KeyboardEvent) => {
+    // Annotation shortcuts belong to the focused timeline itself. Events
+    // from its zoom/mute/help buttons (or portal content) bubble here too;
+    // leave those controls their native Enter/Space and navigation behavior.
+    if (e.target !== e.currentTarget) return;
     const currentRange =
       selectionType === "range" && state.activeIndex !== null
         ? ((state.selections as RangeSelection[])[state.activeIndex] ?? null)
@@ -697,6 +701,8 @@ export function Timeline({
   // with the same min-pixel-width clamp the click-create path uses so a
   // near-instantaneous tap still produces a visible range.
   const onKeyUp = (e: React.KeyboardEvent) => {
+    // Match keydown's focus boundary, including range-commit Enter keyups.
+    if (e.target !== e.currentTarget) return;
     const eventLike: KeyEventLike = {
       key: e.key,
       ctrlKey: e.ctrlKey,
