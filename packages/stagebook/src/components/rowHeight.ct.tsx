@@ -109,3 +109,98 @@ for (const select of ["single", "multiple"] as const) {
     expect(first.y - body.y - body.height).toBeCloseTo(16, 1);
   });
 }
+
+for (const [name, token, height] of [
+  ["default", undefined, 44],
+  ["fallback", "initial", 44],
+  ["host override", "4.5rem", 72],
+] as const) {
+  test(`Select label stays vertically centered: ${name} (#657)`, async ({
+    mount,
+    page,
+  }) => {
+    const component = await mount(
+      <div
+        style={
+          { width: 340, "--stagebook-row-min-height": token } as CSSProperties
+        }
+      >
+        <Select
+          options={[{ key: "camera", value: "Camera" }]}
+          value="camera"
+          label="Device"
+          onChange={() => {}}
+        />
+      </div>,
+    );
+    const select = component.getByRole("combobox");
+    await page.evaluate(() => document.fonts.ready);
+    expect((await select.boundingBox())!.height).toBe(height);
+    const content = await select.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        appearance: style.appearance,
+        left: parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft),
+        right:
+          parseFloat(style.borderRightWidth) + parseFloat(style.paddingRight),
+      };
+    });
+    const screenshot = await select.screenshot({ scale: "css" });
+    await test
+      .info()
+      .attach("select-label", { body: screenshot, contentType: "image/png" });
+    // The displayed label is an anonymous UA box: DOM option bounds do not
+    // describe it. Read the painted ink, excluding the border and chevron.
+    const gaps = await page.evaluate(
+      async ({ base64, content }) => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${base64}`;
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        const { data } = context.getImageData(0, 0, image.width, image.height);
+        let first = image.height,
+          last = -1;
+        for (let y = 2; y < image.height - 2; y++) {
+          for (
+            let x = Math.ceil(content.left);
+            x < image.width - content.right;
+            x++
+          ) {
+            const i = (y * image.width + x) * 4;
+            if (Math.max(data[i], data[i + 1], data[i + 2]) < 160) {
+              first = Math.min(first, y);
+              last = Math.max(last, y);
+            }
+          }
+        }
+        return {
+          above: first,
+          below: image.height - last - 1,
+          inkHeight: last - first + 1,
+        };
+      },
+      { base64: screenshot.toString("base64"), content },
+    );
+    await test.info().attach("label-position", {
+      body: JSON.stringify({ appearance: content.appearance, height, ...gaps }),
+      contentType: "application/json",
+    });
+    expect(
+      gaps.inkHeight,
+      "the sample must contain the displayed label",
+    ).toBeGreaterThan(5);
+    // A 1px movement grows one gap and shrinks the other: their difference
+    // changes by 2px. Compare centers so the tolerance is 1 CSS px. Linux
+    // WebKit paints this ink 1px lower than macOS; the original 3px shift
+    // (and the larger shift with a host override) must still fail.
+    const centerOffset = (gaps.above - gaps.below) / 2;
+    expect(
+      Math.abs(centerOffset),
+      JSON.stringify({ ...gaps, centerOffset }),
+    ).toBeLessThanOrEqual(1);
+  });
+}
