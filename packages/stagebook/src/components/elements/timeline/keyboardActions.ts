@@ -31,6 +31,7 @@ export type KeyAction =
     }
   | { type: "repositionPoint"; index: number; time: number }
   | { type: "switchHandle"; handle: "start" | "end" }
+  | { type: "selectAdjacent"; direction: -1 | 1 }
   | { type: "delete" }
   | { type: "deselect" }
   | { type: "undo" }
@@ -113,6 +114,17 @@ export function keyToAction(
     return ctx.selectionType === "point"
       ? { type: "createPointAtPlayhead" }
       : { type: "beginRangeAtPlayhead" };
+  }
+
+  // Focus-scoped character shortcuts; leave modified browser/OS keys alone.
+  if (
+    (e.key === "[" || e.key === "]") &&
+    !e.ctrlKey &&
+    !e.metaKey &&
+    !e.altKey &&
+    !e.shiftKey
+  ) {
+    return { type: "selectAdjacent", direction: e.key === "[" ? -1 : 1 };
   }
 
   // No active selection: arrow/comma/period scrub the playhead. Skip when

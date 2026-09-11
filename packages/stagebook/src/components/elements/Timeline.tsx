@@ -48,6 +48,30 @@ import {
 } from "./timeline/viewport.js";
 import { focusRingCss } from "../focusRing.js";
 
+const screenReaderOnly: React.CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clipPath: "inset(50%)",
+  whiteSpace: "nowrap",
+  border: 0,
+};
+
+// Restored data need not be sorted. Keep its indices and saved order intact;
+// ties retain their original order, including marks on different tracks.
+function annotationOrder(
+  selections: (PointSelection | RangeSelection)[],
+): number[] {
+  const time = (item: PointSelection | RangeSelection) =>
+    "start" in item ? item.start : item.time;
+  return selections
+    .map((_, index) => index)
+    .sort((a, b) => time(selections[a]) - time(selections[b]));
+}
+
 export interface TimelineProps {
   source: string;
   name: string;
@@ -243,6 +267,48 @@ export function Timeline({
   // past the dead zone) and pointerup/leave. While true, the save effect
   // skips so we don't spam the server with one save per pixel of motion.
   const [isDragging, setIsDragging] = useState(false);
+
+  // Announce settled annotation state, never the RAF playhead or a live drag.
+  // A short trailing delay coalesces held-arrow edits into their final value.
+  const [announcement, setAnnouncement] = useState("");
+  const announcedStateRef = useRef(state);
+  useEffect(() => {
+    if (isDragging || state === announcedStateRef.current) return;
+    const timer = setTimeout(() => {
+      announcedStateRef.current = state;
+      const order = annotationOrder(state.selections);
+      const selected =
+        state.activeIndex === null
+          ? undefined
+          : state.selections[state.activeIndex];
+      let text = messages.timelineNoAnnotationSelected(state.selections.length);
+      if (selected) {
+        const position = order.indexOf(state.activeIndex!) + 1;
+        text =
+          "start" in selected
+            ? messages.timelineRangeSelected(
+                position,
+                order.length,
+                selected.start,
+                selected.end,
+              )
+            : messages.timelinePointSelected(
+                position,
+                order.length,
+                selected.time,
+              );
+        if ("start" in selected && state.activeHandle) {
+          text +=
+            " " +
+            (state.activeHandle === "start"
+              ? messages.timelineStartBoundarySelected
+              : messages.timelineEndBoundarySelected);
+        }
+      }
+      setAnnouncement(text);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [state, isDragging, messages]);
 
   // Save selections whenever they change (after the initial mount). Mouse-
   // driven changes save immediately on commit (drag end / click); keyboard
@@ -592,6 +658,34 @@ export function Timeline({
     };
 
     switch (action.type) {
+      case "selectAdjacent": {
+        const order = annotationOrder(state.selections);
+        if (!order.length) break;
+        const current =
+          state.activeIndex === null ? -1 : order.indexOf(state.activeIndex);
+        const position =
+          current === -1
+            ? action.direction === 1
+              ? 0
+              : order.length - 1
+            : Math.max(
+                0,
+                Math.min(order.length - 1, current + action.direction),
+              );
+        const index = order[position];
+        if (index !== state.activeIndex) dispatch({ type: "SELECT", index });
+        const selected = state.selections[index];
+        const time = "start" in selected ? selected.start : selected.time;
+        const visible = dur / zoomLevel;
+        // Reveal the mark (or a long range's start) without seeking playback.
+        if (
+          dur > 0 &&
+          (time < viewportStart || time >= viewportStart + visible)
+        ) {
+          setViewportStart(computeViewportAfterSeek(time, visible, dur));
+        }
+        break;
+      }
       case "adjustHandle": {
         const t = clampToMedia(action.time);
         debounceNextSaveRef.current = true;
@@ -857,6 +951,8 @@ export function Timeline({
       data-viewport-start={viewportStart}
       role="region"
       aria-label={messages.timelineLabel(name)}
+      aria-describedby={`${safeId}-navigation`}
+      aria-keyshortcuts="[ ]"
       tabIndex={0}
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}
@@ -874,6 +970,17 @@ export function Timeline({
         position: "relative",
       }}
     >
+      <span id={`${safeId}-navigation`} style={screenReaderOnly}>
+        {messages.timelineNavigationHint}
+      </span>
+      <span
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        style={screenReaderOnly}
+      >
+        {announcement}
+      </span>
       <style>{`
         /* Container focus ring (#382). The Timeline is tabbable
            (tabIndex={0}) and receives focus programmatically via
