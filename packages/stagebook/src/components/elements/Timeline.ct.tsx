@@ -3731,8 +3731,9 @@ test("wheel pan: negative deltaX moves viewportStart back toward zero", async ({
     bubbles: true,
     cancelable: true,
   });
+  // dispatchEvent can resolve before React commits the pan.
+  await expect.poll(() => readViewportStart(timeline)).toBeGreaterThan(0);
   const mid = await readViewportStart(timeline);
-  expect(mid).toBeGreaterThan(0);
 
   await timeline.dispatchEvent("wheel", {
     deltaX: -400,
@@ -3741,8 +3742,7 @@ test("wheel pan: negative deltaX moves viewportStart back toward zero", async ({
     bubbles: true,
     cancelable: true,
   });
-  const after = await readViewportStart(timeline);
-  expect(after).toBeLessThan(mid);
+  await expect.poll(() => readViewportStart(timeline)).toBeLessThan(mid);
 });
 
 test("wheel pan: ignored when zoom level is 1 (full duration visible)", async ({
