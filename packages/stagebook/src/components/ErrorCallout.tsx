@@ -55,7 +55,7 @@ export function ErrorCallout({
         .stagebook-error-callout summary {
           cursor: pointer;
           box-sizing: border-box;
-          min-height: var(--stagebook-row-min-height, 44px);
+          min-height: var(--stagebook-row-min-height, 2.75rem);
           padding-block: 0.6875rem;
         }
         .stagebook-error-callout summary:focus-visible { ${focusOutlineCss()} }
