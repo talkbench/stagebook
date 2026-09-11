@@ -46,6 +46,8 @@ Select's customizable trigger uses flex layout, so its label is explicitly
 centered with `align-items: center` inside the `appearance: base-select` support
 branch ([#657](https://github.com/talkbench/stagebook/issues/657)). Otherwise the
 extra minimum height collects below the label. Screenshot checks compare the
-space above and below the displayed text, excluding the border and chevron, at
-the 44px default/fallback and a 72px host override. This changes alignment within
+center of the displayed ink with the control center, excluding the border and
+chevron, at the 44px default/fallback and a 72px host override. The tolerance is
+1 CSS px of center offset (2px difference between the opposing gaps), accounting
+for the observed 1px lower ink position in Linux WebKit. This changes alignment within
 the existing target, not its size or prompt spacing.

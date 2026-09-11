@@ -193,9 +193,14 @@ for (const [name, token, height] of [
       gaps.inkHeight,
       "the sample must contain the displayed label",
     ).toBeGreaterThan(5);
+    // A 1px movement grows one gap and shrinks the other: their difference
+    // changes by 2px. Compare centers so the tolerance is 1 CSS px. Linux
+    // WebKit paints this ink 1px lower than macOS; the original 3px shift
+    // (and the larger shift with a host override) must still fail.
+    const centerOffset = (gaps.above - gaps.below) / 2;
     expect(
-      Math.abs(gaps.above - gaps.below),
-      JSON.stringify(gaps),
+      Math.abs(centerOffset),
+      JSON.stringify({ ...gaps, centerOffset }),
     ).toBeLessThanOrEqual(1);
   });
 }
