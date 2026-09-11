@@ -1,4 +1,5 @@
 import React from "react";
+import { ErrorCallout } from "./ErrorCallout.js";
 import {
   useStagebookContext,
   useMessages,
@@ -76,21 +77,12 @@ class ElementErrorBoundaryInner extends React.Component<
   render(): React.ReactNode {
     if (this.state.hasError) {
       return (
-        <div
-          role="alert"
+        <ErrorCallout
           dir={this.props.fallbackDir}
           data-testid="element-error-fallback"
-          style={{
-            padding: "0.75rem 1rem",
-            border: "1px solid var(--stagebook-danger, #b91c1c)",
-            borderRadius: "0.375rem",
-            color: "var(--stagebook-danger, #b91c1c)",
-            backgroundColor: "var(--stagebook-danger-bg, #fef2f2)",
-            fontSize: "0.875rem",
-          }}
         >
           {this.props.fallbackText}
-        </div>
+        </ErrorCallout>
       );
     }
     return this.props.children;

@@ -29,6 +29,9 @@ export const en: StagebookMessages = {
   stageTimerLabel: "Stage timer",
   timerRemaining: (time) => `${time} remaining`,
 
+  errorTechnicalDetails: "Technical details",
+  promptErrorTitle: "This question couldn't load",
+  promptErrorHelp: "Please contact the study team for help.",
   elementErrorFallback:
     "Part of this page couldn't load. The rest is still usable.",
   submissionWaiting: "Waiting for other participants to finish this stage.",

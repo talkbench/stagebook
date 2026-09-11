@@ -51,6 +51,10 @@ export interface StagebookMessages {
   timerRemaining: (time: string) => string;
 
   // --- Status / errors ---
+  /** Collapsed diagnostic disclosure in ErrorCallout. */
+  errorTechnicalDetails: string;
+  promptErrorTitle: string;
+  promptErrorHelp: string;
   /** ElementErrorBoundary fallback (rendered on any element render crash). */
   elementErrorFallback: string;
   /** Shown to a participant who has submitted while peers are still working.

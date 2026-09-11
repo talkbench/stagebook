@@ -43,6 +43,7 @@ test("renders a participant-friendly fallback when a child throws", async ({
 
   const fallback = page.locator('[data-testid="element-error-fallback"]');
   await expect(fallback).toBeVisible();
+  await expect(fallback).toHaveClass(/stagebook-error-callout/);
   await expect(fallback).toContainText(FALLBACK_TEXT);
 });
 

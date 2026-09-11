@@ -1,3 +1,4 @@
+import { ErrorCallout } from "../ErrorCallout.js";
 import React, {
   useRef,
   useCallback,
@@ -1102,9 +1103,9 @@ export function MediaPlayer({
 
   if (urlIsUnsafe) {
     return (
-      <div data-testid="mediaPlayer" role="alert">
+      <ErrorCallout data-testid="mediaPlayer">
         {messages.mediaInvalidUrl}
-      </div>
+      </ErrorCallout>
     );
   }
 

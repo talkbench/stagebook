@@ -347,6 +347,36 @@ import { Element, type ElementConfig } from "stagebook/components";
 
 Requires StagebookProvider. Dispatches to the appropriate element component based on `element.type`. Use this for lower-level control when `Stage` doesn't fit your needs.
 
+### Error callout (standalone)
+
+```tsx
+import { ErrorCallout, type ErrorCalloutProps } from "stagebook/components";
+
+<ErrorCallout
+  title="This question couldn't load"
+  details="The prompt file could not be loaded."
+>
+  Please contact the study team for help.
+</ErrorCallout>;
+```
+
+Mount `ErrorCallout` when a failure occurs. It renders `role="alert"`, a
+circle-alert icon, and a soft danger callout. `children` supplies the
+explanation; `title` and plain-text `details` are optional. Details start
+collapsed behind a keyboard-accessible disclosure with a 44px minimum row
+height. Only pass diagnostics suitable for participant access, never secrets
+or crash payloads. Omitting details omits the disclosure entirely.
+
+No provider or stylesheet is required. A surrounding `StagebookProvider`
+supplies the locale/direction and `errorTechnicalDetails` label; standalone
+usage defaults to English/LTR. `dir`, `id`, and `data-testid` are optional.
+The colors use `--stagebook-danger`, `--stagebook-danger-bg`, and
+`--stagebook-danger-border` (all have inline defaults).
+
+Stagebook uses it for prompt load/parse errors, invalid media URLs, and the
+friendly element crash fallback. It is not a character counter or field
+validation component.
+
 ### Form Components (standalone)
 
 | Component       | Key Props                                                                                                                                                          |

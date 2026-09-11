@@ -142,3 +142,5 @@ export {
   useRegisterPlayback,
   usePlayback,
 } from "./playback/PlaybackProvider.js";
+
+export { ErrorCallout, type ErrorCalloutProps } from "./ErrorCallout.js";

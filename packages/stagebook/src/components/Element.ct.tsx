@@ -270,23 +270,41 @@ test.describe("Element router dispatch", () => {
     await expect(component).toBeAttached();
   });
 
-  test("prompt parse error shows error message", async ({ mount }) => {
-    // MockStageRenderer returns valid mock markdown by default,
-    // but we can test the error path by providing a stage with an
-    // empty prompt file path (getTextContent returns mock that parses)
-    // This test verifies the Element router handles the happy path.
-    const component = await mount(
-      <MockStageRenderer
-        stage={singleElementStage({
-          type: "prompt",
-          file: "test/question.md",
-          name: "testPrompt",
-        })}
-      />,
-    );
-    // Should render mock content without errors
-    await expect(component).toContainText("Mock content");
-    // No error messages
-    await expect(component).not.toContainText("Error");
-  });
+  for (const failure of ["loading", "parsing"] as const) {
+    test(`prompt ${failure} failure shows a shared alert with collapsed diagnostics`, async ({
+      mount,
+      page,
+    }) => {
+      const component = await mount(
+        <MockStageRenderer
+          stage={singleElementStage({
+            type: "prompt",
+            file: "test/question.md",
+          })}
+          promptError={
+            failure === "loading" ? "Network unavailable" : undefined
+          }
+          promptContent={
+            failure === "parsing"
+              ? "---\ntype: invalidType\n---\nQuestion"
+              : undefined
+          }
+        />,
+      );
+      const alert = component.getByRole("alert");
+      await expect(alert).toHaveClass(/stagebook-error-callout/);
+      await expect(alert).toContainText("This question couldn't load");
+      const diagnostic = alert.getByText(`Error ${failure} prompt`, {
+        exact: false,
+      });
+      await expect(diagnostic).toBeHidden();
+      await page.keyboard.press("Tab");
+      await expect(alert.locator("summary")).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(diagnostic).toBeVisible();
+      await expect(diagnostic).toContainText('"test/question.md"');
+      await page.keyboard.press("Space");
+      await expect(diagnostic).toBeHidden();
+    });
+  }
 });

@@ -2443,6 +2443,7 @@ test("renders an invalid-URL alert for a dangerous protocol", async ({
   );
   const player = component.locator('[data-testid="mediaPlayer"]');
   await expect(player).toHaveAttribute("role", "alert");
+  await expect(player).toHaveClass(/stagebook-error-callout/);
   await expect(player).toContainText("Invalid media URL");
   // No <video> element is rendered for an unsafe URL.
   await expect(
