@@ -54,6 +54,8 @@ import { MockListSorter } from "./testing/MockListSorter";
 import { MockKitchenTimer } from "./testing/MockKitchenTimer";
 import { MockTimeline } from "./testing/MockTimeline";
 import { MockMediaPlayer } from "./testing/MockMediaPlayer";
+import { ErrorCallout } from "./ErrorCallout";
+import { MockStageRenderer } from "./testing/MockStageRenderer";
 import { BoundaryTestHarness } from "./testing/BoundaryTestHarness";
 import { Prompt } from "./elements/Prompt";
 import { Display } from "./elements/Display";
@@ -755,8 +757,64 @@ const cases: Case[] = [
     ],
   },
   {
-    // The fallback an element renders when its child throws: the danger
-    // pill, and the only place the status pair renders in stagebook.
+    name: "ErrorCallout",
+    node: (
+      <ErrorCallout
+        title="This question couldn't load"
+        details="The prompt file could not be loaded."
+      >
+        Please contact the study team for help.
+      </ErrorCallout>
+    ),
+    marks: [
+      {
+        name: "failure glyph on the callout tint",
+        fg: { el: ".stagebook-error-callout svg", prop: "stroke" },
+        bg: { el: ".stagebook-error-callout", prop: "background-color" },
+        min: UI,
+      },
+    ],
+    states: [
+      { name: "disclosure hovered", enter: hover("summary") },
+      {
+        name: "diagnostic expanded",
+        enter: async (page) => {
+          await page.locator("summary").click();
+        },
+      },
+    ],
+  },
+  ...(["loading", "parsing"] as const).map((failure) => ({
+    name: `Prompt failure (${failure})`,
+    node: (
+      <MockStageRenderer
+        stage={{
+          name: "test",
+          elements: [{ type: "prompt", file: "question.md" }],
+        }}
+        promptError={failure === "loading" ? "Network unavailable" : undefined}
+        promptContent={
+          failure === "parsing"
+            ? "---\ntype: invalidType\n---\nQuestion"
+            : undefined
+        }
+      />
+    ),
+    states: [
+      {
+        name: "diagnostic expanded",
+        enter: async (page: Page) => {
+          await page.locator("summary").click();
+        },
+      },
+    ],
+  })),
+  {
+    name: "MediaPlayer (invalid URL)",
+    node: <MockMediaPlayer url="javascript:alert(1)" name="invalid" />,
+  },
+  {
+    // Render crashes retain their friendly fallback without diagnostic text.
     name: "ElementErrorBoundary",
     node: (
       <BoundaryTestHarness

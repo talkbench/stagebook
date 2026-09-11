@@ -1,6 +1,11 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import React from "react";
-import { useStagebookContext, useTextContent } from "./StagebookProvider.js";
+import { ErrorCallout } from "./ErrorCallout.js";
+import {
+  useStagebookContext,
+  useTextContent,
+  useMessages,
+} from "./StagebookProvider.js";
 import { promptFileSchema } from "../schemas/promptFile.js";
 import {
   formatReference,
@@ -115,6 +120,7 @@ export interface ElementProps {
 
 export function Element({ element, onSubmit, stageDuration }: ElementProps) {
   const ctx = useStagebookContext();
+  const messages = useMessages();
   const {
     resolve,
     save,
@@ -246,15 +252,12 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           return <AssetPlaceholder uri={promptFile ?? ""} kind="prompt" />;
         }
         return (
-          <p
-            style={{
-              color: "var(--stagebook-danger, #b91c1c)",
-              fontSize: "0.875rem",
-            }}
+          <ErrorCallout
+            title={messages.promptErrorTitle}
+            details={`Error loading prompt${element.file ? ` "${element.file}"` : ""}: ${promptError.message}`}
           >
-            Error loading prompt{element.file ? ` "${element.file}"` : ""}:{" "}
-            {promptError.message}
-          </p>
+            {messages.promptErrorHelp}
+          </ErrorCallout>
         );
       }
       if (promptLoading || !promptMarkdown) {
@@ -263,15 +266,12 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
       const parsed = promptFileSchema.safeParse(promptMarkdown);
       if (!parsed.success) {
         return (
-          <p
-            style={{
-              color: "var(--stagebook-danger, #b91c1c)",
-              fontSize: "0.875rem",
-            }}
+          <ErrorCallout
+            title={messages.promptErrorTitle}
+            details={`Error parsing prompt${element.file ? ` "${element.file}"` : ""}: ${parsed.error.issues[0]?.message ?? ""}`}
           >
-            Error parsing prompt{element.file ? ` "${element.file}"` : ""}:{" "}
-            {parsed.error.issues[0]?.message}
-          </p>
+            {messages.promptErrorHelp}
+          </ErrorCallout>
         );
       }
       const { metadata, body, responseItems, responsePoints } = parsed.data;

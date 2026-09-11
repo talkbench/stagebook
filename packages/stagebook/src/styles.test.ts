@@ -364,7 +364,8 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
     "--stagebook-success": "Prompt: open response (within limits)",
     "--stagebook-danger":
       "ElementErrorBoundary; KitchenTimer (warning); Timeline (no player); Timeline (ranges), track muted",
-    "--stagebook-danger-bg": "ElementErrorBoundary",
+    "--stagebook-danger-bg":
+      "ErrorCallout; ElementErrorBoundary; prompt failures; invalid media URL",
     "--stagebook-playhead": "Timeline — the line, and the time box",
     "--stagebook-playhead-fg": "Timeline — the time box",
     "--stagebook-timer-fill": "KitchenTimer",
@@ -412,6 +413,8 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
    * checked: the token must stay unread, or it has to move to MEASURED.
    */
   const EXCLUDED: Record<string, string> = {
+    "--stagebook-danger-border":
+      "decorative ErrorCallout outline; the readable explanation and circle-alert glyph identify the failure without the border",
     "--stagebook-decoration":
       "aria-hidden AssetPlaceholder icon and Loading arc; readable text and functional indicators have separate tokens (#616)",
     "--stagebook-warning":

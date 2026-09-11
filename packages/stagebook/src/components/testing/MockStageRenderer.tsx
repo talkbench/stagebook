@@ -16,6 +16,8 @@ import { sanitizeName } from "../../utils/deriveStorageKeyName.js";
 
 export interface MockStageRendererProps {
   stage: StageConfig;
+  promptContent?: string;
+  promptError?: string;
   position?: number;
   playerCount?: number;
   isSubmitted?: boolean;
@@ -82,6 +84,8 @@ function buildFlatValues(
 
 export function MockStageRenderer({
   stage,
+  promptContent,
+  promptError,
   position = 0,
   playerCount = 2,
   isSubmitted = false,
@@ -115,13 +119,16 @@ export function MockStageRenderer({
     stageId,
     getAssetURL: (path: string) => `https://mock-cdn.test/${path}`,
     getTextContent: (path: string) =>
-      Promise.resolve(
-        // After #243 noResponse files are two-section (no trailing `---`).
-        // After #360 the frontmatter `name:` is validated against
-        // `nameSchema`, so synthesized names must be sanitized — raw
-        // paths contain `/` and `.` which the regex rejects.
-        `---\nname: ${sanitizeName(path)}\ntype: noResponse\n---\nMock content for ${path}\n`,
-      ),
+      promptError !== undefined
+        ? Promise.reject(new Error(promptError))
+        : Promise.resolve(
+            // After #243 noResponse files are two-section (no trailing `---`).
+            // After #360 the frontmatter `name:` is validated against
+            // `nameSchema`, so synthesized names must be sanitized — raw
+            // paths contain `/` and `.` which the regex rejects.
+            promptContent ??
+              `---\nname: ${sanitizeName(path)}\ntype: noResponse\n---\nMock content for ${path}\n`,
+          ),
     progressLabel: `game_0_${stage.name}`,
     playerId: "test-player-1",
     position,

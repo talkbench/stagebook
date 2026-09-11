@@ -21,6 +21,7 @@ import type { Locator, Page } from "playwright/test";
 import type React from "react";
 import type { ReactNode } from "react";
 
+import { ErrorCallout } from "./ErrorCallout";
 import { RadioGroup } from "./form/RadioGroup";
 import { CheckboxGroup } from "./form/CheckboxGroup";
 import { Select } from "./form/Select";
@@ -69,6 +70,16 @@ interface Case {
 }
 
 const cases: Case[] = [
+  {
+    name: "ErrorCallout disclosure",
+    node: (
+      <ErrorCallout details="The prompt file could not be loaded.">
+        This question couldn't load.
+      </ErrorCallout>
+    ),
+    target: "summary",
+    kind: "outline",
+  },
   {
     // Deliberately the accent-filled variant. A secondary Button would
     // exercise the same CSS, but the primary is the control the halo exists

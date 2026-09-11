@@ -104,6 +104,7 @@
    * below AA for the danger pill/callout text. red-700 passes on both
    * white and the red-50 tint. */
   --sb-red-700: #b91c1c;
+  --sb-red-200: #fecaca;
   --sb-red-50: #fef2f2;
   --sb-amber-700: #b45309;
   --sb-amber-50: #fffbeb;
@@ -132,6 +133,7 @@
   --stagebook-success: var(--sb-green-700);
   --stagebook-success-bg: var(--sb-green-50);
   --stagebook-danger: var(--sb-red-700);
+  --stagebook-danger-border: var(--sb-red-200);
   --stagebook-danger-bg: var(--sb-red-50);
   --stagebook-warning: var(--sb-amber-700);
   --stagebook-warning-bg: var(--sb-amber-50);

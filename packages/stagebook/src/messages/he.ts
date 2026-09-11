@@ -29,6 +29,9 @@ export const he: StagebookMessages = {
   stageTimerLabel: "טיימר שלב",
   timerRemaining: (time) => `נותרו ${time}`,
 
+  errorTechnicalDetails: "פרטים טכניים",
+  promptErrorTitle: "השאלה לא נטענה",
+  promptErrorHelp: "נא לפנות לצוות המחקר לקבלת עזרה.",
   elementErrorFallback: "חלק מהדף לא נטען. שאר הדף עדיין שמיש.",
   submissionWaiting: "ממתינים לשאר המשתתפים לסיים שלב זה.",
 
