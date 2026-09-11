@@ -48,6 +48,30 @@ import {
 } from "./timeline/viewport.js";
 import { focusRingCss } from "../focusRing.js";
 
+const screenReaderOnly: React.CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clipPath: "inset(50%)",
+  whiteSpace: "nowrap",
+  border: 0,
+};
+
+// Restored data need not be sorted. Keep its indices and saved order intact;
+// ties retain their original order, including marks on different tracks.
+function annotationOrder(
+  selections: (PointSelection | RangeSelection)[],
+): number[] {
+  const time = (item: PointSelection | RangeSelection) =>
+    "start" in item ? item.start : item.time;
+  return selections
+    .map((_, index) => index)
+    .sort((a, b) => time(selections[a]) - time(selections[b]));
+}
+
 export interface TimelineProps {
   source: string;
   name: string;
@@ -187,6 +211,11 @@ export function Timeline({
   // trigger re-renders; the source of truth for `muted` is the handle.
   const [, setMuteTick] = useState(0);
 
+  // Keep a keyboard-browsed annotation visible during playback.
+  // Object identity releases the hold when it is edited or replaced.
+  const browsedAnnotationRef = useRef<PointSelection | RangeSelection | null>(
+    null,
+  );
   // Track whether the playhead changes are "natural playback" (RAF tick)
   // versus "external seek" (someone called handle.seekTo() out of band).
   // Auto-scroll uses the former; snap-on-seek uses the latter.
@@ -243,6 +272,55 @@ export function Timeline({
   // past the dead zone) and pointerup/leave. While true, the save effect
   // skips so we don't spam the server with one save per pixel of motion.
   const [isDragging, setIsDragging] = useState(false);
+
+  // Announce settled annotation state, never the RAF playhead or a live drag.
+  // A short trailing delay coalesces held-arrow edits into their final value.
+  const [announcement, setAnnouncement] = useState(() =>
+    messages.timelineNoAnnotationSelected(state.selections.length),
+  );
+  const announcedRef = useRef({ state, messages });
+  useEffect(() => {
+    if (
+      isDragging ||
+      (state === announcedRef.current.state &&
+        messages === announcedRef.current.messages)
+    )
+      return;
+    const timer = setTimeout(() => {
+      announcedRef.current = { state, messages };
+      const order = annotationOrder(state.selections);
+      const selected =
+        state.activeIndex === null
+          ? undefined
+          : state.selections[state.activeIndex];
+      let text = messages.timelineNoAnnotationSelected(state.selections.length);
+      if (selected) {
+        const position = order.indexOf(state.activeIndex!) + 1;
+        text =
+          "start" in selected
+            ? messages.timelineRangeSelected(
+                position,
+                order.length,
+                selected.start,
+                selected.end,
+              )
+            : messages.timelinePointSelected(
+                position,
+                order.length,
+                selected.time,
+              );
+        if ("start" in selected && state.activeHandle) {
+          text +=
+            " " +
+            (state.activeHandle === "start"
+              ? messages.timelineStartBoundarySelected
+              : messages.timelineEndBoundarySelected);
+        }
+      }
+      setAnnouncement(text);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [state, isDragging, messages]);
 
   // Save selections whenever they change (after the initial mount). Mouse-
   // driven changes save immediately on commit (drag end / click); keyboard
@@ -370,6 +448,13 @@ export function Timeline({
   // a manual pan via the minimap would immediately get undone (the playhead
   // would suddenly look "off-screen" relative to the new viewport).
   useEffect(() => {
+    const activeAnnotation =
+      state.activeIndex === null
+        ? undefined
+        : state.selections[state.activeIndex];
+    if (browsedAnnotationRef.current !== activeAnnotation) {
+      browsedAnnotationRef.current = null;
+    }
     if (zoomLevel <= 1) return;
     const duration = handleRef.current?.getDuration() ?? 0;
     if (duration <= 0) return;
@@ -383,6 +468,11 @@ export function Timeline({
     // source of motion — auto-scroll/snap would fight the cursor and
     // either run away to the edge or yank the viewport mid-drag.
     if (playheadDraggingRef.current) return;
+
+    // Keep updating lastPlayheadRef above while browsing, but don't pull the
+    // viewport back to playback. Deselecting, editing or selecting another
+    // annotation releases this hold; explicit ruler/playhead seeks do too.
+    if (browsedAnnotationRef.current) return;
 
     // No motion → nothing to do
     if (currentTime === lastT) return;
@@ -419,7 +509,14 @@ export function Timeline({
       );
       if (newStart !== viewportStart) setViewportStart(newStart);
     }
-  }, [currentTime, isPaused, zoomLevel, viewportStart]);
+  }, [
+    currentTime,
+    isPaused,
+    zoomLevel,
+    viewportStart,
+    state.activeIndex,
+    state.selections,
+  ]);
 
   // Zoom handlers
   const onZoomIn = useCallback(() => {
@@ -591,7 +688,51 @@ export function Timeline({
       return Math.max(0, t);
     };
 
+    // Enter starts annotating at playback again. Release browsing and reveal
+    // that position immediately: paused playback may never produce a tick,
+    // and a held range needs its preview visible before keyup commits it.
+    const resumeAnnotationAt = (time: number) => {
+      if (!browsedAnnotationRef.current) return;
+      browsedAnnotationRef.current = null;
+      const visible = dur / zoomLevel;
+      if (
+        dur > 0 &&
+        (time < viewportStart || time >= viewportStart + visible)
+      ) {
+        setViewportStart(computeViewportAfterSeek(time, visible, dur));
+      }
+    };
+
     switch (action.type) {
+      case "selectAdjacent": {
+        const order = annotationOrder(state.selections);
+        if (!order.length) break;
+        const current =
+          state.activeIndex === null ? -1 : order.indexOf(state.activeIndex);
+        const position =
+          current === -1
+            ? action.direction === 1
+              ? 0
+              : order.length - 1
+            : Math.max(
+                0,
+                Math.min(order.length - 1, current + action.direction),
+              );
+        const index = order[position];
+        if (index !== state.activeIndex) dispatch({ type: "SELECT", index });
+        const selected = state.selections[index];
+        browsedAnnotationRef.current = selected;
+        const time = "start" in selected ? selected.start : selected.time;
+        const visible = dur / zoomLevel;
+        // Reveal the mark (or a long range's start) without seeking playback.
+        if (
+          dur > 0 &&
+          (time < viewportStart || time >= viewportStart + visible)
+        ) {
+          setViewportStart(computeViewportAfterSeek(time, visible, dur));
+        }
+        break;
+      }
       case "adjustHandle": {
         const t = clampToMedia(action.time);
         debounceNextSaveRef.current = true;
@@ -647,6 +788,7 @@ export function Timeline({
         // multiSelect (appends if true, replaces if false), so this
         // single dispatch covers both modes.
         const t = clampToMedia(handleRef.current?.getCurrentTime() ?? 0);
+        resumeAnnotationAt(t);
         dispatch({
           type: "CREATE_POINT",
           time: t,
@@ -687,6 +829,7 @@ export function Timeline({
           }
         }
 
+        resumeAnnotationAt(t);
         pendingRangeStartRef.current = t;
         setPendingRangeStartTime(t);
         break;
@@ -857,6 +1000,8 @@ export function Timeline({
       data-viewport-start={viewportStart}
       role="region"
       aria-label={messages.timelineLabel(name)}
+      aria-describedby={`${safeId}-navigation`}
+      aria-keyshortcuts="[ ]"
       tabIndex={0}
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}
@@ -874,6 +1019,17 @@ export function Timeline({
         position: "relative",
       }}
     >
+      <span id={`${safeId}-navigation`} style={screenReaderOnly}>
+        {messages.timelineNavigationHint}
+      </span>
+      <span
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        style={screenReaderOnly}
+      >
+        {announcement}
+      </span>
       <style>{`
         /* Container focus ring (#382). The Timeline is tabbable
            (tabIndex={0}) and receives focus programmatically via
@@ -929,7 +1085,10 @@ export function Timeline({
           width={waveformWidth}
           zoomLevel={zoomLevel}
           viewportStart={viewportStart}
-          onSeek={(t) => handle.seekTo(t)}
+          onSeek={(t) => {
+            browsedAnnotationRef.current = null;
+            handle.seekTo(t);
+          }}
           onDragStart={() => {
             playheadDraggingRef.current = true;
           }}
@@ -1043,7 +1202,10 @@ export function Timeline({
             rulerHeight={RULER_HEIGHT}
             zoomLevel={zoomLevel}
             viewportStart={viewportStart}
-            onSeek={(t) => handle.seekTo(t)}
+            onSeek={(t) => {
+              browsedAnnotationRef.current = null;
+              handle.seekTo(t);
+            }}
             onDragStart={() => {
               playheadDraggingRef.current = true;
             }}

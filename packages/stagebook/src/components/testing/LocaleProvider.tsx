@@ -12,7 +12,10 @@ import {
   type StagebookContext,
 } from "../StagebookProvider.js";
 
-function buildCtx(locale: string): StagebookContext {
+function buildCtx(
+  locale: string,
+  messages?: StagebookContext["messages"],
+): StagebookContext {
   return {
     get: () => [],
     save: () => {},
@@ -26,17 +29,22 @@ function buildCtx(locale: string): StagebookContext {
     playerCount: 1,
     isSubmitted: false,
     locale,
+    messages,
   };
 }
 
 export function LocaleProvider({
   locale,
+  messages,
   children,
 }: {
   locale: string;
+  messages?: StagebookContext["messages"];
   children: React.ReactNode;
 }) {
   return (
-    <StagebookProvider value={buildCtx(locale)}>{children}</StagebookProvider>
+    <StagebookProvider value={buildCtx(locale, messages)}>
+      {children}
+    </StagebookProvider>
   );
 }
