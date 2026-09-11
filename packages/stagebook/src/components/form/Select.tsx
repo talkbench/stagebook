@@ -223,6 +223,11 @@ export function Select({
           }
         }
         @supports (appearance: base-select) {
+          /* base-select uses a flex trigger. Center its label when the row
+           * minimum adds height beyond the text and padding (#657). */
+          .${triggerClass} {
+            align-items: center;
+          }
           /* The engine's own disclosure icon. Ours is the SVG beside
            * the trigger, which is what the native path shows
            * too, so hide this one rather than double up. */

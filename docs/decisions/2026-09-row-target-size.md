@@ -41,3 +41,11 @@ Browser tests cover the stylesheet default, an unset token exercising component
 fallbacks, and a larger host override. They measure row dimensions, Select/icon
 alignment, ListSorter number alignment, and spacing within rendered prompts.
 Existing wrapping and keyboard interaction tests remain part of verification.
+
+Select's customizable trigger uses flex layout, so its label is explicitly
+centered with `align-items: center` inside the `appearance: base-select` support
+branch ([#657](https://github.com/talkbench/stagebook/issues/657)). Otherwise the
+extra minimum height collects below the label. Screenshot checks compare the
+space above and below the displayed text, excluding the border and chevron, at
+the 44px default/fallback and a 72px host override. This changes alignment within
+the existing target, not its size or prompt spacing.
