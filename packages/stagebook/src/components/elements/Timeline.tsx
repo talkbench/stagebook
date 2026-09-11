@@ -275,7 +275,9 @@ export function Timeline({
 
   // Announce settled annotation state, never the RAF playhead or a live drag.
   // A short trailing delay coalesces held-arrow edits into their final value.
-  const [announcement, setAnnouncement] = useState("");
+  const [announcement, setAnnouncement] = useState(() =>
+    messages.timelineNoAnnotationSelected(state.selections.length),
+  );
   const announcedStateRef = useRef(state);
   useEffect(() => {
     if (isDragging || state === announcedStateRef.current) return;

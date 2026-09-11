@@ -291,3 +291,36 @@ for (const selectionType of ["point", "range"] as const) {
     });
   }
 }
+
+for (const selectionType of ["point", "range"] as const) {
+  for (const restored of [false, true]) {
+    test(`${selectionType}: initial status reports ${restored ? "restored" : "empty"} annotation count before interaction`, async ({
+      mount,
+      page,
+    }) => {
+      await mount(
+        <MockTimeline
+          source="player"
+          playerName="player"
+          name="initial_status"
+          selectionType={selectionType}
+          initialSelections={
+            restored
+              ? selectionType === "point"
+                ? [{ time: 5 }, { time: 10 }]
+                : [
+                    { start: 5, end: 7 },
+                    { start: 10, end: 12 },
+                  ]
+              : []
+          }
+        />,
+      );
+      await expect(page.getByRole("status")).toHaveText(
+        `No annotation selected. ${restored ? 2 : 0} annotations.`,
+      );
+      await expect(page.locator('[data-active="true"]')).toHaveCount(0);
+      await expect(page.getByTestId("save-log")).toHaveText("[]");
+    });
+  }
+}

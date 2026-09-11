@@ -23,7 +23,7 @@ keys and events from descendant controls are not intercepted.
 A visually hidden, polite, atomic status region reports the selected point
 or range, chronological position, timestamps, and active boundary. When
 nothing is selected it reports the remaining annotation count, including
-after deletion and undo. Changes settle for 250 ms before announcement to
+on initial mount with restored or empty data, and after deletion and undo. Changes settle for 250 ms before announcement to
 coalesce held-arrow edits; pointer drags announce only after completion.
 Playback ticks and pending press-and-hold ranges do not update the status.
 Instructions and status messages are available in the English and Hebrew
