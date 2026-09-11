@@ -278,11 +278,16 @@ export function Timeline({
   const [announcement, setAnnouncement] = useState(() =>
     messages.timelineNoAnnotationSelected(state.selections.length),
   );
-  const announcedStateRef = useRef(state);
+  const announcedRef = useRef({ state, messages });
   useEffect(() => {
-    if (isDragging || state === announcedStateRef.current) return;
+    if (
+      isDragging ||
+      (state === announcedRef.current.state &&
+        messages === announcedRef.current.messages)
+    )
+      return;
     const timer = setTimeout(() => {
-      announcedStateRef.current = state;
+      announcedRef.current = { state, messages };
       const order = annotationOrder(state.selections);
       const selected =
         state.activeIndex === null
@@ -683,6 +688,21 @@ export function Timeline({
       return Math.max(0, t);
     };
 
+    // Enter starts annotating at playback again. Release browsing and reveal
+    // that position immediately: paused playback may never produce a tick,
+    // and a held range needs its preview visible before keyup commits it.
+    const resumeAnnotationAt = (time: number) => {
+      if (!browsedAnnotationRef.current) return;
+      browsedAnnotationRef.current = null;
+      const visible = dur / zoomLevel;
+      if (
+        dur > 0 &&
+        (time < viewportStart || time >= viewportStart + visible)
+      ) {
+        setViewportStart(computeViewportAfterSeek(time, visible, dur));
+      }
+    };
+
     switch (action.type) {
       case "selectAdjacent": {
         const order = annotationOrder(state.selections);
@@ -768,6 +788,7 @@ export function Timeline({
         // multiSelect (appends if true, replaces if false), so this
         // single dispatch covers both modes.
         const t = clampToMedia(handleRef.current?.getCurrentTime() ?? 0);
+        resumeAnnotationAt(t);
         dispatch({
           type: "CREATE_POINT",
           time: t,
@@ -808,6 +829,7 @@ export function Timeline({
           }
         }
 
+        resumeAnnotationAt(t);
         pendingRangeStartRef.current = t;
         setPendingRangeStartTime(t);
         break;

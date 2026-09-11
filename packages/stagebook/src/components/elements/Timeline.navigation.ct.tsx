@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/experimental-ct-react";
+import { LocaleProvider } from "../testing/LocaleProvider.js";
 import { MockTimeline } from "../testing/MockTimeline.js";
 
 for (const selectionType of ["point", "range"] as const) {
@@ -323,4 +324,108 @@ for (const selectionType of ["point", "range"] as const) {
       await expect(page.getByTestId("save-log")).toHaveText("[]");
     });
   }
+}
+
+for (const selectionType of ["point", "range"] as const) {
+  for (const paused of [true, false]) {
+    test(`${selectionType}: Enter reveals new annotation after browsing while ${paused ? "paused" : "playing"}`, async ({
+      mount,
+      page,
+    }) => {
+      const props = {
+        source: "player",
+        playerName: "player",
+        name: "resume_annotation",
+        selectionType,
+        multiSelect: true,
+        mockPaused: paused,
+        initialSelections:
+          selectionType === "point" ? [{ time: 5 }] : [{ start: 5, end: 7 }],
+      };
+      const component = await mount(
+        <MockTimeline {...props} mockCurrentTime={40} />,
+      );
+      const timeline = page.getByTestId("timeline");
+      const viewport = async () =>
+        Number(await timeline.getAttribute("data-viewport-start"));
+      await page.getByTestId("timeline-zoom-in").click();
+      await page.getByTestId("timeline-zoom-in").click();
+      await expect(timeline).toHaveAttribute("data-zoom-level", "4");
+      await timeline.focus();
+      await page.keyboard.press("[");
+      await expect.poll(viewport).toBeLessThanOrEqual(5);
+      await page.keyboard.down("Enter");
+      // Must reveal immediately, even without a new playhead tick or keyup.
+      await expect.poll(viewport).toBeGreaterThan(25);
+      if (selectionType === "range") {
+        await expect(page.getByTestId("range-keyboard-preview")).toBeAttached();
+        await component.update(
+          <MockTimeline {...props} mockCurrentTime={41} />,
+        );
+      }
+      await page.keyboard.up("Enter");
+      await expect(page.getByTestId(`${selectionType}-1`)).toHaveAttribute(
+        "data-active",
+        "true",
+      );
+      await expect(page.getByTestId(`${selectionType}-1`)).toBeInViewport();
+      await expect(page.getByTestId("save-log")).toContainText(
+        selectionType === "point" ? '"time":40' : '"start":40,"end":41',
+      );
+    });
+  }
+}
+
+for (const selected of [false, true]) {
+  test(`status follows locale changes with ${selected ? "selected boundary" : "no selection"}`, async ({
+    mount,
+    page,
+  }) => {
+    const props = {
+      source: "player",
+      playerName: "player",
+      name: "locale",
+      selectionType: "range" as const,
+      initialSelections: [{ start: 10, end: 15 }],
+    };
+    const component = await mount(
+      <LocaleProvider locale="en">
+        <MockTimeline {...props} />
+      </LocaleProvider>,
+    );
+    const status = page.getByRole("status");
+    await expect(status).toHaveText("No annotation selected. 1 annotation.");
+    if (selected) {
+      await page.getByTestId("timeline").focus();
+      await page.keyboard.press("]");
+      await page.keyboard.press("Tab");
+      await expect(status).toHaveText(
+        "Range 1 of 1, 10 to 15 seconds. End boundary selected.",
+      );
+    }
+    await component.update(
+      <LocaleProvider locale="he">
+        <MockTimeline {...props} />
+      </LocaleProvider>,
+    );
+    await expect(status).toHaveText(
+      selected
+        ? "טווח 1 מתוך 1, 10 עד 15 שניות. גבול הסיום נבחר."
+        : "לא נבחר סימון. מספר הסימונים: 1.",
+    );
+    if (selected) {
+      await component.update(
+        <LocaleProvider
+          locale="he"
+          messages={{ timelineEndBoundarySelected: "End boundary override." }}
+        >
+          <MockTimeline {...props} />
+        </LocaleProvider>,
+      );
+      await expect(status).toHaveText(
+        "טווח 1 מתוך 1, 10 עד 15 שניות. End boundary override.",
+      );
+    }
+    await expect(page.getByTestId("save-log")).toHaveText("[]");
+  });
 }

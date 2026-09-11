@@ -13,7 +13,10 @@ point or range start at the current zoom. Playback position and play/pause
 state stay unchanged. While that annotation remains selected and unedited,
 automatic playback scrolling stays suspended so advancing playback cannot
 hide it again. Deselecting, editing, selecting another annotation by pointer,
-or seeking with the Timeline ruler/playhead releases the hold. Choosing a
+or seeking with the Timeline ruler/playhead releases the hold. Enter also
+releases it when a new point or range begins, revealing the playhead immediately
+even while paused or before a held range is committed. Blocked range-creation
+attempts keep the existing selection in view. Choosing a
 range boundary with Tab keeps the hold. Existing Enter, arrow, frame, Tab, Escape, delete and
 undo actions retain their behavior. Range selection initially has no active
 boundary; Tab chooses one, as it does after clicking a range. Escape clears
@@ -27,7 +30,8 @@ on initial mount with restored or empty data, and after deletion and undo. Chang
 coalesce held-arrow edits; pointer drags announce only after completion.
 Playback ticks and pending press-and-hold ranges do not update the status.
 Instructions and status messages are available in the English and Hebrew
-catalogs, and both help tables list the new shortcuts.
+catalogs, and both help tables list the new shortcuts. A host locale or message
+override change refreshes settled status text even without a selection change.
 
 Browser tests cover navigation, focus, unsorted restored data, viewport
 reveal, unchanged save data/playhead, editing, deletion, undo, control and
