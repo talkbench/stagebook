@@ -1594,17 +1594,53 @@ for (const mode of ["audio", "video", "youtube"] as const) {
               floor: 3,
             });
           }
+          const buffered = root.querySelector(
+            '[data-testid="mediaPlayer-buffered"]',
+          );
+          if (buffered) {
+            const edge = buffered.getBoundingClientRect().right;
+            for (const [name, adjacentX] of [
+              ["buffered boundary / buffered", edge - 4],
+              ["buffered boundary / unbuffered", edge + 3],
+            ] as const) {
+              points.push({ name, x: edge - 1, y: cy, floor: 3 });
+              points.push({
+                name: `${name} adjacent`,
+                x: adjacentX,
+                y: cy,
+                floor: 3,
+              });
+            }
+          }
           const thumb = scrub.children[1].getBoundingClientRect();
+          // The thumb marks the played boundary. Sample both edges where
+          // they meet the actual track, not just its silhouette above it.
+          for (const [name, x, adjacentX] of [
+            ["thumb boundary / played", thumb.x + 1, thumb.x - 3],
+            [
+              "thumb boundary / ahead",
+              thumb.x + thumb.width - 1,
+              thumb.x + thumb.width + 3,
+            ],
+          ] as const) {
+            points.push({ name, x, y: cy, floor: 3 });
+            points.push({
+              name: `${name} adjacent`,
+              x: adjacentX,
+              y: cy,
+              floor: 3,
+            });
+          }
           points.push({
             name: "thumb",
             x: thumb.x + thumb.width / 2,
-            y: thumb.y + 2,
+            y: thumb.y + 3,
             floor: 3,
           });
           points.push({
             name: "thumb backdrop",
             x: thumb.x - 3,
-            y: thumb.y + 2,
+            y: thumb.y + 3,
             floor: 3,
           });
           return points;
