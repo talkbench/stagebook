@@ -3,10 +3,15 @@ import type { Locator, Page } from "playwright/test";
 import { MockTimeline } from "../testing/MockTimeline.js";
 
 async function tabTo(page: Page, target: Locator) {
-  // Wait for each focus transition before sending the next key. Firefox
-  // can report the previous activeElement immediately after press("Tab").
+  // Start from a known focus point; this suite tests native navigation from
+  // the annotation surface to its buttons, not browser chrome's initial Tab.
+  const timeline = page.getByTestId("timeline");
+  await timeline.focus();
+  await expect(timeline).toBeFocused();
+  if (await target.evaluate((el) => el === document.activeElement)) return;
+  // Wait for each transition; Firefox can otherwise still report the old
+  // activeElement immediately after press("Tab").
   const stops = [
-    page.getByTestId("timeline"),
     page.getByTestId("timeline-zoom-in"),
     ...(await page.getByTestId("track-mute").all()),
     page.getByTestId("timeline-help-button"),
@@ -121,6 +126,9 @@ test("focused button keys cannot edit an active annotation", async ({
   await tabTo(page, page.getByTestId("timeline"));
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("point-0")).toBeAttached();
+  // The selection renders before its save effect necessarily reaches the
+  // host. Compare against the completed initial save, not a transient [].
+  await expect(page.getByTestId("save-log")).not.toHaveText("[]");
   const saved = await page.getByTestId("save-log").textContent();
   await page.keyboard.press("Tab");
   await expect(page.getByTestId("timeline-zoom-in")).toBeFocused();
