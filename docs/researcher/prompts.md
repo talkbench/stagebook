@@ -225,6 +225,24 @@ Please describe your experience in detail.
 > Write your response here.
 ```
 
+The `> ` lines are placeholder hints: they disappear when the participant types.
+Keep instructions and other information participants must read in the prompt body.
+An overflowing placeholder can be clipped, and Firefox does not let participants
+scroll to its hidden text. Increasing `rows` can help, but check the preview at the
+narrowest width your study supports.
+
+Prompt validation (the CLI and VS Code diagnostics) warns when a placeholder is
+likely to exceed `rows` (default: 5). This is a rough check: it budgets 80 characters
+per line and counts each authored `> ` line separately, including blank lines.
+Actual wrapping depends on width, font, language, and scrollbars, so a warning can
+appear for a hint that fits a wide layout, and a short hint can still clip in a
+narrow one. It does not resize the field or block validation. Run it on the prompt
+files, for example:
+
+```sh
+npx --package=stagebook stagebook validate "prompts/**/*.prompt.md"
+```
+
 The character counter appears automatically when `minLength` or `maxLength` is set. `maxLength` is enforced (input is capped); `minLength` is displayed but must be enforced separately via conditions if you want to block submission.
 
 ### Dropdown

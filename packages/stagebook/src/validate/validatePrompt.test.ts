@@ -283,3 +283,126 @@ Pick one
     });
   });
 });
+
+describe("openResponse placeholder overflow warning (#590)", () => {
+  function prompt(
+    lines: string[],
+    rows?: number,
+    body = "Describe your experience.",
+  ) {
+    return [
+      "---",
+      "type: openResponse",
+      ...(rows === undefined ? [] : [`rows: ${String(rows)}`]),
+      "---",
+      body,
+      "---",
+      "",
+      ...lines.map((line) => `> ${line}`),
+    ].join("\n");
+  }
+
+  it("warns on a long hint and locates the placeholder, while keeping the file valid", () => {
+    const hint =
+      "Describe what happened, how you felt, and what you would do differently next time. ".repeat(
+        3,
+      );
+    const source = prompt([hint], 2);
+    const diagnostics = validatePromptSource(source).diagnostics;
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        severity: "warning",
+        message: expect.stringMatching(/Placeholder may overflow rows: 2/),
+        range: {
+          startLine: 7,
+          startCol: 0,
+          endLine: 7,
+          endCol: hint.length + 2,
+        },
+      }),
+    ]);
+    expect(diagnostics[0].message).toMatch(/approximate/i);
+    expect(diagnostics[0].message).toContain("prompt body");
+    expect(diagnostics[0].message).toContain("width");
+  });
+
+  it("counts explicit line breaks, including a blank placeholder line", () => {
+    expect(
+      validatePromptSource(prompt(["First hint", "", "Second hint"], 2))
+        .diagnostics,
+    ).toEqual([expect.objectContaining({ severity: "warning" })]);
+  });
+
+  it("uses the runtime default of five rows when rows is omitted", () => {
+    expect(
+      validatePromptSource(
+        prompt(Array.from({ length: 5 }, () => "A short hint")),
+      ).diagnostics,
+    ).toEqual([]);
+    expect(
+      validatePromptSource(
+        prompt(Array.from({ length: 6 }, () => "A short hint")),
+      ).diagnostics,
+    ).toEqual([
+      expect.objectContaining({ message: expect.stringContaining("rows: 5") }),
+    ]);
+  });
+
+  it("stops warning when the author gives the same hint more room", () => {
+    const lines = ["A short hint", "Another short hint", "One more hint"];
+    expect(validatePromptSource(prompt(lines, 2)).diagnostics).toHaveLength(1);
+    expect(validatePromptSource(prompt(lines, 3)).diagnostics).toEqual([]);
+  });
+
+  it("allows short, empty, and omitted placeholder content", () => {
+    for (const lines of [["Type here"], [""], []]) {
+      expect(validatePromptSource(prompt(lines, 1)).diagnostics).toEqual([]);
+    }
+  });
+
+  it("counts Unicode code points rather than UTF-16 code units in the rough estimate", () => {
+    expect(
+      validatePromptSource(prompt(["😀".repeat(50)], 1)).diagnostics,
+    ).toEqual([]);
+  });
+
+  it("does not add a speculative warning to an invalid prompt", () => {
+    const diagnostics = validatePromptSource(
+      prompt(["A long hint. ".repeat(40)], 0),
+    ).diagnostics;
+    expect(diagnostics.length).toBeGreaterThan(0);
+    expect(diagnostics.every((d) => d.severity === "error")).toBe(true);
+  });
+
+  it("does not treat long choice labels as placeholders", () => {
+    const source = `---\ntype: multipleChoice\n---\nChoose one.\n---\n- ${"A long option. ".repeat(40)}`;
+    expect(validatePromptSource(source).diagnostics).toEqual([]);
+  });
+
+  it("locates the hint after a body code fence", () => {
+    const source = prompt(
+      ["A long hint. ".repeat(40)],
+      1,
+      "Example:\n```markdown\n---\n> example only\n```\nNow answer.",
+    );
+    const diagnostics = validatePromptSource(source).diagnostics;
+    expect(diagnostics).toEqual([
+      expect.objectContaining({
+        severity: "warning",
+        range: expect.objectContaining({ startLine: 12 }),
+      }),
+    ]);
+  });
+});
+
+// Windows-authored prompts use the same source coordinates as LF files.
+it("locates a placeholder warning with CRLF line endings (#590)", () => {
+  const source =
+    "---\r\ntype: openResponse\r\nrows: 1\r\n---\r\nAnswer.\r\n---\r\n> First\r\n> Second";
+  expect(validatePromptSource(source).diagnostics).toEqual([
+    expect.objectContaining({
+      severity: "warning",
+      range: expect.objectContaining({ startLine: 6 }),
+    }),
+  ]);
+});
