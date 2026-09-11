@@ -3856,9 +3856,10 @@ test("wheel pan: clamps at viewport end (cannot pan past duration)", async ({
     bubbles: true,
     cancelable: true,
   });
-  const maxStart = await readViewportStart(timeline);
+  // Wait for React to commit the pan before checking its boundary.
   // At zoom 4 of 60s, max viewportStart = 60 - 15 = 45.
-  expect(maxStart).toBeCloseTo(45, 5);
+  await expect.poll(() => readViewportStart(timeline)).toBeCloseTo(45, 5);
+  const maxStart = await readViewportStart(timeline);
 
   // Another rightward swipe should not move further.
   await timeline.dispatchEvent("wheel", {
