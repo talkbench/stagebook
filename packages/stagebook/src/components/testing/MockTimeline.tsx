@@ -143,10 +143,15 @@ export function MockTimeline({
   // Channel mute state the handle reports. Tests read this through the
   // <div data-testid="mute-state"> below.
   const mutedRef = useRef<boolean[]>([]);
-  // Sync refs to props on every render (cheap, idempotent)
+  // Only explicit prop changes drive the mutable playback state. Save,
+  // mute and capture-count rerenders must not undo the handle's seek/play.
+  useEffect(() => {
+    currentTimeRef.current = mockCurrentTime ?? 0;
+  }, [mockCurrentTime]);
+  useEffect(() => {
+    pausedRef.current = mockPaused ?? true;
+  }, [mockPaused]);
   durationRef.current = mockDuration ?? 60;
-  currentTimeRef.current = mockCurrentTime ?? 0;
-  pausedRef.current = mockPaused ?? true;
   channelCountRef.current = mockChannelCount ?? 0;
   // Convert plain number arrays to Float32Array[] when the top-level
   // mockPeaks array OR any per-channel array reference changes; bump the
