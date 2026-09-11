@@ -997,27 +997,34 @@ describe("locale rule — intro sequences", () => {
 });
 
 describe("placeholder overflow warning (#590)", () => {
-  it("reports the warning as JSON without failing validation", async () => {
-    const source = `---\ntype: openResponse\nrows: 1\n---\nDescribe your experience.\n---\n> First hint\n> Second hint`;
-    const result = await runCli(["--format=json", "--type=prompt", "-"], {
-      stdin: source,
-    });
-    expect(result.code).toBe(0);
-    const output = JSON.parse(result.stdout) as {
-      summary: { errors: number; warnings: number; files: number };
-      files: {
-        diagnostics: {
-          severity: string;
-          message: string;
-          range: { startLine: number };
+  it.each(["\n", "\r\n", "\r"])(
+    "reports the warning location for %j line endings without failing validation",
+    async (eol) => {
+      const source =
+        `---\ntype: openResponse\nrows: 1\n---\nDescribe your experience.\n---\n> First hint\n> Second hint`.replaceAll(
+          "\n",
+          eol,
+        );
+      const result = await runCli(["--format=json", "--type=prompt", "-"], {
+        stdin: source,
+      });
+      expect(result.code).toBe(0);
+      const output = JSON.parse(result.stdout) as {
+        summary: { errors: number; warnings: number; files: number };
+        files: {
+          diagnostics: {
+            severity: string;
+            message: string;
+            range: { startLine: number };
+          }[];
         }[];
-      }[];
-    };
-    expect(output.summary).toEqual({ errors: 0, warnings: 1, files: 1 });
-    expect(output.files[0].diagnostics).toHaveLength(1);
-    const [diagnostic] = output.files[0].diagnostics;
-    expect(diagnostic.severity).toBe("warning");
-    expect(diagnostic.message).toContain("Placeholder may overflow rows: 1");
-    expect(diagnostic.range.startLine).toBe(6);
-  });
+      };
+      expect(output.summary).toEqual({ errors: 0, warnings: 1, files: 1 });
+      expect(output.files[0].diagnostics).toHaveLength(1);
+      const [diagnostic] = output.files[0].diagnostics;
+      expect(diagnostic.severity).toBe("warning");
+      expect(diagnostic.message).toContain("Placeholder may overflow rows: 1");
+      expect(diagnostic.range.startLine).toBe(6);
+    },
+  );
 });

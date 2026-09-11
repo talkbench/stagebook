@@ -12,7 +12,7 @@ export interface PromptValidationResult {
  * diagnostic away from the real response section.
  */
 function findDelimiterLines(source: string): number[] {
-  const lines = source.split(/\r?\n/);
+  const lines = source.split(/\r?\n|\r/);
   const result: number[] = [];
   let insideFence = false;
   for (let i = 0; i < lines.length; i++) {
@@ -60,7 +60,7 @@ function mapPromptErrorToRange(
     // If we have a specific field name, try to find it
     if (path.length >= 2 && typeof path[1] === "string") {
       const fieldName = path[1];
-      const lines = source.split(/\r?\n/);
+      const lines = source.split(/\r?\n|\r/);
       for (let i = metaStart + 1; i < metaEnd; i++) {
         if (lines[i] && lines[i].trimStart().startsWith(fieldName + ":")) {
           return {
@@ -172,7 +172,7 @@ export function validatePromptSource(source: string): PromptValidationResult {
       0,
     );
     if (estimatedLines > rows && responseItems.some((line) => line.trim())) {
-      const lines = source.split(/\r?\n/);
+      const lines = source.split(/\r?\n|\r/);
       const firstHintLine = lines.findIndex(
         (line, i) =>
           i > delimiters[2] && (line.startsWith("> ") || line === ">"),

@@ -263,8 +263,10 @@ Body text`;
   });
 
   describe("metadata field position mapping", () => {
-    it("maps metadata field error to the specific YAML key line", () => {
-      const src = `---
+    it.each(["\n", "\r\n", "\r"])(
+      "maps metadata field errors with %j line endings",
+      (eol) => {
+        const src = `---
 name: test_prompt
 type: multipleChoice
 rows: 3
@@ -272,15 +274,16 @@ rows: 3
 Pick one
 ---
 - A
-- B`;
-      const result = validatePromptSource(src);
-      const rowsError = result.diagnostics.find((d) =>
-        d.message.includes("rows"),
-      );
-      expect(rowsError).toBeDefined();
-      // "rows:" is on line 3 (0-indexed)
-      expect(rowsError!.range!.startLine).toBe(3);
-    });
+- B`.replaceAll("\n", eol);
+        const result = validatePromptSource(src);
+        const rowsError = result.diagnostics.find((d) =>
+          d.message.includes("rows"),
+        );
+        expect(rowsError).toBeDefined();
+        // "rows:" is on line 3 (0-indexed)
+        expect(rowsError!.range!.startLine).toBe(3);
+      },
+    );
   });
 });
 
@@ -395,14 +398,24 @@ describe("openResponse placeholder overflow warning (#590)", () => {
   });
 });
 
-// Windows-authored prompts use the same source coordinates as LF files.
-it("locates a placeholder warning with CRLF line endings (#590)", () => {
-  const source =
-    "---\r\ntype: openResponse\r\nrows: 1\r\n---\r\nAnswer.\r\n---\r\n> First\r\n> Second";
-  expect(validatePromptSource(source).diagnostics).toEqual([
-    expect.objectContaining({
-      severity: "warning",
-      range: expect.objectContaining({ startLine: 6 }),
-    }),
-  ]);
-});
+it.each(["\n", "\r\n", "\r"])(
+  "locates a placeholder warning with %j line endings (#590)",
+  (eol) => {
+    const source = [
+      "---",
+      "type: openResponse",
+      "rows: 1",
+      "---",
+      "Answer.",
+      "---",
+      "> First",
+      "> Second",
+    ].join(eol);
+    expect(validatePromptSource(source).diagnostics).toEqual([
+      expect.objectContaining({
+        severity: "warning",
+        range: { startLine: 6, startCol: 0, endLine: 6, endCol: 7 },
+      }),
+    ]);
+  },
+);
