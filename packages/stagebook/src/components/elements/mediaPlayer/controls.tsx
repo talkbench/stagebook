@@ -267,7 +267,7 @@ export function HTML5Controls({
                 right: 0,
                 height: 4,
                 borderRadius: 2,
-                background: "rgba(255,255,255,0.2)",
+                background: "rgba(255,255,255,0.4)",
               }}
             >
               {/* Buffered fill */}
@@ -280,6 +280,8 @@ export function HTML5Controls({
                   height: "100%",
                   width: `${String(bufferedPct)}%`,
                   background: "rgba(255,255,255,0.35)",
+                  borderRight: "2px solid #000",
+                  boxSizing: "border-box",
                   borderRadius: 2,
                   pointerEvents: "none",
                 }}
@@ -306,6 +308,8 @@ export function HTML5Controls({
                 transform: "translateX(-50%)",
                 width: 12,
                 height: 12,
+                border: "2px solid #000",
+                boxSizing: "border-box",
                 borderRadius: "50%",
                 background: "#fff",
                 boxShadow: "0 1px 3px rgba(0,0,0,0.4)",
@@ -474,7 +478,7 @@ export function YouTubeControls({
                 right: 0,
                 height: 4,
                 borderRadius: 2,
-                background: "rgba(255,255,255,0.2)",
+                background: "rgba(255,255,255,0.4)",
               }}
             >
               <div
@@ -497,6 +501,8 @@ export function YouTubeControls({
                 transform: "translateX(-50%)",
                 width: 12,
                 height: 12,
+                border: "2px solid #000",
+                boxSizing: "border-box",
                 borderRadius: "50%",
                 background: "#fff",
                 boxShadow: "0 1px 3px rgba(0,0,0,0.4)",

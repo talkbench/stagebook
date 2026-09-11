@@ -141,8 +141,9 @@ Not covered, by design:
 
 - Content backdrops — the waveform canvas, a video frame. There is no fixed
   colour to hold a floor against; the tokens drawn over them are excluded in
-  the ledger with that reason, and the MediaPlayer's controls are tracked in
-  [#636].
+  the ledger with that reason. MediaPlayer's own controls now have explicit
+  black/white content probes under [#636], described below; the frames in
+  arbitrary authored media are not enumerated.
 - Other indicators drawn as background images: a thin anti-aliased stroke
   has no pixel that reliably belongs to it. The Select chevron now uses a
   token-colored SVG path read by the gate; see the
@@ -180,3 +181,38 @@ Not covered, by design:
   covers. Ten minutes on that question at the start of [#628] would have
   produced this design directly, instead of seven hundred lines of colour
   maths and twenty review findings.
+
+## MediaPlayer indicator coverage (#636)
+
+The gate now mounts HTML5 audio controls, HTML5 video controls, and Stagebook's
+YouTube controls against controlled black and white backdrops, in paused and
+playing states. It reads each SVG child's fill or stroke (including inherited
+opacity checks) against a painted padding pixel beside the top of its ink.
+The video's gradient is lightest there. Scrubber played/buffered/unplayed
+segments and the thumb are read from screenshot pixels. Track backgrounds are
+sampled in padding at the same height, so a darker point lower in the gradient
+cannot inflate their contrast. Buffered-end and thumb outlines are also sampled
+against the actual segments on both sides, so passing against the backdrop
+alone cannot hide an indistinct segment boundary.
+
+The media image and playback state are controlled by the test; production
+control styles are untouched. The YouTube API is stubbed, and third-party iframe
+chrome is outside this gate. These cases measure contrast, not media decoding,
+keyboard behavior, captions, or every authored video frame.
+
+The first measurements exposed gaps in [#636]: white video icons reached
+about 2.05–2.19:1 on bright content, the buffered segment about 2.75:1 there,
+and the unplayed track about 1.57–1.90:1 across the tested layouts/backdrops.
+Following visual review, the video gradient now stays dark behind the controls
+and fades above them, and the track uses 40% white instead of 20%. The same
+changes apply to Stagebook's YouTube controls. The top fade padding is reduced
+from 24px to 12px to cover less video; button sizes and the 4px gap between
+the control row and scrubber stay unchanged.
+
+The grey fills alone do not provide 3:1 at their shared boundaries. A 2px black
+marker at the buffered end and a 2px black outline within the existing thumb
+size distinguish those boundaries while retaining the reviewed grey hierarchy.
+The gate measures each marker against its adjacent segments. Removing either
+marker makes its boundary check fail. The known-failure entries are removed:
+every measured indicator must pass 3:1. Screenshots and numeric readings are
+attached to the test report.
