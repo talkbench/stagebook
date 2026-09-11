@@ -211,6 +211,11 @@ export function Timeline({
   // trigger re-renders; the source of truth for `muted` is the handle.
   const [, setMuteTick] = useState(0);
 
+  // Keep a keyboard-browsed annotation visible during playback.
+  // Object identity releases the hold when it is edited or replaced.
+  const browsedAnnotationRef = useRef<PointSelection | RangeSelection | null>(
+    null,
+  );
   // Track whether the playhead changes are "natural playback" (RAF tick)
   // versus "external seek" (someone called handle.seekTo() out of band).
   // Auto-scroll uses the former; snap-on-seek uses the latter.
@@ -436,6 +441,13 @@ export function Timeline({
   // a manual pan via the minimap would immediately get undone (the playhead
   // would suddenly look "off-screen" relative to the new viewport).
   useEffect(() => {
+    const activeAnnotation =
+      state.activeIndex === null
+        ? undefined
+        : state.selections[state.activeIndex];
+    if (browsedAnnotationRef.current !== activeAnnotation) {
+      browsedAnnotationRef.current = null;
+    }
     if (zoomLevel <= 1) return;
     const duration = handleRef.current?.getDuration() ?? 0;
     if (duration <= 0) return;
@@ -449,6 +461,11 @@ export function Timeline({
     // source of motion — auto-scroll/snap would fight the cursor and
     // either run away to the edge or yank the viewport mid-drag.
     if (playheadDraggingRef.current) return;
+
+    // Keep updating lastPlayheadRef above while browsing, but don't pull the
+    // viewport back to playback. Deselecting, editing or selecting another
+    // annotation releases this hold; explicit ruler/playhead seeks do too.
+    if (browsedAnnotationRef.current) return;
 
     // No motion → nothing to do
     if (currentTime === lastT) return;
@@ -485,7 +502,14 @@ export function Timeline({
       );
       if (newStart !== viewportStart) setViewportStart(newStart);
     }
-  }, [currentTime, isPaused, zoomLevel, viewportStart]);
+  }, [
+    currentTime,
+    isPaused,
+    zoomLevel,
+    viewportStart,
+    state.activeIndex,
+    state.selections,
+  ]);
 
   // Zoom handlers
   const onZoomIn = useCallback(() => {
@@ -675,6 +699,7 @@ export function Timeline({
         const index = order[position];
         if (index !== state.activeIndex) dispatch({ type: "SELECT", index });
         const selected = state.selections[index];
+        browsedAnnotationRef.current = selected;
         const time = "start" in selected ? selected.start : selected.time;
         const visible = dur / zoomLevel;
         // Reveal the mark (or a long range's start) without seeking playback.
@@ -1036,7 +1061,10 @@ export function Timeline({
           width={waveformWidth}
           zoomLevel={zoomLevel}
           viewportStart={viewportStart}
-          onSeek={(t) => handle.seekTo(t)}
+          onSeek={(t) => {
+            browsedAnnotationRef.current = null;
+            handle.seekTo(t);
+          }}
           onDragStart={() => {
             playheadDraggingRef.current = true;
           }}
@@ -1150,7 +1178,10 @@ export function Timeline({
             rulerHeight={RULER_HEIGHT}
             zoomLevel={zoomLevel}
             viewportStart={viewportStart}
-            onSeek={(t) => handle.seekTo(t)}
+            onSeek={(t) => {
+              browsedAnnotationRef.current = null;
+              handle.seekTo(t);
+            }}
             onDragStart={() => {
               playheadDraggingRef.current = true;
             }}

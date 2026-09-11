@@ -200,3 +200,94 @@ test("status stays quiet during playback and dragging, then reports the complete
   await expect(status).toContainText("Point 1 of 1,");
   await expect(page.getByTestId("save-log")).not.toHaveText("[]");
 });
+
+for (const selectionType of ["point", "range"] as const) {
+  for (const release of ["deselection", "edit", "seek"] as const) {
+    test(`${selectionType}: browsing holds the viewport during playback until ${release}`, async ({
+      mount,
+      page,
+    }) => {
+      const props = {
+        source: "player",
+        playerName: "player",
+        name: "browsing",
+        selectionType,
+        multiSelect: true,
+        mockPaused: false,
+        initialSelections:
+          selectionType === "point"
+            ? [{ time: 5 }, { time: 10 }]
+            : [
+                { start: 5, end: 7 },
+                { start: 10, end: 12 },
+              ],
+      };
+      const component = await mount(
+        <MockTimeline {...props} mockCurrentTime={40} />,
+      );
+      const timeline = page.getByTestId("timeline");
+      await page.getByTestId("timeline-zoom-in").click();
+      await page.getByTestId("timeline-zoom-in").click();
+      await expect(timeline).toHaveAttribute("data-zoom-level", "4");
+      await timeline.focus();
+      await page.keyboard.press("[");
+      await expect(page.getByTestId(`${selectionType}-1`)).toHaveAttribute(
+        "data-active",
+        "true",
+      );
+      await expect
+        .poll(async () =>
+          Number(await timeline.getAttribute("data-viewport-start")),
+        )
+        .toBeLessThanOrEqual(10);
+      const viewport = await timeline.getAttribute("data-viewport-start");
+      if (selectionType === "range") {
+        await page.keyboard.press("Tab");
+        await expect(page.getByRole("status")).toContainText(
+          "End boundary selected.",
+        );
+      }
+      // Advance in small steps, as ordinary playback does, and let RAF plus
+      // the viewport effect settle after each update (not just the prop render).
+      for (const time of [40.1, 40.2, 40.3]) {
+        await component.update(
+          <MockTimeline {...props} mockCurrentTime={time} />,
+        );
+        await page.evaluate(
+          () =>
+            new Promise((resolve) =>
+              requestAnimationFrame(() =>
+                requestAnimationFrame(() => resolve(null)),
+              ),
+            ),
+        );
+        await expect(timeline).toHaveAttribute(
+          "data-viewport-start",
+          viewport!,
+        );
+      }
+      await expect(page.getByTestId("save-log")).toHaveText("[]");
+      if (release === "deselection") {
+        await page.keyboard.press("Escape");
+      } else if (release === "edit") {
+        await page.keyboard.press("ArrowRight");
+        await expect(page.getByTestId("save-log")).not.toHaveText("[]");
+      } else {
+        const ruler = page.getByTestId("time-ruler");
+        const box = await ruler.boundingBox();
+        if (!box) throw new Error("Missing ruler");
+        await ruler.click({
+          position: { x: box.width / 2, y: box.height / 2 },
+        });
+      }
+      await component.update(
+        <MockTimeline {...props} mockCurrentTime={40.4} />,
+      );
+      await expect
+        .poll(async () =>
+          Number(await timeline.getAttribute("data-viewport-start")),
+        )
+        .toBeGreaterThan(20);
+    });
+  }
+}

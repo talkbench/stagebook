@@ -10,7 +10,11 @@ rewritten or saved merely to navigate them.
 
 Selection keeps keyboard focus on the Timeline and reveals an off-screen
 point or range start at the current zoom. Playback position and play/pause
-state stay unchanged. Existing Enter, arrow, frame, Tab, Escape, delete and
+state stay unchanged. While that annotation remains selected and unedited,
+automatic playback scrolling stays suspended so advancing playback cannot
+hide it again. Deselecting, editing, selecting another annotation by pointer,
+or seeking with the Timeline ruler/playhead releases the hold. Choosing a
+range boundary with Tab keeps the hold. Existing Enter, arrow, frame, Tab, Escape, delete and
 undo actions retain their behavior. Range selection initially has no active
 boundary; Tab chooses one, as it does after clicking a range. Escape clears
 selection and allows Tab to leave the annotation surface. Modified bracket
