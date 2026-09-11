@@ -492,15 +492,10 @@ const notepadBoxStyle: React.CSSProperties = {
   // overflowing placeholder is cut off at rest there too. Growing the box
   // would hide an authoring problem the researcher should see.
   //
-  // NOTE (#590): #590 is about the NATIVE `<textarea placeholder>` path — a
-  // solo openResponse field — where whether a participant can scroll an
-  // overflowing placeholder into view is engine-dependent (Chrome and Safari
-  // can, Firefox cannot). It does NOT govern this component: the runner
-  // renders CodeMirror here, not a textarea, so none of that behavior
-  // applies. The reason to revisit on #590 is narrower: if it is resolved by
-  // changing how stagebook handles placeholder-vs-`rows` overflow generally
-  // (e.g. an authoring-time warning), this preview should adopt whatever
-  // visual signal that fix settles on.
+  // #590 adds a prompt-source validation warning for likely overflow; it
+  // does not change participant layout. Keep this preview clipped as well.
+  // The runner uses CodeMirror here, so the native textarea's Firefox-only
+  // inability to scroll hidden placeholder text does not apply to this box.
   overflow: "hidden",
 };
 

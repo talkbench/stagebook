@@ -7,13 +7,18 @@ export interface PromptValidationResult {
 }
 
 /**
- * Find the 0-based line numbers of all `---` delimiters in the source.
+ * Find the 0-based line numbers of top-level `---` delimiters in the source.
+ * Match the parser's backtick-fence handling so body examples cannot move a
+ * diagnostic away from the real response section.
  */
 function findDelimiterLines(source: string): number[] {
-  const lines = source.split(/\r?\n/);
+  const lines = source.split(/\r?\n|\r/);
   const result: number[] = [];
+  let insideFence = false;
   for (let i = 0; i < lines.length; i++) {
-    if (/^-{3,}$/.test(lines[i])) {
+    if (lines[i].startsWith("```")) {
+      insideFence = !insideFence;
+    } else if (!insideFence && /^-{3,}$/.test(lines[i])) {
       result.push(i);
     }
   }
@@ -55,7 +60,7 @@ function mapPromptErrorToRange(
     // If we have a specific field name, try to find it
     if (path.length >= 2 && typeof path[1] === "string") {
       const fieldName = path[1];
-      const lines = source.split(/\r?\n/);
+      const lines = source.split(/\r?\n|\r/);
       for (let i = metaStart + 1; i < metaEnd; i++) {
         if (lines[i] && lines[i].trimStart().startsWith(fieldName + ":")) {
           return {
@@ -150,6 +155,43 @@ export function validatePromptSource(source: string): PromptValidationResult {
         message: issue.message,
         severity: "error",
         range,
+      });
+    }
+  }
+
+  if (result.success && result.data.metadata.type === "openResponse") {
+    const { metadata, responseItems } = result.data;
+    const rows = metadata.rows ?? 5; // Same default as Prompt / TextArea.
+    // Deliberately coarse authoring lint, not a layout calculation (#590).
+    // A generous 80 code points per line flags long hints without pretending
+    // to know a host's width, font, word wrapping, or scrollbar gutter. Each
+    // authored `>` line starts a new line, including empty internal lines.
+    const estimatedLines = responseItems.reduce(
+      (total, line) =>
+        total + Math.max(1, Math.ceil(Array.from(line).length / 80)),
+      0,
+    );
+    if (estimatedLines > rows && responseItems.some((line) => line.trim())) {
+      const lines = source.split(/\r?\n|\r/);
+      const firstHintLine = lines.findIndex(
+        (line, i) =>
+          i > delimiters[2] && (line.startsWith("> ") || line === ">"),
+      );
+      diagnostics.push({
+        message:
+          `Placeholder may overflow rows: ${String(rows)}. Firefox cannot scroll to hidden placeholder text. ` +
+          "Shorten the hint or move instructions into the prompt body; otherwise increase rows and preview at narrow widths. " +
+          "Approximate check: 80 characters per line; actual wrapping depends on width and font.",
+        severity: "warning",
+        range:
+          firstHintLine < 0
+            ? null
+            : {
+                startLine: firstHintLine,
+                startCol: 0,
+                endLine: firstHintLine,
+                endCol: lines[firstHintLine].length,
+              },
       });
     }
   }
