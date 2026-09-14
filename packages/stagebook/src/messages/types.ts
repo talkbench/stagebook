@@ -76,6 +76,22 @@ export interface StagebookMessages {
   timelineLabel: (name: string) => string;
   /** Gutter label fallback when no trackLabels entry exists, e.g. "Track 0". */
   timelineTrackFallback: (index: number) => string;
+  /** Focus-scoped annotation navigation instructions and settled status. */
+  timelineNavigationHint: string;
+  timelineNoAnnotationSelected: (count: number) => string;
+  timelinePointSelected: (
+    position: number,
+    count: number,
+    time: number,
+  ) => string;
+  timelineRangeSelected: (
+    position: number,
+    count: number,
+    start: number,
+    end: number,
+  ) => string;
+  timelineStartBoundarySelected: string;
+  timelineEndBoundarySelected: string;
   timelineZoomIn: string;
   timelineZoomOut: string;
   timelineMuteTrack: (label: string) => string;

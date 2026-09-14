@@ -43,6 +43,16 @@ export const he: StagebookMessages = {
   singleRangeHint: "טווח אחד לכל היותר — מחקו כדי להחליף",
   timelineLabel: (name) => `ציר זמן: ${name}`,
   timelineTrackFallback: (index) => `רצועה ${index}`,
+  timelineNavigationHint:
+    "השתמשו בסוגריים מרובעים שמאלה וימינה לבחירת הסימון הקודם או הבא בלי להזיז את ראש הניגון. בטווח, Tab בוחר גבול. Escape מבטל את הבחירה כדי לאפשר יציאה מציר הזמן באמצעות Tab.",
+  timelineNoAnnotationSelected: (count) =>
+    `לא נבחר סימון. מספר הסימונים: ${count}.`,
+  timelinePointSelected: (position, count, time) =>
+    `נקודה ${position} מתוך ${count}, ${time} שניות.`,
+  timelineRangeSelected: (position, count, start, end) =>
+    `טווח ${position} מתוך ${count}, ${start} עד ${end} שניות.`,
+  timelineStartBoundarySelected: "גבול ההתחלה נבחר.",
+  timelineEndBoundarySelected: "גבול הסיום נבחר.",
   timelineZoomIn: "התקרבות",
   timelineZoomOut: "התרחקות",
   timelineMuteTrack: (label) => `השתקת ${label}`,
@@ -51,6 +61,7 @@ export const he: StagebookMessages = {
   timelineShortcutsTitle: "קיצורי מקלדת",
   timelineShortcutsLabel: "קיצורי מקלדת של ציר הזמן",
   timelineShortcutRowsRange: () => [
+    { keys: "[ / ]", description: "הסימון הקודם / הבא (בלי הזזת ראש הניגון)" },
     { keys: "Space", description: "ניגון / השהיה" },
     { keys: "לחיצה על שטח ריק", description: "הזזת ראש הניגון" },
     { keys: "←  → (ללא בחירה)", description: "גלילת ראש הניגון ±1 שנ׳" },
@@ -67,6 +78,7 @@ export const he: StagebookMessages = {
     { keys: "Escape", description: "ביטול בחירה" },
   ],
   timelineShortcutRowsPoint: () => [
+    { keys: "[ / ]", description: "הסימון הקודם / הבא (בלי הזזת ראש הניגון)" },
     { keys: "Space", description: "ניגון / השהיה" },
     { keys: "לחיצה על שטח ריק", description: "הצבת נקודה" },
     { keys: "Enter", description: "הצבת נקודה בראש הניגון" },

@@ -44,6 +44,16 @@ export const en: StagebookMessages = {
   singleRangeHint: "Max 1 range — delete to replace",
   timelineLabel: (name) => `Timeline: ${name}`,
   timelineTrackFallback: (index) => `Track ${index}`,
+  timelineNavigationHint:
+    "Use left and right brackets to select the previous or next annotation without seeking. For a range, Tab selects a boundary. Escape deselects so Tab can leave the timeline.",
+  timelineNoAnnotationSelected: (count) =>
+    `No annotation selected. ${count} ${count === 1 ? "annotation" : "annotations"}.`,
+  timelinePointSelected: (position, count, time) =>
+    `Point ${position} of ${count}, ${time} seconds.`,
+  timelineRangeSelected: (position, count, start, end) =>
+    `Range ${position} of ${count}, ${start} to ${end} seconds.`,
+  timelineStartBoundarySelected: "Start boundary selected.",
+  timelineEndBoundarySelected: "End boundary selected.",
   timelineZoomIn: "Zoom in",
   timelineZoomOut: "Zoom out",
   timelineMuteTrack: (label) => `Mute ${label}`,
@@ -52,6 +62,7 @@ export const en: StagebookMessages = {
   timelineShortcutsTitle: "Keyboard shortcuts",
   timelineShortcutsLabel: "Timeline keyboard shortcuts",
   timelineShortcutRowsRange: () => [
+    { keys: "[ / ]", description: "Previous / next annotation (no seek)" },
     { keys: "Space", description: "Play / Pause" },
     { keys: "Click empty space", description: "Seek playhead" },
     { keys: "←  → (no selection)", description: "Scrub playhead ±1s" },
@@ -71,6 +82,7 @@ export const en: StagebookMessages = {
     { keys: "Escape", description: "Deselect" },
   ],
   timelineShortcutRowsPoint: () => [
+    { keys: "[ / ]", description: "Previous / next annotation (no seek)" },
     { keys: "Space", description: "Play / Pause" },
     { keys: "Click empty space", description: "Place point" },
     { keys: "Enter", description: "Place point at playhead" },
