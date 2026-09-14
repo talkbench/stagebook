@@ -103,7 +103,9 @@ describe("HelpPopover — unstable callback audit (#105)", () => {
     });
 
     act(() => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      document.activeElement!.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
     });
 
     expect(onCloseV1).not.toHaveBeenCalled();

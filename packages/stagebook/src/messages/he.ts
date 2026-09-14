@@ -60,6 +60,7 @@ export const he: StagebookMessages = {
   timelineShowShortcuts: "הצגת קיצורי מקלדת",
   timelineShortcutsTitle: "קיצורי מקלדת",
   timelineShortcutsLabel: "קיצורי מקלדת של ציר הזמן",
+  timelineCloseShortcuts: "סגירת קיצורי המקלדת",
   timelineShortcutRowsRange: () => [
     { keys: "[ / ]", description: "הסימון הקודם / הבא (בלי הזזת ראש הניגון)" },
     { keys: "Space", description: "ניגון / השהיה" },

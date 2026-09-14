@@ -61,6 +61,7 @@ export const en: StagebookMessages = {
   timelineShowShortcuts: "Show keyboard shortcuts",
   timelineShortcutsTitle: "Keyboard shortcuts",
   timelineShortcutsLabel: "Timeline keyboard shortcuts",
+  timelineCloseShortcuts: "Close keyboard shortcuts",
   timelineShortcutRowsRange: () => [
     { keys: "[ / ]", description: "Previous / next annotation (no seek)" },
     { keys: "Space", description: "Play / Pause" },

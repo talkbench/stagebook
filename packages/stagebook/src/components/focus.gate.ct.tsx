@@ -59,6 +59,8 @@ interface Case {
   node: ReactNode;
   target: string;
   ring?: string;
+  /** Portaled surfaces are outside the mounted component root. */
+  portal?: boolean;
   kind: "halo" | "outline";
   /**
    * How a keyboard user reaches `target` when one Tab cannot: the Select
@@ -257,6 +259,28 @@ const cases: Case[] = [
     target: '[data-testid="timeline-help-button"]',
     kind: "halo",
   },
+  ...(["panel", "close"] as const).map(
+    (part): Case => ({
+      name: `Timeline help ${part}`,
+      node: (
+        <MockTimeline
+          source="player"
+          playerName="player"
+          name="help"
+          selectionType="range"
+        />
+      ),
+      target: `[data-testid="timeline-help-${part === "panel" ? "popover" : "close"}"]`,
+      portal: true,
+      kind: "halo",
+      reach: async (page) => {
+        await page.getByTestId("timeline-help-button").focus();
+        await page.keyboard.press("Enter");
+        await expect(page.getByRole("dialog")).toBeFocused();
+        if (part === "close") await page.keyboard.press("Tab");
+      },
+    }),
+  ),
   {
     name: "Timeline mute button",
     node: (
@@ -340,7 +364,7 @@ test.describe("focus indicator is opaque (1.4.11)", () => {
         "the picker is the native popup here",
       );
       const component = await mount(c.node);
-      const target = component.locator(c.target).first();
+      const target = (c.portal ? page : component).locator(c.target).first();
       if (c.reach) {
         await c.reach(page);
         await expect(target).toBeFocused();
@@ -457,7 +481,7 @@ test.describe("focus indicator survives forced-colors (1.4.1 / 2.4.7)", () => {
         "the picker is the native popup here",
       );
       const component = await mount(c.node);
-      const target = component.locator(c.target).first();
+      const target = (c.portal ? page : component).locator(c.target).first();
       if (c.reach) {
         await c.reach(page);
         await expect(target).toBeFocused();

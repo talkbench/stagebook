@@ -1225,6 +1225,7 @@ export function Timeline({
         activeIndex={state.activeIndex}
         onHelpToggle={() => setHelpOpen((v) => !v)}
         helpOpen={helpOpen}
+        helpPopoverId={`${safeId}-help`}
         helpButtonRef={helpButtonRef}
         singleSelectFull={
           selectionType === "range" &&
@@ -1236,6 +1237,7 @@ export function Timeline({
       {/* Help popover */}
       {helpOpen && (
         <HelpPopover
+          id={`${safeId}-help`}
           selectionType={selectionType}
           onClose={() => setHelpOpen(false)}
           buttonRef={helpButtonRef}
