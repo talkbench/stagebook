@@ -204,6 +204,8 @@ interface Pixel {
 }
 
 interface Scan {
+  /** Include portaled surfaces alongside the mounted app root. */
+  include?: string;
   known?: Known[];
   marks?: Mark[];
   pixels?: Pixel[];
@@ -870,6 +872,67 @@ const cases: Case[] = [
     known: TIMELINE_KNOWN,
     marks: [...playheadMarks, muteGlyph()],
     states: [
+      ...(["open", "close hovered", "close pressed"] as const).map(
+        (state): State => ({
+          name: `help ${state}`,
+          include: '#root, [data-testid="timeline-help-popover"]',
+          enter: async (page) => {
+            await page.getByTestId("timeline-help-button").click();
+            await expect(page.getByRole("dialog")).toBeFocused();
+            await expect(page.getByRole("dialog")).toHaveAttribute(
+              "id",
+              (await page
+                .getByTestId("timeline-help-button")
+                .getAttribute("aria-controls"))!,
+            );
+            await page
+              .getByRole("cell", { name: "← →", exact: true })
+              .evaluate((el) => el.setAttribute("data-a11y-help-arrows", ""));
+            if (state !== "open")
+              await hover('[data-testid="timeline-help-close"]')(page);
+            if (state === "close pressed") await page.mouse.down();
+          },
+          known: [
+            ...TIMELINE_KNOWN,
+            {
+              rule: "aria-valid-attr-value",
+              within: '[data-testid="timeline-help-button"]',
+              kind: "unmeasured",
+              reason: "controlsWithinPopup",
+              why: "axe defers aria-controls whenever aria-haspopup is set; this state and Timeline.help.ct.tsx assert that the ID names the open dialog",
+            },
+            {
+              rule: "color-contrast",
+              within: "[data-a11y-help-arrows]",
+              kind: "unmeasured",
+              reason: "nonBmp",
+              why: "axe declines the arrow-only shortcut cell; its rendered text color and dialog background are measured below",
+            },
+          ],
+          marks: [
+            {
+              name: "arrow shortcut text on help",
+              fg: { el: "[data-a11y-help-arrows]", prop: "color" },
+              bg: {
+                el: '[data-testid="timeline-help-popover"]',
+                prop: "background-color",
+                behind: PAGE,
+              },
+              min: AA,
+            },
+            {
+              name: "help Close glyph on its button",
+              fg: { el: '[data-testid="timeline-help-close"]', prop: "color" },
+              bg: {
+                el: '[data-testid="timeline-help-close"]',
+                prop: "background-color",
+                behind: PAGE,
+              },
+              min: UI,
+            },
+          ],
+        }),
+      ),
       {
         name: "mute hovered",
         enter: hover('[data-testid="track-mute"]'),
@@ -1315,7 +1378,7 @@ async function scan(page: Page, engine: string, label: string, s: Scan) {
   });
   await settle(page);
   const results = await new AxeBuilder({ page })
-    .include("#root")
+    .include(s.include ?? "#root")
     .withTags(WCAG_22_AA)
     .analyze();
 
@@ -1334,7 +1397,7 @@ async function scan(page: Page, engine: string, label: string, s: Scan) {
       })),
     ),
   ].map((x) => {
-    const data = x.node.any[0]?.data as
+    const data = [...x.node.any, ...x.node.all, ...x.node.none][0]?.data as
       | { messageKey?: string; contrastRatio?: number }
       | undefined;
     return {

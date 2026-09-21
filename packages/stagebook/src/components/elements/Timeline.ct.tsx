@@ -2519,14 +2519,10 @@ test("help button toggles popover open and closed", async ({ mount, page }) => {
   await expect(popover).not.toBeAttached();
   await helpBtn.click();
   await expect(popover).toBeAttached();
-  // Note: clicking the button again won't close because the document-level
-  // mousedown listener fires first (it's in capture phase), closing the
-  // popover. The next render then re-opens it because the button click
-  // toggled state. So we test the behavior we actually have: clicking
-  // outside closes (covered by previous test); clicking the button while
-  // open is implementation-specific. The dataset toggle below is what
-  // matters for accessibility.
-  await expect(helpBtn).toHaveAttribute("aria-pressed", "true");
+  await expect(helpBtn).toHaveAttribute("aria-expanded", "true");
+  await helpBtn.click();
+  await expect(popover).not.toBeAttached();
+  await expect(helpBtn).toHaveAttribute("aria-expanded", "false");
 });
 
 test("debounced save: rapid arrow keypresses produce a single save", async ({

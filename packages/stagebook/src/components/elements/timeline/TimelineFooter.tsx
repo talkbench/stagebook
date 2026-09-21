@@ -11,6 +11,7 @@ export interface TimelineFooterProps {
   activeIndex: number | null;
   onHelpToggle: () => void;
   helpOpen: boolean;
+  helpPopoverId?: string;
   helpButtonRef?: React.RefObject<HTMLButtonElement | null>;
   /** Show "Max 1 range — delete to replace" to the left of the help button.
    *  True when the timeline is in single-select range mode and a range
@@ -74,6 +75,7 @@ export function TimelineFooter({
   activeIndex,
   onHelpToggle,
   helpOpen,
+  helpPopoverId,
   helpButtonRef,
   singleSelectFull = false,
 }: TimelineFooterProps) {
@@ -129,7 +131,9 @@ export function TimelineFooter({
           data-testid="timeline-help-button"
           onClick={onHelpToggle}
           aria-label={messages.timelineShowShortcuts}
-          aria-pressed={helpOpen}
+          aria-expanded={helpOpen}
+          aria-haspopup="dialog"
+          aria-controls={helpOpen ? helpPopoverId : undefined}
           // Explicit tabIndex for Safari Tab-focus (#415 / #413).
           tabIndex={0}
           style={buttonStyle}

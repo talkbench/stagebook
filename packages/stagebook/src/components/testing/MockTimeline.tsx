@@ -99,6 +99,7 @@ function MockPlayer({
 }
 
 export interface MockTimelineProps extends Omit<TimelineProps, "save"> {
+  mockWidth?: number | string;
   /** Name of the mock player to register. Omit to test the "no player" case. */
   playerName?: string;
   /** Plain-value overrides for the mock PlaybackHandle. */
@@ -115,6 +116,7 @@ export interface MockTimelineProps extends Omit<TimelineProps, "save"> {
 }
 
 export function MockTimeline({
+  mockWidth = 800,
   playerName,
   mockDuration,
   mockCurrentTime,
@@ -230,8 +232,8 @@ export function MockTimeline({
   return (
     <PlaybackProvider>
       {playerName && <MockPlayer name={playerName} handle={handle} />}
-      {/* Force a fixed width so ResizeObserver in tests has a known size. */}
-      <div style={{ width: "800px" }}>
+      {/* Default to a known width; reflow tests can opt into a fluid host. */}
+      <div style={{ width: mockWidth }}>
         <Timeline
           {...props}
           save={(key, value) => setSaves((prev) => [...prev, { key, value }])}

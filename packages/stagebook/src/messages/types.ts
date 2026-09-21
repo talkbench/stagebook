@@ -102,6 +102,7 @@ export interface StagebookMessages {
   timelineShortcutsTitle: string;
   /** Help-popover dialog accessible name. */
   timelineShortcutsLabel: string;
+  timelineCloseShortcuts: string;
   /**
    * The keyboard-shortcut tables, one row set per selection mode. Whole-table
    * functions (not per-row keys) so a locale translates the table wholesale —
