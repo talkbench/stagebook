@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/experimental-ct-react";
+import { ListSorter } from "./ListSorter.js";
 import { MockListSorter } from "../testing/MockListSorter";
 import { NonPropagatingMockListSorter } from "../testing/NonPropagatingMockListSorter";
 
@@ -195,4 +196,33 @@ test.describe("ListSorter", () => {
     const numberCenter = lastNumberBox!.y + lastNumberBox!.height / 2;
     expect(Math.abs(rowCenter - numberCenter)).toBeLessThanOrEqual(1);
   });
+});
+
+test("canceling a reorder emits nothing; completing one emits once", async ({
+  mount,
+  page,
+}) => {
+  const changes: string[][] = [];
+  const component = await mount(
+    <ListSorter
+      items={["Alpha", "Bravo", "Charlie"]}
+      onChange={(next) => {
+        changes.push(next);
+      }}
+    />,
+  );
+  const first = component.getByTestId("draggable-0");
+  await first.focus();
+  await page.keyboard.press("Space");
+  await page.keyboard.press("ArrowDown");
+  expect(changes).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(first).toHaveAttribute("data-dragging", "false");
+  await first.focus();
+  await expect(first).toContainText("Alpha");
+  expect(changes).toEqual([]);
+  await page.keyboard.press("Space");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Space");
+  await expect.poll(() => changes).toEqual([["Bravo", "Alpha", "Charlie"]]);
 });

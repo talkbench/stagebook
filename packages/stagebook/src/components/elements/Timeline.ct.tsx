@@ -2525,8 +2525,9 @@ test("help button toggles popover open and closed", async ({ mount, page }) => {
   await expect(helpBtn).toHaveAttribute("aria-expanded", "false");
 });
 
-test("debounced save: rapid arrow keypresses produce a single save", async ({
+test("held keyboard adjustment produces one save on release", async ({
   mount,
+  page,
 }) => {
   const component = await mount(
     <MockTimeline
@@ -2547,23 +2548,16 @@ test("debounced save: rapid arrow keypresses produce a single save", async ({
   await timeline.focus();
   await timeline.press("Tab"); // end handle
 
-  // Fire 5 ArrowRights in quick succession
-  await timeline.press("ArrowRight");
-  await timeline.press("ArrowRight");
-  await timeline.press("ArrowRight");
-  await timeline.press("ArrowRight");
-  await timeline.press("ArrowRight");
-
-  // Wait for debounced save to land
+  // Key-repeat previews stay local until the matching release.
+  for (let i = 0; i < 5; i++) await page.keyboard.down("ArrowRight");
+  expect((await readSaveLog(component)).length).toBe(beforeSaves.length);
+  await page.keyboard.up("ArrowRight");
   await expect
-    .poll(async () => {
-      const saves = await readSaveLog(component);
-      return saves.length - beforeSaves.length;
-    })
-    .toBeGreaterThan(0);
+    .poll(
+      async () => (await readSaveLog(component)).length - beforeSaves.length,
+    )
+    .toBe(1);
 
-  // After 5 rapid ArrowRights, the 500ms debounce should produce
-  // exactly one new save — not five (raw) or two (premature flush).
   const afterSaves = await readSaveLog(component);
   const newSaves = afterSaves.length - beforeSaves.length;
   expect(newSaves).toBe(1);

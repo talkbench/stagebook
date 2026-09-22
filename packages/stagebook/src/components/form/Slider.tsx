@@ -1,4 +1,12 @@
-import React, { useState, useEffect, useId, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useCallback,
+  useLayoutEffect,
+} from "react";
 import { useMessages, useIsRTL } from "../StagebookProvider.js";
 import { focusRingCss } from "../focusRing.js";
 
@@ -9,6 +17,7 @@ export interface SliderProps {
   labelPts?: number[];
   labels?: string[];
   value?: number;
+  /** Emits completed adjustments, not intermediate pointer/key-repeat values. */
   onChange?: (value: number) => void;
   /**
    * When true, renders a numeric value badge above the thumb after
@@ -29,6 +38,16 @@ const MAX_SNAP_TICKS = 25;
 // padding math doesn't drift from the visible track height.
 const TRACK_HEIGHT = 10; // px
 const CLICK_TARGET_HEIGHT = 36; // px (track + vertical padding)
+const ADJUSTMENT_KEYS = new Set([
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+]);
 const THUMB_SIZE = 20; // px
 
 export function Slider({
@@ -52,9 +71,52 @@ export function Slider({
   const dir = isRTL ? "rtl" : "ltr";
   const [localValue, setLocalValue] = useState<number | undefined>(value);
 
+  const draft = useRef(value);
+  const committed = useRef(value);
+  const pointer = useRef<number | null>(null);
+  const heldKeys = useRef(new Set<string>());
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const suppressClick = useRef(false);
+
+  const preview = useCallback((next: number | undefined) => {
+    draft.current = next;
+    setLocalValue(next);
+  }, []);
+
+  const cancel = useCallback(() => {
+    const id = pointer.current;
+    pointer.current = null;
+    heldKeys.current.clear();
+    preview(committed.current);
+    if (id !== null && wrapperRef.current?.hasPointerCapture(id)) {
+      wrapperRef.current.releasePointerCapture(id);
+    }
+  }, [preview]);
+
   useEffect(() => {
-    setLocalValue(value);
-  }, [value]);
+    committed.current = value;
+    cancel();
+  }, [value, cancel]);
+
+  useEffect(() => {
+    window.addEventListener("blur", cancel);
+    return () => window.removeEventListener("blur", cancel);
+  }, [cancel]);
+
+  // The first pointer adjustment creates the previously absent native input.
+  // Focus it after rendering so the visible thumb receives keyboard focus.
+  useLayoutEffect(() => {
+    if (pointer.current !== null)
+      inputRef.current?.focus({ preventScroll: true });
+  }, [localValue]);
+
+  const commit = () => {
+    const next = draft.current;
+    if (next === undefined || next === committed.current) return;
+    committed.current = next;
+    onChange?.(next);
+  };
 
   const reactId = useId();
   // `useId` returns an opaque string. Strip anything outside the
@@ -64,58 +126,90 @@ export function Slider({
   const trackClass = `stagebook-slider-track-${safeId}`;
   const inputClass = `stagebook-slider-input-${safeId}`;
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = parseFloat(e.target.value);
-    setLocalValue(newValue);
-    onChange?.(newValue);
+  const valueAt = (clientX: number) => {
+    const track = wrapperRef.current?.querySelector(`.${trackClass}`);
+    if (!track) return draft.current;
+    const rect = track.getBoundingClientRect();
+    let percentage = Math.max(
+      0,
+      Math.min(1, (clientX - rect.left) / rect.width),
+    );
+    if (isRTL) percentage = 1 - percentage;
+    const rawValue = min + percentage * (max - min);
+    return Math.max(
+      min,
+      Math.min(max, Math.round(rawValue / interval) * interval),
+    );
   };
 
-  // Under RTL, normalize horizontal arrow keys ourselves. Chromium and
-  // Firefox reverse the native range input's arrow mapping under dir=rtl
-  // (ArrowLeft increments, matching the mirrored visual axis); WebKit does
-  // not — pressing ArrowLeft there would decrement and move the visible
-  // thumb RIGHT. Intercepting both keys and applying the mirrored mapping
-  // uniformly keeps the recorded value identical across engines (the
-  // measurement-instrument property) and the visual response coherent.
-  // Up/Down/Home/End/Page keys are direction-independent and stay native.
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    preview(parseFloat(e.target.value));
+    // Accessibility tools can set the native input without pointer/key
+    // events. Such an explicit change is already a completed interaction.
+    if (pointer.current === null && heldKeys.current.size === 0) commit();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!isRTL) return;
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    if (e.key === "Escape") {
+      cancel();
+      return;
+    }
+    if (!ADJUSTMENT_KEYS.has(e.key)) return;
+    if (pointer.current !== null) {
+      e.preventDefault();
+      return;
+    }
+    heldKeys.current.add(e.key);
+    // Keep the established RTL arrow normalization; other keys stay native.
+    if (!isRTL || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
     e.preventDefault();
     const delta = e.key === "ArrowLeft" ? interval : -interval;
-    const next = Math.max(min, Math.min(max, (localValue ?? min) + delta));
-    if (next === localValue) return;
-    setLocalValue(next);
-    onChange?.(next);
+    preview(Math.max(min, Math.min(max, (draft.current ?? min) + delta)));
+  };
+
+  const handleKeyUp = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!heldKeys.current.delete(e.key)) return;
+    if (heldKeys.current.size === 0) commit();
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || pointer.current !== null) return;
+    e.preventDefault();
+    cancel();
+    pointer.current = e.pointerId;
+    suppressClick.current = true;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* synthetic pointer */
+    }
+    inputRef.current?.focus({ preventScroll: true });
+    preview(valueAt(e.clientX));
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (pointer.current === e.pointerId) preview(valueAt(e.clientX));
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (pointer.current !== e.pointerId) return;
+    preview(valueAt(e.clientX));
+    pointer.current = null;
+    commit();
+    if (e.currentTarget.hasPointerCapture(e.pointerId))
+      e.currentTarget.releasePointerCapture(e.pointerId);
   };
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Click-to-jump for the click-target padding (above / below the
-    // 10px track) and for the unanchored state (when the native
-    // input doesn't yet exist). Clicks directly on the native range
-    // input's track area are handled by the input's built-in
-    // click-to-jump behavior — and those clicks ALSO bubble to this
-    // wrapper handler. Skip them here so we don't fire onChange
-    // twice for a single user click; a host's debounced save would
-    // otherwise observe two fires per click.
+    // Real pointer interactions already committed on pointerup. Keep a
+    // click-only path for synthesized activation, without duplicate writes.
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return;
+    }
     if (e.target instanceof HTMLInputElement) return;
-
-    // The track sits inside a padded click-area wrapper, so we
-    // measure against the visible track's bounding rect (not the
-    // event target's) to get accurate `x` regardless of how far
-    // above/below the track the user actually clicked.
-    const trackEl = e.currentTarget.querySelector(`.${trackClass}`);
-    const rect = (trackEl ?? e.currentTarget).getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    let percentage = Math.max(0, Math.min(1, x / rect.width));
-    // Under RTL the visual axis is mirrored: a click near the left edge
-    // means max, not min.
-    if (isRTL) percentage = 1 - percentage;
-    const rawValue = min + percentage * (max - min);
-    const newValue = Math.round(rawValue / interval) * interval;
-    const clampedValue = Math.max(min, Math.min(max, newValue));
-    setLocalValue(clampedValue);
-    onChange?.(clampedValue);
+    preview(valueAt(e.clientX));
+    commit();
   };
 
   const getPosition = (pt: number) => ((pt - min) / (max - min)) * 100;
@@ -236,12 +330,24 @@ export function Slider({
         <div
           className={`${trackClass}-wrapper`}
           data-state={hasValue ? "anchored" : "unanchored"}
+          ref={wrapperRef}
           onClick={handleClick}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={(e) => {
+            if (pointer.current === e.pointerId) cancel();
+          }}
+          onLostPointerCapture={(e) => {
+            if (pointer.current === e.pointerId) cancel();
+          }}
+          onBlur={cancel}
           role="presentation"
           style={{
             position: "relative",
             width: "100%",
             height: `${CLICK_TARGET_HEIGHT}px`,
+            touchAction: "pan-y",
             // Constant marginTop reserves space for the value badge
             // whether or not it's currently rendered — without this,
             // the first click visibly pushes the track down 1.25rem
@@ -389,6 +495,7 @@ export function Slider({
                 interaction. */}
             {hasValue && (
               <input
+                ref={inputRef}
                 type="range"
                 className={inputClass}
                 min={min}
@@ -397,6 +504,7 @@ export function Slider({
                 value={localValue}
                 onChange={handleChange}
                 onKeyDown={handleKeyDown}
+                onKeyUp={handleKeyUp}
                 // Safari excludes <input type=range> from the default
                 // tab order unless macOS keyboard-nav is on; explicit
                 // tabIndex overrides that so Safari participants can

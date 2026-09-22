@@ -78,6 +78,7 @@ export type SelectionAction =
   | { type: "DESELECT" }
   | { type: "SET_ACTIVE_HANDLE"; handle: "start" | "end" | null }
   | { type: "UNDO" }
+  | { type: "CANCEL_EDIT"; before: SelectionState }
   | { type: "REPLACE_ALL"; selections: TimelineValue };
 
 function isRangeArray(s: TimelineValue): s is RangeSelection[] {
@@ -96,6 +97,10 @@ export function selectionsReducer(
   action: SelectionAction,
 ): SelectionState {
   switch (action.type) {
+    case "CANCEL_EDIT":
+      // Restore both the answer and its undo history; a canceled gesture
+      // must not reappear through a later undo.
+      return action.before;
     case "CREATE_RANGE": {
       // multiSelect: false → preserve any existing range. The user must
       // explicitly delete the existing range to make a new one. This
