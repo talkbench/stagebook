@@ -70,16 +70,11 @@ export function Prompt({
   // numeric multipleChoice records the wrong number for the chosen label).
   const [shuffleOrder, setShuffleOrder] = useState<number[]>([]);
   // `debugMessages` is also mirrored to a ref (`debugMessagesRef`) so that
-  // saveData() reads the latest list at save-time, not at the time the
-  // debounced save was scheduled. Without this, telemetry emitted on blur
-  // (after onChange has already scheduled a save) would not appear in the
-  // saved record.
+  // saveData() reads telemetry delivered just before a response, without
+  // waiting for React to render the corresponding state update. TextArea
+  // emits blur statistics first, then the response in the same event.
   const [debugMessages, setDebugMessages] = useState<DebugMessage[]>([]);
   const debugMessagesRef = useRef<DebugMessage[]>([]);
-  const debounceTextRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const debounceInteractiveRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
 
   // Stable id for the wrapper around the rendered prompt body. The
   // dropdown's `<select>` points its `aria-labelledby` here so the
@@ -159,10 +154,8 @@ export function Prompt({
     (newValue: unknown, recordData: typeof record, label?: string) => {
       const updatedRecord = {
         ...recordData,
-        // Always read debugMessages from the ref at save-time. The
-        // `recordData` closure may have been captured before a TypingStats
-        // or PasteAttempt was appended (e.g. blur emits stats after the
-        // value-change debounce was already scheduled).
+        // Read the ref: blur can append telemetry and emit the response
+        // in the same event, before a new recordData closure is rendered.
         debugMessages: debugMessagesRef.current,
         value: newValue,
         // For multipleChoice prompts (#282), record both the chosen value
@@ -175,29 +168,6 @@ export function Prompt({
       save(`prompt_${recordData.name}`, updatedRecord, scope);
     },
     [shared, save],
-  );
-
-  const debouncedSaveText = useCallback(
-    (newValue: unknown, recordData: typeof record) => {
-      if (debounceTextRef.current) clearTimeout(debounceTextRef.current);
-      debounceTextRef.current = setTimeout(
-        () => saveData(newValue, recordData),
-        2000,
-      );
-    },
-    [saveData],
-  );
-
-  const debouncedSaveInteractive = useCallback(
-    (newValue: unknown, recordData: typeof record, label?: string) => {
-      if (debounceInteractiveRef.current)
-        clearTimeout(debounceInteractiveRef.current);
-      debounceInteractiveRef.current = setTimeout(
-        () => saveData(newValue, recordData, label),
-        50,
-      );
-    },
-    [saveData],
   );
 
   // Auto-save the dropdown's first option as the participant's
@@ -258,7 +228,7 @@ export function Prompt({
               );
               const numericValue = shuffledNumericPoints[idx];
               const label = responses[idx] ?? "";
-              debouncedSaveInteractive(numericValue, record, label);
+              saveData(numericValue, record, label);
             }}
           />
         ) : (
@@ -271,7 +241,7 @@ export function Prompt({
             layout={metadata.layout}
             onChange={(e) =>
               // Text mode: label === value.
-              debouncedSaveInteractive(e.target.value, record, e.target.value)
+              saveData(e.target.value, record, e.target.value)
             }
           />
         ))}
@@ -284,9 +254,7 @@ export function Prompt({
           }))}
           value={(value as string[]) ?? []}
           layout={metadata.layout}
-          onChange={(newSelection) =>
-            debouncedSaveInteractive(newSelection, record)
-          }
+          onChange={(newSelection) => saveData(newSelection, record)}
         />
       )}
 
@@ -313,9 +281,7 @@ export function Prompt({
             // #545. Preferred over a visible `label`, which would duplicate
             // the body the participant already reads.
             ariaLabelledBy={bodyId}
-            onChange={(e) =>
-              debouncedSaveInteractive(e.target.value, record, e.target.value)
-            }
+            onChange={(e) => saveData(e.target.value, record, e.target.value)}
           />
         </div>
       )}
@@ -323,7 +289,9 @@ export function Prompt({
       {promptType === "openResponse" && !shared && (
         <TextArea
           defaultText={responses.join("\n")}
-          onChange={(val) => debouncedSaveText(val, record)}
+          debounceDelay={2000}
+          maxWait={5000}
+          onChange={(val) => saveData(val, record)}
           onDebugMessage={(message) => {
             debugMessagesRef.current = [...debugMessagesRef.current, message];
             setDebugMessages(debugMessagesRef.current);
@@ -347,7 +315,7 @@ export function Prompt({
       {promptType === "listSorter" && (
         <ListSorter
           items={(value as string[]) ?? responses}
-          onChange={(newOrder) => debouncedSaveInteractive(newOrder, record)}
+          onChange={(newOrder) => saveData(newOrder, record)}
         />
       )}
 
@@ -360,7 +328,7 @@ export function Prompt({
           labels={responses}
           showValue={metadata.showValue}
           value={value as number | undefined}
-          onChange={(val) => debouncedSaveInteractive(val, record)}
+          onChange={(val) => saveData(val, record)}
         />
       )}
     </>

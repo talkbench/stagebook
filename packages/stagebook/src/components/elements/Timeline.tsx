@@ -23,6 +23,7 @@ import { computeBucketCount } from "./mediaPlayer/waveformCapture.js";
 import {
   initialSelectionState,
   selectionsReducer,
+  type SelectionState,
 } from "./timeline/selectionsReducer.js";
 import {
   keyToAction,
@@ -268,10 +269,36 @@ export function Timeline({
     };
   });
 
-  // Drag transaction state — set true between BEGIN_DRAG (first pointermove
-  // past the dead zone) and pointerup/leave. While true, the save effect
-  // skips so we don't spam the server with one save per pixel of motion.
+  // A gesture previews reducer state locally; only completing it releases
+  // the save. Cancellation restores the answer AND its prior undo history.
   const [isDragging, setIsDragging] = useState(false);
+  const [isKeyboardEditing, setIsKeyboardEditing] = useState(false);
+  const editStartRef = useRef<SelectionState | null>(null);
+  const heldEditKeys = useRef(new Set<string>());
+  const [gestureReset, setGestureReset] = useState(0);
+
+  const cancelEdit = useCallback(() => {
+    const before = editStartRef.current;
+    editStartRef.current = null;
+    heldEditKeys.current.clear();
+    if (before) dispatch({ type: "CANCEL_EDIT", before });
+    setIsDragging(false);
+    setIsKeyboardEditing(false);
+  }, []);
+
+  const cancelInteraction = useCallback(() => {
+    cancelEdit();
+    pendingRangeStartRef.current = null;
+    setPendingRangeStartTime(null);
+    // Reset the overlay's pointer capture/creation preview as well. Its
+    // answer lives in this parent, so remounting only drops transient UI.
+    setGestureReset((n) => n + 1);
+  }, [cancelEdit]);
+
+  useEffect(() => {
+    window.addEventListener("blur", cancelInteraction);
+    return () => window.removeEventListener("blur", cancelInteraction);
+  }, [cancelInteraction]);
 
   // Announce settled annotation state, never the RAF playhead or a live drag.
   // A short trailing delay coalesces held-arrow edits into their final value.
@@ -322,48 +349,20 @@ export function Timeline({
     return () => clearTimeout(timer);
   }, [state, isDragging, messages]);
 
-  // Save selections whenever they change (after the initial mount). Mouse-
-  // driven changes save immediately on commit (drag end / click); keyboard
-  // adjustments are debounced ~500ms so holding an arrow key collapses to
-  // one save; mid-drag pointermove dispatches are deferred until the drag
-  // ends to avoid server spam.
+  // Save completed edits only. No timer can outlive the editing gesture
+  // or flush unfinished selections when the host advances the stage.
   const lastSavedRef = useRef<string | null>(null);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Set to true by the keyboard handler before dispatching, so the save
-  // effect can debounce this particular state change. Reset after the save.
-  const debounceNextSaveRef = useRef(false);
   useEffect(() => {
     const serialized = JSON.stringify(state.selections);
     if (lastSavedRef.current === null) {
       lastSavedRef.current = serialized;
       return;
     }
-    if (serialized === lastSavedRef.current) return;
-    // While a pointer drag is in progress, defer — the save will fire when
-    // isDragging transitions back to false (this same effect re-runs).
-    if (isDragging) return;
-
-    if (saveTimerRef.current !== null) clearTimeout(saveTimerRef.current);
-
-    if (debounceNextSaveRef.current) {
-      debounceNextSaveRef.current = false;
-      saveTimerRef.current = setTimeout(() => {
-        lastSavedRef.current = serialized;
-        saveRef.current(`timeline_${name}`, state.selections);
-        saveTimerRef.current = null;
-      }, 500);
-    } else {
-      lastSavedRef.current = serialized;
-      saveRef.current(`timeline_${name}`, state.selections);
-    }
-
-    return () => {
-      if (saveTimerRef.current !== null) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
-    };
-  }, [state.selections, isDragging, name]);
+    if (serialized === lastSavedRef.current || isDragging || isKeyboardEditing)
+      return;
+    lastSavedRef.current = serialized;
+    saveRef.current(`timeline_${name}`, state.selections);
+  }, [state.selections, isDragging, isKeyboardEditing, name]);
 
   // Measure container width. Read from getBoundingClientRect on every render
   // via a callback ref, and observe with ResizeObserver for ongoing updates.
@@ -674,6 +673,17 @@ export function Timeline({
     };
     const action = keyToAction(eventLike, ctx);
     if (!action) return; // Fall through to MediaPlayer
+    if (isDragging) {
+      e.preventDefault();
+      return;
+    }
+    if (
+      heldEditKeys.current.size > 0 &&
+      action.type !== "adjustHandle" &&
+      action.type !== "repositionPoint"
+    ) {
+      cancelEdit();
+    }
 
     e.preventDefault();
     e.stopPropagation();
@@ -735,7 +745,9 @@ export function Timeline({
       }
       case "adjustHandle": {
         const t = clampToMedia(action.time);
-        debounceNextSaveRef.current = true;
+        if (editStartRef.current === null) editStartRef.current = state;
+        heldEditKeys.current.add(e.key);
+        setIsKeyboardEditing(true);
         dispatch({
           type: "ADJUST_HANDLE",
           index: action.index,
@@ -748,7 +760,9 @@ export function Timeline({
       }
       case "repositionPoint": {
         const t = clampToMedia(action.time);
-        debounceNextSaveRef.current = true;
+        if (editStartRef.current === null) editStartRef.current = state;
+        heldEditKeys.current.add(e.key);
+        setIsKeyboardEditing(true);
         dispatch({
           type: "REPOSITION_POINT",
           index: action.index,
@@ -846,6 +860,15 @@ export function Timeline({
   const onKeyUp = (e: React.KeyboardEvent) => {
     // Match keydown's focus boundary, including range-commit Enter keyups.
     if (e.target !== e.currentTarget) return;
+    if (heldEditKeys.current.delete(e.key)) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (heldEditKeys.current.size === 0) {
+        editStartRef.current = null;
+        setIsKeyboardEditing(false);
+      }
+      return;
+    }
     const eventLike: KeyEventLike = {
       key: e.key,
       ctrlKey: e.ctrlKey,
@@ -1005,11 +1028,11 @@ export function Timeline({
       tabIndex={0}
       onKeyDown={onKeyDown}
       onKeyUp={onKeyUp}
-      onBlur={() => {
-        // Drop any in-progress press-and-hold range — focus left the
-        // timeline before the matching keyup arrived. (#263)
-        pendingRangeStartRef.current = null;
-        setPendingRangeStartTime(null);
+      onBlur={(e) => {
+        if (e.target === e.currentTarget) cancelInteraction();
+      }}
+      onPointerDownCapture={() => {
+        if (heldEditKeys.current.size > 0) cancelEdit();
       }}
       className={containerClass}
       style={{
@@ -1129,6 +1152,7 @@ export function Timeline({
           }}
         >
           <SelectionOverlay
+            key={gestureReset}
             width={waveformWidth}
             height={tracksHeight}
             duration={duration}
@@ -1181,10 +1205,15 @@ export function Timeline({
               dispatch({ type: "SET_ACTIVE_HANDLE", handle: h })
             }
             onBeginDrag={() => {
+              editStartRef.current = state;
               dispatch({ type: "BEGIN_DRAG" });
               setIsDragging(true);
             }}
-            onEndDrag={() => setIsDragging(false)}
+            onEndDrag={() => {
+              editStartRef.current = null;
+              setIsDragging(false);
+            }}
+            onCancelDrag={cancelEdit}
             onRequestFocus={() =>
               containerElRef.current?.focus({ preventScroll: true })
             }

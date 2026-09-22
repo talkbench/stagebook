@@ -100,6 +100,8 @@ function MockPlayer({
 
 export interface MockTimelineProps extends Omit<TimelineProps, "save"> {
   mockWidth?: number | string;
+  /** Remove only the Timeline, retaining the host save log for cutoff tests. */
+  mockShowTimeline?: boolean;
   /** Name of the mock player to register. Omit to test the "no player" case. */
   playerName?: string;
   /** Plain-value overrides for the mock PlaybackHandle. */
@@ -117,6 +119,7 @@ export interface MockTimelineProps extends Omit<TimelineProps, "save"> {
 
 export function MockTimeline({
   mockWidth = 800,
+  mockShowTimeline = true,
   playerName,
   mockDuration,
   mockCurrentTime,
@@ -234,10 +237,12 @@ export function MockTimeline({
       {playerName && <MockPlayer name={playerName} handle={handle} />}
       {/* Default to a known width; reflow tests can opt into a fluid host. */}
       <div style={{ width: mockWidth }}>
-        <Timeline
-          {...props}
-          save={(key, value) => setSaves((prev) => [...prev, { key, value }])}
-        />
+        {mockShowTimeline && (
+          <Timeline
+            {...props}
+            save={(key, value) => setSaves((prev) => [...prev, { key, value }])}
+          />
+        )}
       </div>
       <div data-testid="save-log" style={{ display: "none" }}>
         {JSON.stringify(saves)}

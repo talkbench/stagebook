@@ -656,23 +656,11 @@ test.describe("Multiple Choice numeric mode + shuffle (#282)", () => {
     // Find the radio whose displayed label is "Strongly agree" (originally
     // paired with point 5) and click it. Whatever its display position
     // after shuffle, the saved numeric value must be 5.
-    const radios = component.locator('input[type="radio"]');
-    const labels = await component
-      .locator("label")
-      .evaluateAll((nodes) => nodes.map((n) => (n.textContent ?? "").trim()));
-    const stronglyAgreeIdx = labels.findIndex((t) =>
-      t.includes("Strongly agree"),
-    );
-    expect(stronglyAgreeIdx).toBeGreaterThanOrEqual(0);
-    // `.click()` not `.check()` — RadioGroup is controlled, so the input's
-    // `checked` attribute won't update without a parent re-render. We only
-    // care that onChange fires with the right value.
-    await radios.nth(stronglyAgreeIdx).click();
-
-    // Wait for the 50ms debounce to fire.
-    await component.page().waitForTimeout(80);
-
-    expect(saved.length).toBeGreaterThan(0);
+    // The locator waits for the shuffled render before selecting by label.
+    await component
+      .getByRole("radio", { name: "Strongly agree", exact: true })
+      .click();
+    await expect.poll(() => saved.length).toBe(1);
     const last = saved[saved.length - 1];
     const record = last.value as { value: unknown; label: unknown };
     expect(record.value).toBe(5);

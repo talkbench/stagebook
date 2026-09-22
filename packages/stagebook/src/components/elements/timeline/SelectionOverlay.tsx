@@ -60,8 +60,10 @@ export interface SelectionOverlayProps {
   onSetActiveHandle: (handle: "start" | "end" | null) => void;
   /** Begin a drag transaction — pushes one undo snapshot, defers saves. */
   onBeginDrag: () => void;
-  /** End a drag transaction — releases the save defer. */
+  /** Commit a completed drag transaction. */
   onEndDrag: () => void;
+  /** Discard a partial edit and its undo snapshot. */
+  onCancelDrag: () => void;
   /** Request the parent to focus its keyboard-event container. Called after
    *  selection actions so keyboard shortcuts (arrows, Tab, Delete, Escape)
    *  work immediately without the user manually clicking the timeline. */
@@ -106,6 +108,7 @@ const CLICK_CREATED_RANGE_SEC = 1;
 export const CLICK_CREATED_RANGE_MIN_PX = 6;
 
 interface DragState {
+  pointerId: number;
   startX: number;
   startTime: number;
   /** Did the mouse move beyond the dead zone? */
@@ -234,6 +237,7 @@ export function SelectionOverlay({
   onSetActiveHandle,
   onBeginDrag,
   onEndDrag,
+  onCancelDrag,
   onRequestFocus,
   keyboardRangePreview = null,
   pulseTrigger = null,
@@ -302,11 +306,14 @@ export function SelectionOverlay({
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || dragRef.current) return;
+      e.preventDefault();
+      onRequestFocus();
       capturePointer(e);
       const time = eventToTime(e.clientX);
       const track = eventToTrack(e.clientY);
       dragRef.current = {
+        pointerId: e.pointerId,
         startX: e.clientX,
         startTime: time,
         isDragging: false,
@@ -314,13 +321,13 @@ export function SelectionOverlay({
         track,
       };
     },
-    [eventToTime, eventToTrack, capturePointer],
+    [eventToTime, eventToTrack, capturePointer, onRequestFocus],
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       const drag = dragRef.current;
-      if (!drag) return;
+      if (!drag || drag.pointerId !== e.pointerId) return;
 
       const dx = Math.abs(e.clientX - drag.startX);
       if (!drag.isDragging && dx < DRAG_DEAD_ZONE_PX) return;
@@ -377,7 +384,7 @@ export function SelectionOverlay({
     (e: React.PointerEvent) => {
       releasePointer(e);
       const drag = dragRef.current;
-      if (!drag) return;
+      if (!drag || drag.pointerId !== e.pointerId) return;
 
       const rawTime = eventToTime(e.clientX);
       const time = Math.max(0, Math.min(duration, rawTime));
@@ -508,7 +515,9 @@ export function SelectionOverlay({
   const handleHandlePointerDown = useCallback(
     (e: React.PointerEvent, index: number, handle: "start" | "end") => {
       e.stopPropagation();
-      if (e.button !== 0) return;
+      if (e.button !== 0 || dragRef.current) return;
+      e.preventDefault();
+      onRequestFocus();
       // Capture on the overlay container (parent), not the handle itself,
       // so pointermove/pointerup keep flowing to the overlay during drag.
       const overlay = containerRef.current;
@@ -523,6 +532,7 @@ export function SelectionOverlay({
       onSetActiveHandle(handle);
       const time = eventToTime(e.clientX);
       dragRef.current = {
+        pointerId: e.pointerId,
         startX: e.clientX,
         startTime: time,
         isDragging: false,
@@ -531,13 +541,15 @@ export function SelectionOverlay({
         handle,
       };
     },
-    [eventToTime, onSelect, onSetActiveHandle],
+    [eventToTime, onSelect, onSetActiveHandle, onRequestFocus],
   );
 
   const handlePointPointerDown = useCallback(
     (e: React.PointerEvent, index: number) => {
       e.stopPropagation();
-      if (e.button !== 0) return;
+      if (e.button !== 0 || dragRef.current) return;
+      e.preventDefault();
+      onRequestFocus();
       const overlay = containerRef.current;
       if (overlay) {
         try {
@@ -549,6 +561,7 @@ export function SelectionOverlay({
       onSelect(index);
       const time = eventToTime(e.clientX);
       dragRef.current = {
+        pointerId: e.pointerId,
         startX: e.clientX,
         startTime: time,
         isDragging: false,
@@ -556,18 +569,19 @@ export function SelectionOverlay({
         index,
       };
     },
-    [eventToTime, onSelect],
+    [eventToTime, onSelect, onRequestFocus],
   );
 
   const handlePointerCancel = useCallback(
     (e: React.PointerEvent) => {
+      if (dragRef.current?.pointerId !== e.pointerId) return;
       releasePointer(e);
-      if (dragRef.current?.beganDrag) onEndDrag();
+      if (dragRef.current.beganDrag) onCancelDrag();
       dragRef.current = null;
       setDragPreview(null);
       setHoveredHandle(null);
     },
-    [onEndDrag, releasePointer],
+    [onCancelDrag, releasePointer],
   );
 
   // ── Render ──
@@ -964,12 +978,13 @@ export function SelectionOverlay({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
+      onLostPointerCapture={handlePointerCancel}
       onPointerLeave={() => {
         // With pointer capture active, this only fires for uncaptured
         // interactions (e.g., hover without mousedown). For captured drags,
         // pointerup/pointercancel handle cleanup instead.
         if (dragRef.current) {
-          if (dragRef.current.beganDrag) onEndDrag();
+          if (dragRef.current.beganDrag) onCancelDrag();
           dragRef.current = null;
           setDragPreview(null);
         }

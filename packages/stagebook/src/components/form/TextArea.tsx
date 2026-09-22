@@ -43,7 +43,10 @@ export interface TextAreaProps {
   showCharacterCount?: boolean;
   minLength?: number;
   maxLength?: number;
+  /** Quiet period before emitting the latest edit. */
   debounceDelay?: number;
+  /** Maximum age of a pending batch; idle fields never start this timer. */
+  maxWait?: number;
   id?: string;
   // Accessible-name affordances for standalone use (#538). Inside a
   // Prompt the surrounding markup names the field, but TextArea is a
@@ -108,6 +111,7 @@ export function TextArea({
   minLength,
   maxLength,
   debounceDelay = 500,
+  maxWait = 5000,
   id,
   label = "",
   ariaLabel,
@@ -134,6 +138,10 @@ export function TextArea({
   // unchanged, so the browser doesn't restart).
   const [overflowPulseId, setOverflowPulseId] = useState(0);
   const debounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxWaitTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingValue = useRef<string | undefined>(undefined);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
   const overflowTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Inter-keystroke timing comes from character-producing and editing keys
@@ -165,12 +173,14 @@ export function TextArea({
     }
   }, [value]);
 
-  // Clear the overflow timeout on unmount — without this, a stage/page
-  // change within the 300ms window would fire setIsOverflowing(false) on
-  // an unmounted component (silent in React 18+ but still a leak).
+  // An automatic cutoff intentionally drops the unsaved tail. Never let
+  // timers emit a response into a stage that has already ended.
   useEffect(() => {
     return () => {
       if (overflowTimeout.current) clearTimeout(overflowTimeout.current);
+      if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
+      if (maxWaitTimeout.current) clearTimeout(maxWaitTimeout.current);
+      pendingValue.current = undefined;
     };
   }, []);
 
@@ -191,21 +201,31 @@ export function TextArea({
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
-  const submitChange = (val: string) => {
-    if (onChange && typeof onChange === "function") {
-      onChange(val);
-    }
+  const clearPending = () => {
+    if (debounceTimeout.current !== null) clearTimeout(debounceTimeout.current);
+    if (maxWaitTimeout.current !== null) clearTimeout(maxWaitTimeout.current);
+    debounceTimeout.current = null;
+    maxWaitTimeout.current = null;
+    pendingValue.current = undefined;
+    isDebouncing.current = false;
+  };
+
+  const emitPending = () => {
+    const next = pendingValue.current;
+    clearPending();
+    if (next !== undefined) onChangeRef.current?.(next);
   };
 
   const debouncedSubmit = (val: string) => {
-    if (debounceTimeout.current) {
-      clearTimeout(debounceTimeout.current);
-    }
+    pendingValue.current = val;
     isDebouncing.current = true;
-    debounceTimeout.current = setTimeout(() => {
-      isDebouncing.current = false;
-      submitChange(val);
-    }, debounceDelay);
+    if (debounceTimeout.current !== null) clearTimeout(debounceTimeout.current);
+    debounceTimeout.current = setTimeout(emitPending, debounceDelay);
+    // Only the first unsaved edit starts the maximum-wait timer. A quiet
+    // save or blur clears it; there is no recurring idle checkpoint.
+    if (maxWaitTimeout.current === null) {
+      maxWaitTimeout.current = setTimeout(emitPending, maxWait);
+    }
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -303,21 +323,18 @@ export function TextArea({
   };
 
   const handleBlur = () => {
-    if (debounceTimeout.current) {
-      clearTimeout(debounceTimeout.current);
-      isDebouncing.current = false;
-    }
-    submitChange(localValue);
-
+    const latest = pendingValue.current ?? localValue;
+    clearPending();
     blurCount.current += 1;
     if (currentFocusStartedAt.current !== null) {
       focusedDurationMs.current += Date.now() - currentFocusStartedAt.current;
       currentFocusStartedAt.current = null;
     }
 
-    if (onDebugMessage) {
-      onDebugMessage(computeTypingStats());
-    }
+    // Prompt saves synchronously now. Deliver telemetry first, including
+    // focus-only visits after a checkpoint where the text did not change.
+    onDebugMessage?.(computeTypingStats());
+    onChangeRef.current?.(latest);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
