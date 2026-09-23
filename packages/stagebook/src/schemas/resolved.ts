@@ -27,6 +27,7 @@ import {
   type DiscussionRoomType,
   type LayoutFeedType,
   type LayoutDefinitionType,
+  SURVEY_ELEMENT_REMOVED_MESSAGE,
 } from "./treatment.js";
 
 // Detects `${field}` placeholders that survived `fillTemplates` —
@@ -186,7 +187,14 @@ const resolvedConditionsSchema = z
 // ----------------------------------------------------------------
 
 const resolvedElementBaseSchema = z.object({
-  type: z.string(),
+  // The type is otherwise left open here (the pre-fill discriminated union
+  // is the authority on the element vocabulary), but the removed `survey`
+  // element is rejected explicitly so a `type: ${kind}` template that fills
+  // to `survey` fails in the resolved pass too — the pass the editor
+  // pipeline surfaces (#669).
+  type: z
+    .string()
+    .refine((t) => t !== "survey", { message: SURVEY_ELEMENT_REMOVED_MESSAGE }),
   name: nameSchema.optional(),
   file: z.string().optional(),
   displayTime: displayTimeSchema.optional(),

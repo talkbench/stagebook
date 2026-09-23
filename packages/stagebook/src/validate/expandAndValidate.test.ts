@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { expandAndValidate } from "./expandAndValidate.js";
+import { SURVEY_ELEMENT_REMOVED_MESSAGE } from "../schemas/index.js";
 
 describe("expandAndValidate", () => {
   describe("valid expansion", () => {
@@ -259,5 +260,41 @@ treatments:
       [],
     );
     expect(result.fullYaml).toMatch(/compatibleIntroSequences:\n {6}- a/);
+  });
+});
+
+describe("removed survey element through a filled template (#669)", () => {
+  it("reports SURVEY_ELEMENT_REMOVED_MESSAGE as an error on the expanded output", () => {
+    const src = `templates:
+  - name: instrument
+    contentType: elements
+    content:
+      - type: \${kind}
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - type: submitButton
+treatments:
+  - name: t
+    playerCount: 1
+    compatibleIntroSequences: [i]
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - template: instrument
+            fields:
+              kind: survey
+          - type: submitButton
+`;
+    const result = expandAndValidate(src);
+    expect(result.expandError).toBeNull();
+    const hit = result.diagnostics.find((d) =>
+      d.message.includes(SURVEY_ELEMENT_REMOVED_MESSAGE),
+    );
+    expect(hit).toBeDefined();
+    expect(hit!.severity).toBe("error");
   });
 });

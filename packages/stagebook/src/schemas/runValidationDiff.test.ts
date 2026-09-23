@@ -983,7 +983,7 @@ treatments:
   });
 });
 
-describe("removed survey element cannot come back through a template (#669)", () => {
+describe("removed survey element through a template — hydrated pass (#669)", () => {
   it("a `type: ${kind}` template filled with `survey` is rejected in the hydrated pass with the migration guidance", () => {
     const source = `templates:
   - name: instrument

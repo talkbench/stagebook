@@ -808,3 +808,43 @@ treatments:
     );
   });
 });
+
+describe("removed survey element through a filled template — editor path (#669)", () => {
+  it("surfaces the migration guidance as an error even though the source pass only sees `type: ${kind}`", async () => {
+    const source = `templates:
+  - name: instrument
+    contentType: elements
+    content:
+      - type: \${kind}
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - type: submitButton
+treatments:
+  - name: t
+    playerCount: 1
+    compatibleIntroSequences: [i]
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - template: instrument
+            fields:
+              kind: survey
+          - type: submitButton
+`;
+    const result = await validateTreatmentWithDiff({
+      source,
+      loadImport: noImports,
+    });
+    // The hydrated diff bucket is not surfaced in the editor by design;
+    // the resolved-schema pass is, and it rejects the concrete `survey`.
+    const hit = result.diagnostics.find((d) =>
+      d.message.includes(SURVEY_ELEMENT_REMOVED_MESSAGE),
+    );
+    expect(hit).toBeDefined();
+    expect(hit!.severity).toBe("error");
+  });
+});
