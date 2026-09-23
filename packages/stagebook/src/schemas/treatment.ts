@@ -1351,43 +1351,17 @@ const submitButtonSchema = elementBaseSchema
   .strict();
 
 /**
- * @deprecated `type: survey` is pending removal once Stagebook's module-reuse
- *   pattern lands. New treatment files should prefer prompt-based patterns
- *   where the survey can be expressed as a sequence of prompt elements. The
- *   schema still accepts it; the runtime emits a one-time warning per
- *   `surveyName` when a survey element is parsed (see `warnSurveyDeprecation`
- *   on the element-union outer superRefine).
+ * The host-rendered `type: survey` element was deprecated in #250 and
+ * removed in #669. Survey instruments are now authored as
+ * prompt elements — typically an imported module template (see
+ * docs/researcher/templates.md, "The `prefix:` convention for reusable
+ * modules"). A literal `type: survey` is rejected with this message so the
+ * author is pointed at the replacement instead of a bare "invalid
+ * discriminator" error. Exported so the diff orchestrator and tests can
+ * match on it.
  */
-const surveySchema = elementBaseSchema
-  .extend({
-    type: z.literal("survey"),
-    surveyName: z.string(),
-  })
-  .strict();
-
-// One-time `survey` deprecation warning — keyed by surveyName so each unique
-// survey logs at most once per process. Tracked for removal once the
-// module-reuse pattern lands; until then `survey` keeps working.
-const _warnedSurveys = new Set<string>();
-
-// Format the user-supplied surveyName for safe inclusion in a one-line
-// console message: JSON.stringify escapes quotes / control chars / newlines,
-// then truncate so a pathological multi-kilobyte string can't blow out logs.
-const MAX_SURVEY_NAME_LOG_CHARS = 200;
-function formatSurveyNameForLog(surveyName: string): string {
-  const escaped = JSON.stringify(surveyName);
-  return escaped.length > MAX_SURVEY_NAME_LOG_CHARS
-    ? `${escaped.slice(0, MAX_SURVEY_NAME_LOG_CHARS - 1)}…`
-    : escaped;
-}
-
-function warnSurveyDeprecation(surveyName: string): void {
-  if (_warnedSurveys.has(surveyName)) return;
-  _warnedSurveys.add(surveyName);
-  console.warn(
-    `[stagebook] \`type: survey\` is deprecated and tracked for removal once a module-reuse pattern lands (surveyName: ${formatSurveyNameForLog(surveyName)}). Prefer prompt-based patterns where the survey can be expressed as a sequence of prompt elements.`,
-  );
-}
+export const SURVEY_ELEMENT_REMOVED_MESSAGE =
+  "`type: survey` was removed (#669). Author the instrument as prompt elements instead: import its module with `imports:` and invoke its template (e.g. `- template: tipi_questions`), reference its answers as `<position>.prompt.<name>`, and add a `submitButton` (or another advancement element) where the step must advance.";
 
 const timerSchema = elementBaseSchema
   .extend({
@@ -1562,8 +1536,6 @@ export const validElementTypes = [
   "qualtrics",
   "separator",
   "submitButton",
-  // `survey` is deprecated (see surveySchema's JSDoc) but still accepted.
-  "survey",
   "timer",
   "mediaPlayer",
   "timeline",
@@ -1599,8 +1571,8 @@ export const validReferenceTypes = [
 // These maps and getValidKeysFor* helpers expose the set of valid keys
 // for each container kind, so authoring tools (VS Code diagnostics, the
 // viewer's load error path, future autocomplete) can report rich
-// "Unrecognized key 'X' on element of type 'survey'. Did you mean
-// 'surveyName'? Valid keys: …" messages instead of the bare Zod default.
+// "Unrecognized key 'X' on element of type 'mediaPlayer'. Did you mean
+// 'captionsFile'? Valid keys: …" messages instead of the bare Zod default.
 //
 // Each per-element/per-condition schema in this file is a `ZodObject`
 // (built via `elementBaseSchema.extend({...}).strict()` /
@@ -1615,7 +1587,6 @@ const elementSchemasByType = {
   qualtrics: qualtricsSchema,
   separator: separatorSchema,
   submitButton: submitButtonSchema,
-  survey: surveySchema,
   timer: timerSchema,
   mediaPlayer: mediaPlayerSchema,
   timeline: timelineSchema,
@@ -1742,20 +1713,41 @@ export function getValidKeysForPlayer(): string[] {
 // stage-level and an element-level discussion from co-occurring).
 export const elementSchema = altTemplateContext(
   z
-    .discriminatedUnion("type", [
-      audioSchema,
-      displaySchema,
-      imageSchema,
-      promptSchema,
-      qualtricsSchema,
-      separatorSchema,
-      submitButtonSchema,
-      surveySchema,
-      timerSchema,
-      mediaPlayerSchema,
-      timelineSchema,
-      trackedLinkSchema,
-    ])
+    .discriminatedUnion(
+      "type",
+      [
+        audioSchema,
+        displaySchema,
+        imageSchema,
+        promptSchema,
+        qualtricsSchema,
+        separatorSchema,
+        submitButtonSchema,
+        timerSchema,
+        mediaPlayerSchema,
+        timelineSchema,
+        trackedLinkSchema,
+      ],
+      {
+        // The union's own errorMap only sees the issues the union itself
+        // raises (the discriminator check), so member-schema messages are
+        // untouched. A removed element type keeps Zod's
+        // `invalid_union_discriminator` code — editor tooling already
+        // routes on it — but swaps in the migration guidance. This fires
+        // for a literal `type: survey` in source AND for a templated
+        // `type: ${kind}` that fills to `survey`, because the hydrated
+        // tree is re-parsed through this same schema.
+        errorMap: (issue, ctx) => {
+          if (
+            issue.code === z.ZodIssueCode.invalid_union_discriminator &&
+            isRemovedSurveyElement(ctx.data)
+          ) {
+            return { message: SURVEY_ELEMENT_REMOVED_MESSAGE };
+          }
+          return { message: ctx.defaultError };
+        },
+      },
+    )
     .superRefine((data, ctx) => {
       // Cross-field rules only run after base-shape validation succeeds —
       // an incomplete mediaPlayer (e.g. missing `url`) already errored
@@ -1763,11 +1755,16 @@ export const elementSchema = altTemplateContext(
       if (data.type === "mediaPlayer") {
         checkMediaPlayerCrossFields(data, ctx);
       }
-      if (data.type === "survey") {
-        warnSurveyDeprecation(data.surveyName);
-      }
     }),
 );
+
+function isRemovedSurveyElement(data: unknown): boolean {
+  return (
+    data !== null &&
+    typeof data === "object" &&
+    (data as { type?: unknown }).type === "survey"
+  );
+}
 
 export type ElementType = z.infer<typeof elementSchema>;
 
@@ -1939,9 +1936,11 @@ export const introExitStepsBaseSchema = altTemplateContext(
 export const introExitStepsSchema = introExitStepsBaseSchema;
 
 // Returns true if the element satisfies the advancement requirement for an
-// intro/exit step: submitButton (explicit), survey/qualtrics (auto-submit on
+// intro/exit step: submitButton (explicit), qualtrics (auto-submits on
 // completion), or mediaPlayer with submitOnComplete: true (auto-submits when
-// playback ends).
+// playback ends). The removed `survey` element (#669) no longer counts —
+// a prompt-module instrument that replaces it needs an explicit
+// `submitButton`.
 //
 // Deliberately checks *literal* values (`el.type === "submitButton"`,
 // `el.submitOnComplete === true`). A templated field such as
@@ -1957,7 +1956,6 @@ export function isAdvancementElement(element: unknown): boolean {
   if (!element || typeof element !== "object") return false;
   const el = element as Record<string, unknown>;
   if (el.type === "submitButton") return true;
-  if (el.type === "survey") return true;
   if (el.type === "qualtrics") return true;
   if (el.type === "mediaPlayer" && el.submitOnComplete === true) return true;
   return false;
@@ -1969,7 +1967,7 @@ export function isAdvancementElement(element: unknown): boolean {
 // instance is a suppressible templating artifact (#347). Keep the two
 // in lockstep — the diff matches on exact message text.
 export const ADVANCEMENT_ELEMENT_MESSAGE =
-  "Intro/exit step must include at least one advancement element: submitButton, survey, qualtrics, or mediaPlayer with submitOnComplete: true.";
+  "Intro/exit step must include at least one advancement element: submitButton, qualtrics, or mediaPlayer with submitOnComplete: true.";
 
 /** Shared per-step refinement for every per-participant step list
  *  (intro, exit, consent (#481)): the shared-prompt ban

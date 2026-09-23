@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { treatmentFileSchema, promptFilePathSchema } from "./treatment.js";
+import {
+  treatmentFileSchema,
+  promptFilePathSchema,
+  SURVEY_ELEMENT_REMOVED_MESSAGE,
+} from "./treatment.js";
 import {
   resolvedStageSchema,
   resolvedTreatmentSchema,
@@ -914,5 +918,59 @@ describe("resolvedStageSchema enforces the 5-second duration floor (#588)", () =
 
   test("rejects a 5.5-second resolved stage (whole seconds only)", () => {
     expect(resolvedStageSchema.safeParse(stage(5.5)).success).toBe(false);
+  });
+});
+
+describe("resolved schema rejects the removed survey element (#669)", () => {
+  // The resolved element `type` is deliberately an open string, so the
+  // removed element has to be rejected by name — otherwise a
+  // `type: ${kind}` template filled with `survey` would pass the post-fill
+  // pass that the editor pipeline surfaces.
+  test("a concrete `type: survey` element fails with the migration guidance", () => {
+    const filled = {
+      introSequences: [
+        {
+          name: "i",
+          introSteps: [
+            {
+              name: "s",
+              elements: [{ type: "submitButton" }],
+            },
+          ],
+        },
+      ],
+      treatments: [
+        {
+          name: "t",
+          playerCount: 1,
+          compatibleIntroSequences: ["i"],
+          gameStages: [
+            {
+              name: "g",
+              duration: 10,
+              elements: [
+                { type: "survey", surveyName: "TIPI" },
+                { type: "submitButton" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const result = validateResolvedTreatmentFile(filled);
+    expect(result.success).toBe(false);
+    const hit = result.issues.find(
+      (i) => i.message === SURVEY_ELEMENT_REMOVED_MESSAGE,
+    );
+    expect(hit).toBeDefined();
+    expect(hit!.path).toEqual([
+      "treatments",
+      0,
+      "gameStages",
+      0,
+      "elements",
+      0,
+      "type",
+    ]);
   });
 });

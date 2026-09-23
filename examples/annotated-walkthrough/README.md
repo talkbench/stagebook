@@ -6,19 +6,20 @@ Two treatments are generated from a single template by broadcasting over a list 
 
 ## What this example demonstrates
 
-| Feature                                                                                                   | Where it lives                                            |
-| --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| **Templates** with `${fieldName}` placeholders                                                            | `templates:` → `studyTreatment`                           |
-| **Broadcast** expansion (one template → N treatments)                                                     | `treatments:` → `broadcast: { d0: [...] }`                |
-| **Intro / game / exit** sequences                                                                         | `introSequences`, `gameStages`, `exitSequence`            |
-| **Consent with active acknowledgement**                                                                   | `consent:` → `study-consent`, `prompts/consent.prompt.md` |
-| **Timed elements** (`displayTime`, `hideTime`)                                                            | Stage 1 (`*_initial`)                                     |
-| **Position-based visibility** (`showToPositions`)                                                         | Stage 3 (`*_reflection`) display elements                 |
-| **`groupComposition`** (matching participants by condition)                                               | `studyTreatment.groupComposition`                         |
-| **Conditional rendering** on elements                                                                     | Stage 3 consensus prompt                                  |
-| **`display` elements** (one player's response shown to another)                                           | Stage 3                                                   |
-| **Platform-coupled elements** (`survey` ⚠️ deprecated, `discussion`, `shared: true` open-response prompt) | Intro `Personality`, Stage 2                              |
-| **`qualtrics` element** (real iframe to an external survey)                                               | exit `Exit Survey`                                        |
+| Feature                                                                                          | Where it lives                                            |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| **Templates** with `${fieldName}` placeholders                                                   | `templates:` → `studyTreatment`                           |
+| **Broadcast** expansion (one template → N treatments)                                            | `treatments:` → `broadcast: { d0: [...] }`                |
+| **Intro / game / exit** sequences                                                                | `introSequences`, `gameStages`, `exitSequence`            |
+| **Consent with active acknowledgement**                                                          | `consent:` → `study-consent`, `prompts/consent.prompt.md` |
+| **Timed elements** (`displayTime`, `hideTime`)                                                   | Stage 1 (`*_initial`)                                     |
+| **Position-based visibility** (`showToPositions`)                                                | Stage 3 (`*_reflection`) display elements                 |
+| **`groupComposition`** (matching participants by condition)                                      | `studyTreatment.groupComposition`                         |
+| **Conditional rendering** on elements                                                            | Stage 3 consensus prompt                                  |
+| **`display` elements** (one player's response shown to another)                                  | Stage 3                                                   |
+| **Imported prompt module** (`imports:` + `template:` invocation of a reusable survey instrument) | Intro `Personality`, `modules/personality.stagebook.yaml` |
+| **Platform-coupled elements** (`discussion`, `shared: true` open-response prompt)                | Stage 2                                                   |
+| **`qualtrics` element** (real iframe to an external survey)                                      | exit `Exit Survey`                                        |
 
 The platform-coupled elements render as skeleton placeholders in the viewer — they require a host that implements the corresponding `render*` slot. The `qualtrics` element is different: stagebook renders it directly as an iframe to the configured URL, so the viewer will attempt to load `example.qualtrics.com` (which will fail, since that's a placeholder URL) rather than showing a skeleton.
 

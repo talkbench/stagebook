@@ -29,8 +29,12 @@ describe("getValidKeysForElementType", () => {
     },
   );
 
-  it("includes per-type keys (survey)", () => {
-    expect(getValidKeysForElementType("survey")).toContain("surveyName");
+  it("includes per-type keys (separator)", () => {
+    expect(getValidKeysForElementType("separator")).toContain("style");
+  });
+
+  it("returns null for the removed survey element type (#669)", () => {
+    expect(getValidKeysForElementType("survey")).toBeNull();
   });
 
   it("includes per-type keys (mediaPlayer)", () => {
@@ -151,33 +155,31 @@ function makeBaseTreatmentFile(): Record<string, unknown> {
 }
 
 describe("safeParseTreatmentFile — element unrecognized keys", () => {
-  it("emits a rich message for an element-of-type-survey bad key", () => {
-    // `survyName` (missing 'e') is distance 1 from the real key
-    // `surveyName`; well within `findClosestMatch`'s default threshold.
+  it("emits a rich message for an element-of-type-separator bad key", () => {
+    // `styl` (missing 'e') is distance 1 from the real key `style`;
+    // well within `findClosestMatch`'s default threshold.
     const tf = makeBaseTreatmentFile();
     const stage = (tf.treatments as Record<string, unknown>[])[0]
       .gameStages as Record<string, unknown>[];
-    stage[0].elements = [
-      { type: "survey", surveyName: "intro", survyName: "typo" },
-    ];
+    stage[0].elements = [{ type: "separator", styl: "thin" }];
 
     const result = safeParseTreatmentFile(tf);
     expect(result.success).toBe(false);
     if (result.success) return;
 
     const issue = result.error.issues.find(
-      (i) => Array.isArray(i.path) && i.path[i.path.length - 1] === "survyName",
+      (i) => Array.isArray(i.path) && i.path[i.path.length - 1] === "styl",
     );
     expect(issue).toBeDefined();
     expect(issue!.message).toBe(
-      "Unrecognized key 'survyName' on element of type 'survey'. Did you mean 'surveyName'? Valid keys: name, notes, displayTime, hideTime, showToPositions, hideFromPositions, conditions, tags, type, surveyName",
+      "Unrecognized key 'styl' on element of type 'separator'. Did you mean 'style'? Valid keys: name, notes, displayTime, hideTime, showToPositions, hideFromPositions, conditions, tags, type, style",
     );
 
     const params = (issue as { params?: UnrecognizedKeyIssueParams }).params;
     expect(params).toEqual({
-      badKey: "survyName",
-      suggestion: "surveyName",
-      validKeys: expect.arrayContaining(["surveyName"]) as unknown,
+      badKey: "styl",
+      suggestion: "style",
+      validKeys: expect.arrayContaining(["style"]) as unknown,
     });
   });
 
@@ -187,8 +189,7 @@ describe("safeParseTreatmentFile — element unrecognized keys", () => {
       .gameStages as Record<string, unknown>[];
     stage[0].elements = [
       {
-        type: "survey",
-        surveyName: "intro",
+        type: "separator",
         // Two bad keys at once — Zod surfaces them in a single issue;
         // the wrapper must split them so each key gets its own squiggle.
         bogus1: 1,
@@ -211,9 +212,7 @@ describe("safeParseTreatmentFile — element unrecognized keys", () => {
     const tf = makeBaseTreatmentFile();
     const stage = (tf.treatments as Record<string, unknown>[])[0]
       .gameStages as Record<string, unknown>[];
-    stage[0].elements = [
-      { type: "survey", surveyName: "intro", zzzzzzzzzz: "x" },
-    ];
+    stage[0].elements = [{ type: "separator", zzzzzzzzzz: "x" }];
 
     const result = safeParseTreatmentFile(tf);
     if (result.success) {
@@ -224,7 +223,7 @@ describe("safeParseTreatmentFile — element unrecognized keys", () => {
     );
     expect(issue).toBeDefined();
     expect(issue!.message).toContain(
-      "Unrecognized key 'zzzzzzzzzz' on element of type 'survey'.",
+      "Unrecognized key 'zzzzzzzzzz' on element of type 'separator'.",
     );
     expect(issue!.message).not.toContain("Did you mean");
 

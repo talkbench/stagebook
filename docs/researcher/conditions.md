@@ -106,12 +106,12 @@ For OR logic on a single reference (across positions, comparators, etc.), `any:`
 
 References point to data collected earlier in the experiment. The dotted form is always `<position>.<source>.<...>`, where the position selector (`self`, `shared`, `all`, or a numeric slot index — see the note at the top) is required as the first segment and the rest depends on the source:
 
-- **Named sources** (`prompt`, `survey`, `submitButton`, `qualtrics`, `timeline`, `trackedLink`, `discussion`): `<position>.<source>.<name>(.<path>...)` — `name` is required, `path` is optional.
+- **Named sources** (`prompt`, `submitButton`, `qualtrics`, `timeline`, `trackedLink`, `discussion`): `<position>.<source>.<name>(.<path>...)` — `name` is required, `path` is optional.
 - **External sources** (`entryUrl`, `attributes`): `<position>.<source>.<path>...` — no `name`, `path` is required. `entryUrl` references must currently use the `params` subpath (see [URL Parameters](#url-parameters) below).
 
 ```yaml
 - reference: self.prompt.familiarity # named: position.source.name
-- reference: self.survey.TIPI.responses.q1 # named: position.source.name.path...
+- reference: self.qualtrics.exit.sessionId # named: position.source.name.path...
 - reference: self.entryUrl.params.condition # external: position.source.path...
 ```
 
@@ -143,12 +143,9 @@ Both forms parse to the same internal shape; either is accepted at every referen
 
 Returns the value saved by a prompt element. The `<name>` matches what you set in the treatment YAML.
 
-### Survey Results
+### Survey Instruments
 
-```
-<position>.survey.<name>.result.<scoreKey>     # computed scores
-<position>.survey.<name>.responses.<questionId> # raw answers
-```
+Survey instruments are prompt modules (see [Survey instruments](elements.md#survey-instruments)), so each item is an ordinary prompt reference: `<position>.prompt.<prefix>_<item>`. The former `survey` reference source was removed with the `type: survey` element in [#669](https://github.com/talkbench/stagebook/issues/669) and is rejected at validation time.
 
 ### Submit Button Timing
 
@@ -361,20 +358,20 @@ Conditions in `groupComposition` control which participants fill which positions
 treatments:
   - name: cross_partisan
     playerCount: 2
-    compatibleIntroSequences: [onboarding] # the sequence that runs the partyAffiliation survey
+    compatibleIntroSequences: [onboarding] # the sequence that asks the partyAffiliation prompt (a 0–100 slider)
     groupComposition:
       - position: 0
         title: "Democrat"
         conditions:
-          - reference: self.survey.partyAffiliation.result.normPosition
+          - reference: self.prompt.partyAffiliation
             comparator: isBelow
-            value: 0.5
+            value: 50
       - position: 1
         title: "Republican"
         conditions:
-          - reference: self.survey.partyAffiliation.result.normPosition
+          - reference: self.prompt.partyAffiliation
             comparator: isAbove
-            value: 0.5
+            value: 50
 ```
 
 Each entry's optional `title` is a short human-readable label for the role (max 25 characters); `position` and `conditions` do the assignment.
@@ -440,18 +437,19 @@ gameStages:
   - name: round1_vote
     duration: 60
     elements:
-      - type: survey
-        surveyName: continueVote
+      - type: prompt
         name: continueVote
+        file: continue_vote.prompt.md # a single-choice prompt with options "yes" / "no"
+      - type: submitButton
 
   - name: round2
     duration: 300
     conditions:
       all:
-        - reference: 0.survey.continueVote.result.keepGoing
+        - reference: 0.prompt.continueVote
           comparator: equals
           value: "yes"
-        - reference: 1.survey.continueVote.result.keepGoing
+        - reference: 1.prompt.continueVote
           comparator: equals
           value: "yes"
     elements:

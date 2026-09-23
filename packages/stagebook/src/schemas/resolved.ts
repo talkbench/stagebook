@@ -27,6 +27,7 @@ import {
   type DiscussionRoomType,
   type LayoutFeedType,
   type LayoutDefinitionType,
+  SURVEY_ELEMENT_REMOVED_MESSAGE,
 } from "./treatment.js";
 
 // Detects `${field}` placeholders that survived `fillTemplates` —
@@ -49,7 +50,7 @@ const SWEEP_PLACEHOLDER_RE = /\$\{[a-zA-Z0-9_]+\}/;
 // number/array reject a surviving `"${x}"` by type mismatch. But
 // *string-typed* slots — condition `value` (equals/includes/matches),
 // element `url`/`displayText`/`reference`/`helperText`/`buttonText`/
-// `altText`/`surveyName`, `urlParams[].value` — accept `"${x}"` as a
+// `altText`, `urlParams[].value` — accept `"${x}"` as a
 // structurally valid string and let it through silently, so at runtime a
 // condition compares against the literal `"${x}"` and never matches, or a
 // truthy string inverts a flag. This walks the whole filled tree and
@@ -186,7 +187,14 @@ const resolvedConditionsSchema = z
 // ----------------------------------------------------------------
 
 const resolvedElementBaseSchema = z.object({
-  type: z.string(),
+  // The type is otherwise left open here (the pre-fill discriminated union
+  // is the authority on the element vocabulary), but the removed `survey`
+  // element is rejected explicitly so a `type: ${kind}` template that fills
+  // to `survey` fails in the resolved pass too — the pass the editor
+  // pipeline surfaces (#669).
+  type: z
+    .string()
+    .refine((t) => t !== "survey", { message: SURVEY_ELEMENT_REMOVED_MESSAGE }),
   name: nameSchema.optional(),
   file: z.string().optional(),
   displayTime: displayTimeSchema.optional(),
@@ -202,7 +210,6 @@ const resolvedElementBaseSchema = z.object({
   displayText: z.string().optional(),
   helperText: z.string().optional(),
   reference: z.string().optional(),
-  surveyName: z.string().optional(),
   startTime: z.number().optional(),
   endTime: z.number().optional(),
   warnTimeRemaining: z.number().optional(),

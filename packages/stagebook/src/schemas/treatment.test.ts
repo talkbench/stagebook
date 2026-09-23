@@ -20,7 +20,11 @@ import {
   treatmentFileSchema,
   browserUrlSchema,
   fileSchema,
+  isAdvancementElement,
+  ADVANCEMENT_ELEMENT_MESSAGE,
+  SURVEY_ELEMENT_REMOVED_MESSAGE,
 } from "./treatment.js";
+import { getValidKeysForElementType } from "./treatment.js";
 import { fillTemplates } from "../templates/fillTemplates.js";
 import { resolvedTreatmentSchema } from "./resolved.js";
 
@@ -32,11 +36,40 @@ test("reference with valid prompt", () => {
   expect(result.success).toBe(true);
 });
 
-test("reference with valid survey", () => {
-  const reference = "self.survey.namedSurvey.results.namedResult";
-  const result = referenceSchema.safeParse(reference);
-  if (!result.success) console.log(result.error);
-  expect(result.success).toBe(true);
+test("reference with the removed `survey` source is rejected with migration guidance (#669)", () => {
+  const result = referenceSchema.safeParse(
+    "self.survey.namedSurvey.results.namedResult",
+  );
+  expect(result.success).toBe(false);
+  if (result.success) return;
+  const message = result.error.issues.map((i) => i.message).join("\n");
+  expect(message).toContain("removed `survey` source (#669)");
+  expect(message).toContain("`<position>.prompt.<name>`");
+});
+
+test("structured reference with the removed `survey` source is rejected with the same guidance (#669)", () => {
+  const result = referenceSchema.safeParse({
+    position: "self",
+    source: "survey",
+    name: "TIPI",
+    path: ["responses", "q1"],
+  });
+  expect(result.success).toBe(false);
+  if (result.success) return;
+  const message = result.error.issues.map((i) => i.message).join("\n");
+  expect(message).toContain("removed `survey` source (#669)");
+  expect(message).toContain("name: TIPI");
+  // Not the bare union fallback.
+  expect(message).not.toBe("Invalid input");
+});
+
+test("un-prefixed legacy `survey.<name>` reference gets the removal guidance, not the position-prefix hint", () => {
+  const result = referenceSchema.safeParse("survey.bigFive.result.score");
+  expect(result.success).toBe(false);
+  if (result.success) return;
+  const message = result.error.issues.map((i) => i.message).join("\n");
+  expect(message).toContain("removed `survey` source (#669)");
+  expect(message).not.toContain("missing a position prefix");
 });
 
 test("reference with invalid type", () => {
@@ -55,8 +88,8 @@ test("reference prompt with no name", () => {
   expect(result.success).toBe(false);
 });
 
-test("reference survey with no path is now valid (named source — path is optional, #240)", () => {
-  const reference = "self.survey.namedSurvey";
+test("reference qualtrics with no path is valid (named source — path is optional, #240)", () => {
+  const reference = "self.qualtrics.namedQualtrics";
   const result = referenceSchema.safeParse(reference);
   if (!result.success) console.log(result.error);
   expect(result.success).toBe(true);
@@ -438,7 +471,7 @@ test("discussion with multiple conditions is valid", () => {
         value: "HTML",
       },
       {
-        reference: "self.survey.priorRound.responses.consensus",
+        reference: "self.prompt.priorRoundConsensus",
         comparator: "doesNotEqual",
         value: "yes",
       },
@@ -1032,15 +1065,21 @@ test("intro step with only prompt and no submitButton is invalid", () => {
   expect(result.success).toBe(false);
 });
 
-test("intro step with survey element auto-submits (no submitButton needed)", () => {
+test("intro step with the removed survey element is rejected with migration guidance, and survey no longer counts as advancement (#669)", () => {
   const result = introStepsSchema.safeParse([
     {
       name: "party_affiliation",
       elements: [{ type: "survey", surveyName: "PoliticalPartyUS" }],
     },
   ]);
-  if (!result.success) console.log(result.error.message);
-  expect(result.success).toBe(true);
+  expect(result.success).toBe(false);
+  if (result.success) return;
+  const messages = result.error.issues.map((i) => i.message);
+  expect(messages).toContain(SURVEY_ELEMENT_REMOVED_MESSAGE);
+  // The step's only element is gone, so the advancement requirement
+  // fires too — the replacement prompt module needs a submitButton.
+  expect(messages).toContain(ADVANCEMENT_ELEMENT_MESSAGE);
+  expect(isAdvancementElement({ type: "survey", surveyName: "X" })).toBe(false);
 });
 
 test("intro step with qualtrics element auto-submits (no submitButton needed)", () => {
@@ -1586,7 +1625,7 @@ test("stageSchema accepts stage-level conditions with a cross-client position", 
     duration: 120,
     conditions: [
       {
-        reference: "shared.survey.continueVote.responses.keepGoing",
+        reference: "shared.prompt.continueVote",
         comparator: "equals",
         value: "yes",
       },
@@ -1606,7 +1645,7 @@ test("stageSchema accepts stage-level conditions with `all.X` reference (cross-c
     duration: 120,
     conditions: [
       {
-        reference: "all.survey.continueVote.responses.keepGoing",
+        reference: "all.prompt.continueVote",
         comparator: "equals",
         value: "yes",
       },
@@ -1626,12 +1665,12 @@ test("stageSchema accepts the boolean-tree migration of `position: all` — `all
     conditions: {
       all: [
         {
-          reference: "0.survey.continueVote.responses.keepGoing",
+          reference: "0.prompt.continueVote",
           comparator: "equals",
           value: "yes",
         },
         {
-          reference: "1.survey.continueVote.responses.keepGoing",
+          reference: "1.prompt.continueVote",
           comparator: "equals",
           value: "yes",
         },
@@ -2351,55 +2390,51 @@ test("element: type 'discussion' is rejected — discussion is stage-level only 
   }
 });
 
-test("element: type 'survey' still accepted with a one-time deprecation warning", async () => {
-  const { vi } = await import("vitest");
-  const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-  try {
-    // First parse fires the warning.
-    const r1 = elementSchema.safeParse({
-      type: "survey",
-      surveyName: "deprecation_test_TIPI",
-    });
-    expect(r1.success).toBe(true);
-    // Second parse with the same surveyName does NOT re-warn — the dedupe is
-    // module-scoped per process, keyed on surveyName.
-    const r2 = elementSchema.safeParse({
-      type: "survey",
-      surveyName: "deprecation_test_TIPI",
-    });
-    expect(r2.success).toBe(true);
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0][0]).toContain("`type: survey` is deprecated");
-  } finally {
-    warnSpy.mockRestore();
-  }
-});
-
-test("element: survey deprecation warning escapes newlines/quotes in surveyName", async () => {
+test("element: literal `type: survey` is rejected with migration guidance (#669)", async () => {
   const { vi } = await import("vitest");
   const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   try {
     const result = elementSchema.safeParse({
       type: "survey",
-      surveyName: 'has\nnewline and "quotes"',
+      surveyName: "TIPI",
+      name: "preTIPI",
     });
-    expect(result.success).toBe(true);
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    const message = warnSpy.mock.calls[0][0] as string;
-    // The message stays a single line — no raw newlines from the user input.
-    expect(message.split("\n")).toHaveLength(1);
-    // JSON.stringify escapes the embedded quote → \" and the newline → \\n.
-    expect(message).toContain('\\"quotes\\"');
-    expect(message).toContain("\\n");
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    // Keeps Zod's discriminator code (editor tooling routes on it) but
+    // carries the guidance instead of the default enum list.
+    const issue = result.error.issues.find(
+      (i) => i.code === "invalid_union_discriminator",
+    );
+    expect(issue).toBeDefined();
+    expect(issue!.message).toBe(SURVEY_ELEMENT_REMOVED_MESSAGE);
+    expect(issue!.message).toContain("imports:");
+    expect(issue!.message).toContain("submitButton");
+    // No deprecation warning is emitted any more — it's a hard error.
+    expect(warnSpy).not.toHaveBeenCalled();
   } finally {
     warnSpy.mockRestore();
   }
 });
 
-test("validElementTypes does not include talkMeter or sharedNotepad", async () => {
+test("element: an unknown type still gets Zod's default discriminator message (the survey guidance is targeted)", () => {
+  const result = elementSchema.safeParse({ type: "banana" });
+  expect(result.success).toBe(false);
+  if (result.success) return;
+  const issue = result.error.issues.find(
+    (i) => i.code === "invalid_union_discriminator",
+  );
+  expect(issue).toBeDefined();
+  expect(issue!.message).toContain("Invalid discriminator value");
+  expect(issue!.message).not.toContain("#669");
+});
+
+test("validElementTypes does not include talkMeter, sharedNotepad, or survey", async () => {
   const { validElementTypes } = await import("./treatment.js");
   expect(validElementTypes).not.toContain("talkMeter");
   expect(validElementTypes).not.toContain("sharedNotepad");
+  expect(validElementTypes).not.toContain("survey");
+  expect(getValidKeysForElementType("survey")).toBeNull();
 });
 
 // ----------- entryUrl rename (#246) ------------

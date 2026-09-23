@@ -17,7 +17,7 @@ import type { ViewerStep } from "../lib/steps.js";
  * Pre-#298 references had no position prefix and the inspector
  * implicitly used the current participant's position for every
  * lookup/edit. After #298 the position is part of the reference
- * itself (`0.prompt.X`, `shared.survey.X`, `self.entryUrl.params.X`),
+ * itself (`0.prompt.X`, `shared.prompt.X`, `self.entryUrl.params.X`),
  * so the inspector must honor the reference's *named* position — not
  * the current participant — when reading or writing that reference's
  * stored value. Without this, `0.prompt.X` viewed/edited while the

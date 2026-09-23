@@ -108,7 +108,6 @@ export interface ElementConfig {
   displayTime?: number;
   hideTime?: number;
   warnTimeRemaining?: number;
-  surveyName?: string;
   [key: string]: unknown;
 }
 
@@ -128,7 +127,6 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
     getAssetURL,
     progressLabel,
     renderSharedNotepad,
-    renderSurvey,
     setAllowIdle,
     onContractViolation,
   } = ctx;
@@ -472,28 +470,10 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
       );
     }
 
-    case "survey": {
-      const surveyName = element.surveyName ?? "";
-      // Position-based fallback when `name:` is omitted — same
-      // intent as audio/mediaPlayer: distinct storage keys for the
-      // same survey used in different stages. `surveyName` is schema-
-      // validated upstream, so a synthesized `${progressLabel}_${surveyName}`
-      // is already regex-clean in practice; wrapping with
-      // `deriveStorageKeyName` is defensive — same contract for all
-      // four auto-derivation sites (#359).
-      const surveyKey =
-        element.name ?? deriveStorageKeyName(`${progressLabel}_${surveyName}`);
-      return (
-        renderSurvey?.({
-          surveyName,
-          onComplete: (results: unknown) => {
-            wrappedSave(`survey_${surveyKey}`, results);
-            onSubmit();
-          },
-        }) ?? null
-      );
-    }
-
+    // No `case "survey"` either: the host-rendered survey element was
+    // removed in #669. An instrument is a run of prompt elements now, so
+    // it takes the `prompt` branch above.
+    //
     // No `case "discussion"` here on purpose (#584). `discussion` is a
     // stage-level key rendered once per stage by Stage.tsx, and
     // `elementSchema`'s union has no `discussion` member. Downstream hosts

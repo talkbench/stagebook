@@ -14,7 +14,7 @@ Stagebook components read and write experiment state through the `get()` and `sa
 
 The platform needs two scopes of state:
 
-**Player state** — key-value pairs private to each participant. Used for individual prompt responses, survey results, submit button timing, tracked link events, and any other per-participant data.
+**Player state** — key-value pairs private to each participant. Used for individual prompt responses (survey-instrument items included), submit button timing, tracked link events, and any other per-participant data.
 
 **Shared state** — key-value pairs visible to all participants in the group. Used for shared prompts (where one participant's edits are visible to all) and discussion metrics.
 
@@ -26,7 +26,6 @@ Stagebook components write state under predictable keys:
 | --------------------- | -------------- | ---------------------------------------------- |
 | `prompt_<name>`       | Prompt element | `{ value, stageTimeElapsed, ...metadata }`     |
 | `submitButton_<name>` | Submit button  | `{ time: elapsedSeconds }`                     |
-| `survey_<name>`       | Survey element | Survey-specific response object                |
 | `trackedLink_<name>`  | Tracked link   | `{ events: [...], totalTimeAwaySeconds, ... }` |
 
 ### Read Patterns

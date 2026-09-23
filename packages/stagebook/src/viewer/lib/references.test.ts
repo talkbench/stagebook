@@ -39,7 +39,7 @@ describe("extractStageReferences", () => {
           { reference: "self.prompt.q1", comparator: "equals", value: "yes" },
           { reference: "self.prompt.q1", comparator: "equals", value: "no" },
           {
-            reference: "self.survey.TIPI.result.score",
+            reference: "self.qualtrics.TIPI.result.score",
             comparator: "isAbove",
             value: 3,
           },
@@ -52,7 +52,10 @@ describe("extractStageReferences", () => {
       },
     ];
     const refs = extractStageReferences(elements);
-    expect(refs).toEqual(["self.prompt.q1", "self.survey.TIPI.result.score"]);
+    expect(refs).toEqual([
+      "self.prompt.q1",
+      "self.qualtrics.TIPI.result.score",
+    ]);
   });
 
   it("returns empty array for elements with no references", () => {
@@ -133,13 +136,13 @@ describe("extractStageReferences", () => {
         file: "p.prompt.md",
         conditions: [
           {
-            none: [{ reference: "shared.survey.tipi", comparator: "exists" }],
+            none: [{ reference: "shared.prompt.tipi", comparator: "exists" }],
           },
         ],
       },
     ];
     const refs = extractStageReferences(elements);
-    expect(refs).toEqual(["shared.survey.tipi"]);
+    expect(refs).toEqual(["shared.prompt.tipi"]);
   });
 
   it("extracts references from nested operator trees", () => {

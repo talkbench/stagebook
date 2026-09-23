@@ -82,8 +82,8 @@ import { getReferenceKeyAndPath } from "stagebook";
 // getReferenceKeyAndPath strips the position to return just the
 // storage key and path; un-prefixed strings throw at parse time.
 
-getReferenceKeyAndPath("self.survey.bigFive.result.score");
-// { referenceKey: "survey_bigFive", path: ["result", "score"] }
+getReferenceKeyAndPath("self.qualtrics.exit.result.score");
+// { referenceKey: "qualtrics_exit", path: ["result", "score"] }
 
 getReferenceKeyAndPath("self.prompt.myQuestion");
 // { referenceKey: "prompt_myQuestion", path: ["value"] }
@@ -183,12 +183,12 @@ if (needs.externalSurvey) requireQualtricsCreds();
 
 **Returns:** `Promise<RequiredServicesReport>` — `{ overall, byTreatment, byIntroSequence, byConsent }`, where each value is a `RequiredServices` = `{ coedit, video, textChat, externalSurvey }` of booleans. `overall` is the whole-file union; `byTreatment` / `byIntroSequence` / `byConsent` are keyed by arm `name` (built with a null prototype, so a schema-valid but hostile arm name like `__proto__` stays an ordinary, enumerable key). Trigger → service mapping (walk of the expanded tree):
 
-| Service          | Trigger                                                                         |
-| ---------------- | ------------------------------------------------------------------------------- |
-| `coedit`         | `prompt` element, `shared: true`, referenced prompt file `type: openResponse`   |
-| `video`          | stage `discussion` block, `chatType: video` or `audio` (→ Daily / WebRTC)       |
-| `textChat`       | stage `discussion` block, `chatType: text`                                      |
-| `externalSurvey` | `type: qualtrics` element (the native `type: survey` needs no external service) |
+| Service          | Trigger                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| `coedit`         | `prompt` element, `shared: true`, referenced prompt file `type: openResponse`         |
+| `video`          | stage `discussion` block, `chatType: video` or `audio` (→ Daily / WebRTC)             |
+| `textChat`       | stage `discussion` block, `chatType: text`                                            |
+| `externalSurvey` | `type: qualtrics` element (prompt-module survey instruments need no external service) |
 
 Async because the coedit signal is **split across files**: `shared: true` lives in the treatment YAML but `type: openResponse` lives in the separate `.prompt.md`, so shared prompts' frontmatter is resolved via `loadPrompt` — the same loader-injection shape `loadAndMergeImports` uses (the host owns path resolution and I/O). `loadPrompt` is only called for prompts flagged `shared: true` (its `file:` path skipped if it still holds a `${...}` placeholder), and every referenced shared prompt is loaded at most once across all arms; loader errors propagate rather than silently under-provisioning.
 
@@ -437,7 +437,6 @@ Peaks helpers exported alongside it: `createPeaksArrays(channelCount, bucketCoun
 
 | Slot                  | Config                             | When Used                                                                                                                               |
 | --------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `renderSurvey`        | `{ surveyName, onComplete }`       | `type: "survey"` element (deprecated — pending removal once a module-reuse pattern lands)                                               |
 | `renderDiscussion`    | Full `DiscussionType` config       | Stage with `discussion` block                                                                                                           |
 | `renderSharedNotepad` | `{ padName, defaultText?, rows? }` | `shared: true` open-response prompt. `defaultText` is placeholder-only: hint text, never seeded into the shared document or saved value |
 

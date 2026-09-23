@@ -46,11 +46,8 @@ interface StagebookContext {
     defaultText?: string;
     rows?: number;
   }) => React.ReactNode;
-  /** @deprecated pending removal once a module-reuse pattern lands */
-  renderSurvey?: (config: {
-    surveyName: string;
-    onComplete: (results: unknown) => void;
-  }) => React.ReactNode;
+  // No renderSurvey: the host-rendered survey element was removed in #669.
+  // Survey instruments are prompt modules that Stagebook renders itself.
 }
 ```
 
@@ -68,7 +65,7 @@ The platform provides the StagebookProvider context. Stagebook handles everythin
 
 ## How reading works
 
-Every element that reads experiment state does so through a **reference** — a DSL concept like `self.prompt.myQuestion`, `self.survey.bigFive.result.score`, or `self.entryUrl.params.condition`. The first segment is a position selector (`self`, `shared`, `all`, or a numeric slot index — required by #298). Internally, the `StagebookProvider` converts each reference (string-shorthand or structured form) into a flat storage key and navigated path (e.g., `self.prompt.myQuestion` → key `prompt_myQuestion`, path `["value"]`, position `"self"`), calls the platform's `get()` with the appropriate position, then extracts the requested path from each result. The result is always an array — typically a single-element array, but the contract returns an array so platforms can handle multi-value lookups uniformly. Components don't need to know the details — they call `resolve()` (via `useResolve`) and get extracted values back.
+Every element that reads experiment state does so through a **reference** — a DSL concept like `self.prompt.myQuestion`, `self.qualtrics.exit.result.score`, or `self.entryUrl.params.condition`. The first segment is a position selector (`self`, `shared`, `all`, or a numeric slot index — required by #298). Internally, the `StagebookProvider` converts each reference (string-shorthand or structured form) into a flat storage key and navigated path (e.g., `self.prompt.myQuestion` → key `prompt_myQuestion`, path `["value"]`, position `"self"`), calls the platform's `get()` with the appropriate position, then extracts the requested path from each result. The result is always an array — typically a single-element array, but the contract returns an array so platforms can handle multi-value lookups uniformly. Components don't need to know the details — they call `resolve()` (via `useResolve`) and get extracted values back.
 
 The platform's `get()` is a simple key-value lookup — it doesn't need to understand the DSL reference syntax or the internal record structure. It returns exactly what was passed to `save()`.
 
@@ -111,11 +108,10 @@ Stagebook provides `useTextContent(path)` — a hook that wraps `getTextContent`
 
 Some elements depend on external services. Stagebook validates config, manages layout, and handles conditional rendering — but the platform supplies the actual component:
 
-| Slot                  | When used                                                                                 | What the platform provides                           |
-| --------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `renderDiscussion`    | Stage has `discussion` block                                                              | Video call or text chat component                    |
-| `renderSurvey`        | `type: "survey"` element (deprecated — pending removal once a module-reuse pattern lands) | Survey UI component that calls `onComplete(results)` |
-| `renderSharedNotepad` | `shared: true` open-response prompt                                                       | Collaborative text editor                            |
+| Slot                  | When used                           | What the platform provides        |
+| --------------------- | ----------------------------------- | --------------------------------- |
+| `renderDiscussion`    | Stage has `discussion` block        | Video call or text chat component |
+| `renderSharedNotepad` | `shared: true` open-response prompt | Collaborative text editor         |
 
 All slots are optional. If not provided, the element renders nothing.
 

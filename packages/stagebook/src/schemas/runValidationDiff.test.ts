@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { runValidationDiff } from "./runValidationDiff.js";
+import { SURVEY_ELEMENT_REMOVED_MESSAGE } from "./treatment.js";
 
 /**
  * Tests for the diff orchestrator: run the schema twice (once on the
@@ -307,7 +308,7 @@ treatments:
     it("suppresses when the resolving template comes from importedTemplates (module reuse — the #347 motivation)", () => {
       // The template lives in an imported module, not the root file. The
       // orchestrator merges importedTemplates into the set used for both
-      // passes AND for suppression, so a shared `surveyAndSubmit`-style
+      // passes AND for suppression, so a shared `instrumentAndSubmit`-style
       // module template must be resolvable here too.
       const source = `introSequences:
   - name: i
@@ -338,13 +339,13 @@ treatments:
       expect(result.sourceOnly.some(hasAdvancementMessage)).toBe(false);
     });
 
-    it("suppresses when the template resolves to a survey (auto-submitting) element", () => {
+    it("suppresses when the template resolves to a qualtrics (auto-submitting) element", () => {
       const source = `templates:
   - name: poll
     contentType: elements
     content:
-      - type: survey
-        surveyName: TIPI
+      - type: qualtrics
+        url: https://example.qualtrics.com/jfe/form/SV_poll
 introSequences:
   - name: i
     introSteps:
@@ -977,6 +978,44 @@ treatments:
     expect(
       result.matched.some((i) =>
         /doesn't match any prompt element/.test(i.message),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("removed survey element through a template — hydrated pass (#669)", () => {
+  it("a `type: ${kind}` template filled with `survey` is rejected in the hydrated pass with the migration guidance", () => {
+    const source = `templates:
+  - name: instrument
+    contentType: elements
+    content:
+      - type: \${kind}
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - type: submitButton
+treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - template: instrument
+            fields:
+              kind: survey
+          - type: submitButton
+`;
+    const result = runValidationDiff({ source });
+    expect(result.hydrationError).toBeNull();
+    // The source pass sees a placeholder, so the concrete rejection can
+    // only come from the hydrated pass — and it must not be swallowed as
+    // a templating artifact.
+    expect(
+      result.hydratedOnly.some(
+        (i) => i.message === SURVEY_ELEMENT_REMOVED_MESSAGE,
       ),
     ).toBe(true);
   });

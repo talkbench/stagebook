@@ -4,10 +4,13 @@ import { getReferenceKeyAndPath, getNestedValueByPath } from "./reference.js";
 // ----------- getReferenceKeyAndPath ------------
 
 describe("getReferenceKeyAndPath", () => {
-  test("survey reference", () => {
-    const result = getReferenceKeyAndPath("self.survey.bigFive.result.score");
-    expect(result.referenceKey).toBe("survey_bigFive");
-    expect(result.path).toEqual(["result", "score"]);
+  test("removed `survey` source throws with migration guidance (#669)", () => {
+    expect(() =>
+      getReferenceKeyAndPath("self.survey.bigFive.result.score"),
+    ).toThrow(/removed `survey` source \(#669\)/);
+    expect(() =>
+      getReferenceKeyAndPath("self.survey.bigFive.result.score"),
+    ).toThrow(/<position>\.prompt\.<name>/);
   });
 
   test("submitButton reference", () => {
@@ -97,7 +100,7 @@ describe("getReferenceKeyAndPath", () => {
   });
 
   test("throws on missing name segment", () => {
-    expect(() => getReferenceKeyAndPath("self.survey")).toThrow();
+    expect(() => getReferenceKeyAndPath("self.qualtrics")).toThrow();
   });
 
   test("throws on missing path segment for external sources", () => {
@@ -161,10 +164,10 @@ describe("getReferenceKeyAndPath", () => {
   });
 
   test("string and structured forms produce equivalent output", () => {
-    expect(getReferenceKeyAndPath("self.survey.TIPI.responses.q1")).toEqual(
+    expect(getReferenceKeyAndPath("self.qualtrics.exit.responses.q1")).toEqual(
       getReferenceKeyAndPath({
-        source: "survey",
-        name: "TIPI",
+        source: "qualtrics",
+        name: "exit",
         path: ["responses", "q1"],
       }),
     );

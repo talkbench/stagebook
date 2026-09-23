@@ -127,7 +127,6 @@ describe("getReferencedAssets — element type allowlist", () => {
         displayText: "Go",
       },
       { type: "qualtrics", url: "https://example.com/q" },
-      { type: "survey", surveyName: "bigFive" },
       { type: "submitButton" },
       { type: "separator" },
     ]);

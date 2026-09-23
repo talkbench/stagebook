@@ -127,16 +127,16 @@ Every reference begins with a position selector — `self`, `shared`, `all`, or 
 ```typescript
 import { getReferenceKeyAndPath } from "stagebook";
 
-getReferenceKeyAndPath("self.survey.bigFive.result.score");
-// { referenceKey: "survey_bigFive", path: ["result", "score"] }
+getReferenceKeyAndPath("self.qualtrics.exit.result.score");
+// { referenceKey: "qualtrics_exit", path: ["result", "score"] }
 
 getReferenceKeyAndPath("self.prompt.myQuestion");
 // { referenceKey: "prompt_myQuestion", path: ["value"] }
 ```
 
-Un-prefixed strings (`"survey.bigFive.result.score"`) throw at parse time with an error suggesting the migration.
+Un-prefixed strings (`"prompt.myQuestion"`) throw at parse time with an error suggesting the migration.
 
-Supported namespaces: `survey`, `submitButton`, `qualtrics`, `prompt`, `trackedLink`, `timeline`, `discussion`, `entryUrl`, `attributes`. (`urlParams` was renamed to `entryUrl` in #246; `connectionInfo` / `browserInfo` / `participantInfo` were merged into a single flat `attributes` source in #473.) `entryUrl` references must use the `params` subpath, e.g. `getReferenceKeyAndPath("self.entryUrl.params.foo")`.
+Supported namespaces: `submitButton`, `qualtrics`, `prompt`, `trackedLink`, `timeline`, `discussion`, `entryUrl`, `attributes`. (`urlParams` was renamed to `entryUrl` in #246; `connectionInfo` / `browserInfo` / `participantInfo` were merged into a single flat `attributes` source in #473.) `entryUrl` references must use the `params` subpath, e.g. `getReferenceKeyAndPath("self.entryUrl.params.foo")`.
 
 ### Expanding templates
 
@@ -162,7 +162,7 @@ The template engine supports field substitution (`${fieldName}`), nested templat
 | `consentArmSchema`      | Single named consent arm with its own locale and steps (#481)                                        |
 | `consentSchema`         | Top-level `consent:` array of arms — the host selects one by name                                    |
 | `stageSchema`           | Game stage with name, duration, elements, discussion; validates element time bounds against duration |
-| `elementSchema`         | Any DSL element (prompt, display, survey, timer, etc.) with conditional rendering support            |
+| `elementSchema`         | Any DSL element (prompt, display, qualtrics, timer, etc.) with conditional rendering support         |
 | `promptSchema`          | Prompt element with file reference and optional shared flag                                          |
 | `discussionSchema`      | Discussion config (chat type, layout, rooms, visibility)                                             |
 | `conditionSchema`       | Condition with reference, comparator, value, and position                                            |

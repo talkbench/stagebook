@@ -13,7 +13,7 @@ import { UNRECOGNIZED_KEY_DID_YOU_MEAN_RE } from "stagebook/validate";
 describe("UNRECOGNIZED_KEY_DID_YOU_MEAN_RE matches stagebook's emitted messages", () => {
   it("matches a 'Did you mean ...' message and captures bad key + suggestion", () => {
     // Provoke a real diagnostic by feeding a treatment with a typo'd
-    // key on a survey element.
+    // key on a separator element.
     const input = {
       treatments: [
         {
@@ -25,8 +25,8 @@ describe("UNRECOGNIZED_KEY_DID_YOU_MEAN_RE matches stagebook's emitted messages"
               duration: 60,
               elements: [
                 {
-                  type: "survey",
-                  surveyNme: "TIPI", // typo: extra 'm' missing
+                  type: "separator",
+                  styl: "thin", // typo: 'e' missing
                 },
               ],
             },
@@ -46,8 +46,8 @@ describe("UNRECOGNIZED_KEY_DID_YOU_MEAN_RE matches stagebook's emitted messages"
 
     const match = UNRECOGNIZED_KEY_DID_YOU_MEAN_RE.exec(issue!.message);
     expect(match).not.toBeNull();
-    expect(match![1]).toBe("surveyNme");
-    expect(match![2]).toBe("surveyName");
+    expect(match![1]).toBe("styl");
+    expect(match![2]).toBe("style");
   });
 
   it("does NOT match when the message has no suggestion (no close Levenshtein hit)", () => {

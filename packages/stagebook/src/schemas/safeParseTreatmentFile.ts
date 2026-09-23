@@ -32,7 +32,7 @@ export interface UnrecognizedKeyIssueParams {
 
 /**
  * Per-container-kind label used when describing the bad key's location
- * in the human-readable diagnostic message ("element of type 'survey'",
+ * in the human-readable diagnostic message ("element of type 'mediaPlayer'",
  * "stage", etc.).
  */
 type ContainerLabel =

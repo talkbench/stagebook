@@ -77,6 +77,9 @@ One optional bookend sits outside the three phases: study-level [`consent:`](#co
 ## Complete Example
 
 ```yaml
+imports:
+  - ./surveys/tipi/tipi.stagebook.yaml # defines the `tipi_questions` prompt module
+
 introSequences:
   - name: default
     introSteps:
@@ -88,9 +91,9 @@ introSequences:
 
       - name: Pre-Survey
         elements:
-          - type: survey
-            surveyName: TIPI
-            name: preTIPI
+          - template: tipi_questions # a prompt module imported from surveys/tipi/tipi.stagebook.yaml
+            fields:
+              prefix: preTIPI
           - type: submitButton
 
 treatments:
@@ -141,7 +144,7 @@ treatments:
 
 Names resolve against the top-level `introSequences:` collection (after imports are merged) — arm names are per-collection namespaces, so a treatment and an intro sequence may share a name without conflict. Use `compatibleIntroSequences: []` for a treatment that runs without an intro sequence; the host may then only launch it intro-less. Omitting the field is an error — the pairing must be explicit.
 
-Why declare it? Treatments consume data participants produce during intro steps (`self.prompt.<name>`, `self.survey.<name>...`). Without the declaration, a reference was accepted if _any_ intro sequence in the file provided the key — even when the batch ran a different one, where the reference silently never resolves and the participant gets stuck. With it:
+Why declare it? Treatments consume data participants produce during intro steps (`self.prompt.<name>`, `self.qualtrics.<name>...`). Without the declaration, a reference was accepted if _any_ intro sequence in the file provided the key — even when the batch ran a different one, where the reference silently never resolves and the participant gets stuck. With it:
 
 - Every game/exit/`groupComposition` reference to intro-provided data must resolve in **every** listed sequence (unless an earlier stage in the treatment itself produces the key). If a reference's key exists only in a sequence you didn't list, the error hints at adding that sequence.
 - A name that doesn't match any defined intro sequence is an error (the message lists the defined names); listing the same name twice is a warning.
@@ -363,20 +366,20 @@ Optionally define requirements for who fills each position:
 treatments:
   - name: cross_partisan
     playerCount: 2
-    compatibleIntroSequences: [onboarding] # the sequence that runs the partyAffiliation survey
+    compatibleIntroSequences: [onboarding] # the sequence that asks the partyAffiliation prompt (a 0–100 slider)
     groupComposition:
       - position: 0
         title: "Democrat"
         conditions:
-          - reference: self.survey.partyAffiliation.result.normPosition
+          - reference: self.prompt.partyAffiliation
             comparator: isBelow
-            value: 0.5
+            value: 50
       - position: 1
         title: "Republican"
         conditions:
-          - reference: self.survey.partyAffiliation.result.normPosition
+          - reference: self.prompt.partyAffiliation
             comparator: isAbove
-            value: 0.5
+            value: 50
 ```
 
 (Reference strings start with a position selector — `self` for the participant being checked against this slot, plus `shared`, `all`, or a numeric index for other reads. See [conditions](conditions.md) for the full rules; #298 made the prefix mandatory.)

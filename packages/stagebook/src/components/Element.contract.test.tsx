@@ -121,3 +121,90 @@ describe("Element → no element-level discussion (#584)", () => {
     }
   });
 });
+
+// #669: the host-rendered `survey` element is gone. A pre-parsed tree that
+// still carries `type: "survey"` must take the unknown-type path — no
+// `survey_*` save, no stage submit — rather than reach any host slot.
+describe("Element → no survey element (#669)", () => {
+  test('`type: "survey"` falls through to the unknown-type path without saving or submitting', () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const onSubmit = vi.fn();
+      const save = vi.fn();
+      const ctx = makeContext({ save });
+
+      const container = document.createElement("div");
+      act(() => {
+        createRoot(container).render(
+          <StagebookProvider value={ctx}>
+            <Element
+              element={{ type: "survey", surveyName: "TIPI", name: "preTIPI" }}
+              onSubmit={onSubmit}
+            />
+          </StagebookProvider>,
+        );
+      });
+
+      expect(container.innerHTML).toBe("");
+      expect(save).not.toHaveBeenCalled();
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(consoleWarn).toHaveBeenCalledWith("Unknown element type: survey");
+    } finally {
+      consoleWarn.mockRestore();
+    }
+  });
+});
+
+// The stage auto-submit on instrument completion — previously pinned at the
+// Element level by the deleted Survey.ct.tsx — is now covered for the
+// supported external instrument: a Qualtrics end-of-survey message saves the
+// completion record and submits the stage through Element's `onSubmit`.
+describe("Element → Qualtrics completion auto-submits the stage", () => {
+  test("QualtricsEOS from a qualtrics.com origin saves qualtricsDataReady and calls onSubmit once", () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      const onSubmit = vi.fn();
+      const save = vi.fn();
+      const ctx = makeContext({
+        save,
+        get: vi.fn((key: string) =>
+          key === "attributes" ? [{ stableParticipantId: "stable-1" }] : [],
+        ),
+      });
+      const container = document.createElement("div");
+      act(() => {
+        createRoot(container).render(
+          <StagebookProvider value={ctx}>
+            <Element
+              element={{
+                type: "qualtrics",
+                url: "https://upenn.qualtrics.com/jfe/form/SV_x",
+              }}
+              onSubmit={onSubmit}
+            />
+          </StagebookProvider>,
+        );
+      });
+
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            data: "QualtricsEOS|SV_x|sess-1",
+            origin: "https://upenn.qualtrics.com",
+          }),
+        );
+      });
+
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+      expect(save).toHaveBeenCalledWith(
+        "qualtricsDataReady",
+        expect.objectContaining({ surveyId: "SV_x", sessionId: "sess-1" }),
+        undefined,
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+});

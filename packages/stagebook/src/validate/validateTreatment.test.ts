@@ -1,5 +1,112 @@
 import { describe, it, expect } from "vitest";
 import { validateTreatmentSource } from "./validateTreatment.js";
+import { SURVEY_ELEMENT_REMOVED_MESSAGE } from "../schemas/index.js";
+
+describe("validateTreatmentSource — removed survey element and reference source (#669)", () => {
+  const wrap = (
+    stageElements: string,
+    introElements = "- type: submitButton",
+  ) =>
+    `introSequences:
+  - name: intro1
+    introSteps:
+      - name: welcome
+        elements:
+          ${introElements}
+treatments:
+  - name: study1
+    playerCount: 1
+    compatibleIntroSequences: [intro1]
+    gameStages:
+      - name: stage1
+        duration: 300
+        elements:
+          ${stageElements}`;
+
+  it("rejects a literal `type: survey` element with migration guidance on the element", () => {
+    const src = wrap(`- type: survey
+            surveyName: TIPI
+          - type: submitButton`);
+    const result = validateTreatmentSource(src);
+    const hit = result.diagnostics.find((d) =>
+      d.message.includes(SURVEY_ELEMENT_REMOVED_MESSAGE),
+    );
+    expect(hit).toBeDefined();
+    expect(hit!.severity).toBe("error");
+    // Anchored on the offending element, not the file origin.
+    const elementLine = src
+      .split("\n")
+      .findIndex((l) => l.includes("type: survey"));
+    expect(hit!.range?.startLine).toBe(elementLine);
+  });
+
+  it("rejects a dotted `survey` reference with guidance toward prompt references", () => {
+    const result = validateTreatmentSource(
+      wrap(`- type: display
+            reference: self.survey.TIPI.result.score
+          - type: submitButton`),
+    );
+    const hit = result.diagnostics.find((d) =>
+      d.message.includes("removed `survey` source (#669)"),
+    );
+    expect(hit).toBeDefined();
+    expect(hit!.severity).toBe("error");
+    expect(hit!.message).toContain("`<position>.prompt.<name>`");
+  });
+
+  it("rejects a structured `source: survey` reference with the same guidance", () => {
+    const result = validateTreatmentSource(
+      wrap(`- type: display
+            reference:
+              position: self
+              source: survey
+              name: TIPI
+          - type: submitButton`),
+    );
+    const hit = result.diagnostics.find((d) =>
+      d.message.includes("removed `survey` source (#669)"),
+    );
+    expect(hit).toBeDefined();
+  });
+
+  it("an intro step that relied on survey for advancement now needs a submitButton", () => {
+    // A prompt-module instrument (the replacement) is not self-advancing.
+    const result = validateTreatmentSource(
+      wrap(
+        "- type: submitButton",
+        `- type: prompt
+            name: tipi_q1
+            file: tipi/q1.prompt.md`,
+      ),
+    );
+    expect(
+      result.diagnostics.some((d) =>
+        d.message.includes("must include at least one advancement element"),
+      ),
+    ).toBe(true);
+    // …and that message no longer offers survey as an option.
+    expect(
+      result.diagnostics.some(
+        (d) =>
+          d.message.includes("advancement element") &&
+          d.message.includes("survey"),
+      ),
+    ).toBe(false);
+  });
+
+  it("the qualtrics replacement for external instruments still auto-advances", () => {
+    const result = validateTreatmentSource(
+      wrap(
+        "- type: submitButton",
+        `- type: qualtrics
+            url: https://example.qualtrics.com/jfe/form/SV_x`,
+      ),
+    );
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual(
+      [],
+    );
+  });
+});
 
 describe("validateTreatmentSource", () => {
   describe("valid treatment files", () => {
@@ -289,7 +396,7 @@ treatments:
     });
 
     it("includes the formatted field path in missing-field messages", () => {
-      // A survey element is missing its required surveyName field.
+      // A qualtrics element is missing its required url field.
       const src = `introSequences:
   - name: intro1
     introSteps:
@@ -303,15 +410,13 @@ treatments:
       - name: stage1
         duration: 300
         elements:
-          - type: survey`;
+          - type: qualtrics`;
       const result = validateTreatmentSource(src);
       // The diagnostic message should include the full formatted path
       // (dotted segments + bracketed array indices) so the user can locate
       // the missing field in the schema hierarchy.
       const pathedError = result.diagnostics.find((d) =>
-        d.message.includes(
-          "treatments[0].gameStages[0].elements[0].surveyName",
-        ),
+        d.message.includes("treatments[0].gameStages[0].elements[0].url"),
       );
       expect(pathedError).toBeDefined();
     });

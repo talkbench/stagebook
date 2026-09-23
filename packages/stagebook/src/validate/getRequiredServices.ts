@@ -27,8 +27,9 @@
 //                  `audio` (→ Daily / WebRTC).
 //   textChat       stage `discussion` block, `chatType: text`.
 //   externalSurvey `type: qualtrics` element (needs Qualtrics creds).
-//                  The native `type: survey` element is host-rendered
-//                  and needs no external service.
+//                  Prompt-based instruments (imported module
+//                  templates) are rendered by stagebook itself and
+//                  need no external service.
 //
 // The result is keyed BY ARM (per treatment, per intro sequence, per
 // consent arm) plus an `overall` whole-file union. A launch selects

@@ -517,11 +517,11 @@ describe("checkUnsatisfiableConditions", () => {
       expect(issues).toEqual([]);
     });
 
-    test("skips non-prompt references (survey, entryUrl, …)", () => {
+    test("skips non-prompt references (qualtrics, entryUrl, …)", () => {
       const issues = checkUnsatisfiableConditions(
         fileWith([
           {
-            reference: "self.survey.s.value",
+            reference: "self.qualtrics.s.value",
             comparator: "equals",
             value: "X",
           },

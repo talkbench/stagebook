@@ -13,7 +13,7 @@ export { UNRECOGNIZED_KEY_DID_YOU_MEAN_RE };
  * Quick-fix provider that offers a "Change to 'X'" action for each
  * `safeParseTreatmentFile` diagnostic that includes a suggestion.
  *
- * The diagnostic's range covers the *key token* (e.g., `survyName`)
+ * The diagnostic's range covers the *key token* (e.g., `styl`)
  * because `validateTreatment` resolves unrecognized-key issues via
  * the position mapper's `resolveKey()` method. Replacing
  * `diagnostic.range` with the suggestion therefore renames the key,
