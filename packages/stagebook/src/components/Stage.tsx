@@ -14,11 +14,10 @@ import { ElementErrorBoundary } from "./ElementErrorBoundary.js";
 import type { ResolvedDiscussionType } from "../schemas/resolved.js";
 import type { Condition } from "./conditions/ConditionsConditionalRender.js";
 
-// Max-width per element type — wider for surveys/qualtrics/video
+// Max-width per element type — wider for qualtrics/video
 const DEFAULT_LANE = "42rem"; // ~672px
 const ELEMENT_LANES: Record<string, string> = {
-  survey: "64rem", // ~1024px
-  qualtrics: "64rem",
+  qualtrics: "64rem", // ~1024px
   mediaPlayer: "56rem", // ~896px
   timeline: "56rem",
 };

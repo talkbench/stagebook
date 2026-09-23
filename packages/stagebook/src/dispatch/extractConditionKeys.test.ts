@@ -72,7 +72,7 @@ describe("extractConditionKeys", () => {
                 {
                   none: [
                     {
-                      reference: "self.survey.tipi",
+                      reference: "self.qualtrics.tipi",
                       comparator: "exists",
                     },
                   ],
@@ -84,7 +84,7 @@ describe("extractConditionKeys", () => {
       },
     ];
     expect(extractConditionKeys(treatments)).toEqual(
-      new Set(["prompt_role", "survey_tipi"]),
+      new Set(["prompt_role", "qualtrics_tipi"]),
     );
   });
 

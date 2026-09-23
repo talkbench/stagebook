@@ -308,7 +308,6 @@ export function SkeletonPlaceholder({
 
   // Generic placeholder for other platform-coupled elements
   const labels: Record<string, string> = {
-    survey: "Survey element — requires external survey platform",
     sharedNotepad:
       "Shared notepad — requires live session with multiple participants",
     qualtrics: "Qualtrics survey — requires external integration",
@@ -337,15 +336,6 @@ export function createSkeletonRenderers() {
   return {
     renderDiscussion: (config: Record<string, unknown>) => (
       <SkeletonPlaceholder type="discussion" config={config} />
-    ),
-    renderSurvey: (config: {
-      surveyName: string;
-      onComplete: (results: unknown) => void;
-    }) => (
-      <SkeletonPlaceholder
-        type="survey"
-        config={{ surveyName: config.surveyName }}
-      />
     ),
     renderSharedNotepad: (config: {
       padName: string;

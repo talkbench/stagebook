@@ -460,17 +460,54 @@ Selections are saved on each user action (creating, adjusting, deleting, or undo
 
 Saved selections are **restored on reload** — if a participant refreshes mid-stage, their existing marks reappear.
 
-## Survey
+## Survey instruments
 
-> **Deprecated.** `type: survey` is pending removal once Stagebook's module-reuse pattern lands. The element still works (the host's `renderSurvey` slot is still called), but the runtime emits a one-time deprecation warning per `surveyName` at parse time. Prefer prompt-based patterns for new treatment files.
+> **Breaking change ([#669](https://github.com/talkbench/stagebook/issues/669)).** The host-rendered `type: survey` element (deprecated in #250) has been removed. A literal `type: survey` — written in source or produced by a filled template — now fails validation with a pointer to this section, `survey` is no longer a reference source, and the host API has no `renderSurvey` slot. Studies pinned to earlier Stagebook releases keep working as they are; nothing about their stored data needs migrating.
 
-Renders a pre-built survey from the `@watts-lab/surveys` package.
+A survey instrument is authored as prompt elements — one `.prompt.md` per item — packaged as a module template and pulled in with `imports:`. Stagebook renders the items itself, so the same instrument renders identically on every host, and each answer is an ordinary prompt response.
 
 ```yaml
-- type: survey
-  surveyName: TIPI
-  name: pre_discussion_TIPI # optional storage key
+# modules/tipi.stagebook.yaml — the reusable instrument
+templates:
+  - name: tipi_questions
+    contentType: elements
+    content:
+      - type: prompt
+        name: ${prefix}_extraverted
+        file: tipi_extraverted.prompt.md
+      - type: prompt
+        name: ${prefix}_critical
+        file: tipi_critical.prompt.md
 ```
+
+```yaml
+# study.stagebook.yaml — the consumer
+imports:
+  - ./modules/tipi.stagebook.yaml
+
+introSequences:
+  - name: onboarding
+    introSteps:
+      - name: Personality
+        elements:
+          - template: tipi_questions
+            fields:
+              prefix: pre_TIPI
+          - type: submitButton # a prompt module does not advance the step by itself
+```
+
+Answers are referenced per item — `self.prompt.pre_TIPI_extraverted`. Invoke the template again with a different `prefix:` to re-administer the instrument later (see [the `prefix:` convention](templates.md#the-prefix-convention-for-reusable-modules)). Composite scores computed across several items belong to [#299](https://github.com/talkbench/stagebook/issues/299); until that lands, compute scores in analysis rather than in the treatment file.
+
+**Migrating from `type: survey`:**
+
+| Before (removed)                                             | After                                                                                             |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `- type: survey` + `surveyName: TIPI` + `name: pre_TIPI`     | `- template: tipi_questions` + `fields: { prefix: pre_TIPI }`, followed by `- type: submitButton` |
+| `self.survey.pre_TIPI.responses.q1`                          | `self.prompt.pre_TIPI_q1`                                                                         |
+| `self.survey.pre_TIPI.result.<score>` (computed by the host) | Per-item prompt references today; composite scores are #299                                       |
+| Host implements `renderSurvey`                               | Nothing — Stagebook renders prompts                                                               |
+
+The [annotated walkthrough](../../examples/annotated-walkthrough/README.md) demonstrates the pattern (`modules/personality.stagebook.yaml`) and is validated in CI.
 
 ## Qualtrics
 

@@ -22,9 +22,7 @@
  * Key derivation mirrors the runtime `save()` calls. The `name` is
  * computed in `Element.tsx` before each element dispatches; the actual
  * `save()` invocation lives in the matching component under
- * `src/components/elements/` (except surveys, which are rendered via
- * the host-supplied `renderSurvey` slot — Element.tsx derives the key
- * before handing off). Per-type rules:
+ * `src/components/elements/`. Per-type rules:
  *
  *   audio        → checked when `name:` is set. Unnamed audios fall
  *                   back to a position-based key
@@ -35,8 +33,6 @@
  *   prompt       → `prompt_${name}` (runtime fallback uses progressLabel +
  *                   metadata, which isn't derivable from the YAML alone, so
  *                   we only check explicitly-named prompts)
- *   survey       → checked when `name:` is set. Unnamed surveys fall
- *                   back to a position-based key at runtime, like audio.
  *   submitButton → `submitButton_${name}` (runtime fallback is progressLabel;
  *                   only checked when `name` is set)
  *   mediaPlayer  → checked when `name:` is set. Unnamed mediaPlayers fall
@@ -47,7 +43,7 @@
  *   timeline     → `timeline_${name}` (name is required by the schema)
  *   trackedLink  → `trackedLink_${name}` (name is required by the schema)
  *
- * Why the file/surveyName fallbacks aren't checked: a researcher who
+ * Why the file fallbacks aren't checked: a researcher who
  * doesn't `name:` an audio is opting out of cross-stage data
  * tracking — they just want the sound to play. The runtime gives
  * each occurrence a unique position-derived key, so there's no
@@ -84,7 +80,6 @@ function storageKeyFor(element: unknown): string | null {
     // no collision to flag — opt in to cross-stage tracking by
     // naming.
     case "audio":
-    case "survey":
     case "mediaPlayer":
     case "prompt":
     case "submitButton":

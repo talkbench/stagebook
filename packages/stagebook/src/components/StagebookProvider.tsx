@@ -169,15 +169,9 @@ export interface StagebookContext {
     defaultText?: string;
     rows?: number;
   }) => React.ReactNode;
-  /**
-   * @deprecated `type: survey` is pending removal once Stagebook's
-   *   module-reuse pattern lands. Hosts should keep implementing this
-   *   for now; new treatment files should prefer prompt-based patterns.
-   */
-  renderSurvey?: (config: {
-    surveyName: string;
-    onComplete: (results: unknown) => void;
-  }) => React.ReactNode;
+  // No `renderSurvey` slot: the host-rendered `type: survey` element was
+  // removed in #669. Survey instruments are prompt elements (imported
+  // module templates) that stagebook renders itself.
 
   // Optional crash-reporting hook — called once per element render crash
   // caught by ElementErrorBoundary, with a structured payload. This is a

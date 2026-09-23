@@ -16,8 +16,7 @@ describe("maxWidthForElement", () => {
     expect(maxWidthForElement(el("timeline"))).toBe("56rem");
   });
 
-  it("uses 64rem for survey and qualtrics", () => {
-    expect(maxWidthForElement(el("survey"))).toBe("64rem");
+  it("uses 64rem for qualtrics", () => {
     expect(maxWidthForElement(el("qualtrics"))).toBe("64rem");
   });
 
@@ -42,9 +41,9 @@ describe("maxWidthForElement", () => {
       expect(maxWidthForElement(el("separator"), siblings)).toBe("56rem");
     });
 
-    it("widens to the survey lane when the stage has a survey or qualtrics", () => {
+    it("widens to the qualtrics lane when the stage has a qualtrics", () => {
       expect(
-        maxWidthForElement(el("separator"), [el("prompt"), el("survey")]),
+        maxWidthForElement(el("separator"), [el("prompt"), el("qualtrics")]),
       ).toBe("64rem");
       expect(
         maxWidthForElement(el("separator"), [

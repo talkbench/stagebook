@@ -1,3 +1,8 @@
+imports:
+  # Pull in the reusable personality instrument's templates. Only the
+  # imported file's `templates:` are merged; its prompt-file paths are
+  # prefixed with `modules/` so they resolve relative to this file.
+  - ./modules/personality.stagebook.yaml
 templates:
   - name: studyTreatment
     contentType: treatment
@@ -160,7 +165,7 @@ templates:
         - name: Exit Survey
           notes: |
             Stagebook renders `qualtrics` directly as an iframe (not via
-            a host slot, unlike `survey` / `discussion`). The step
+            a host slot, unlike `discussion`). The step
             auto-submits when the iframe posts its end-of-survey
             message — no `submitButton` needed. In the viewer the
             placeholder URL below won't load; swap in a real Qualtrics
@@ -207,8 +212,8 @@ introSequences:
       Intro steps run solo, before participants are matched. They
       cannot use `position`, `showToPositions`, or `hideFromPositions`.
       Every intro/exit step needs an "advancement element" — a
-      `submitButton`, a `survey`, a `qualtrics`, or a `mediaPlayer`
-      with `submitOnComplete: true`.
+      `submitButton`, a `qualtrics`, or a `mediaPlayer` with
+      `submitOnComplete: true`.
     introSteps:
       - name: Familiarity
         elements:
@@ -221,11 +226,24 @@ introSequences:
               participants into positions.
           - type: submitButton
       - name: Personality
+        notes: |
+          A reusable survey instrument, authored as prompt elements.
+          `personality_inventory` is defined in
+          `modules/personality.stagebook.yaml` and pulled in by the
+          top-level `imports:`. Invoking it expands to the module's
+          prompt elements with the `prefix` field filled in, so the
+          answers are ordinary prompt responses —
+          `self.prompt.pre_TIPI_extraverted` — and Stagebook renders
+          them itself on every host. (This replaced the host-rendered
+          `survey` element, removed in #669.)
         elements:
-          - type: survey
-            surveyName: TIPI
-            name: pre_TIPI
-            notes: Platform-coupled survey element — the host platform renders the Ten-Item Personality Inventory. Skeleton placeholder in the viewer.
+          - template: personality_inventory
+            fields:
+              prefix: pre_TIPI
+          - type: submitButton
+            notes: |
+              A prompt module does not advance the step by itself, so
+              the step needs its own submitButton.
 treatments:
   - template: studyTreatment
     broadcast:

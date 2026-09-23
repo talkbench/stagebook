@@ -279,7 +279,7 @@ describe("getRequiredServices", () => {
     expect(report.byTreatment.t.video).toBe(true);
   });
 
-  test("qualtrics element → externalSurvey; native survey does not", async () => {
+  test("qualtrics element → externalSurvey; a prompt-based instrument does not", async () => {
     const load = loaderFrom({});
     const qualtrics = {
       treatments: [
@@ -297,14 +297,27 @@ describe("getRequiredServices", () => {
         .externalSurvey,
     ).toBe(true);
 
-    const survey = {
+    // The replacement for the removed `type: survey` element (#669): a run
+    // of prompt elements (typically an imported module template), which
+    // stagebook renders itself.
+    const promptInstrument = {
       treatments: [
-        { gameStages: [{ elements: [{ type: "survey", surveyName: "s" }] }] },
+        {
+          gameStages: [
+            {
+              elements: [
+                { type: "prompt", name: "tipi_q1", file: "tipi/q1.prompt.md" },
+                { type: "prompt", name: "tipi_q2", file: "tipi/q2.prompt.md" },
+                { type: "submitButton" },
+              ],
+            },
+          ],
+        },
       ],
     };
     expect(
-      (await getRequiredServices(survey, { loadPrompt: load })).overall
-        .externalSurvey,
+      (await getRequiredServices(promptInstrument, { loadPrompt: load }))
+        .overall.externalSurvey,
     ).toBe(false);
   });
 

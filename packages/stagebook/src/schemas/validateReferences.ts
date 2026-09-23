@@ -90,7 +90,6 @@ const RANK_GAME_BASE = 1;
  *  references. Forward-ref and unknown-ref checks both skip them. */
 const STAGE_PRODUCED_REF_TYPES = new Set([
   "prompt",
-  "survey",
   "submitButton",
   "qualtrics",
   "timeline",
@@ -1018,21 +1017,6 @@ function collectProducedKeys(element: unknown, acc: Set<string>): void {
   const type = element.type;
   const name = element.name;
   if (typeof type !== "string") return;
-  // Survey elements fall back to `surveyName` when `name` is absent —
-  // mirrors the runtime storage-key derivation in Element.tsx:
-  // `survey_${element.name ?? element.surveyName}`. Without this fallback,
-  // a reference to `survey.<surveyName>` (common when authors omit `name`)
-  // would silently escape the forward-ref check.
-  if (type === "survey") {
-    const keyName =
-      typeof name === "string"
-        ? name
-        : typeof element.surveyName === "string"
-          ? element.surveyName
-          : undefined;
-    if (keyName !== undefined) acc.add(`survey_${keyName}`);
-    return;
-  }
   if (
     typeof name === "string" &&
     (type === "prompt" ||

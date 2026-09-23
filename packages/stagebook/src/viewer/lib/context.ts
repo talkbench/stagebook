@@ -15,10 +15,7 @@ export interface ViewerContextOptions {
   getAssetURL: (path: string) => string;
   contentVersion?: number;
   renderers?: Partial<
-    Pick<
-      StagebookContext,
-      "renderDiscussion" | "renderSurvey" | "renderSharedNotepad"
-    >
+    Pick<StagebookContext, "renderDiscussion" | "renderSharedNotepad">
   >;
 }
 

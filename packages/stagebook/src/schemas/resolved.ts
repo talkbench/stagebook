@@ -49,7 +49,7 @@ const SWEEP_PLACEHOLDER_RE = /\$\{[a-zA-Z0-9_]+\}/;
 // number/array reject a surviving `"${x}"` by type mismatch. But
 // *string-typed* slots — condition `value` (equals/includes/matches),
 // element `url`/`displayText`/`reference`/`helperText`/`buttonText`/
-// `altText`/`surveyName`, `urlParams[].value` — accept `"${x}"` as a
+// `altText`, `urlParams[].value` — accept `"${x}"` as a
 // structurally valid string and let it through silently, so at runtime a
 // condition compares against the literal `"${x}"` and never matches, or a
 // truthy string inverts a flag. This walks the whole filled tree and
@@ -202,7 +202,6 @@ const resolvedElementBaseSchema = z.object({
   displayText: z.string().optional(),
   helperText: z.string().optional(),
   reference: z.string().optional(),
-  surveyName: z.string().optional(),
   startTime: z.number().optional(),
   endTime: z.number().optional(),
   warnTimeRemaining: z.number().optional(),

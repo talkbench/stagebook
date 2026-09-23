@@ -88,6 +88,7 @@ export {
   type DiscussionType,
   type TimelineType,
   validElementTypes,
+  SURVEY_ELEMENT_REMOVED_MESSAGE,
   validComparators,
   validReferenceTypes,
   getValidKeysForElementType,

@@ -466,44 +466,6 @@ describe("Rule 1 — no forward references", () => {
     expect(hit).toBeDefined();
   });
 
-  test("survey produces a storage key from surveyName when name is absent", () => {
-    // Element.tsx derives the storage key as
-    // `survey_${element.name ?? element.surveyName}`. The walker has to
-    // match, otherwise forward references to `survey.<surveyName>` slip
-    // through when authors omit the optional `name`.
-    const file = baseFile({
-      gameStages: [
-        {
-          name: "s1",
-          duration: 60,
-          elements: [
-            {
-              type: "display",
-              reference: "self.survey.MySurvey.result.answer",
-            },
-            { type: "submitButton" },
-          ],
-        },
-        {
-          name: "s2",
-          duration: 60,
-          elements: [
-            // no `name:` — storage key derives from surveyName
-            { type: "survey", surveyName: "MySurvey" },
-            { type: "submitButton" },
-          ],
-        },
-      ],
-    });
-    const issues = validateTreatmentFileReferences(file);
-    const hit = issues.find(
-      (i) =>
-        i.path.join(".") === "treatments.0.gameStages.0.elements.0.reference" &&
-        /later/i.test(i.message),
-    );
-    expect(hit).toBeDefined();
-  });
-
   test("external references (entryUrl.params.x, attributes.x) accepted at every site", () => {
     const file = baseFile({
       gameStages: [

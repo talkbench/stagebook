@@ -182,16 +182,16 @@ describe("Provider-level resolve (get → resolve pipeline)", () => {
     unmount();
   });
 
-  test("navigates nested paths for survey references", () => {
+  test("navigates nested paths for qualtrics references", () => {
     const get = vi.fn(() => [{ result: { score: 4.5 } }]);
     const ctx = createMockContext({ get });
 
     const { result, unmount } = renderUseResolve(
-      "self.survey.TIPI.result.score",
+      "self.qualtrics.exit.result.score",
       ctx,
     );
 
-    expect(get).toHaveBeenCalledWith("survey_TIPI", "player");
+    expect(get).toHaveBeenCalledWith("qualtrics_exit", "player");
     expect(result.current).toEqual([4.5]);
     unmount();
   });

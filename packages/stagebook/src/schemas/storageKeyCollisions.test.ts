@@ -399,46 +399,6 @@ describe("collectStorageKeyCollisions", () => {
     expect(collisions[0].paths).toHaveLength(2);
   });
 
-  it("flags survey collisions only when both elements are explicitly named", () => {
-    const dataNamed = {
-      treatments: [
-        {
-          name: "t1",
-          gameStages: [
-            {
-              name: "stage1",
-              elements: [
-                { type: "survey", name: "intake", surveyName: "TIPI" },
-                { type: "survey", name: "intake", surveyName: "Other" },
-              ],
-            },
-          ],
-        },
-      ],
-    };
-    const namedCollisions = collectStorageKeyCollisions(dataNamed);
-    expect(namedCollisions).toHaveLength(1);
-    expect(namedCollisions[0].key).toBe("survey_intake");
-
-    const dataUnnamed = {
-      treatments: [
-        {
-          name: "t1",
-          gameStages: [
-            {
-              name: "stage1",
-              elements: [
-                { type: "survey", surveyName: "TIPI" },
-                { type: "survey", surveyName: "TIPI" },
-              ],
-            },
-          ],
-        },
-      ],
-    };
-    expect(collectStorageKeyCollisions(dataUnnamed)).toEqual([]);
-  });
-
   it("skips elements without a derivable storage key (unnamed prompts/submitButtons)", () => {
     // Unnamed prompts derive their key from progressLabel + metadata at runtime,
     // which isn't statically derivable, so we don't check them.

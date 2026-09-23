@@ -18,7 +18,7 @@ test.describe("StageConditionGate (#183)", () => {
           duration: 60,
           conditions: [
             {
-              reference: "shared.survey.continueVote.result.keepGoing",
+              reference: "shared.prompt.continueVote",
               comparator: "equals",
               value: "yes",
             },
@@ -26,7 +26,7 @@ test.describe("StageConditionGate (#183)", () => {
           elements,
         }}
         stateValues={{
-          "shared.survey.continueVote.result.keepGoing": "yes",
+          "shared.prompt.continueVote": "yes",
         }}
       />,
     );
@@ -47,7 +47,7 @@ test.describe("StageConditionGate (#183)", () => {
           duration: 60,
           conditions: [
             {
-              reference: "shared.survey.continueVote.result.keepGoing",
+              reference: "shared.prompt.continueVote",
               comparator: "equals",
               value: "yes",
             },
@@ -55,7 +55,7 @@ test.describe("StageConditionGate (#183)", () => {
           elements,
         }}
         stateValues={{
-          "shared.survey.continueVote.result.keepGoing": "no",
+          "shared.prompt.continueVote": "no",
         }}
       />,
     );
@@ -81,7 +81,7 @@ test.describe("StageConditionGate (#183)", () => {
           duration: 60,
           conditions: [
             {
-              reference: "shared.survey.continueVote.result.keepGoing",
+              reference: "shared.prompt.continueVote",
               comparator: "equals",
               value: "yes",
             },

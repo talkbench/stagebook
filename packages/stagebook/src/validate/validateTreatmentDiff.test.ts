@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { SURVEY_ELEMENT_REMOVED_MESSAGE } from "../schemas/index.js";
 import { validateTreatmentWithDiff } from "./validateTreatmentDiff.js";
 
 /**
@@ -304,7 +305,7 @@ treatments:
 
   describe("unrecognized-key quick-fix range", () => {
     it("emits unrecognized-key issues with a key-token range (not value range)", async () => {
-      // `surveryName` (typo) should produce an unrecognized-key
+      // `styl` (typo of `style`) should produce an unrecognized-key
       // diagnostic. The range should land on the key token so the
       // UnrecognizedKeyQuickFixProvider's `replace(range, suggestion)`
       // correctly renames the key.
@@ -321,8 +322,8 @@ treatments:
       - name: g
         duration: 10
         elements:
-          - type: survey
-            surveryName: TIPI
+          - type: separator
+            styl: thin
           - type: submitButton
 `;
       const result = await validateTreatmentWithDiff({
@@ -333,13 +334,13 @@ treatments:
         d.message.toLowerCase().includes("unrecognized key"),
       );
       expect(unrecognized).toBeDefined();
-      // The range should be on the `surveryName` line.
+      // The range should be on the `styl` line.
       const lines = source.split("\n");
-      const keyLine = lines.findIndex((l) => l.includes("surveryName:"));
+      const keyLine = lines.findIndex((l) => l.includes("styl:"));
       expect(unrecognized!.range?.startLine).toBe(keyLine);
       // And specifically on the key token, not the value. The column
-      // should match the position of 's' in 'surveryName'.
-      const colInLine = lines[keyLine].indexOf("surveryName");
+      // should match the position of 's' in 'styl'.
+      const colInLine = lines[keyLine].indexOf("styl");
       expect(unrecognized!.range?.startCol).toBe(colInLine);
     });
   });
@@ -719,5 +720,91 @@ consent:
         /already used by an earlier consent arm/.test(d.message),
       ),
     ).toBe(true);
+  });
+});
+
+describe("removed survey element cannot come back through an imported template (#669)", () => {
+  it("reports the migration guidance when an imported module template still contains `type: survey`", async () => {
+    const source = `imports:
+  - ./modules/tipi.stagebook.yaml
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - template: tipi
+          - type: submitButton
+treatments:
+  - name: t
+    playerCount: 1
+    compatibleIntroSequences: [i]
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: submitButton
+`;
+    const result = await validateTreatmentWithDiff({
+      source,
+      loadImport: loaderFromMap({
+        "modules/tipi.stagebook.yaml": `templates:
+  - name: tipi
+    contentType: elements
+    content:
+      - type: survey
+        surveyName: TIPI
+`,
+      }),
+    });
+    const hit = result.diagnostics.find((d) =>
+      d.message.includes(SURVEY_ELEMENT_REMOVED_MESSAGE),
+    );
+    expect(hit).toBeDefined();
+    expect(hit!.severity).toBe("error");
+  });
+
+  it("accepts the prompt-module replacement (imported template of prompt elements + submitButton)", async () => {
+    const source = `imports:
+  - ./modules/tipi.stagebook.yaml
+introSequences:
+  - name: i
+    introSteps:
+      - name: s
+        elements:
+          - template: tipi_questions
+            fields:
+              prefix: pre
+          - type: submitButton
+treatments:
+  - name: t
+    playerCount: 1
+    compatibleIntroSequences: [i]
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: display
+            reference: self.prompt.pre_q1
+          - type: submitButton
+`;
+    const result = await validateTreatmentWithDiff({
+      source,
+      loadImport: loaderFromMap({
+        "modules/tipi.stagebook.yaml": `templates:
+  - name: tipi_questions
+    contentType: elements
+    content:
+      - type: prompt
+        name: \${prefix}_q1
+        file: q1.prompt.md
+      - type: prompt
+        name: \${prefix}_q2
+        file: q2.prompt.md
+`,
+      }),
+    });
+    expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual(
+      [],
+    );
   });
 });

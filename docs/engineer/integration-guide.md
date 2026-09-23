@@ -552,7 +552,7 @@ compare(playerResponse, "isAtLeast", 0.75);
 
 // Parse a reference string
 const { referenceKey, path } = getReferenceKeyAndPath(
-  "survey.TIPI.result.score",
+  "self.prompt.familiarity",
 );
 
 // Expand templates
@@ -563,76 +563,11 @@ const expanded = fillTemplates({ obj: treatments, templates });
 
 Some elements depend on external services or platform-specific libraries. Stagebook validates the config, manages layout and conditional rendering, and handles data storage — but your platform supplies the actual component via render props on the provider.
 
-### Survey
+### Survey instruments — no slot
 
-> **Deprecated.** `type: survey` is pending removal once Stagebook's module-reuse pattern lands. The element still works (the host's `renderSurvey` slot is still called); the runtime emits a one-time `console.warn` per `surveyName` at parse time. New treatment files should prefer prompt-based patterns where the survey can be expressed as a sequence of prompt elements.
+> **Breaking change ([#669](https://github.com/talkbench/stagebook/issues/669)).** The `renderSurvey` slot and the `type: survey` element it served are gone. Delete any `renderSurvey` implementation from your `StagebookContext` — the field no longer exists on the type, so a leftover implementation is a compile error. Stagebook no longer writes `survey_<name>` storage keys, and `<position>.survey.*` references fail validation. Studies pinned to earlier releases are unaffected: each study runs one Stagebook version, and stored survey results from those studies need no conversion.
 
-Surveys are rendered by the platform because they depend on a survey library (e.g., `@watts-lab/surveys`). Stagebook validates the element config, wraps the survey in conditional rendering, and handles data storage — but the platform provides the actual survey UI.
-
-#### What the researcher writes
-
-```yaml
-elements:
-  - type: survey
-    surveyName: TIPI # which survey to render
-    name: preTIPI # optional — overrides the storage key
-  - type: submitButton
-```
-
-#### What Stagebook does
-
-When Stagebook encounters a `type: "survey"` element, it:
-
-1. Reads `surveyName` and `name` from the element config
-2. Computes the storage key: `survey_${name ?? surveyName}` (e.g., `survey_preTIPI`)
-3. Calls your `renderSurvey` function, passing `{ surveyName, onComplete }`
-4. When `onComplete(results)` is called, Stagebook saves the results: `save("survey_preTIPI", results)`
-5. The results are then available to other elements and conditions via the reference `<position>.survey.preTIPI.result.<key>` or `<position>.survey.preTIPI.responses.<questionId>` (`<position>` is `self`, `shared`, `all`, or a numeric slot index — required first segment per #298)
-
-#### What the platform implements
-
-```typescript
-import { getSurvey } from "@watts-lab/surveys";  // or your survey library
-
-const context: StagebookContext = {
-  // ...other fields...
-
-  renderSurvey: ({ surveyName, onComplete }) => {
-    const SurveyComponent = getSurvey(surveyName);
-    return <SurveyComponent onComplete={onComplete} />;
-  },
-};
-```
-
-Your survey component must:
-
-1. **Render** the survey questions and response controls
-2. **Call `onComplete(results)`** when the participant finishes, passing the results object
-
-That's it. Stagebook handles everything else: the storage key, making results available to `display` elements and `conditions`, and all the standard element wrapping (time gating, position visibility, conditional rendering).
-
-#### The results object
-
-The shape of `results` is determined by your survey library. Stagebook stores it opaquely — it doesn't inspect the contents. However, researchers will reference specific paths in conditions:
-
-```yaml
-conditions:
-  - reference: self.survey.preTIPI.result.normAgreeableness
-    comparator: isAtLeast
-    value: 0.75
-```
-
-For this to work, the results object must have the structure that matches the reference path. If the reference is `self.survey.preTIPI.result.normAgreeableness`, then `results.result.normAgreeableness` must exist (the leading `self.` is the position selector required by #298; the remaining path resolves into the saved results object). This is a contract between the survey library and the treatment author — Stagebook just traverses the path.
-
-#### Example: full data flow
-
-1. Researcher writes `surveyName: TIPI, name: preTIPI` in treatment YAML
-2. Participant completes the survey in the intro sequence
-3. Survey component calls `onComplete({ result: { normAgreeableness: 0.82, ... }, responses: { ... } })`
-4. Stagebook saves under key `survey_preTIPI`
-5. Later, in a treatment's `groupComposition`, a condition references `self.survey.preTIPI.result.normAgreeableness`
-6. Stagebook's `resolve("self.survey.preTIPI.result.normAgreeableness")` looks up `survey_preTIPI` in state, traverses `.result.normAgreeableness`, and returns `0.82`
-7. The condition `isAtLeast: 0.75` evaluates to `true`, and the participant is assigned to the matching position
+Survey instruments are now prompt modules: a `.stagebook.yaml` of `contentType: elements` templates whose items are ordinary `prompt` elements, imported with `imports:` and invoked with `template:`. Stagebook renders them through the `prompt` path, stores each item under `prompt_<name>`, and exposes them to conditions and `display` elements as `<position>.prompt.<name>` — nothing for the host to implement, and the same instrument renders identically on every host. See [Survey instruments](../researcher/elements.md#survey-instruments) for the authoring side and the migration table. Composite scores that a survey library used to compute inside `onComplete` are the subject of [#299](https://github.com/talkbench/stagebook/issues/299).
 
 ### Discussion
 

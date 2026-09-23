@@ -21,28 +21,28 @@ the discussion storage-key namespace, `qualtrics.url` losing
 operators, structured references — keep the older syntax working as
 sugar; those rows are flagged.
 
-| Area              | Before                                      | After                                         | Kind | Issue |
-|-------------------|---------------------------------------------|-----------------------------------------------|------|-------|
-| Conditions        | `position: percentAgreement`                | no direct equivalent — see [Conditions](#conditions--position-is-a-read-selector-only-238) | breaking | [#238] |
-| Conditions        | flat-array AND only                         | `all:` / `any:` / `none:` boolean tree (flat array still parses as sugar for `all:`) | additive | [#235] |
-| References        | dotted strings only                         | `{source, name?, path?}` structured form (dotted strings still parse as sugar) | additive | [#240] |
-| References        | `prompt.X` (no position prefix)             | `self.prompt.X` / `0.prompt.X` / `all.prompt.X` etc. (position selector required) | breaking | [#298] |
-| References        | `urlParams.<key>`                           | `entryUrl.params.<key>`                        | breaking | [#246] |
-| References        | `discussion.<name>` storage key = `<name>`  | storage key = `discussion_<name>`              | breaking | [#240] |
-| Templates         | `templateName:` / `templateContent:` / `templateDesc:` | `name:` / `content:` (drop desc, fold into `notes:`) | breaking | [#244] |
-| Templates         | `contentType:` optional, `"other"` accepted | `contentType:` required, `"other"` removed     | breaking | [#244] |
-| Elements          | bare `*.prompt.md` string in `elements:`    | explicit `{ type: prompt, file: ... }`         | breaking | [#245] |
-| Elements          | `type: talkMeter`                           | removed entirely                               | breaking | [#250] |
-| Elements          | `type: sharedNotepad`                       | `type: prompt` + `shared: true` + openResponse | breaking | [#250] |
-| Elements          | `type: survey`                              | deprecated; one-time runtime warning           | additive | [#250] |
-| Resources         | `mediaPlayer.url:`                          | `mediaPlayer.file:`                            | breaking | [#249] |
-| Resources         | `qualtrics.url: asset://...`                | strict `https?://` only                        | breaking | [#249] |
-| Resources         | `trackedLink.url: asset://...`              | strict `https?://` only                        | breaking | [#249] |
-| Prompt files      | `shuffleOptions:`                           | `shuffle:`                                     | breaking | [#243] |
-| Prompt files      | `select: undefined`                         | omit field for default `single`                | breaking | [#243] |
-| Prompt files      | slider `labelPts: [0, 50, 100]` + body labels | inline `- 0: Not familiar` body lines        | breaking | [#243] |
-| Prompt files      | `noResponse` three-section file              | two-section (drop trailing `---`)              | breaking | [#243] |
-| Prompt files      | mixed `-` / `>` markers per type            | `-` for list types, `>` for openResponse       | breaking | [#243] |
+| Area         | Before                                                 | After                                                                                      | Kind     | Issue  |
+| ------------ | ------------------------------------------------------ | ------------------------------------------------------------------------------------------ | -------- | ------ |
+| Conditions   | `position: percentAgreement`                           | no direct equivalent — see [Conditions](#conditions--position-is-a-read-selector-only-238) | breaking | [#238] |
+| Conditions   | flat-array AND only                                    | `all:` / `any:` / `none:` boolean tree (flat array still parses as sugar for `all:`)       | additive | [#235] |
+| References   | dotted strings only                                    | `{source, name?, path?}` structured form (dotted strings still parse as sugar)             | additive | [#240] |
+| References   | `prompt.X` (no position prefix)                        | `self.prompt.X` / `0.prompt.X` / `all.prompt.X` etc. (position selector required)          | breaking | [#298] |
+| References   | `urlParams.<key>`                                      | `entryUrl.params.<key>`                                                                    | breaking | [#246] |
+| References   | `discussion.<name>` storage key = `<name>`             | storage key = `discussion_<name>`                                                          | breaking | [#240] |
+| Templates    | `templateName:` / `templateContent:` / `templateDesc:` | `name:` / `content:` (drop desc, fold into `notes:`)                                       | breaking | [#244] |
+| Templates    | `contentType:` optional, `"other"` accepted            | `contentType:` required, `"other"` removed                                                 | breaking | [#244] |
+| Elements     | bare `*.prompt.md` string in `elements:`               | explicit `{ type: prompt, file: ... }`                                                     | breaking | [#245] |
+| Elements     | `type: talkMeter`                                      | removed entirely                                                                           | breaking | [#250] |
+| Elements     | `type: sharedNotepad`                                  | `type: prompt` + `shared: true` + openResponse                                             | breaking | [#250] |
+| Elements     | `type: survey`                                         | deprecated; one-time runtime warning (since removed — [#669])                              | additive | [#250] |
+| Resources    | `mediaPlayer.url:`                                     | `mediaPlayer.file:`                                                                        | breaking | [#249] |
+| Resources    | `qualtrics.url: asset://...`                           | strict `https?://` only                                                                    | breaking | [#249] |
+| Resources    | `trackedLink.url: asset://...`                         | strict `https?://` only                                                                    | breaking | [#249] |
+| Prompt files | `shuffleOptions:`                                      | `shuffle:`                                                                                 | breaking | [#243] |
+| Prompt files | `select: undefined`                                    | omit field for default `single`                                                            | breaking | [#243] |
+| Prompt files | slider `labelPts: [0, 50, 100]` + body labels          | inline `- 0: Not familiar` body lines                                                      | breaking | [#243] |
+| Prompt files | `noResponse` three-section file                        | two-section (drop trailing `---`)                                                          | breaking | [#243] |
+| Prompt files | mixed `-` / `>` markers per type                       | `-` for list types, `>` for openResponse                                                   | breaking | [#243] |
 
 ## Treatment files
 
@@ -64,18 +64,18 @@ defaults the dotted form bakes in:
 # Note: the position prefix in the dotted string (`self.`, `0.`, etc.)
 # is now required — see References — required position prefix (#298)
 # below.
-- reference: self.prompt.familiarity   # string sugar — still works
+- reference: self.prompt.familiarity # string sugar — still works
 - reference:
     position: self
     source: prompt
     name: familiarity
-    path: [value]                      # explicit; same default the sugar applies
+    path: [value] # explicit; same default the sugar applies
 
 - reference:
     position: self
     source: prompt
     name: familiarity
-    path: [debugMessages]              # newly possible — addresses other saved fields
+    path: [debugMessages] # newly possible — addresses other saved fields
 ```
 
 Named sources (`prompt`, `survey`, `submitButton`, `qualtrics`,
@@ -117,9 +117,9 @@ with a hint pointing to `self.prompt.familiarity`.
 # Cross-participant reads now live in the reference itself instead
 # of in a separate position field on the condition (which the
 # pre-#238 form also accepted for the same semantic):
-- reference: 0.prompt.familiarity      # slot 0 specifically
-- reference: 1.prompt.familiarity      # slot 1 specifically
-- reference: all.prompt.familiarity    # list of every participant's value
+- reference: 0.prompt.familiarity # slot 0 specifically
+- reference: 1.prompt.familiarity # slot 1 specifically
+- reference: all.prompt.familiarity # list of every participant's value
 ```
 
 The pre-#298 `any` selector and `player` selector are removed.
@@ -128,6 +128,7 @@ The pre-#298 `any` selector and `player` selector are removed.
 `self` — same semantic, clearer name, single canonical spelling.
 
 Two reference-grammar quirks were fixed in the same change:
+
 - **Timeline references accept paths** in both schema and runtime.
   Previously the schema rejected `timeline.<name>.<path>` while the
   runtime accepted it.
@@ -137,16 +138,16 @@ Two reference-grammar quirks were fixed in the same change:
 
 ### `urlParams` reference source → `entryUrl.params.*` (#246)
 
-The word `urlParams` did double duty: an *outgoing* element field on
+The word `urlParams` did double duty: an _outgoing_ element field on
 `trackedLink`/`qualtrics` (params appended to the element's URL) and
-an *incoming* reference source (params from the participant's landing
+an _incoming_ reference source (params from the participant's landing
 URL). Same word, opposite directions.
 
-| Before                          | After                                |
-|---------------------------------|--------------------------------------|
-| `reference: urlParams.condition` | `reference: self.entryUrl.params.condition` |
-| `{source: urlParams, path: [condition]}` | `{position: self, source: entryUrl, path: [params, condition]}` |
-| `urlParams:` element field      | unchanged — still means "outgoing params for this element's URL" |
+| Before                                   | After                                                            |
+| ---------------------------------------- | ---------------------------------------------------------------- |
+| `reference: urlParams.condition`         | `reference: self.entryUrl.params.condition`                      |
+| `{source: urlParams, path: [condition]}` | `{position: self, source: entryUrl, path: [params, condition]}`  |
+| `urlParams:` element field               | unchanged — still means "outgoing params for this element's URL" |
 
 (The `After` column folds in the position prefix required by #298 — see [References — required position prefix](#references--required-position-prefix-298) above.)
 
@@ -253,13 +254,13 @@ templates:
       ...
 ```
 
-| Before              | After       | Why |
-|---------------------|-------------|-----|
-| `templateName:`     | `name:`     | Aligns with how every other named thing in the schema works. The outer `templates:` array already says "these are templates." |
-| `templateContent:`  | `content:`  | Same — `template`-prefix is redundant inside a template definition. |
-| `templateDesc:`     | (folded into `notes:`) | Consistency with the rest of the DSL where `notes:` is the universal researcher-comment field. |
+| Before                  | After                   | Why                                                                                                                                                                   |
+| ----------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `templateName:`         | `name:`                 | Aligns with how every other named thing in the schema works. The outer `templates:` array already says "these are templates."                                         |
+| `templateContent:`      | `content:`              | Same — `template`-prefix is redundant inside a template definition.                                                                                                   |
+| `templateDesc:`         | (folded into `notes:`)  | Consistency with the rest of the DSL where `notes:` is the universal researcher-comment field.                                                                        |
 | `contentType: optional` | `contentType: required` | The fuzzy `templateContentSchema` (~14 candidate schemas, lowest-unmatched-keys wins) gave bad error messages, hid bugs, and ran a leftover `console.log` debug loop. |
-| `contentType: "other"` | (removed) | Schema escape hatch — if a template produces something the validator can't check, that's a missing case to add. |
+| `contentType: "other"`  | (removed)               | Schema escape hatch — if a template produces something the validator can't check, that's a missing case to add.                                                       |
 
 `contentType:` gained five new enum entries
 (`introSteps`, `conditions`, `groupComposition`, `discussion`,
@@ -290,7 +291,7 @@ error messages, tighter inferred types.
 
 ### Elements — `talkMeter` and `sharedNotepad` removed (#250)
 
-Both element types are gone. `survey` is deprecated but still works.
+Both element types are gone. `survey` was deprecated here and later removed outright in [#669] (a literal `type: survey` now fails validation; see [Survey instruments](../researcher/elements.md#survey-instruments) for the prompt-module replacement).
 
 ```yaml
 # Before
@@ -310,7 +311,6 @@ Where `prompts/groupNotes.prompt.md` is a minimal openResponse:
 ---
 type: openResponse
 ---
-
 # Group notes
 
 (participant-facing instructions, if any)
@@ -322,21 +322,22 @@ speaker indication.
 The host's `renderSharedNotepad` slot stays — it's still called by
 shared `prompt` elements. `renderTalkMeter` is removed.
 
-`survey` keeps working but emits a one-time `console.warn` per
-`surveyName` at parse time. Tracked for removal once a module-reuse
-pattern lands; new files should prefer prompt-based patterns.
+`survey` kept working at the time, emitting a one-time `console.warn`
+per `surveyName` at parse time, pending a module-reuse pattern. That
+pattern landed as cross-file imports (#277) and the element was
+removed in [#669].
 
 ### Resources — `url:` (browser-direct) split from `file:` (platform-resolved) (#249)
 
-| Element            | Field                | Schema after #249       | Change |
-|--------------------|----------------------|-------------------------|--------|
-| `prompt`           | `file:`              | `fileSchema` + `.prompt.md` suffix | gains scheme/path validation |
-| `audio`            | `file:`              | `fileSchema`            | gains scheme/path validation |
-| `image`            | `file:`              | `fileSchema`            | gains scheme/path validation |
-| `mediaPlayer`      | `file:` (renamed)    | `fileSchema`            | renamed from `url:`, gains validation |
-| `mediaPlayer`      | `captionsFile:`      | `fileSchema`            | gains validation |
-| `qualtrics`        | `url:`               | `browserUrlSchema`      | drops `asset://` support |
-| `trackedLink`      | `url:`               | `browserUrlSchema`      | drops `asset://` support |
+| Element       | Field             | Schema after #249                  | Change                                |
+| ------------- | ----------------- | ---------------------------------- | ------------------------------------- |
+| `prompt`      | `file:`           | `fileSchema` + `.prompt.md` suffix | gains scheme/path validation          |
+| `audio`       | `file:`           | `fileSchema`                       | gains scheme/path validation          |
+| `image`       | `file:`           | `fileSchema`                       | gains scheme/path validation          |
+| `mediaPlayer` | `file:` (renamed) | `fileSchema`                       | renamed from `url:`, gains validation |
+| `mediaPlayer` | `captionsFile:`   | `fileSchema`                       | gains validation                      |
+| `qualtrics`   | `url:`            | `browserUrlSchema`                 | drops `asset://` support              |
+| `trackedLink` | `url:`            | `browserUrlSchema`                 | drops `asset://` support              |
 
 Two distinct schemas now reflect what's actually happening:
 
@@ -404,7 +405,6 @@ type: noResponse
 # Welcome
 Body markdown.
 ---
-
 # After — two sections
 ---
 type: noResponse
@@ -418,11 +418,11 @@ is rejected with a migration message.
 
 ### Frontmatter renames
 
-| Before                | After       |
-|-----------------------|-------------|
-| `shuffleOptions:`     | `shuffle:`  |
+| Before                | After                                |
+| --------------------- | ------------------------------------ |
+| `shuffleOptions:`     | `shuffle:`                           |
 | `select: "undefined"` | omit field (`single` is the default) |
-| `labelPts:` (slider)  | inline body lines (see above) |
+| `labelPts:` (slider)  | inline body lines (see above)        |
 
 `name:` is **kept** as-is — `name` is the universal identifier across
 all study portions ([Principle 9](principles.md)). Each per-type
@@ -431,13 +431,13 @@ schema is now `.strict()` — typos like `tytle:` / `placholder:` /
 
 ### Per-type marker enforcement
 
-| Type             | Allowed marker | Rejects                          |
-|------------------|----------------|----------------------------------|
-| `multipleChoice` | `-`            | `>` lines                        |
-| `listSorter`     | `-`            | `>` lines                        |
-| `slider`         | `-`            | `>` lines                        |
-| `openResponse`   | `>`            | `-` lines                        |
-| `noResponse`     | (no third section) | any third section            |
+| Type             | Allowed marker     | Rejects           |
+| ---------------- | ------------------ | ----------------- |
+| `multipleChoice` | `-`                | `>` lines         |
+| `listSorter`     | `-`                | `>` lines         |
+| `slider`         | `-`                | `>` lines         |
+| `openResponse`   | `>`                | `-` lines         |
+| `noResponse`     | (no third section) | any third section |
 
 Both forms require a trailing space (`- Foo` / `> Foo`) or a bare
 marker on its own line. `-Foo` / `>Foo` no-space forms are rejected.
@@ -459,10 +459,10 @@ set of changes beyond the treatment-file syntax above.
 host's `get(referenceKey, scope)` looks up the singleton bucket and
 the path is walked into the returned record. Two buckets changed:
 
-| Reference                  | `referenceKey` before | `referenceKey` after | `path` after | Issue |
-|----------------------------|------------------------|----------------------|--------------|-------|
-| `discussion.<name>`        | `<name>`               | `discussion_<name>`  | (unchanged)   | [#240] |
-| `entryUrl.params.<key>`    | `urlParams`            | `entryUrl`           | `["params", "<key>"]` | [#246] |
+| Reference               | `referenceKey` before | `referenceKey` after | `path` after          | Issue  |
+| ----------------------- | --------------------- | -------------------- | --------------------- | ------ |
+| `discussion.<name>`     | `<name>`              | `discussion_<name>`  | (unchanged)           | [#240] |
+| `entryUrl.params.<key>` | `urlParams`           | `entryUrl`           | `["params", "<key>"]` | [#246] |
 
 For `discussion.*`, the rename is a flat namespace bump — what hosts
 stored under `<name>` now lives under `discussion_<name>`.
@@ -476,17 +476,18 @@ extra `params` nesting reserves room for future `entryUrl.path`,
 
 ### Removed / deprecated context slots
 
-| Slot                  | Status                                                                                  |
-|-----------------------|------------------------------------------------------------------------------------------|
-| `renderTalkMeter`     | Removed (#250). Drop the implementation.                                                |
-| `renderSharedNotepad` | Kept — still called by shared `prompt` elements (#250).                                  |
-| `renderSurvey`        | `@deprecated` (#250). Keep implementing for now; tracked for removal once module-reuse pattern lands. |
+| Slot                  | Status                                                                                                               |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `renderTalkMeter`     | Removed (#250). Drop the implementation.                                                                             |
+| `renderSharedNotepad` | Kept — still called by shared `prompt` elements (#250).                                                              |
+| `renderSurvey`        | `@deprecated` (#250); removed in [#669]. Drop the implementation — the field no longer exists on `StagebookContext`. |
 
 ### One-time runtime warning
 
-Parsing a treatment file with any `type: survey` element prints a
-`console.warn` once per `surveyName` per process. This is a
-deprecation signal, not an error.
+Parsing a treatment file with any `type: survey` element printed a
+`console.warn` once per `surveyName` per process — a deprecation
+signal, not an error. Superseded by [#669], which made it a hard
+validation error with migration guidance.
 
 ## Per-issue references
 
@@ -519,3 +520,4 @@ Cross-cutting rationale: [`docs/decisions/principles.md`](principles.md).
 [#248]: https://github.com/talkbench/stagebook/issues/248
 [#249]: https://github.com/talkbench/stagebook/issues/249
 [#250]: https://github.com/talkbench/stagebook/issues/250
+[#669]: https://github.com/talkbench/stagebook/issues/669

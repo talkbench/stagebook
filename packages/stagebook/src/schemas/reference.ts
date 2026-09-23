@@ -2,7 +2,7 @@
  * Reference schemas (#240, #246, #298).
  *
  * A reference identifies a value somewhere in the study state. There are two
- * kinds: **named** sources (`prompt`, `survey`, …) whose data is keyed by
+ * kinds: **named** sources (`prompt`, `qualtrics`, …) whose data is keyed by
  * a researcher-chosen `name`, and **external** sources (`entryUrl`,
  * `attributes`) supplied by the host as a singleton.
  *
@@ -12,7 +12,7 @@
  *
  * References can be written two ways:
  *   - **String shorthand** (the original syntax) — `0.prompt.familiarity`,
- *     `self.entryUrl.params.condition`, `1.survey.TIPI.responses.q1`,
+ *     `self.entryUrl.params.condition`, `1.qualtrics.exit.sessionId`,
  *     `all.prompt.recall.value`.
  *   - **Structured object** — `{ position: 0, source: "prompt", name: "familiarity" }`,
  *     `{ position: "self", source: "entryUrl", path: ["params", "condition"] }`.
@@ -32,7 +32,6 @@ import { referenceNameSchema } from "./primitives.js";
 
 export const namedSourceEnum = z.enum([
   "prompt",
-  "survey",
   "submitButton",
   "qualtrics",
   "timeline",
@@ -154,6 +153,24 @@ const POSITION_SELECTOR_NAMES: ReadonlySet<string> = new Set([
   "all",
 ]);
 
+// The `survey` reference source went with the host-rendered `type: survey`
+// element (#669). It's called out by name — rather than falling through to
+// the generic "invalid source" list — because the files that still use it
+// are exactly the ones mid-migration, and the replacement isn't a rename:
+// the instrument's answers now live under the prompt source.
+function surveySourceRemovedMessage(str: string): string {
+  return `Reference "${str}" uses the removed \`survey\` source (#669). The \`type: survey\` element is gone; author the instrument as prompt elements (an imported module template) and reference its answers as \`<position>.prompt.<name>\`.`;
+}
+
+/** True when a structured reference names the removed `survey` source. */
+function isRemovedSurveyReference(value: unknown): boolean {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    (value as { source?: unknown }).source === "survey"
+  );
+}
+
 function parsePositionToken(
   token: string,
 ): { ok: true; position: PositionSelectorType } | { ok: false } {
@@ -210,6 +227,9 @@ export function parseDottedReference(
         message: `\`urlParams\` reference source was renamed to \`entryUrl.params\` (#246). Use \`self.entryUrl.params.${key}\` instead.`,
       };
     }
+    if (positionToken === "survey") {
+      return { ok: false, message: surveySourceRemovedMessage(str) };
+    }
     // Help authors migrating from pre-#298 references where the first
     // segment was a source enum.
     if (
@@ -246,6 +266,9 @@ export function parseDottedReference(
       ok: false,
       message: `\`urlParams\` reference source was renamed to \`entryUrl.params\` (#246). Use \`<position>.entryUrl.params.${key}\` instead.`,
     };
+  }
+  if (source === "survey") {
+    return { ok: false, message: surveySourceRemovedMessage(str) };
   }
   if (NAMED_SOURCES.has(source)) {
     const [name, ...path] = rest;
@@ -334,8 +357,26 @@ const stringReferenceSchema = z.string().transform((str, ctx) => {
  * require `name` and forbid empty `path` segments; external sources forbid
  * `name` and require a non-empty `path`.
  */
-export const referenceSchema = z.union([
-  namedReferenceSchema,
-  externalReferenceSchema,
-  stringReferenceSchema,
-]);
+export const referenceSchema = z.union(
+  [namedReferenceSchema, externalReferenceSchema, stringReferenceSchema],
+  {
+    // A structured `{ source: "survey" }` fails every branch, and a union
+    // that fails every branch reports a bare "Invalid input". The dotted
+    // form gets its migration hint from `parseDottedReference`; this gives
+    // the structured form the same hint (#669).
+    errorMap: (issue, ctx) => {
+      if (
+        issue.code === z.ZodIssueCode.invalid_union &&
+        isRemovedSurveyReference(ctx.data)
+      ) {
+        const name = (ctx.data as { name?: unknown }).name;
+        return {
+          message: surveySourceRemovedMessage(
+            `{ source: survey${typeof name === "string" ? `, name: ${name}` : ""} }`,
+          ),
+        };
+      }
+      return { message: ctx.defaultError };
+    },
+  },
+);

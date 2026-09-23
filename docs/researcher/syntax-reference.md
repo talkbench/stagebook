@@ -53,7 +53,6 @@ Un-prefixed references like `prompt.topicVote` are rejected at parse time. The e
 | Pattern                                 | Example                                |
 | --------------------------------------- | -------------------------------------- |
 | `<position>.prompt.<name>`              | `self.prompt.topicVote`                |
-| `<position>.survey.<name>.<path...>`    | `self.survey.TIPI.responses.q1`        |
 | `<position>.submitButton.<name>.<path>` | `self.submitButton.confirm.time`       |
 | `<position>.qualtrics.<name>.<path>`    | `self.qualtrics.exit.sessionId`        |
 | `<position>.trackedLink.<name>.<path>`  | `self.trackedLink.signup.events`       |
@@ -108,7 +107,6 @@ All elements accept: `name?`, `notes?`, `displayTime?`, `hideTime?`, `showToPosi
 | `image`        | `file` (required), `width?`                                                                                                                                                                                                                    |
 | `mediaPlayer`  | `file` (required), `name`, `controls?`, `syncToStageTime?`, `submitOnComplete?`, `startAt?`, `stopAt?`, `stepDuration?`, `playVideo?`, `playAudio?`, `captionsFile?`, `allowScrubOutsideBounds?`                                               |
 | `timeline`     | `source` (required, name of a sibling `mediaPlayer`), `name` (required), `selectionType` (required, `range` or `point`), `selectionScope?` (default `all`), `multiSelect?` (default `false`), `showWaveform?` (default `true`), `trackLabels?` |
-| `survey`       | `surveyName` (required) — _deprecated; pending removal once a module-reuse pattern lands. Prefer prompt-based patterns._                                                                                                                       |
 | `qualtrics`    | `url` (required), `urlParams?`                                                                                                                                                                                                                 |
 | `trackedLink`  | `name` (required), `url` (required), `displayText` (required), `helperText?`, `urlParams?`                                                                                                                                                     |
 

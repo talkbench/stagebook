@@ -24,11 +24,11 @@ describe("resolveReferencePosition (#349)", () => {
   });
 
   it("maps `shared.X` to the shared bucket regardless of current position", () => {
-    expect(resolveReferencePosition("shared.survey.tipi", 0)).toEqual({
+    expect(resolveReferencePosition("shared.prompt.tipi", 0)).toEqual({
       kind: "single",
       position: "shared",
     });
-    expect(resolveReferencePosition("shared.survey.tipi", 1)).toEqual({
+    expect(resolveReferencePosition("shared.prompt.tipi", 1)).toEqual({
       kind: "single",
       position: "shared",
     });

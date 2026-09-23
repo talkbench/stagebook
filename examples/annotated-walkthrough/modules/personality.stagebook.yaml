@@ -1,0 +1,31 @@
+# Reusable personality instrument, authored as prompt elements.
+#
+# This file has only `templates:` — no `treatments:` — so it can be
+# imported by any study. The walkthrough pulls it in with a top-level
+# `imports:` entry and invokes `personality_inventory` in the intro
+# sequence. Stagebook renders the items itself, so the same instrument
+# looks and behaves identically on every host — there is no
+# host-rendered survey element any more (the old `type: survey` was
+# removed in #669).
+#
+# Every named element takes a `${prefix}` so the instrument can be
+# administered more than once (e.g. `pre_TIPI` and `post_TIPI`)
+# without storage-key collisions. Answers are referenced per item:
+# `self.prompt.pre_TIPI_extraverted`. File paths are relative to this
+# module; the importer prefixes them with `modules/` automatically.
+
+templates:
+  - name: personality_inventory
+    contentType: elements
+    notes: |
+      Two items in the style of the Ten-Item Personality Inventory
+      (TIPI), each a single-choice 7-point agreement scale. A real
+      instrument would list all ten; two are enough to show the
+      pattern.
+    content:
+      - type: prompt
+        name: ${prefix}_extraverted
+        file: tipi_extraverted.prompt.md
+      - type: prompt
+        name: ${prefix}_critical
+        file: tipi_critical.prompt.md
