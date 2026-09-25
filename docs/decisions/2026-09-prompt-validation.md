@@ -108,9 +108,13 @@ form means the same thing under both rules.
 conditions, and a prompt file never names the prompts around it. A gate using
 `equals: true` on a prompt that a condition can hide never passes, as an
 `exists` gate doesn't today. The researcher docs warn about this.
-`0.prompt.<name>.isValid` and `all.prompt.<name>.isValid` read other
-participants' flags. They carry the same trust as reading their `value`,
-which cross-client conditions already do.
+Slot references such as `0.prompt.<name>.isValid` read another
+participant's flag, with the same trust as reading their `value`, which
+cross-client conditions already do. Don't gate a group with
+`all.prompt.<name>.isValid`. The resolver drops participants who have no
+record, so `equals: true` passes as soon as one participant's answer passes.
+Until [#299](https://github.com/talkbench/stagebook/issues/299) preserves
+missing participant slots, list each slot explicitly under `all:`.
 
 `required` on its own is a display affordance. A prompt can show the
 required marker on a stage whose submit button doesn't check it; enforcement
@@ -141,7 +145,12 @@ A required prompt shows the word "Required", from the message catalog in
   the textarea, the `radiogroup`, and the native `<select>`. The slider
   (`input[type=range]`) and the checkbox `group` don't support that
   attribute, so the marker is associated with them through
-  `aria-describedby`.
+  `aria-describedby`. An untouched slider currently renders no focusable
+  control, so neither the marker nor the slider itself reaches keyboard and
+  screen-reader users
+  ([#689](https://github.com/talkbench/stagebook/issues/689)). `required` on
+  sliders ships with or after that fix, attached to the control the fix
+  introduces.
 
 Length guidance remains the counter, visible before interaction. Its numbers
 carry the state, so color is redundant, and it isn't a live region. Its states
