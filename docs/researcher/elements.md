@@ -206,6 +206,8 @@ When you add `controls`, the playback mode automatically switches to `manual` �
   stopAt: 90 # pause and record event at 90s
 ```
 
+**At the end of the clip.** Playback pauses at `stopAt`, or at the end of the file. The play button then shows a replay icon: pressing it (or `Space` / `K`, or `Space` on a linked timeline) replays the clip from `startAt` (or 0). The jump is logged as a `seek`. Only playback reaches `stopAt`: a seek that lands there while paused records no `stopAt` event and doesn't trigger `submitOnComplete`.
+
 ### Synchronized mode
 
 Ties video time to stage elapsed time so all participants stay in sync. Hides all controls — only useful when you also set `submitOnComplete`.
@@ -228,7 +230,7 @@ Ties video time to stage elapsed time so all participants stay in sync. Hides al
 | `playAudio`               | boolean                | `true`   | Unmute audio                                                                                                                                   |
 | `captionsFile`            | string                 | —        | Path to a `.vtt` captions file                                                                                                                 |
 | `startAt`                 | number                 | —        | Jump to this timestamp (seconds) on load                                                                                                       |
-| `stopAt`                  | number                 | —        | Pause and record a `stopAt` event at this timestamp                                                                                            |
+| `stopAt`                  | number                 | —        | Pause and record a `stopAt` event when playback reaches this timestamp                                                                         |
 | `allowScrubOutsideBounds` | boolean                | `false`  | Let participants scrub outside `startAt`/`stopAt` window                                                                                       |
 | `stepDuration`            | number                 | `1`      | Seconds per step button / `,` `.` key press                                                                                                    |
 | `syncToStageTime`         | boolean                | `false`  | Lock video time to stage elapsed time; hides all controls                                                                                      |
@@ -244,7 +246,7 @@ When the player has focus:
 
 | Key            | Action                             |
 | -------------- | ---------------------------------- |
-| `Space` / `K`  | Play / pause                       |
+| `Space` / `K`  | Play / pause; replay at the end    |
 | `←` / `→`      | Seek ±1 second                     |
 | `J` / `L`      | Seek ±10 seconds                   |
 | `,` / `.`      | Step ±`stepDuration` seconds       |
@@ -284,7 +286,7 @@ Each interaction is appended to an event list under the element's name:
 }
 ```
 
-Event types: `play`, `pause`, `ended` (natural end), `stopAt` (reached stopAt position), `seek` (includes `fromTime`), `speed` (includes `playbackRate`).
+Event types: `play`, `pause`, `ended` (natural end), `stopAt` (playback reached stopAt), `seek` (includes `fromTime`; also logged when play replays the clip from the end), `speed` (includes `playbackRate`).
 
 `watchedRanges` is derived from the event log: closed `[start, end]` intervals (in video seconds) of the portions the participant actually watched, with overlapping or touching intervals merged. Open intervals (a `play` with no closing event — e.g. a mid-playback disconnect) are excluded.
 
@@ -292,7 +294,7 @@ Event types: `play`, `pause`, `ended` (natural end), `stopAt` (reached stopAt po
 
 A form input for marking ranges (intervals) or points (moments) on a media player's timeline. Like a slider saves a number or a radio group saves a choice, the timeline saves a list of time-stamped selections. Use it for annotation and coding tasks — e.g., "mark every segment where Speaker A interrupts Speaker B" or "mark each time the participant nods."
 
-The timeline links to a sibling `mediaPlayer` element by name via the `source` field. It is always a consumer — it reads playback state and can seek, but never controls play/pause directly.
+The timeline links to a sibling `mediaPlayer` element by name via the `source` field. It is always a consumer: it reads playback state, seeks, and plays or pauses the player with `Space`, all through the player — so the player's window and end-of-clip replay apply.
 
 ```yaml
 - type: mediaPlayer

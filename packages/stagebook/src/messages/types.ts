@@ -146,6 +146,9 @@ export interface StagebookMessages {
   mediaPause: string;
   mediaPlayTitle: string;
   mediaPauseTitle: string;
+  /** Play button at the end of the clip, which replays it from the start. */
+  mediaReplay: string;
+  mediaReplayTitle: string;
   mediaSpeedLabel: string;
   mediaSpeedTitle: string;
   /** Scrub-bar slider accessible name. */

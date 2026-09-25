@@ -156,6 +156,8 @@ async function installYTMock(page: PWT) {
           },
           seekTo(t: number) {
             w.__ytLastSeek = t;
+            // Opt-in: tests that need the player's clock to follow seeks.
+            if (w.__ytSeekMovesClock) w.__ytCurrentTime = t;
           },
           getCurrentTime() {
             return w.__ytCurrentTime;
@@ -714,6 +716,11 @@ test("save records stopAt event when timeupdate exceeds stopAt", async ({
   await component
     .locator('[data-testid="mediaPlayer-video"]')
     .evaluate((el) => {
+      // Playback (not a paused seek) reaches stopAt (#679).
+      Object.defineProperty(el, "paused", {
+        get: () => false,
+        configurable: true,
+      });
       Object.defineProperty(el, "currentTime", {
         get: () => 6,
         configurable: true,
@@ -748,6 +755,11 @@ test("onComplete called when submitOnComplete is true and stopAt is reached", as
   await component
     .locator('[data-testid="mediaPlayer-video"]')
     .evaluate((el) => {
+      // Playback (not a paused seek) reaches stopAt (#679).
+      Object.defineProperty(el, "paused", {
+        get: () => false,
+        configurable: true,
+      });
       Object.defineProperty(el, "currentTime", {
         get: () => 6,
         configurable: true,
@@ -761,6 +773,230 @@ test("onComplete called when submitOnComplete is true and stopAt is reached", as
       component.locator('[data-testid="completed"]').textContent(),
     )
     .toBe("true");
+});
+
+// -- end of the clip: replay (#684), paused seeks to stopAt (#679) --
+
+type SavedEvents = Array<{
+  key: string;
+  value: {
+    events: Array<{ type: string; videoTime: number; fromTime?: number }>;
+  };
+}>;
+
+test("at stopAt the play button replays the clip from startAt", async ({
+  mount,
+}) => {
+  const component = await mount(
+    <MockMediaPlayer
+      url="/sample-video.mp4"
+      name="test"
+      startAt={4}
+      stopAt={6}
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  const video = component.locator('[data-testid="mediaPlayer-video"]');
+  const time = () => video.evaluate((el: HTMLVideoElement) => el.currentTime);
+  await expect.poll(time).toBeCloseTo(4, 1);
+
+  // Seek to the end while paused. That isn't the clip finishing (#679).
+  const forward = component.locator('[data-testid="mediaPlayer-seekForward"]');
+  await forward.click();
+  await forward.click();
+  await expect.poll(time).toBeCloseTo(6, 2);
+  const play = component.locator('[data-testid="mediaPlayer-playPause"]');
+  await expect(play).toHaveAttribute("aria-label", "Replay");
+
+  await play.click();
+  await expect
+    .poll(() => video.evaluate((el: HTMLVideoElement) => el.paused))
+    .toBe(false);
+
+  // Read the log up to the replay: playback may legitimately reach stopAt
+  // again afterwards on a slow run.
+  const log = async () => {
+    const saves = JSON.parse(
+      (await component.locator('[data-testid="save-log"]').textContent()) ??
+        "[]",
+    ) as SavedEvents;
+    return saves.at(-1)?.value.events ?? [];
+  };
+  await expect
+    .poll(async () => (await log()).some((e) => e.type === "play"))
+    .toBe(true);
+  const events = await log();
+  const replay = events.findIndex(
+    (e) => e.type === "seek" && e.videoTime === 4,
+  );
+  expect(events[replay]).toMatchObject({ fromTime: 6 });
+  // The paused seeks to stopAt recorded no stopAt (#679)…
+  expect(events.slice(0, replay).map((e) => e.type)).toEqual(["seek", "seek"]);
+  // …and playback restarted at startAt.
+  expect(events[replay + 1]).toMatchObject({ type: "play" });
+  expect(events[replay + 1].videoTime).toBeCloseTo(4, 1);
+});
+
+test("YouTube: at stopAt the play button replays the clip from startAt", async ({
+  mount,
+  page,
+}) => {
+  await installYTMock(page);
+  const component = await mount(
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      startAt={20}
+      stopAt={30}
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  await fireYTOnReady(page);
+  // The player paused at stopAt.
+  await page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    w.__ytCurrentTime = 30;
+    w.__ytState = 2;
+    w.__ytOnStateChange?.({ data: 2 });
+  });
+  const play = component.locator('[data-testid="mediaPlayer-playPause"]');
+  await expect(play).toHaveAttribute("aria-label", "Replay");
+  await play.click();
+  expect(
+    await page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const w = window as any;
+      return [w.__ytLastSeek, w.__ytPlayCalled] as [number, number];
+    }),
+  ).toEqual([20, 1]);
+});
+
+/** Put the YouTube stub at `t` in `state` (1 playing, 2 paused, 0 ended). */
+async function ytStateAt(page: PWT, t: number, state: 0 | 1 | 2) {
+  await page.evaluate(
+    ([t, state]) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const w = window as any;
+      w.__ytCurrentTime = t;
+      w.__ytState = state;
+      w.__ytOnStateChange?.({ data: state });
+    },
+    [t, state] as const,
+  );
+}
+
+async function ytSeeksAndPlays(page: PWT) {
+  return page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    return [w.__ytLastSeek, w.__ytPlayCalled] as [number | null, number];
+  });
+}
+
+test("YouTube: at its natural end the play button replays from the start", async ({
+  mount,
+  page,
+}) => {
+  await installYTMock(page);
+  const component = await mount(
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  await fireYTOnReady(page);
+  // YouTube can report a time a little short of its duration once ENDED.
+  await ytStateAt(page, 59.7, 0);
+  const play = component.locator('[data-testid="mediaPlayer-playPause"]');
+  await expect(play).toHaveAttribute("aria-label", "Replay");
+  await play.click();
+  expect(await ytSeeksAndPlays(page)).toEqual([0, 1]);
+});
+
+test("YouTube: Space and K replay at stopAt", async ({ mount, page }) => {
+  await installYTMock(page);
+  const component = await mount(
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      startAt={20}
+      stopAt={30}
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  await fireYTOnReady(page);
+  const player = component.locator('[data-testid="mediaPlayer"]');
+  for (const [key, plays] of [
+    [" ", 1],
+    ["k", 2],
+  ] as const) {
+    await ytStateAt(page, 30, 2);
+    await player.focus();
+    await page.keyboard.press(key);
+    expect(await ytSeeksAndPlays(page)).toEqual([20, plays]);
+  }
+});
+
+test("YouTube: the play button follows seeks made while paused", async ({
+  mount,
+  page,
+}) => {
+  await installYTMock(page);
+  await page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__ytSeekMovesClock = true;
+  });
+  const component = await mount(
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      startAt={20}
+      stopAt={30}
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  await fireYTOnReady(page);
+  await ytStateAt(page, 30, 2);
+  const play = component.locator('[data-testid="mediaPlayer-playPause"]');
+  await expect(play).toHaveAttribute("aria-label", "Replay");
+  await component.locator('[data-testid="mediaPlayer"]').focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(play).toHaveAttribute("aria-label", "Play");
+  await page.keyboard.press("ArrowRight");
+  await expect(play).toHaveAttribute("aria-label", "Replay");
+});
+
+test("YouTube: pausing just past stopAt counts as reaching it", async ({
+  mount,
+  page,
+}) => {
+  await installYTMock(page);
+  const component = await mount(
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      startAt={20}
+      stopAt={30}
+      submitOnComplete={true}
+      controls={{ playPause: true }}
+    />,
+  );
+  await fireYTOnReady(page);
+  await ytStateAt(page, 29.9, 1);
+  // Paused before the next poll tick noticed playback crossed stopAt.
+  await ytStateAt(page, 30.1, 2);
+  await expect
+    .poll(() => component.locator('[data-testid="completed"]').textContent())
+    .toBe("true");
+  const saves = JSON.parse(
+    (await component.locator('[data-testid="save-log"]').textContent()) ?? "[]",
+  ) as SavedEvents;
+  expect(saves.at(-1)?.value.events.map((e) => e.type)).toEqual([
+    "play",
+    "stopAt",
+  ]);
 });
 
 // -- captions overlay --

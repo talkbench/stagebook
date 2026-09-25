@@ -119,6 +119,8 @@ export const he: StagebookMessages = {
   mediaPlay: "ניגון",
   mediaPause: "השהיה",
   mediaPlayTitle: "ניגון (Space)",
+  mediaReplay: "ניגון חוזר",
+  mediaReplayTitle: "ניגון חוזר (Space)",
   mediaPauseTitle: "השהיה (Space)",
   mediaSpeedLabel: "מהירות ניגון",
   mediaSpeedTitle: "מהירות ניגון (< / >)",

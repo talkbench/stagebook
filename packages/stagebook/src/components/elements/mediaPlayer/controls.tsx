@@ -16,6 +16,7 @@ import { useMessages } from "../../StagebookProvider.js";
 import {
   PlayIcon,
   PauseIcon,
+  ReplayIcon,
   SeekBackIcon,
   SeekForwardIcon,
   StepBackIcon,
@@ -59,6 +60,8 @@ export interface HTML5ControlsProps {
     | { playPause?: boolean; seek?: boolean; step?: boolean; speed?: boolean }
     | undefined;
   isPaused: boolean;
+  /** Paused at the end of the clip: the play button replays it (#684). */
+  atEnd: boolean;
   stepDuration: number;
   playbackRate: number;
   scrubMin: number;
@@ -96,6 +99,7 @@ export interface HTML5ControlsProps {
 export function HTML5Controls({
   controls,
   isPaused,
+  atEnd,
   stepDuration,
   playbackRate,
   scrubMin,
@@ -163,15 +167,25 @@ export function HTML5Controls({
         {controls?.playPause && (
           <button
             data-testid="mediaPlayer-playPause"
-            aria-label={isPaused ? messages.mediaPlay : messages.mediaPause}
+            aria-label={
+              atEnd
+                ? messages.mediaReplay
+                : isPaused
+                  ? messages.mediaPlay
+                  : messages.mediaPause
+            }
             title={
-              isPaused ? messages.mediaPlayTitle : messages.mediaPauseTitle
+              atEnd
+                ? messages.mediaReplayTitle
+                : isPaused
+                  ? messages.mediaPlayTitle
+                  : messages.mediaPauseTitle
             }
             tabIndex={0}
             style={controlBtnLarge}
             onClick={onPlayPause}
           >
-            {isPaused ? <PlayIcon /> : <PauseIcon />}
+            {atEnd ? <ReplayIcon /> : isPaused ? <PlayIcon /> : <PauseIcon />}
           </button>
         )}
 
@@ -341,6 +355,8 @@ export function HTML5Controls({
 export interface YouTubeControlsProps {
   controls: { playPause?: boolean; seek?: boolean } | undefined;
   isPaused: boolean;
+  /** Paused at the end of the clip: the play button replays it (#684). */
+  atEnd: boolean;
   scrubMin: number;
   scrubMax: number;
   currentTime: number;
@@ -363,6 +379,7 @@ export interface YouTubeControlsProps {
 export function YouTubeControls({
   controls,
   isPaused,
+  atEnd,
   scrubMin,
   scrubMax,
   currentTime,
@@ -409,15 +426,25 @@ export function YouTubeControls({
         {controls?.playPause && (
           <button
             data-testid="mediaPlayer-playPause"
-            aria-label={isPaused ? messages.mediaPlay : messages.mediaPause}
+            aria-label={
+              atEnd
+                ? messages.mediaReplay
+                : isPaused
+                  ? messages.mediaPlay
+                  : messages.mediaPause
+            }
             title={
-              isPaused ? messages.mediaPlayTitle : messages.mediaPauseTitle
+              atEnd
+                ? messages.mediaReplayTitle
+                : isPaused
+                  ? messages.mediaPlayTitle
+                  : messages.mediaPauseTitle
             }
             tabIndex={0}
             style={controlBtnLarge}
             onClick={onPlayPause}
           >
-            {isPaused ? <PlayIcon /> : <PauseIcon />}
+            {atEnd ? <ReplayIcon /> : isPaused ? <PlayIcon /> : <PauseIcon />}
           </button>
         )}
 

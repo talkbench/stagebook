@@ -124,6 +124,8 @@ export const en: StagebookMessages = {
   mediaPlay: "Play",
   mediaPause: "Pause",
   mediaPlayTitle: "Play (Space)",
+  mediaReplay: "Replay",
+  mediaReplayTitle: "Replay (Space)",
   mediaPauseTitle: "Pause (Space)",
   mediaSpeedLabel: "Playback speed",
   mediaSpeedTitle: "Playback speed (< / >)",

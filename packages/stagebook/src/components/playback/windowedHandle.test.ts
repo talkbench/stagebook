@@ -58,6 +58,21 @@ describe("withSeekWindow (#675)", () => {
     expect(seeks).toEqual([500]);
   });
 
+  it("plays through the inner handle, or through a given play", () => {
+    const { handle } = recordingHandle();
+    let innerPlays = 0;
+    handle.play = () => (innerPlays += 1);
+    withSeekWindow(handle, () => ({ start: 0, end: 10 })).play();
+    expect(innerPlays).toBe(1);
+    let customPlays = 0;
+    withSeekWindow(
+      handle,
+      () => ({ start: 0, end: 10 }),
+      () => (customPlays += 1),
+    ).play();
+    expect([innerPlays, customPlays]).toEqual([1, 1]);
+  });
+
   it("reports the window", () => {
     const { handle } = recordingHandle();
     const windowed = withSeekWindow(handle, () => ({ start: 60, end: 90 }));

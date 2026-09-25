@@ -42,9 +42,12 @@ export function seekWindow(
 export function withSeekWindow(
   inner: PlaybackHandle,
   getBounds: () => Bounds,
+  /** How to start playback; defaults to the inner handle's own play. A
+   *  MediaPlayer passes its replay-aware play (#684). */
+  play: () => void = () => inner.play(),
 ): PlaybackHandle {
   return {
-    play: () => inner.play(),
+    play,
     pause: () => inner.pause(),
     seekTo: (seconds: number) => {
       const { start, end } = getBounds();

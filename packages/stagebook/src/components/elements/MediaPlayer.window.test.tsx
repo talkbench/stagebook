@@ -11,7 +11,7 @@ import type { PlaybackHandle } from "../playback/PlaybackHandle.js";
 // the player's window (#675). jsdom's <video> never loads, so the duration is
 // set by hand where a test needs one.
 
-let seen: (PlaybackHandle | null)[] = [];
+let seen: (PlaybackHandle | null | undefined)[] = [];
 function Probe() {
   seen.push(usePlayback("clip"));
   return null;
