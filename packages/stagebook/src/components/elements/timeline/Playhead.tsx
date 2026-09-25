@@ -1,5 +1,6 @@
 import React, { useCallback, useRef } from "react";
 import { timeToPixel, pixelToTime } from "./timelineLayout.js";
+import { domainSpan, type TimeDomain } from "./domain.js";
 import { formatTime } from "../../../utils/formatTime.js";
 import {
   zoomDecimals,
@@ -17,8 +18,9 @@ const OFFSCREEN_PADDING = 20;
 export interface PlayheadProps {
   /** Current playback time in seconds. */
   currentTime: number;
-  /** Total media duration in seconds. */
-  duration: number;
+  /** Span shown at zoom 1, in media seconds (the whole file or the
+   *  source player's window). */
+  domain: TimeDomain;
   /** Width of the waveform area in pixels. */
   width: number;
   /** Height of the tracks area in pixels. */
@@ -52,7 +54,7 @@ export interface PlayheadProps {
  */
 export function Playhead({
   currentTime,
-  duration,
+  domain,
   width,
   height,
   rulerHeight,
@@ -64,6 +66,7 @@ export function Playhead({
 }: PlayheadProps) {
   // All hooks must be called before any early returns (Rules of Hooks).
   const containerRef = useRef<HTMLDivElement>(null);
+  const span = domainSpan(domain);
   const isDragging = useRef(false);
 
   const handlePointerDown = useCallback(
@@ -91,25 +94,20 @@ export function Playhead({
       if (!parent) return;
       const rect = parent.getBoundingClientRect();
       const localX = e.clientX - rect.left;
-      const time = pixelToTime(
-        localX,
-        duration,
-        width,
-        zoomLevel,
-        viewportStart,
-      );
+      const time = pixelToTime(localX, span, width, zoomLevel, viewportStart);
       // Clamp drag to the visible viewport so the playhead can't be dragged
-      // off-screen — without this, dragging into the gutter sends it to t=0
-      // (invisible left of viewport when zoomed in) and dragging past the
-      // right edge sends it past viewportEnd (invisible until you pan).
-      const visibleDuration = zoomLevel > 0 ? duration / zoomLevel : duration;
-      const viewportEnd = Math.min(duration, viewportStart + visibleDuration);
-      const lo = Math.max(0, viewportStart);
-      const hi = Math.min(duration, viewportEnd);
+      // off-screen — without this, dragging into the gutter sends it to the
+      // domain start (invisible left of viewport when zoomed in) and
+      // dragging past the right edge sends it past viewportEnd (invisible
+      // until you pan). The viewport lies inside the domain, so this also
+      // keeps the playhead inside the player's window (#675).
+      const visibleDuration = zoomLevel > 0 ? span / zoomLevel : span;
+      const lo = Math.max(domain.start, viewportStart);
+      const hi = Math.min(domain.end, viewportStart + visibleDuration);
       const clamped = Math.max(lo, Math.min(hi, time));
       onSeek(clamped);
     },
-    [duration, width, zoomLevel, viewportStart, onSeek],
+    [domain, span, width, zoomLevel, viewportStart, onSeek],
   );
 
   const handlePointerUp = useCallback(
@@ -133,9 +131,9 @@ export function Playhead({
   }, [onDragEnd]);
 
   // Early returns after all hooks
-  if (!Number.isFinite(duration) || duration <= 0) return null;
+  if (!Number.isFinite(span) || span <= 0) return null;
 
-  const x = timeToPixel(currentTime, duration, width, zoomLevel, viewportStart);
+  const x = timeToPixel(currentTime, span, width, zoomLevel, viewportStart);
   if (x < -OFFSCREEN_PADDING || x > width + OFFSCREEN_PADDING) return null;
 
   return (

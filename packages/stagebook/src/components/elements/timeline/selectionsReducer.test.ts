@@ -206,6 +206,77 @@ describe("selectionsReducer", () => {
     });
   });
 
+  // Enter creates marks during playback; selecting them would hand the next
+  // arrow key to the new mark instead of the playhead (#678).
+  describe("creating without selecting (select: false)", () => {
+    const selected: SelectionState = {
+      ...emptyState(),
+      selections: [{ time: 10 }],
+      activeIndex: 0,
+    };
+
+    for (const multiSelect of [true, false]) {
+      it(`CREATE_POINT adds the point and leaves nothing selected (multiSelect: ${String(multiSelect)})`, () => {
+        const result = selectionsReducer(selected, {
+          type: "CREATE_POINT",
+          time: 20,
+          track: undefined,
+          multiSelect,
+          select: false,
+        });
+        expect(result.selections).toContainEqual({ time: 20 });
+        expect(result.activeIndex).toBe(null);
+        expect(result.activeHandle).toBe(null);
+      });
+
+      it(`CREATE_RANGE adds the range and leaves nothing selected (multiSelect: ${String(multiSelect)})`, () => {
+        // Start from a selected range (multi-select) to pin that creating
+        // clears it; single-select can only create into an empty timeline.
+        const start: SelectionState = multiSelect
+          ? {
+              ...emptyState(),
+              selections: [{ start: 1, end: 2 }],
+              activeIndex: 0,
+              activeHandle: "end",
+            }
+          : emptyState();
+        const result = selectionsReducer(start, {
+          type: "CREATE_RANGE",
+          start: 20,
+          end: 25,
+          track: undefined,
+          multiSelect,
+          select: false,
+        });
+        expect(result.selections).toContainEqual({ start: 20, end: 25 });
+        expect(result.activeIndex).toBe(null);
+        expect(result.activeHandle).toBe(null);
+      });
+    }
+
+    it("still selects the new mark by default", () => {
+      const result = selectionsReducer(selected, {
+        type: "CREATE_POINT",
+        time: 20,
+        track: undefined,
+        multiSelect: true,
+      });
+      expect(result.activeIndex).toBe(1);
+    });
+
+    it("undo removes the new mark", () => {
+      const created = selectionsReducer(selected, {
+        type: "CREATE_POINT",
+        time: 20,
+        track: undefined,
+        multiSelect: true,
+        select: false,
+      });
+      const undone = selectionsReducer(created, { type: "UNDO" });
+      expect(undone.selections).toEqual([{ time: 10 }]);
+    });
+  });
+
   describe("ADJUST_HANDLE", () => {
     it("moves start handle", () => {
       const state: SelectionState = {

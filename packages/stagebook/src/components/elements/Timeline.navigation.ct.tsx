@@ -84,6 +84,60 @@ for (const selectionType of ["point", "range"] as const) {
   });
 }
 
+// Enter leaves its mark unselected (#678), so the status names the new mark
+// itself. A bare "No annotation selected" would repeat unchanged when Enter
+// replaces a single-select point, and a live region stays silent on a repeat.
+test("announces each mark made with Enter, including single-select replacements", async ({
+  mount,
+  page,
+}) => {
+  const props = {
+    source: "player",
+    playerName: "player",
+    name: "annotations",
+    selectionType: "point" as const,
+  };
+  const component = await mount(
+    <MockTimeline {...props} mockCurrentTime={10} />,
+  );
+  const status = page.getByRole("status");
+  await page.getByTestId("timeline").focus();
+  await page.keyboard.press("Enter");
+  await expect(status).toHaveText(
+    "Point 1 of 1, 10 seconds. No annotation selected. 1 annotation.",
+  );
+  await component.update(<MockTimeline {...props} mockCurrentTime={12} />);
+  await page.keyboard.press("Enter");
+  await expect(status).toHaveText(
+    "Point 1 of 1, 12 seconds. No annotation selected. 1 annotation.",
+  );
+});
+
+test("announces a range made by holding Enter", async ({ mount, page }) => {
+  const props = {
+    source: "player",
+    playerName: "player",
+    name: "annotations",
+    selectionType: "range" as const,
+    multiSelect: true,
+    initialSelections: [{ start: 1, end: 2 }],
+  };
+  const component = await mount(
+    <MockTimeline {...props} mockCurrentTime={10} />,
+  );
+  const status = page.getByRole("status");
+  await page.getByTestId("timeline").focus();
+  await page.keyboard.down("Enter");
+  await component.update(<MockTimeline {...props} mockCurrentTime={15} />);
+  await page.keyboard.up("Enter");
+  await expect(status).toHaveText(
+    "Range 2 of 2, 10 to 15 seconds. No annotation selected. 2 annotations.",
+  );
+  // Later selections announce normally.
+  await page.keyboard.press("[");
+  await expect(status).toHaveText("Range 2 of 2, 10 to 15 seconds.");
+});
+
 test("announces selection, boundary changes, edits, deletion and undo", async ({
   mount,
   page,
@@ -153,10 +207,7 @@ test("brackets ignore buttons and modifiers; empty timelines remain usable", asy
   await page.keyboard.press("]");
   await page.keyboard.press("[");
   await page.keyboard.press("Enter");
-  await expect(page.getByTestId("point-0")).toHaveAttribute(
-    "data-active",
-    "true",
-  );
+  await expect(page.getByTestId("point-0")).toBeAttached();
 });
 
 test("status stays quiet during playback and dragging, then reports the completed pointer edit", async ({
@@ -364,9 +415,10 @@ for (const selectionType of ["point", "range"] as const) {
         );
       }
       await page.keyboard.up("Enter");
+      // Created unselected (#678), but revealed.
       await expect(page.getByTestId(`${selectionType}-1`)).toHaveAttribute(
         "data-active",
-        "true",
+        "false",
       );
       await expect(page.getByTestId(`${selectionType}-1`)).toBeInViewport();
       await expect(page.getByTestId("save-log")).toContainText(

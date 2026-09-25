@@ -102,10 +102,7 @@ for (const selectionType of ["point", "range"] as const) {
     await page.keyboard.press("Shift+Tab");
     await expect(page.getByTestId("timeline")).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page.getByTestId(`${selectionType}-0`)).toHaveAttribute(
-      "data-active",
-      "true",
-    );
+    await expect(page.getByTestId(`${selectionType}-0`)).toBeAttached();
     await expect(page.getByTestId("save-log")).not.toHaveText("[]");
   });
 }
@@ -125,7 +122,13 @@ test("focused button keys cannot edit an active annotation", async ({
   );
   await tabTo(page, page.getByTestId("timeline"));
   await page.keyboard.press("Enter");
-  await expect(page.getByTestId("point-0")).toBeAttached();
+  // Enter leaves the new point unselected (#678); select it so there is an
+  // active annotation for the button keys to (not) edit.
+  await page.keyboard.press("]");
+  await expect(page.getByTestId("point-0")).toHaveAttribute(
+    "data-active",
+    "true",
+  );
   // The selection renders before its save effect necessarily reaches the
   // host. Compare against the completed initial save, not a transient [].
   await expect(page.getByTestId("save-log")).not.toHaveText("[]");

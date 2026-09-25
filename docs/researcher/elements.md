@@ -309,6 +309,27 @@ The timeline links to a sibling `mediaPlayer` element by name via the `source` f
   multiSelect: true # allow multiple selections
 ```
 
+### Player windows
+
+When the source `mediaPlayer` has `startAt` and/or `stopAt`, the timeline covers only that window: the track spans `[startAt, stopAt]`, and participants can't seek, mark or drag outside it. Times are still **media time** — seconds from the start of the file — in the ruler, the saved data and the player's clock, so marks join directly to the recording. Set `allowScrubOutsideBounds: true` on the player to show and mark the whole file instead.
+
+```yaml
+- type: mediaPlayer
+  name: clip
+  file: shared/long_recording.mp4
+  startAt: 60
+  stopAt: 90
+  controls:
+    playPause: true
+    seek: true
+
+- type: timeline
+  source: clip # track spans 1:00–1:30; marks save as 60–90
+  name: nods
+  selectionType: point
+  multiSelect: true
+```
+
 ### Range mode vs point mode
 
 **Range mode** (`selectionType: range`) — for marking intervals with a start and end time. Participants click-and-drag on the waveform to create a range.
@@ -362,7 +383,7 @@ When `trackLabels` is omitted, tracks are labeled by index: "Track 0", "Track 1"
 
 | Gesture                       | Action                                                                                  |
 | ----------------------------- | --------------------------------------------------------------------------------------- |
-| Click on empty space          | Seek playhead to that time                                                              |
+| Click on empty space          | Create a 1-second range starting there                                                  |
 | Click-and-drag on empty space | Create a new range (clamped to free space — ranges cannot overlap within a track/scope) |
 | Click on an existing range    | Select it (shows handles)                                                               |
 | Drag a handle                 | Adjust the range boundary (clamped so ranges cannot overlap or invert)                  |
@@ -370,15 +391,31 @@ When `trackLabels` is omitted, tracks are labeled by index: "Track 0", "Track 1"
 
 **Point mode:**
 
-| Gesture                    | Action                                    |
-| -------------------------- | ----------------------------------------- |
-| Click on empty space       | Place a new point and seek playhead there |
-| Click on an existing point | Select it                                 |
-| Drag a selected point      | Reposition it                             |
+| Gesture                    | Action                                     |
+| -------------------------- | ------------------------------------------ |
+| Click on empty space       | Place a new point (the playhead stays put) |
+| Click on an existing point | Select it                                  |
+| Drag a selected point      | Reposition it                              |
+
+In both modes, click or drag the time ruler (or drag the playhead) to seek.
 
 ### Keyboard shortcuts
 
-The timeline only captures keys when a selection is active. Otherwise all keys fall through to the media player (Space, K, J, L, arrows, etc. still work for playback).
+These keys work while the timeline has focus (click it or Tab to it).
+
+**Nothing selected:**
+
+| Key                | Action                                                         |
+| ------------------ | -------------------------------------------------------------- |
+| `Space`            | Play / pause                                                   |
+| `Left` / `Right`   | Move the playhead +-1 second                                   |
+| `,` / `.`          | Move the playhead +-1 frame (~0.033s)                          |
+| `Enter`            | Point mode: place a point at the playhead                      |
+| Hold `Enter`       | Range mode: mark a range from press to release                 |
+| `[` / `]`          | Select the previous / next annotation (the playhead stays put) |
+| `Ctrl+Z` / `Cmd+Z` | Undo last action                                               |
+
+A mark made with `Enter` isn't selected, so the arrow keys keep moving the playhead while you mark in real time. To adjust one, select it with `[` / `]` or a click. Marks made by clicking or dragging are selected, so the keys below apply to them right away.
 
 **Range mode (handle active):**
 
@@ -421,7 +458,7 @@ If the media file has multiple audio channels (e.g., per-speaker audio from a gr
 
 ### Saved data
 
-Saved under `timeline_<name>`. The value is always a chronologically sorted array — even when `multiSelect: false` (the array has at most one item).
+Saved under `timeline_<name>`. The value is always a chronologically sorted array — even when `multiSelect: false` (the array has at most one item). Times are seconds from the start of the media file, even when the player shows a `startAt`/`stopAt` window.
 
 **Range mode, `selectionScope: "all"`:**
 
@@ -623,10 +660,11 @@ Measured in seconds from when the **stage** started. (All fields below are top-l
 
 Measured in seconds from the beginning of the **media file**.
 
-| Field     | Element       | Says                                       |
-| --------- | ------------- | ------------------------------------------ |
-| `startAt` | `mediaPlayer` | Position in the clip where playback begins |
-| `stopAt`  | `mediaPlayer` | Position in the clip where playback pauses |
+| Field                  | Element               | Says                                                                       |
+| ---------------------- | --------------------- | -------------------------------------------------------------------------- |
+| `startAt`              | `mediaPlayer`         | Position in the clip where playback begins                                 |
+| `stopAt`               | `mediaPlayer`         | Position in the clip where playback pauses                                 |
+| `time`, `start`, `end` | `timeline` saved data | Marked moments and intervals, including inside a `startAt`/`stopAt` window |
 
 ### Durations (no frame)
 

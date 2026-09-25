@@ -42,12 +42,16 @@ export type SelectionAction =
       end: number;
       track: number | undefined;
       multiSelect: boolean;
+      /** Select the new range (default true). Enter passes false (#678). */
+      select?: boolean;
     }
   | {
       type: "CREATE_POINT";
       time: number;
       track: number | undefined;
       multiSelect: boolean;
+      /** Select the new point (default true). Enter passes false (#678). */
+      select?: boolean;
     }
   | {
       type: "ADJUST_HANDLE";
@@ -120,7 +124,7 @@ export function selectionsReducer(
         return {
           ...snapshot(state),
           selections: [range],
-          activeIndex: 0,
+          activeIndex: action.select === false ? null : 0,
           activeHandle: null,
         };
       }
@@ -136,7 +140,7 @@ export function selectionsReducer(
       return {
         ...snapshot(state),
         selections: next,
-        activeIndex: next.indexOf(range),
+        activeIndex: action.select === false ? null : next.indexOf(range),
         activeHandle: null,
       };
     }
@@ -148,7 +152,7 @@ export function selectionsReducer(
         return {
           ...snapshot(state),
           selections: [point],
-          activeIndex: 0,
+          activeIndex: action.select === false ? null : 0,
           activeHandle: null,
         };
       }
@@ -158,7 +162,7 @@ export function selectionsReducer(
       return {
         ...snapshot(state),
         selections: next,
-        activeIndex: next.indexOf(point),
+        activeIndex: action.select === false ? null : next.indexOf(point),
         activeHandle: null,
       };
     }

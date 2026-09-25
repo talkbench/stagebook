@@ -13,6 +13,7 @@ import { YouTubePlayer } from "./mediaPlayer/YouTubePlayer.js";
 import { HTML5Controls, YouTubeControls } from "./mediaPlayer/controls.js";
 import { useRegisterPlayback } from "../playback/PlaybackProvider.js";
 import type { PlaybackHandle } from "../playback/PlaybackHandle.js";
+import { seekWindow, withSeekWindow } from "../playback/windowedHandle.js";
 import { computeWatchedRanges } from "../../utils/watchedRanges.js";
 import {
   computeBucketCount,
@@ -489,7 +490,21 @@ export function MediaPlayer({
   // handle would be inert (null videoRef), and registering it would let a
   // sibling Timeline latch onto a dead handle whose identity never changes —
   // so it would never retry waveform capture once the URL recovers (#487).
-  useRegisterPlayback(name, urlIsUnsafe ? null : (ytHandle ?? handle));
+  const sourceHandle = urlIsUnsafe ? null : (ytHandle ?? handle);
+  // Siblings seek through a wrapper that keeps them inside this player's
+  // window (#675). The window is read through a ref so a changed startAt /
+  // stopAt applies without re-registering the handle.
+  const seekBoundsRef = useRef({ startAt, stopAt, allowScrubOutsideBounds });
+  seekBoundsRef.current = { startAt, stopAt, allowScrubOutsideBounds };
+  const registeredHandle = useMemo(
+    () =>
+      sourceHandle &&
+      withSeekWindow(sourceHandle, () =>
+        seekWindow(seekBoundsRef.current, sourceHandle.getDuration()),
+      ),
+    [sourceHandle],
+  );
+  useRegisterPlayback(name, registeredHandle);
 
   // Hold-to-scrub state
   const arrowRepeatCountRef = useRef(0);
@@ -723,15 +738,13 @@ export function MediaPlayer({
   // Clamp seek target to allowed range — works for both HTML5 and YouTube
   const seek = useCallback(
     (delta: number) => {
+      const bounds = { startAt, stopAt, allowScrubOutsideBounds };
       if (ytHandle) {
         const cur = ytHandle.getCurrentTime();
-        const dur = ytHandle.getDuration();
-        const min = allowScrubOutsideBounds ? 0 : (startAt ?? 0);
-        const max = allowScrubOutsideBounds
-          ? Number.isFinite(dur)
-            ? dur
-            : Infinity
-          : (stopAt ?? (Number.isFinite(dur) ? dur : Infinity));
+        const { start: min, end: max } = seekWindow(
+          bounds,
+          ytHandle.getDuration(),
+        );
         const newTime = Math.min(Math.max(cur + delta, min), max);
         ytHandle.seekTo(newTime);
         recordEvent("seek", newTime, { fromTime: cur });
@@ -740,12 +753,7 @@ export function MediaPlayer({
       const v = videoRef.current;
       if (!v) return;
       const fromTime = v.currentTime;
-      const min = allowScrubOutsideBounds ? 0 : (startAt ?? 0);
-      const max = allowScrubOutsideBounds
-        ? Number.isFinite(v.duration)
-          ? v.duration
-          : Infinity
-        : (stopAt ?? (Number.isFinite(v.duration) ? v.duration : Infinity));
+      const { start: min, end: max } = seekWindow(bounds, v.duration);
       v.currentTime = Math.min(Math.max(v.currentTime + delta, min), max);
       recordEvent("seek", v.currentTime, { fromTime });
     },

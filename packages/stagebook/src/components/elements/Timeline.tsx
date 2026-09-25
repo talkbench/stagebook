@@ -2,6 +2,7 @@ import React, {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useReducer,
   useRef,
   useState,
@@ -47,6 +48,12 @@ import {
   zoomIn as nextZoomIn,
   zoomOut as nextZoomOut,
 } from "./timeline/viewport.js";
+import {
+  clampToDomain,
+  domainSpan,
+  timelineDomain,
+  type TimeDomain,
+} from "./timeline/domain.js";
 import { focusRingCss } from "../focusRing.js";
 
 const screenReaderOnly: React.CSSProperties = {
@@ -200,9 +207,25 @@ export function Timeline({
     };
   }, []);
 
-  // Zoom & pan state
+  // The span of media time this Timeline shows and lets participants mark:
+  // the source player's startAt/stopAt window, or the whole file (#675).
+  // Times everywhere stay in media seconds; only the reachable span changes.
+  const { start: domainStart, end: domainEnd } = timelineDomain(handle);
+  const domain = useMemo<TimeDomain>(
+    () => ({ start: domainStart, end: domainEnd }),
+    [domainStart, domainEnd],
+  );
+
+  // Zoom & pan state. The stored viewport start is clamped on read, so the
+  // viewport follows the domain when it changes (the duration loads, or the
+  // window moves) without an effect to resync it.
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [viewportStart, setViewportStart] = useState(0);
+  const [storedViewportStart, setViewportStart] = useState(0);
+  const viewportStart = clampViewportStart(
+    storedViewportStart,
+    domain,
+    zoomLevel,
+  );
   const [helpOpen, setHelpOpen] = useState(false);
   const helpButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -306,6 +329,13 @@ export function Timeline({
     messages.timelineNoAnnotationSelected(state.selections.length),
   );
   const announcedRef = useRef({ state, messages });
+  // The selections just before Enter made a mark. That mark isn't selected
+  // (#678), so the status finds it by what's new since then and names it —
+  // otherwise replacing a single-select point would repeat "No annotation
+  // selected. 1 annotation." and a live region stays silent on a repeat.
+  const enterBaselineRef = useRef<(PointSelection | RangeSelection)[] | null>(
+    null,
+  );
   useEffect(() => {
     if (
       isDragging ||
@@ -315,27 +345,33 @@ export function Timeline({
       return;
     const timer = setTimeout(() => {
       announcedRef.current = { state, messages };
-      const order = annotationOrder(state.selections);
+      const selections: (PointSelection | RangeSelection)[] = state.selections;
+      const order = annotationOrder(selections);
+      const describe = (index: number) => {
+        const mark = selections[index];
+        const position = order.indexOf(index) + 1;
+        return "start" in mark
+          ? messages.timelineRangeSelected(
+              position,
+              order.length,
+              mark.start,
+              mark.end,
+            )
+          : messages.timelinePointSelected(position, order.length, mark.time);
+      };
+      const enterBaseline = enterBaselineRef.current;
+      enterBaselineRef.current = null;
       const selected =
-        state.activeIndex === null
-          ? undefined
-          : state.selections[state.activeIndex];
-      let text = messages.timelineNoAnnotationSelected(state.selections.length);
+        state.activeIndex === null ? undefined : selections[state.activeIndex];
+      let text = messages.timelineNoAnnotationSelected(selections.length);
+      if (!selected && enterBaseline) {
+        const created = selections.findIndex(
+          (mark) => !enterBaseline.includes(mark),
+        );
+        if (created !== -1) text = `${describe(created)} ${text}`;
+      }
       if (selected) {
-        const position = order.indexOf(state.activeIndex!) + 1;
-        text =
-          "start" in selected
-            ? messages.timelineRangeSelected(
-                position,
-                order.length,
-                selected.start,
-                selected.end,
-              )
-            : messages.timelinePointSelected(
-                position,
-                order.length,
-                selected.time,
-              );
+        text = describe(state.activeIndex!);
         if ("start" in selected && state.activeHandle) {
           text +=
             " " +
@@ -454,14 +490,18 @@ export function Timeline({
     if (browsedAnnotationRef.current !== activeAnnotation) {
       browsedAnnotationRef.current = null;
     }
-    if (zoomLevel <= 1) return;
-    const duration = handleRef.current?.getDuration() ?? 0;
-    if (duration <= 0) return;
-
-    const visibleDuration = duration / zoomLevel;
+    // Track the playhead at zoom 1 too. Otherwise the first zoom-in compares
+    // against a stale 0 and treats wherever playback is (always, with a
+    // startAt window) as a seek jump, snapping away from the zoom's own
+    // centering or pinch anchor.
     const lastT = lastPlayheadRef.current;
     lastPlayheadRef.current = currentTime;
     lastTickWasPlayingRef.current = !isPaused;
+    if (zoomLevel <= 1) return;
+    const effectDomain = timelineDomain(handleRef.current);
+    if (domainSpan(effectDomain) <= 0) return;
+
+    const visibleDuration = domainSpan(effectDomain) / zoomLevel;
 
     // While the user is manually dragging the playhead, they're the
     // source of motion — auto-scroll/snap would fight the cursor and
@@ -486,7 +526,7 @@ export function Timeline({
       const newStart = computeViewportAfterSeek(
         currentTime,
         visibleDuration,
-        duration,
+        effectDomain,
       );
       setViewportStart(newStart);
       return;
@@ -504,7 +544,7 @@ export function Timeline({
       const newStart = computeViewportAfterScroll(
         currentTime,
         visibleDuration,
-        duration,
+        effectDomain,
       );
       if (newStart !== viewportStart) setViewportStart(newStart);
     }
@@ -519,8 +559,8 @@ export function Timeline({
 
   // Zoom handlers
   const onZoomIn = useCallback(() => {
-    const duration = handleRef.current?.getDuration() ?? 0;
-    if (duration <= 0) return;
+    const zoomDomain = timelineDomain(handleRef.current);
+    if (domainSpan(zoomDomain) <= 0) return;
     const newZoom = nextZoomIn(zoomLevel);
     if (newZoom === zoomLevel) return;
     setZoomLevel(newZoom);
@@ -528,7 +568,7 @@ export function Timeline({
       computeViewportAfterZoom({
         currentZoom: zoomLevel,
         newZoom,
-        duration,
+        domain: zoomDomain,
         currentViewportStart: viewportStart,
         playheadTime: currentTime,
       }),
@@ -536,8 +576,8 @@ export function Timeline({
   }, [zoomLevel, viewportStart, currentTime]);
 
   const onZoomOut = useCallback(() => {
-    const duration = handleRef.current?.getDuration() ?? 0;
-    if (duration <= 0) return;
+    const zoomDomain = timelineDomain(handleRef.current);
+    if (domainSpan(zoomDomain) <= 0) return;
     const newZoom = nextZoomOut(zoomLevel);
     if (newZoom === zoomLevel) return;
     setZoomLevel(newZoom);
@@ -545,7 +585,7 @@ export function Timeline({
       computeViewportAfterZoom({
         currentZoom: zoomLevel,
         newZoom,
-        duration,
+        domain: zoomDomain,
         currentViewportStart: viewportStart,
         playheadTime: currentTime,
       }),
@@ -554,8 +594,13 @@ export function Timeline({
 
   const onMinimapPan = useCallback(
     (newStart: number) => {
-      const duration = handleRef.current?.getDuration() ?? 0;
-      setViewportStart(clampViewportStart(newStart, duration, zoomLevel));
+      setViewportStart(
+        clampViewportStart(
+          newStart,
+          timelineDomain(handleRef.current),
+          zoomLevel,
+        ),
+      );
     },
     [zoomLevel],
   );
@@ -576,8 +621,8 @@ export function Timeline({
     if (!el) return;
 
     const onWheel = (e: WheelEvent) => {
-      const dur = handleRef.current?.getDuration() ?? 0;
-      if (dur <= 0) return;
+      const wheelDomain = timelineDomain(handleRef.current);
+      if (domainSpan(wheelDomain) <= 0) return;
       const rect = el.getBoundingClientRect();
       const waveformWidth = Math.max(rect.width - GUTTER_WIDTH, 0);
       if (waveformWidth <= 0) return;
@@ -599,13 +644,13 @@ export function Timeline({
         // Anchor the zoom on the time under the cursor so it stays put.
         const cursorX = e.clientX - rect.left - GUTTER_WIDTH;
         const focalRatio = Math.max(0, Math.min(1, cursorX / waveformWidth));
-        const visible = dur / currentZoom;
+        const visible = domainSpan(wheelDomain) / currentZoom;
         const focalTime = viewportStartRef.current + visible * focalRatio;
         setZoomLevel(newZoom);
         setViewportStart(
           computeViewportAfterFocalZoom({
             newZoom,
-            duration: dur,
+            domain: wheelDomain,
             focalTime,
             focalRatio,
           }),
@@ -624,7 +669,7 @@ export function Timeline({
           currentViewportStart: viewportStartRef.current,
           deltaPx: dx,
           waveformWidthPx: waveformWidth,
-          duration: dur,
+          domain: wheelDomain,
           zoomLevel: zoomLevelRef.current,
         }),
       );
@@ -688,15 +733,12 @@ export function Timeline({
     e.preventDefault();
     e.stopPropagation();
 
-    // Clamp time to [0, duration] before dispatch + seek so a keyboard
-    // adjustment can never push a selection past the media bounds.
-    const dur = handleRef.current?.getDuration() ?? 0;
-    const clampToMedia = (t: number): number => {
-      if (Number.isFinite(dur) && dur > 0) {
-        return Math.max(0, Math.min(t, dur));
-      }
-      return Math.max(0, t);
-    };
+    // Clamp time into the domain before dispatch + seek so a keyboard
+    // adjustment can never push a mark or the playhead outside the media
+    // or the player's window (#675).
+    const span = domainSpan(domain);
+    const clampToMedia = (t: number): number =>
+      span > 0 ? clampToDomain(t, domain) : Math.max(0, t);
 
     // Enter starts annotating at playback again. Release browsing and reveal
     // that position immediately: paused playback may never produce a tick,
@@ -704,12 +746,12 @@ export function Timeline({
     const resumeAnnotationAt = (time: number) => {
       if (!browsedAnnotationRef.current) return;
       browsedAnnotationRef.current = null;
-      const visible = dur / zoomLevel;
+      const visible = span / zoomLevel;
       if (
-        dur > 0 &&
+        span > 0 &&
         (time < viewportStart || time >= viewportStart + visible)
       ) {
-        setViewportStart(computeViewportAfterSeek(time, visible, dur));
+        setViewportStart(computeViewportAfterSeek(time, visible, domain));
       }
     };
 
@@ -733,13 +775,13 @@ export function Timeline({
         const selected = state.selections[index];
         browsedAnnotationRef.current = selected;
         const time = "start" in selected ? selected.start : selected.time;
-        const visible = dur / zoomLevel;
+        const visible = span / zoomLevel;
         // Reveal the mark (or a long range's start) without seeking playback.
         if (
-          dur > 0 &&
+          span > 0 &&
           (time < viewportStart || time >= viewportStart + visible)
         ) {
-          setViewportStart(computeViewportAfterSeek(time, visible, dur));
+          setViewportStart(computeViewportAfterSeek(time, visible, domain));
         }
         break;
       }
@@ -800,14 +842,19 @@ export function Timeline({
         // Real-time point annotation (#263). One Enter press = one point
         // at the current playhead. The reducer's CREATE_POINT honors
         // multiSelect (appends if true, replaces if false), so this
-        // single dispatch covers both modes.
+        // single dispatch covers both modes. The new point is not
+        // selected: during playback the next key is usually transport, and
+        // a selected point would take the arrow keys from the playhead
+        // (#678).
         const t = clampToMedia(handleRef.current?.getCurrentTime() ?? 0);
         resumeAnnotationAt(t);
+        enterBaselineRef.current = state.selections;
         dispatch({
           type: "CREATE_POINT",
           time: t,
           track: undefined,
           multiSelect,
+          select: false,
         });
         break;
       }
@@ -897,13 +944,9 @@ export function Timeline({
       // ignore.
       if (startTime === null) return;
 
-      const dur = handleRef.current?.getDuration() ?? 0;
-      const clampToMediaLocal = (t: number): number => {
-        if (Number.isFinite(dur) && dur > 0) {
-          return Math.max(0, Math.min(t, dur));
-        }
-        return Math.max(0, t);
-      };
+      const span = domainSpan(domain);
+      const clampToMediaLocal = (t: number): number =>
+        span > 0 ? clampToDomain(t, domain) : Math.max(0, t);
       const endTime = clampToMediaLocal(
         handleRef.current?.getCurrentTime() ?? 0,
       );
@@ -916,27 +959,30 @@ export function Timeline({
       // (Compute waveform width inline; the top-level `waveformWidth`
       // const is declared further down in the function body.)
       const waveformWidthLocal = Math.max(containerWidth - GUTTER_WIDTH, 0);
-      if (waveformWidthLocal > 0 && dur > 0) {
-        const pxPerSec = (waveformWidthLocal * zoomLevel) / dur;
+      if (waveformWidthLocal > 0 && span > 0) {
+        const pxPerSec = (waveformWidthLocal * zoomLevel) / span;
         if (pxPerSec > 0) {
           const minSec = CLICK_CREATED_RANGE_MIN_PX / pxPerSec;
           if (hi - lo < minSec) {
             hi = lo + minSec;
-            if (hi > dur) {
-              hi = dur;
-              lo = Math.max(0, dur - minSec);
+            if (hi > domain.end) {
+              hi = domain.end;
+              lo = Math.max(domain.start, domain.end - minSec);
             }
           }
         }
       }
 
+      // Like Enter in point mode, the new range is not selected (#678).
       if (hi - lo > 0) {
+        enterBaselineRef.current = state.selections;
         dispatch({
           type: "CREATE_RANGE",
           start: lo,
           end: hi,
           track: undefined,
           multiSelect,
+          select: false,
         });
       }
     }
@@ -968,17 +1014,25 @@ export function Timeline({
   }
 
   // durationVersion (polled in the RAF loop above) triggers a re-render
-  // when loadedmetadata fires, so getDuration() returns the real value
-  // instead of 0. Without this, saved selections render at x=0 until
-  // the first timeupdate event.
-  const duration = handle.getDuration();
+  // when loadedmetadata fires, so getDuration() — and the domain derived
+  // from it — returns the real value instead of 0. Without this, saved
+  // selections render at x=0 until the first timeupdate event.
+  const mediaDuration = handle.getDuration();
   const channelCount = handle.channelCount || 1;
   const peaks = handle.peaks;
   const waveformWidth = Math.max(containerWidth - GUTTER_WIDTH, 0);
-  const totalBuckets = computeBucketCount(duration, BUCKETS_PER_SECOND);
+  // Peaks are bucketed by media time across the whole file, whatever the
+  // domain, so bucket indices come straight from media seconds.
+  const totalBuckets = computeBucketCount(mediaDuration, BUCKETS_PER_SECOND);
+  const domainStartBucket = Math.floor(domain.start * BUCKETS_PER_SECOND);
+  const domainEndBucket = Math.min(
+    Math.ceil(domain.end * BUCKETS_PER_SECOND),
+    totalBuckets,
+  );
 
   // Compute visible bucket range from zoom/viewport
-  const visibleDuration = duration > 0 ? duration / zoomLevel : 0;
+  const span = domainSpan(domain);
+  const visibleDuration = span > 0 ? span / zoomLevel : 0;
   const startBucket = Math.floor(viewportStart * BUCKETS_PER_SECOND);
   const endBucket = Math.min(
     Math.ceil((viewportStart + visibleDuration) * BUCKETS_PER_SECOND),
@@ -1085,7 +1139,7 @@ export function Timeline({
         minimap={
           zoomLevel > 1 ? (
             <Minimap
-              duration={duration}
+              domain={domain}
               width={waveformWidth}
               zoomLevel={zoomLevel}
               viewportStart={viewportStart}
@@ -1093,7 +1147,8 @@ export function Timeline({
               selections={state.selections}
               peaks={peaks}
               peaksVersion={peaksVersion}
-              totalBuckets={totalBuckets}
+              startBucket={domainStartBucket}
+              endBucket={domainEndBucket}
               onViewportChange={onMinimapPan}
             />
           ) : null
@@ -1104,7 +1159,7 @@ export function Timeline({
           playhead (standard NLE convention). */}
       <div style={{ marginLeft: `${String(GUTTER_WIDTH)}px` }}>
         <TimeRuler
-          duration={duration}
+          domain={domain}
           width={waveformWidth}
           zoomLevel={zoomLevel}
           viewportStart={viewportStart}
@@ -1155,7 +1210,7 @@ export function Timeline({
             key={gestureReset}
             width={waveformWidth}
             height={tracksHeight}
-            duration={duration}
+            domain={domain}
             zoomLevel={zoomLevel}
             viewportStart={viewportStart}
             selectionType={selectionType}
@@ -1225,7 +1280,7 @@ export function Timeline({
           {/* Playhead — over selection overlay, extends into ruler via negative top */}
           <Playhead
             currentTime={currentTime}
-            duration={duration}
+            domain={domain}
             width={waveformWidth}
             height={tracksHeight}
             rulerHeight={RULER_HEIGHT}
