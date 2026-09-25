@@ -1018,6 +1018,30 @@ const cases: Case[] = [
     node: <MockMediaPlayer url="/sample-video.mp4" name="video" />,
   },
   {
+    // At the clip's end the play button becomes Replay (#684).
+    name: "MediaPlayer (replay at the end)",
+    node: (
+      <MockMediaPlayer
+        url="/sample-video.mp4"
+        name="replay"
+        controls={{ playPause: true }}
+      />
+    ),
+    prepare: async (page) => {
+      const video = page.getByTestId("mediaPlayer-video");
+      await expect
+        .poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState))
+        .toBeGreaterThanOrEqual(1);
+      await video.evaluate((el: HTMLVideoElement) => {
+        el.currentTime = el.duration;
+      });
+      await expect(page.getByTestId("mediaPlayer-playPause")).toHaveAttribute(
+        "aria-label",
+        "Replay",
+      );
+    },
+  },
+  {
     name: "Timeline (points)",
     node: (
       <MockTimeline
@@ -1530,9 +1554,13 @@ for (const c of cases) {
 // #636: exercise actual transport chrome over controlled content backdrops.
 // Only the media image is replaced; the overlay, SVGs and scrubber retain
 // their production styles. These are contrast tests, not media-decode tests.
-for (const mode of ["audio", "video", "youtube"] as const) {
+// "replay" is the video chrome paused at the clip's end (#684). stopAt sits
+// where the playhead is fixed below and allowScrubOutsideBounds keeps the
+// scrub bar spanning the file, so its geometry matches the other modes.
+for (const mode of ["audio", "video", "youtube", "replay"] as const) {
   const playVideo = mode !== "audio";
   const youtube = mode === "youtube";
+  const replay = mode === "replay";
   for (const backdrop of ["#000000", "#ffffff"]) {
     test(`media contrast: ${mode} on ${backdrop}`, async ({ mount, page }) => {
       await page.setViewportSize({ width: 800, height: 650 });
@@ -1593,6 +1621,9 @@ for (const mode of ["audio", "video", "youtube"] as const) {
           name="contrast"
           playVideo={playVideo}
           controls={{ playPause: true, seek: true, step: true, speed: true }}
+          // The fixture is 10 s; the playhead is fixed at a third of it.
+          stopAt={replay ? 10 / 3 : undefined}
+          allowScrubOutsideBounds={replay || undefined}
         />,
       );
       const video = page.getByTestId("mediaPlayer-video");
@@ -1766,8 +1797,14 @@ for (const mode of ["audio", "video", "youtube"] as const) {
           });
           return points;
         });
+        if (replay && state === "paused") {
+          await expect(
+            page.getByTestId("mediaPlayer-playPause"),
+          ).toHaveAttribute("aria-label", "Replay");
+        }
+        // Pause (two bars) and Replay (arc + arrowhead) each add a shape.
         expect(samples.filter((s) => s.ink).length).toBe(
-          (youtube ? 5 : 7) + (state === "playing" ? 1 : 0),
+          (youtube ? 5 : 7) + (state === "playing" || replay ? 1 : 0),
         );
         const screenshot = await page.screenshot({ scale: "css" });
         await test.info().attach(`${state}-controls`, {

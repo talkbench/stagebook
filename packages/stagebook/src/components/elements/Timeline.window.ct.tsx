@@ -270,6 +270,45 @@ test("the repro from #675: click the track near the start, then press Enter", as
     .toEqual(["4.0", "4.1"]);
 });
 
+test("Space on the timeline at the window end replays the clip (#684)", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(windowed("point"));
+  const { video, timeline } = await whenReady(component);
+  await timeline.focus();
+  for (let i = 0; i < 2; i++) await page.keyboard.press("ArrowRight");
+  await expect.poll(() => videoTime(video)).toBeCloseTo(STOP_AT, 2);
+  // The Timeline plays through the player's handle, which replays at the end.
+  await page.keyboard.press(" ");
+  await expect
+    .poll(() => video.evaluate((el: HTMLVideoElement) => el.paused))
+    .toBe(false);
+  // The player logged the jump back to startAt.
+  const playerEvents = async () => {
+    const text = await component
+      .locator('[data-testid="save-log"]')
+      .textContent();
+    const log = JSON.parse(text ?? "[]") as Array<{
+      key: string;
+      value: { events?: Array<{ type: string; videoTime: number }> };
+    }>;
+    return (
+      log.filter((s) => s.key === "mediaPlayer_clip").pop()?.value.events ?? []
+    );
+  };
+  await expect
+    .poll(async () => (await playerEvents()).map((e) => e.type))
+    .toContain("play");
+  expect(await playerEvents()).toContainEqual(
+    expect.objectContaining({
+      type: "seek",
+      videoTime: START_AT,
+      fromTime: STOP_AT,
+    }),
+  );
+});
+
 // -- YouTube --
 
 test("a YouTube source bounds the timeline the same way", async ({

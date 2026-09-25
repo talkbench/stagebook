@@ -14,6 +14,7 @@ import { HTML5Controls, YouTubeControls } from "./mediaPlayer/controls.js";
 import { useRegisterPlayback } from "../playback/PlaybackProvider.js";
 import type { PlaybackHandle } from "../playback/PlaybackHandle.js";
 import { seekWindow, withSeekWindow } from "../playback/windowedHandle.js";
+import { atClipEnd, clipWindow } from "./mediaPlayer/clipEnd.js";
 import { computeWatchedRanges } from "../../utils/watchedRanges.js";
 import {
   computeBucketCount,
@@ -167,6 +168,10 @@ export function MediaPlayer({
   getElapsedTimeRef.current = getElapsedTime;
 
   const [isPaused, setIsPaused] = useState(true);
+  // YouTube reported ENDED. Its time can then fall a little short of its
+  // duration, so the end-of-clip check also trusts this (#684). HTML5 needs
+  // no flag: at its natural end currentTime equals the duration exactly.
+  const [ytEnded, setYtEnded] = useState(false);
   const [showPlayOnce, setShowPlayOnce] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -185,6 +190,8 @@ export function MediaPlayer({
     setLoadError(null);
     autoplayAttemptedRef.current = false;
     setShowPlayOnce(false);
+    setYtEnded(false);
+    stopAtReachedRef.current = false;
   }, [url]);
 
   // Pre-flight HEAD check for `Accept-Ranges` (#424). The existing
@@ -239,6 +246,10 @@ export function MediaPlayer({
   // pause on grab and resume on release (records proper play/pause events for
   // watchedRanges without spamming the server during the drag).
   const scrubWasPlayingRef = useRef(false);
+  // Set just before a scrub pauses playback. That pause is reported after the
+  // scrub's seek, so it reads the grabbed time; it must not count as
+  // playback reaching stopAt. Consumed by the next pause report.
+  const scrubPauseRef = useRef(false);
 
   // Set to true just before programmatically pausing the video at stopAt, so
   // handlePause can suppress the phantom "pause" event and we record "ended".
@@ -432,13 +443,17 @@ export function MediaPlayer({
     }
   }, [waveformActive, url]);
 
-  // Poll YouTube currentTime ~4×/sec while playing (no timeupdate event from IFrame API)
+  // Poll YouTube ~4×/sec (the IFrame API has no timeupdate event). Keep
+  // polling while paused so seeks from the controls or a sibling Timeline
+  // reach the scrub bar and the Play/Replay button, and so a duration that
+  // was 0 at ready fills in. Only playback reaches stopAt (#679).
   useEffect(() => {
-    if (!ytHandle || isPaused) return;
+    if (!ytHandle) return;
     const id = setInterval(() => {
       const t = ytHandle.getCurrentTime();
       setCurrentTime(t);
-      if (stopAt !== undefined && t >= stopAt) {
+      setDuration(ytHandle.getDuration());
+      if (!isPaused && stopAt !== undefined && t >= stopAt) {
         // Signal that the upcoming onPause is from stopAt, not a user action.
         stopAtReachedRef.current = true;
         ytHandle.pause();
@@ -496,11 +511,16 @@ export function MediaPlayer({
   // stopAt applies without re-registering the handle.
   const seekBoundsRef = useRef({ startAt, stopAt, allowScrubOutsideBounds });
   seekBoundsRef.current = { startAt, stopAt, allowScrubOutsideBounds };
+  // Siblings start playback through playRef too, so a Timeline's Space
+  // replays the clip at its end just as the play button does (#684).
+  const playRef = useRef<() => void>(() => {});
   const registeredHandle = useMemo(
     () =>
       sourceHandle &&
-      withSeekWindow(sourceHandle, () =>
-        seekWindow(seekBoundsRef.current, sourceHandle.getDuration()),
+      withSeekWindow(
+        sourceHandle,
+        () => seekWindow(seekBoundsRef.current, sourceHandle.getDuration()),
+        () => playRef.current(),
       ),
     [sourceHandle],
   );
@@ -609,6 +629,10 @@ export function MediaPlayer({
   const handlePlay = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
       setIsPaused(false);
+      // A stopAt or scrub pause that never produced its "pause" event must
+      // not misclassify a later, real one.
+      stopAtReachedRef.current = false;
+      scrubPauseRef.current = false;
       recordEvent("play", e.currentTarget.currentTime);
     },
     [recordEvent],
@@ -616,6 +640,8 @@ export function MediaPlayer({
 
   const handlePause = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      const fromScrub = scrubPauseRef.current;
+      scrubPauseRef.current = false;
       // Suppress the phantom pause event triggered by our own stopAt enforcement.
       // handleTimeUpdate records "ended" and calls onComplete in that path.
       if (stopAtReachedRef.current) {
@@ -624,14 +650,25 @@ export function MediaPlayer({
         return;
       }
       setIsPaused(true);
-      recordEvent("pause", e.currentTarget.currentTime);
+      const ct = e.currentTarget.currentTime;
+      // Playback crossed stopAt between timeupdates and the participant
+      // paused first. A "pause" event only follows playback, never a paused
+      // seek, so this is the clip reaching stopAt (#679) — unless a scrub
+      // paused it, whose seek has already moved the time.
+      if (!fromScrub && stopAt !== undefined && ct >= stopAt) {
+        recordEvent("stopAt", ct);
+        if (submitOnComplete) onCompleteRef.current?.();
+        return;
+      }
+      recordEvent("pause", ct);
     },
-    [recordEvent],
+    [recordEvent, stopAt, submitOnComplete],
   );
 
   const handleEnded = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
       setIsPaused(true);
+      setCurrentTime(e.currentTarget.currentTime);
       recordEvent("ended", e.currentTarget.currentTime);
       if (submitOnComplete) {
         onCompleteRef.current?.();
@@ -717,8 +754,11 @@ export function MediaPlayer({
       const { currentTime: ct } = e.currentTarget;
       setCurrentTime(ct);
 
-      // stopAt enforcement — records "stopAt" event (distinct from natural "ended")
-      if (stopAt !== undefined && ct >= stopAt) {
+      // stopAt enforcement — records "stopAt" event (distinct from natural
+      // "ended"). Only playback reaches stopAt: a seek that lands there while
+      // paused isn't the clip finishing, and pausing an already-paused video
+      // fires no "pause" event to consume stopAtReachedRef (#679).
+      if (stopAt !== undefined && ct >= stopAt && !e.currentTarget.paused) {
         stopAtReachedRef.current = true;
         e.currentTarget.pause(); // fires "pause" event; handlePause suppresses it
         recordEvent("stopAt", ct);
@@ -760,6 +800,24 @@ export function MediaPlayer({
     [allowScrubOutsideBounds, startAt, stopAt, ytHandle, recordEvent],
   );
 
+  // Start playback. At the end of the clip — stopAt, or the end of the file —
+  // replay it from the clip's start, logging the jump as a seek (#684).
+  // Play-once and stage-synced players never replay. The play button,
+  // Space/K and the registered handle all use this; playback started by the
+  // browser or YouTube's own surface doesn't come through here.
+  const replayable = effectivePlayback === "manual" && !syncToStageTime;
+  playRef.current = () => {
+    const h = ytHandle ?? handle;
+    const t = h.getCurrentTime();
+    const clip = clipWindow(startAt, stopAt, h.getDuration());
+    if (replayable && atClipEnd(t, ytHandle !== null && ytEnded, clip)) {
+      h.seekTo(clip.start);
+      setCurrentTime(clip.start);
+      recordEvent("seek", clip.start, { fromTime: t });
+    }
+    h.play();
+  };
+
   const cycleSpeed = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -790,7 +848,7 @@ export function MediaPlayer({
           case "k":
           case "K":
             e.preventDefault();
-            if (ytHandle.isPaused()) ytHandle.play();
+            if (ytHandle.isPaused()) playRef.current();
             else ytHandle.pause();
             break;
           case "j":
@@ -823,7 +881,7 @@ export function MediaPlayer({
         case "k":
         case "K":
           e.preventDefault();
-          if (v.paused) void v.play();
+          if (v.paused) playRef.current();
           else v.pause();
           break;
         case "ArrowRight":
@@ -946,7 +1004,7 @@ export function MediaPlayer({
   const onPlayPause = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
-    if (v.paused) void v.play();
+    if (v.paused) playRef.current();
     else v.pause();
   }, []);
 
@@ -957,6 +1015,7 @@ export function MediaPlayer({
     if (!v) return;
     if (!v.paused) {
       scrubWasPlayingRef.current = true;
+      scrubPauseRef.current = true;
       v.pause();
     }
     v.currentTime = t;
@@ -981,7 +1040,7 @@ export function MediaPlayer({
 
   // YouTube-specific scrub callbacks
   const ytOnPlayPause = useCallback(() => {
-    if (isPaused) ytHandle?.play();
+    if (isPaused) playRef.current();
     else ytHandle?.pause();
   }, [isPaused, ytHandle]);
 
@@ -997,6 +1056,7 @@ export function MediaPlayer({
     (t: number) => {
       if (ytHandle && !ytHandle.isPaused()) {
         scrubWasPlayingRef.current = true;
+        scrubPauseRef.current = true;
         ytHandle.pause();
       }
       ytHandle?.seekTo(t);
@@ -1061,6 +1121,16 @@ export function MediaPlayer({
     }
   }, [controlsVisible]);
 
+  // At the clip's end the play button offers a replay (#684).
+  const atEnd =
+    replayable &&
+    isPaused &&
+    atClipEnd(
+      currentTime,
+      ytHandle !== null && ytEnded,
+      clipWindow(startAt, stopAt, duration),
+    );
+
   // Scrub bar bounds
   const scrubMin = allowScrubOutsideBounds ? 0 : (startAt ?? 0);
   const scrubMax = allowScrubOutsideBounds
@@ -1086,6 +1156,7 @@ export function MediaPlayer({
   const html5ControlsProps = {
     controls,
     isPaused,
+    atEnd,
     stepDuration,
     playbackRate,
     scrubMin,
@@ -1193,16 +1264,31 @@ export function MediaPlayer({
               setYtHandle(h);
               setDuration(h.getDuration());
             }}
+            // A destroyed player's handle must stop being polled and stop
+            // standing in for this player (the source changed or remounted).
+            onHandleGone={() => setYtHandle(null)}
             onPlay={(t) => {
               setIsPaused(false);
+              setYtEnded(false);
+              stopAtReachedRef.current = false;
+              scrubPauseRef.current = false;
               setCurrentTime(t);
               recordEvent("play", t);
             }}
             onPause={(t) => {
+              const fromScrub = scrubPauseRef.current;
+              scrubPauseRef.current = false;
               setIsPaused(true);
               setCurrentTime(t);
-              // stopAt reached via the poll: record "stopAt" not "pause"
-              if (stopAtReachedRef.current) {
+              // stopAt reached via the poll — or crossed between ticks and
+              // paused by the participant first: record "stopAt" (#679).
+              // `isPaused` is this render's value: only a pause that ends
+              // playback counts, not a PAUSED report after a paused seek,
+              // nor a scrub's pause (reported after its seek).
+              if (
+                stopAtReachedRef.current ||
+                (!fromScrub && !isPaused && stopAt !== undefined && t >= stopAt)
+              ) {
                 stopAtReachedRef.current = false;
                 recordEvent("stopAt", t);
                 if (submitOnComplete) onCompleteRef.current?.();
@@ -1212,6 +1298,7 @@ export function MediaPlayer({
             }}
             onEnded={(t) => {
               setIsPaused(true);
+              setYtEnded(true);
               setCurrentTime(t);
               recordEvent("ended", t);
               if (submitOnComplete) onCompleteRef.current?.();
@@ -1236,6 +1323,7 @@ export function MediaPlayer({
               <YouTubeControls
                 controls={controls}
                 isPaused={isPaused}
+                atEnd={atEnd}
                 scrubMin={scrubMin}
                 scrubMax={scrubMax}
                 currentTime={currentTime}

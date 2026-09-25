@@ -209,6 +209,9 @@ export interface YouTubePlayerProps {
   videoId: string;
   startAt?: number;
   onHandleReady: (handle: PlaybackHandle) => void;
+  /** The player behind the last handle was destroyed (unmount, or a new
+   *  videoId/startAt). Drop that handle: it must not be read again. */
+  onHandleGone?: () => void;
   onPlay: (currentTime: number) => void;
   onPause: (currentTime: number) => void;
   onEnded: (currentTime: number) => void;
@@ -222,6 +225,7 @@ export function YouTubePlayer({
   videoId,
   startAt,
   onHandleReady,
+  onHandleGone,
   onPlay,
   onPause,
   onEnded,
@@ -231,10 +235,12 @@ export function YouTubePlayer({
   // Store callbacks in refs so the useEffect always calls the latest version
   // without needing to destroy/recreate the YT.Player on every render.
   const onHandleReadyRef = useRef(onHandleReady);
+  const onHandleGoneRef = useRef(onHandleGone);
   const onPlayRef = useRef(onPlay);
   const onPauseRef = useRef(onPause);
   const onEndedRef = useRef(onEnded);
   onHandleReadyRef.current = onHandleReady;
+  onHandleGoneRef.current = onHandleGone;
   onPlayRef.current = onPlay;
   onPauseRef.current = onPause;
   onEndedRef.current = onEnded;
@@ -250,7 +256,10 @@ export function YouTubePlayer({
       onPause: (t) => onPauseRef.current(t),
       onEnded: (t) => onEndedRef.current(t),
     });
-    return destroy;
+    return () => {
+      destroy();
+      onHandleGoneRef.current?.();
+    };
   }, [videoId, startAt]); // re-mount player when videoId or startAt changes
 
   return (
