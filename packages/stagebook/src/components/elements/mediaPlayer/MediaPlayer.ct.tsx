@@ -973,6 +973,98 @@ test("YouTube: the play button follows seeks made while paused", async ({
   await expect(play).toHaveAttribute("aria-label", "Replay");
 });
 
+// Grabbing the scrubber pauses and then seeks; the pause event reads the
+// post-seek time. Dragging to stopAt that way isn't playback reaching it.
+test("grabbing the scrubber past stopAt during playback isn't reaching stopAt", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <MockMediaPlayer
+      url="/sample-video.mp4"
+      name="test"
+      startAt={4}
+      stopAt={6}
+      submitOnComplete={true}
+      // The scrub bar spans the whole file, so a press can land past stopAt.
+      allowScrubOutsideBounds={true}
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  const video = component.locator('[data-testid="mediaPlayer-video"]');
+  await expect
+    .poll(() => video.evaluate((el: HTMLVideoElement) => el.currentTime))
+    .toBeCloseTo(4, 1);
+  await component.locator('[data-testid="mediaPlayer-playPause"]').click();
+  await expect
+    .poll(() => video.evaluate((el: HTMLVideoElement) => el.paused))
+    .toBe(false);
+  const scrub = component.locator('[data-testid="mediaPlayer-scrubBar"]');
+  const box = await scrub.boundingBox();
+  if (!box) throw new Error("scrub bar not found");
+  // Press (and hold) at 80%: 8 s, past stopAt.
+  await page.mouse.move(box.x + box.width * 0.8, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect
+    .poll(() => video.evaluate((el: HTMLVideoElement) => el.paused))
+    .toBe(true);
+  const log = async () =>
+    (
+      JSON.parse(
+        (await component.locator('[data-testid="save-log"]').textContent()) ??
+          "[]",
+      ) as SavedEvents
+    ).at(-1)?.value.events ?? [];
+  await expect
+    .poll(async () => (await log()).map((e) => e.type))
+    .toContain("pause");
+  expect((await log()).map((e) => e.type)).not.toContain("stopAt");
+  expect(
+    await component.locator('[data-testid="completed"]').textContent(),
+  ).toBe("false");
+  await page.mouse.up();
+});
+
+test("YouTube: grabbing the scrubber at stopAt during playback isn't reaching stopAt", async ({
+  mount,
+  page,
+}) => {
+  await installYTMock(page);
+  const component = await mount(
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      startAt={20}
+      stopAt={30}
+      submitOnComplete={true}
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  await fireYTOnReady(page);
+  // Controls show during playback only while the player is hovered.
+  await component.locator('[data-testid="mediaPlayer"]').hover();
+  await ytStateAt(page, 25, 1);
+  const scrub = component.locator('[data-testid="mediaPlayer-scrubBar"]');
+  const box = await scrub.boundingBox();
+  if (!box) throw new Error("scrub bar not found");
+  await page.mouse.move(box.x + box.width - 1, box.y + box.height / 2);
+  await page.mouse.down();
+  // The stub doesn't report pauseVideo(); report it now, after the seek.
+  await ytStateAt(page, 30, 2);
+  const saves = async () =>
+    JSON.parse(
+      (await component.locator('[data-testid="save-log"]').textContent()) ??
+        "[]",
+    ) as SavedEvents;
+  await expect
+    .poll(async () => (await saves()).at(-1)?.value.events.map((e) => e.type))
+    .toEqual(["play", "pause"]);
+  expect(
+    await component.locator('[data-testid="completed"]').textContent(),
+  ).toBe("false");
+  await page.mouse.up();
+});
+
 test("YouTube: pausing just past stopAt counts as reaching it", async ({
   mount,
   page,

@@ -246,6 +246,10 @@ export function MediaPlayer({
   // pause on grab and resume on release (records proper play/pause events for
   // watchedRanges without spamming the server during the drag).
   const scrubWasPlayingRef = useRef(false);
+  // Set just before a scrub pauses playback. That pause is reported after the
+  // scrub's seek, so it reads the grabbed time; it must not count as
+  // playback reaching stopAt. Consumed by the next pause report.
+  const scrubPauseRef = useRef(false);
 
   // Set to true just before programmatically pausing the video at stopAt, so
   // handlePause can suppress the phantom "pause" event and we record "ended".
@@ -625,9 +629,10 @@ export function MediaPlayer({
   const handlePlay = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
       setIsPaused(false);
-      // A stopAt pause that never produced its "pause" event must not
-      // swallow a later, real one.
+      // A stopAt or scrub pause that never produced its "pause" event must
+      // not misclassify a later, real one.
       stopAtReachedRef.current = false;
+      scrubPauseRef.current = false;
       recordEvent("play", e.currentTarget.currentTime);
     },
     [recordEvent],
@@ -635,6 +640,8 @@ export function MediaPlayer({
 
   const handlePause = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      const fromScrub = scrubPauseRef.current;
+      scrubPauseRef.current = false;
       // Suppress the phantom pause event triggered by our own stopAt enforcement.
       // handleTimeUpdate records "ended" and calls onComplete in that path.
       if (stopAtReachedRef.current) {
@@ -646,8 +653,9 @@ export function MediaPlayer({
       const ct = e.currentTarget.currentTime;
       // Playback crossed stopAt between timeupdates and the participant
       // paused first. A "pause" event only follows playback, never a paused
-      // seek, so this is the clip reaching stopAt (#679).
-      if (stopAt !== undefined && ct >= stopAt) {
+      // seek, so this is the clip reaching stopAt (#679) — unless a scrub
+      // paused it, whose seek has already moved the time.
+      if (!fromScrub && stopAt !== undefined && ct >= stopAt) {
         recordEvent("stopAt", ct);
         if (submitOnComplete) onCompleteRef.current?.();
         return;
@@ -1007,6 +1015,7 @@ export function MediaPlayer({
     if (!v) return;
     if (!v.paused) {
       scrubWasPlayingRef.current = true;
+      scrubPauseRef.current = true;
       v.pause();
     }
     v.currentTime = t;
@@ -1047,6 +1056,7 @@ export function MediaPlayer({
     (t: number) => {
       if (ytHandle && !ytHandle.isPaused()) {
         scrubWasPlayingRef.current = true;
+        scrubPauseRef.current = true;
         ytHandle.pause();
       }
       ytHandle?.seekTo(t);
@@ -1261,19 +1271,23 @@ export function MediaPlayer({
               setIsPaused(false);
               setYtEnded(false);
               stopAtReachedRef.current = false;
+              scrubPauseRef.current = false;
               setCurrentTime(t);
               recordEvent("play", t);
             }}
             onPause={(t) => {
+              const fromScrub = scrubPauseRef.current;
+              scrubPauseRef.current = false;
               setIsPaused(true);
               setCurrentTime(t);
               // stopAt reached via the poll — or crossed between ticks and
               // paused by the participant first: record "stopAt" (#679).
               // `isPaused` is this render's value: only a pause that ends
-              // playback counts, not a PAUSED report after a paused seek.
+              // playback counts, not a PAUSED report after a paused seek,
+              // nor a scrub's pause (reported after its seek).
               if (
                 stopAtReachedRef.current ||
-                (!isPaused && stopAt !== undefined && t >= stopAt)
+                (!fromScrub && !isPaused && stopAt !== undefined && t >= stopAt)
               ) {
                 stopAtReachedRef.current = false;
                 recordEvent("stopAt", t);
