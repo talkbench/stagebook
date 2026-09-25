@@ -1,11 +1,13 @@
 import React, { useCallback, useRef } from "react";
 import type { TimelineValue } from "./selections.js";
 import { clampViewportStart } from "./viewport.js";
+import { clampToDomain, domainSpan, type TimeDomain } from "./domain.js";
 import { WaveformRenderer } from "./WaveformRenderer.js";
 
 export interface MinimapProps {
-  /** Total media duration in seconds. */
-  duration: number;
+  /** Span the minimap covers, in media seconds: the whole file or the
+   *  source player's window (#675). */
+  domain: TimeDomain;
   /** Width of the minimap area in pixels. */
   width: number;
   /** Current zoom level (1 = full visible). */
@@ -28,8 +30,9 @@ export interface MinimapProps {
    * waveform canvas to redraw despite a stable array reference.
    */
   peaksVersion: number;
-  /** Total number of buckets covering the full duration. */
-  totalBuckets: number;
+  /** Waveform buckets covering the domain: [startBucket, endBucket). */
+  startBucket: number;
+  endBucket: number;
   /** Called with new viewport start (seconds) when the user pans. */
   onViewportChange: (newStart: number) => void;
 }
@@ -51,7 +54,7 @@ interface DragState {
 }
 
 export function Minimap({
-  duration,
+  domain,
   width,
   zoomLevel,
   viewportStart,
@@ -59,24 +62,26 @@ export function Minimap({
   selections,
   peaks,
   peaksVersion,
-  totalBuckets,
+  startBucket,
+  endBucket,
   onViewportChange,
 }: MinimapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
 
-  const visibleDuration = duration > 0 ? duration / zoomLevel : 0;
+  const span = domainSpan(domain);
+  const visibleDuration = span > 0 ? span / zoomLevel : 0;
 
   const eventToTime = useCallback(
     (clientX: number) => {
       const el = containerRef.current;
-      if (!el || duration <= 0) return 0;
+      if (!el || span <= 0) return domain.start;
       const rect = el.getBoundingClientRect();
       const localX = clientX - rect.left;
-      const t = (localX / rect.width) * duration;
-      return Math.max(0, Math.min(duration, t));
+      const t = domain.start + (localX / rect.width) * span;
+      return clampToDomain(t, domain);
     },
-    [duration],
+    [domain, span],
   );
 
   const handlePointerDown = useCallback(
@@ -94,7 +99,7 @@ export function Minimap({
         // Click to center viewport — apply immediately
         const newStart = clampViewportStart(
           time - visibleDuration / 2,
-          duration,
+          domain,
           zoomLevel,
         );
         onViewportChange(newStart);
@@ -115,7 +120,7 @@ export function Minimap({
       eventToTime,
       viewportStart,
       visibleDuration,
-      duration,
+      domain,
       zoomLevel,
       onViewportChange,
     ],
@@ -128,12 +133,12 @@ export function Minimap({
       const time = eventToTime(e.clientX);
       const newStart = clampViewportStart(
         time - drag.offset,
-        duration,
+        domain,
         zoomLevel,
       );
       onViewportChange(newStart);
     },
-    [eventToTime, duration, zoomLevel, onViewportChange],
+    [eventToTime, domain, zoomLevel, onViewportChange],
   );
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
@@ -148,19 +153,23 @@ export function Minimap({
   }, []);
 
   const timeToX = useCallback(
-    (t: number) => (duration > 0 ? (t / duration) * width : 0),
-    [duration, width],
+    (t: number) => (span > 0 ? ((t - domain.start) / span) * width : 0),
+    [domain, span, width],
   );
+  const inDomain = (t: number) => t >= domain.start && t <= domain.end;
 
-  // Selection marks
+  // Selection marks. Restored marks outside the domain (saved before the
+  // player's window changed) are kept in the data but not drawn here.
   const selectionMarks: React.ReactElement[] = [];
   if (isRangeArray(selections)) {
     selections.forEach((r, i) => {
-      const x1 = timeToX(r.start);
-      const x2 = timeToX(r.end);
+      if (r.end < domain.start || r.start > domain.end) return;
+      const x1 = timeToX(clampToDomain(r.start, domain));
+      const x2 = timeToX(clampToDomain(r.end, domain));
       selectionMarks.push(
         <div
           key={`r-${String(i)}`}
+          data-testid="minimap-mark"
           aria-hidden="true"
           style={{
             position: "absolute",
@@ -178,10 +187,12 @@ export function Minimap({
     });
   } else {
     (selections as { time: number }[]).forEach((p, i) => {
+      if (!inDomain(p.time)) return;
       const x = timeToX(p.time);
       selectionMarks.push(
         <div
           key={`p-${String(i)}`}
+          data-testid="minimap-mark"
           aria-hidden="true"
           style={{
             position: "absolute",
@@ -200,7 +211,12 @@ export function Minimap({
 
   // Viewport rectangle position
   const viewportLeft = timeToX(viewportStart);
-  const viewportWidth = Math.max(timeToX(visibleDuration), 8);
+  // A length, not a time: scale it rather than mapping it through timeToX,
+  // which offsets by the domain start.
+  const viewportWidth = Math.max(
+    span > 0 ? (visibleDuration / span) * width : 0,
+    8,
+  );
 
   // Playhead
   const playheadX = timeToX(currentTime);
@@ -223,13 +239,13 @@ export function Minimap({
         touchAction: "none",
       }}
     >
-      {/* Compressed full-duration waveform — drawn behind selection marks,
-          viewport rect, and playhead. Channel 0 is used as a single-channel
-          summary stand-in (the minimap is too small for per-channel bars).
-          Passing the full bucket range [0, totalBuckets] makes
+      {/* Compressed waveform of the whole domain — drawn behind selection
+          marks, viewport rect, and playhead. Channel 0 is used as a
+          single-channel summary stand-in (the minimap is too small for
+          per-channel bars). Passing the domain's whole bucket range makes
           WaveformRenderer naturally compress many source buckets into each
           canvas pixel. */}
-      {peaks.length > 0 && totalBuckets > 0 && (
+      {peaks.length > 0 && endBucket > startBucket && (
         <div
           data-testid="minimap-waveform"
           style={{
@@ -245,14 +261,14 @@ export function Minimap({
             peaksVersion={peaksVersion}
             width={width}
             height={HEIGHT}
-            startBucket={0}
-            endBucket={totalBuckets}
+            startBucket={startBucket}
+            endBucket={endBucket}
           />
         </div>
       )}
       {selectionMarks}
       {/* Playhead line */}
-      {currentTime >= 0 && currentTime <= duration && (
+      {inDomain(currentTime) && (
         <div
           data-testid="minimap-playhead"
           aria-hidden="true"

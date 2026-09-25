@@ -35,6 +35,7 @@ export interface MockHandleConfig {
  */
 function makeRefBackedHandle(refs: {
   duration: { current: number };
+  bounds: { current: { start: number; end: number } | null };
   currentTime: { current: number };
   paused: { current: boolean };
   channelCount: { current: number };
@@ -56,6 +57,10 @@ function makeRefBackedHandle(refs: {
     },
     getCurrentTime: () => refs.currentTime.current,
     getDuration: () => refs.duration.current,
+    // Without mockBounds, report the whole file — what consumers assume for
+    // a handle that has no getBounds at all.
+    getBounds: () =>
+      refs.bounds.current ?? { start: 0, end: refs.duration.current },
     isPaused: () => refs.paused.current,
     isYouTube: false,
     get channelCount() {
@@ -106,6 +111,8 @@ export interface MockTimelineProps extends Omit<TimelineProps, "save"> {
   playerName?: string;
   /** Plain-value overrides for the mock PlaybackHandle. */
   mockDuration?: number;
+  /** The player's startAt/stopAt window, as a MediaPlayer reports it (#675). */
+  mockBounds?: { start: number; end: number };
   mockCurrentTime?: number;
   mockPaused?: boolean;
   mockChannelCount?: number;
@@ -122,6 +129,7 @@ export function MockTimeline({
   mockShowTimeline = true,
   playerName,
   mockDuration,
+  mockBounds,
   mockCurrentTime,
   mockPaused,
   mockChannelCount,
@@ -136,6 +144,7 @@ export function MockTimeline({
   // re-render with new prop values lets tests drive playback over time
   // (e.g., for auto-scroll and snap-on-seek tests).
   const durationRef = useRef(mockDuration ?? 60);
+  const boundsRef = useRef(mockBounds ?? null);
   const currentTimeRef = useRef(mockCurrentTime ?? 0);
   const pausedRef = useRef(mockPaused ?? true);
   const channelCountRef = useRef(mockChannelCount ?? 0);
@@ -161,6 +170,7 @@ export function MockTimeline({
     previousPausedProp.current = mockPaused;
   }
   durationRef.current = mockDuration ?? 60;
+  boundsRef.current = mockBounds ?? null;
   channelCountRef.current = mockChannelCount ?? 0;
   // Convert plain number arrays to Float32Array[] when the top-level
   // mockPeaks array OR any per-channel array reference changes; bump the
@@ -187,6 +197,7 @@ export function MockTimeline({
     () =>
       makeRefBackedHandle({
         duration: durationRef,
+        bounds: boundsRef,
         currentTime: currentTimeRef,
         paused: pausedRef,
         channelCount: channelCountRef,

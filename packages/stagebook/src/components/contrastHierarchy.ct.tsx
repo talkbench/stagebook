@@ -31,7 +31,12 @@ for (const theme of ["default", "fallback", "custom"] as const) {
         <Select options={options} onChange={() => {}} label="Choose" />
         <TextArea label="Response" />
         <Button primary={false}>Back</Button>
-        <TimeRuler duration={60} width={600} zoomLevel={1} viewportStart={0} />
+        <TimeRuler
+          domain={{ start: 0, end: 60 }}
+          width={600}
+          zoomLevel={1}
+          viewportStart={0}
+        />
       </div>,
     );
     for (const role of ["radio", "checkbox"] as const) {

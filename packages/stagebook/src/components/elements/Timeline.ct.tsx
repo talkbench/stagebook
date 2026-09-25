@@ -4191,6 +4191,80 @@ test("point mode: Enter ignored when held (auto-repeat doesn't spam)", async ({
   expect(value).toHaveLength(1);
 });
 
+// A mark made with Enter isn't selected: during playback the next key is
+// usually transport, and a selected mark would take the arrows (#678).
+test("point mode: a point made with Enter isn't selected, so ← scrubs the playhead", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <MockTimeline
+      source="player"
+      playerName="player"
+      name="enter_unselected"
+      selectionType="point"
+      multiSelect={true}
+      mockDuration={60}
+      mockCurrentTime={12.5}
+    />,
+  );
+  const timeline = component.locator('[data-testid="timeline"]');
+  const playhead = component.locator('[data-testid="playhead"]');
+  await timeline.focus();
+  await page.keyboard.press("Enter");
+  await expect(component.locator('[data-testid="point-0"]')).toHaveAttribute(
+    "data-active",
+    "false",
+  );
+
+  await page.keyboard.press("ArrowLeft");
+  await expect(playhead).toHaveText("0:11.5");
+  let saves = await readSaveLog(component);
+  expect(saves.at(-1)?.value).toEqual([{ time: 12.5 }]);
+
+  // Selecting it explicitly hands the arrows back to the point.
+  await page.keyboard.press("]");
+  await page.keyboard.press("ArrowLeft");
+  await expect
+    .poll(async () => {
+      saves = await readSaveLog(component);
+      return saves.at(-1)?.value;
+    })
+    .toEqual([{ time: 11.5 }]);
+});
+
+test("range mode: a range made with Enter isn't selected, so ← scrubs the playhead", async ({
+  mount,
+  page,
+}) => {
+  const props = {
+    source: "player",
+    playerName: "player",
+    name: "enter_range_unselected",
+    selectionType: "range" as const,
+    multiSelect: true,
+    mockDuration: 60,
+  };
+  const component = await mount(
+    <MockTimeline {...props} mockCurrentTime={10} />,
+  );
+  const timeline = component.locator('[data-testid="timeline"]');
+  const playhead = component.locator('[data-testid="playhead"]');
+  await timeline.focus();
+  await page.keyboard.down("Enter");
+  await component.update(<MockTimeline {...props} mockCurrentTime={15} />);
+  await page.keyboard.up("Enter");
+  await expect(component.locator('[data-testid="range-0"]')).toHaveAttribute(
+    "data-active",
+    "false",
+  );
+
+  await page.keyboard.press("ArrowLeft");
+  await expect(playhead).toHaveText("0:14.0");
+  const saves = await readSaveLog(component);
+  expect(saves.at(-1)?.value).toEqual([{ start: 10, end: 15 }]);
+});
+
 test("range mode: Enter press-and-hold creates a range from press time to release time", async ({
   mount,
 }) => {

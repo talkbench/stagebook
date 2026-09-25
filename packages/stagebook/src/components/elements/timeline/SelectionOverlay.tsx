@@ -1,6 +1,7 @@
 import React, { useCallback, useRef, useState } from "react";
 import { pixelToTime, timeToPixel } from "./timelineLayout.js";
 import { clampToFreeGap } from "./selections.js";
+import { clampToDomain, domainSpan, type TimeDomain } from "./domain.js";
 import type { RangeSelection, TimelineValue } from "./selections.js";
 import { formatTime } from "../../../utils/formatTime.js";
 import { zoomDecimals, handleTooltipStyle } from "./timelineStyles.js";
@@ -10,8 +11,9 @@ export interface SelectionOverlayProps {
   width: number;
   /** Height of the overlay in pixels (covers all tracks). */
   height: number;
-  /** Total media duration in seconds. */
-  duration: number;
+  /** Span shown at zoom 1, in media seconds (the whole file or the source
+   *  player's window). Marks are created and dragged only inside it. */
+  domain: TimeDomain;
   /** Current zoom level (1 = full duration visible). */
   zoomLevel: number;
   /** Left edge of the visible region in seconds. */
@@ -218,7 +220,7 @@ function HandleVisual({
 export function SelectionOverlay({
   width,
   height,
-  duration,
+  domain,
   zoomLevel,
   viewportStart,
   selectionType,
@@ -258,6 +260,7 @@ export function SelectionOverlay({
   } | null>(null);
 
   const trackHeight = channelCount > 0 ? height / channelCount : height;
+  const span = domainSpan(domain);
 
   const eventToTime = useCallback(
     (clientX: number) => {
@@ -265,9 +268,9 @@ export function SelectionOverlay({
       if (!el) return 0;
       const rect = el.getBoundingClientRect();
       const localX = clientX - rect.left;
-      return pixelToTime(localX, duration, width, zoomLevel, viewportStart);
+      return pixelToTime(localX, span, width, zoomLevel, viewportStart);
     },
-    [duration, width, zoomLevel, viewportStart],
+    [span, width, zoomLevel, viewportStart],
   );
 
   const eventToTrack = useCallback(
@@ -310,7 +313,8 @@ export function SelectionOverlay({
       e.preventDefault();
       onRequestFocus();
       capturePointer(e);
-      const time = eventToTime(e.clientX);
+      // The viewport lies inside the domain; clamping guards the edge pixel.
+      const time = clampToDomain(eventToTime(e.clientX), domain);
       const track = eventToTrack(e.clientY);
       dragRef.current = {
         pointerId: e.pointerId,
@@ -321,7 +325,7 @@ export function SelectionOverlay({
         track,
       };
     },
-    [eventToTime, eventToTrack, capturePointer, onRequestFocus],
+    [eventToTime, eventToTrack, capturePointer, onRequestFocus, domain],
   );
 
   const handlePointerMove = useCallback(
@@ -341,7 +345,7 @@ export function SelectionOverlay({
       }
 
       const rawTime = eventToTime(e.clientX);
-      const currentTime = Math.max(0, Math.min(duration, rawTime));
+      const currentTime = clampToDomain(rawTime, domain);
 
       if (drag.mode === "create-range") {
         setDragPreview({
@@ -372,7 +376,7 @@ export function SelectionOverlay({
     },
     [
       eventToTime,
-      duration,
+      domain,
       onAdjustHandle,
       onRepositionPoint,
       onBeginDrag,
@@ -387,7 +391,7 @@ export function SelectionOverlay({
       if (!drag || drag.pointerId !== e.pointerId) return;
 
       const rawTime = eventToTime(e.clientX);
-      const time = Math.max(0, Math.min(duration, rawTime));
+      const time = clampToDomain(rawTime, domain);
       const track = drag.track;
 
       if (!drag.isDragging) {
@@ -435,7 +439,7 @@ export function SelectionOverlay({
             // least CLICK_CREATED_RANGE_MIN_PX wide on screen — for long
             // videos at low zoom 1 second can render sub-pixel, so the
             // pixel floor keeps the new range visible.
-            const pxPerSec = duration > 0 ? (width * zoomLevel) / duration : 0;
+            const pxPerSec = span > 0 ? (width * zoomLevel) / span : 0;
             const widthSec =
               pxPerSec > 0
                 ? Math.max(
@@ -445,9 +449,9 @@ export function SelectionOverlay({
                 : CLICK_CREATED_RANGE_SEC;
             let start = time;
             let end = time + widthSec;
-            if (end > duration) {
-              end = duration;
-              start = Math.max(0, duration - widthSec);
+            if (end > domain.end) {
+              end = domain.end;
+              start = Math.max(domain.start, domain.end - widthSec);
             }
             if (end - start > 0) {
               onCreateRange(start, end, track);
@@ -487,7 +491,8 @@ export function SelectionOverlay({
       eventToTime,
       selectionType,
       activeIndex,
-      duration,
+      domain,
+      span,
       width,
       zoomLevel,
       selections,
@@ -592,18 +597,12 @@ export function SelectionOverlay({
       const isActive = i === activeIndex;
       const x1 = timeToPixel(
         range.start,
-        duration,
+        span,
         width,
         zoomLevel,
         viewportStart,
       );
-      const x2 = timeToPixel(
-        range.end,
-        duration,
-        width,
-        zoomLevel,
-        viewportStart,
-      );
+      const x2 = timeToPixel(range.end, span, width, zoomLevel, viewportStart);
       const left = Math.min(x1, x2);
       const rangeWidth = Math.abs(x2 - x1);
 
@@ -754,13 +753,7 @@ export function SelectionOverlay({
     if (isRangeArray(selections)) return null;
     return selections.map((point, i) => {
       const isActive = i === activeIndex;
-      const x = timeToPixel(
-        point.time,
-        duration,
-        width,
-        zoomLevel,
-        viewportStart,
-      );
+      const x = timeToPixel(point.time, span, width, zoomLevel, viewportStart);
       const top =
         selectionScope === "track" && point.track !== undefined
           ? point.track * trackHeight
@@ -830,18 +823,12 @@ export function SelectionOverlay({
 
     const x1 = timeToPixel(
       clamped.start,
-      duration,
+      span,
       width,
       zoomLevel,
       viewportStart,
     );
-    const x2 = timeToPixel(
-      clamped.end,
-      duration,
-      width,
-      zoomLevel,
-      viewportStart,
-    );
+    const x2 = timeToPixel(clamped.end, span, width, zoomLevel, viewportStart);
     const left = Math.min(x1, x2);
     const previewWidth = Math.abs(x2 - x1);
     const top =
@@ -879,14 +866,8 @@ export function SelectionOverlay({
     return pulseTrigger.indices.map((idx) => {
       const r = selections[idx];
       if (!r) return null;
-      const x1 = timeToPixel(
-        r.start,
-        duration,
-        width,
-        zoomLevel,
-        viewportStart,
-      );
-      const x2 = timeToPixel(r.end, duration, width, zoomLevel, viewportStart);
+      const x1 = timeToPixel(r.start, span, width, zoomLevel, viewportStart);
+      const x2 = timeToPixel(r.end, span, width, zoomLevel, viewportStart);
       const left = Math.min(x1, x2);
       const pulseWidth = Math.abs(x2 - x1);
       const top =
@@ -931,14 +912,14 @@ export function SelectionOverlay({
     if (!keyboardRangePreview) return null;
     const x1 = timeToPixel(
       keyboardRangePreview.start,
-      duration,
+      span,
       width,
       zoomLevel,
       viewportStart,
     );
     const x2 = timeToPixel(
       keyboardRangePreview.end,
-      duration,
+      span,
       width,
       zoomLevel,
       viewportStart,

@@ -6,10 +6,12 @@ import {
   computeTickInterval,
   generateTicks,
 } from "./timelineLayout.js";
+import { domainSpan, type TimeDomain } from "./domain.js";
 
 export interface TimeRulerProps {
-  /** Total media duration in seconds. */
-  duration: number;
+  /** Span shown at zoom 1, in media seconds (the whole file or the
+   *  source player's window). Tick labels are media time. */
+  domain: TimeDomain;
   /** Width of the ruler area in pixels. */
   width: number;
   /** Current zoom level (1 = full duration visible). */
@@ -32,7 +34,7 @@ export const RULER_HEIGHT = 24;
  * Tick density adapts to zoom level. Click/drag scrubs the playhead.
  */
 export function TimeRuler({
-  duration,
+  domain,
   width,
   zoomLevel,
   viewportStart,
@@ -42,10 +44,12 @@ export function TimeRuler({
 }: TimeRulerProps) {
   const elRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
+  const span = domainSpan(domain);
 
   // Convert a clientX to a clamped time inside the visible viewport. We
-  // clamp to viewport (not to [0, duration]) so the playhead stays visible
-  // when the user drags off the ruler — matching the Playhead's own clamp.
+  // clamp to viewport (not just to the domain) so the playhead stays
+  // visible when the user drags off the ruler — matching the Playhead's own
+  // clamp. The viewport lies inside the domain, so seeks stay there too.
   const seekToClientX = useCallback(
     (clientX: number) => {
       if (!onSeek) return;
@@ -55,8 +59,8 @@ export function TimeRuler({
       if (
         !Number.isFinite(zoomLevel) ||
         zoomLevel <= 0 ||
-        !Number.isFinite(duration) ||
-        duration <= 0 ||
+        !Number.isFinite(span) ||
+        span <= 0 ||
         !Number.isFinite(width) ||
         width <= 0
       ) {
@@ -66,19 +70,13 @@ export function TimeRuler({
       if (!el) return;
       const rect = el.getBoundingClientRect();
       const localX = clientX - rect.left;
-      const time = pixelToTime(
-        localX,
-        duration,
-        width,
-        zoomLevel,
-        viewportStart,
-      );
-      const visibleDuration = duration / zoomLevel;
-      const lo = Math.max(0, viewportStart);
-      const hi = Math.min(duration, viewportStart + visibleDuration);
+      const time = pixelToTime(localX, span, width, zoomLevel, viewportStart);
+      const visibleDuration = span / zoomLevel;
+      const lo = Math.max(domain.start, viewportStart);
+      const hi = Math.min(domain.end, viewportStart + visibleDuration);
       onSeek(Math.max(lo, Math.min(hi, time)));
     },
-    [duration, width, zoomLevel, viewportStart, onSeek],
+    [domain, span, width, zoomLevel, viewportStart, onSeek],
   );
 
   const handlePointerDown = useCallback(
@@ -125,7 +123,7 @@ export function TimeRuler({
     if (wasDragging) onDragEnd?.();
   }, [onDragEnd]);
 
-  if (!Number.isFinite(duration) || duration <= 0 || width <= 0) {
+  if (!Number.isFinite(span) || span <= 0 || width <= 0) {
     return (
       <div
         data-testid="time-ruler"
@@ -134,7 +132,7 @@ export function TimeRuler({
     );
   }
 
-  const visibleDuration = duration / zoomLevel;
+  const visibleDuration = span / zoomLevel;
   const visibleEnd = viewportStart + visibleDuration;
   const pixelsPerSecond = width / visibleDuration;
   const interval = computeTickInterval(pixelsPerSecond);
@@ -161,7 +159,7 @@ export function TimeRuler({
       }}
     >
       {ticks.map((t) => {
-        const x = timeToPixel(t, duration, width, zoomLevel, viewportStart);
+        const x = timeToPixel(t, span, width, zoomLevel, viewportStart);
         if (x < -50 || x > width + 50) return null;
         return (
           <div

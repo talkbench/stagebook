@@ -5,6 +5,16 @@ export interface PlaybackHandle {
   seekTo(seconds: number): void;
   getCurrentTime(): number;
   getDuration(): number;
+  /**
+   * The span participants may reach, in media seconds: a MediaPlayer's
+   * `[startAt, stopAt]` unless `allowScrubOutsideBounds` is set. `seekTo`
+   * clamps to it, and a Timeline shows only this span (#675). `end` is
+   * `Infinity` while an open-ended window's duration is still unknown.
+   *
+   * Optional for backward compatibility — consumers treat a handle without
+   * it as spanning `[0, getDuration()]`.
+   */
+  getBounds?(): { start: number; end: number };
   isPaused(): boolean;
   /** True when backed by the YouTube IFrame API; frame-step controls should be hidden. */
   readonly isYouTube: boolean;
