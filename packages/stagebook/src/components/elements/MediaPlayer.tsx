@@ -1254,6 +1254,9 @@ export function MediaPlayer({
               setYtHandle(h);
               setDuration(h.getDuration());
             }}
+            // A destroyed player's handle must stop being polled and stop
+            // standing in for this player (the source changed or remounted).
+            onHandleGone={() => setYtHandle(null)}
             onPlay={(t) => {
               setIsPaused(false);
               setYtEnded(false);

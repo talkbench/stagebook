@@ -160,6 +160,7 @@ async function installYTMock(page: PWT) {
             if (w.__ytSeekMovesClock) w.__ytCurrentTime = t;
           },
           getCurrentTime() {
+            if (w.__ytDestroyed) w.__ytReadsAfterDestroy++;
             return w.__ytCurrentTime;
           },
           getDuration() {
@@ -168,10 +169,14 @@ async function installYTMock(page: PWT) {
           getPlayerState() {
             return w.__ytState;
           },
-          destroy() {},
+          destroy() {
+            w.__ytDestroyed = true;
+          },
         };
       },
     };
+    w.__ytDestroyed = false;
+    w.__ytReadsAfterDestroy = 0;
   });
 }
 
@@ -997,6 +1002,38 @@ test("YouTube: pausing just past stopAt counts as reaching it", async ({
     "play",
     "stopAt",
   ]);
+});
+
+test("YouTube: a destroyed player isn't polled after the source changes", async ({
+  mount,
+  page,
+}) => {
+  // The YouTube poll runs while paused; once the URL moves to a direct file
+  // the old IFrame player is destroyed and must not be read again.
+  await installYTMock(page);
+  const component = await mount(
+    <UrlTransitionMediaPlayer
+      initialUrl="https://youtu.be/QC8iQqtG0hg"
+      nextUrl="/sample-video.mp4"
+      name="test"
+    />,
+  );
+  await fireYTOnReady(page);
+  await component.locator('[data-testid="swap-url"]').click();
+  await expect(
+    component.locator('[data-testid="mediaPlayer-video"]'),
+  ).toBeAttached();
+  // Longer than two poll intervals (250 ms).
+  await page.waitForTimeout(700);
+  expect(
+    await page.evaluate(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      () => [
+        (window as any).__ytDestroyed,
+        (window as any).__ytReadsAfterDestroy,
+      ],
+    ),
+  ).toEqual([true, 0]);
 });
 
 // -- captions overlay --
