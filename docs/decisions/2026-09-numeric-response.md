@@ -198,6 +198,10 @@ text, and `isValid` says whether that answer meets the constraints.
   #299.
 - **`entry`** always holds the raw text, so an unfinished entry comes back on
   reload and appears in the data.
+- **`numberFormat`** records the decimal and grouping separators in force when
+  the entry was parsed. A host override or a host-supplied catalog isn't
+  otherwise in the data, and `entry` can't be reparsed without it: `1,5` is
+  1.5 under one format and not a number under another.
 - **`isValid`** extends #668's validity function. A blank entry is valid
   unless the prompt is required. A non-blank entry is valid when it parses,
   lies within the bounds, and, with `integer: true`, is whole.
@@ -206,16 +210,19 @@ text, and `isValid` says whether that answer meets the constraints.
 cleared answer never leaves a stale number behind. Calculations use an
 out-of-range number unless they check `isValid`, just as they use a
 too-short text answer. That's the price of keeping `value` and `isValid`
-independent. #668's caveat therefore applies with extra force here. To
-require a valid answer, gate the submit button on `isValid`. In stages that
-can end any other way, check `isValid` in derived values, and recompute it in
+independent. #668's caveat therefore applies with extra force here. Gating
+the submit button on `isValid` keeps participants to valid answers, but it
+can't guarantee one, because a last-moment edit can be clicked through before
+its commit reaches the gate. In stages that can end any other way, check
+`isValid` in derived values. The guarantee comes from recomputing in
 analysis.
 
 Recomputing validity for analysis starts from `entry`, not `value`: a blank
 optional answer and `3-4` both lack a `value`, but only the first is valid.
 The participant's browser wrote all three fields. So a host that must trust a
 numeric answer recomputes `value` and `isValid` from `entry`, using the
-exported parser and the locale's `numberFormat`, and ignores the saved ones.
+exported parser and the record's `numberFormat`, and ignores the saved
+`value` and `isValid`.
 For the same reason, #299 checks at runtime that `value` is a number. The
 type declares it, but a tampered record can say otherwise.
 
@@ -293,8 +300,8 @@ The new type touches:
   strings, in `en` and `he`;
 - the localization review checklist's bidi item, which gains `prefix` and
   `suffix`;
-- saved records, which gain `entry`, so hosts that allowlist record fields
-  must add it.
+- saved records, which gain `entry` and `numberFormat`, so hosts that
+  allowlist record fields must add them.
 
 Tests:
 
