@@ -156,7 +156,9 @@ zeros count and leading zeros don't. Beyond that limit,
 it's a problem ("Too many digits") rather than a silently rounded number.
 Exponents, grouping, hex, and non-Western digits are not numbers in this
 version. Frontmatter bounds have the same 15-digit limit, and guidance writes
-them in plain notation, never as `1e+21`.
+them in plain notation, never as `1e+21`. Bounds are YAML numbers, so digits
+beyond what a JavaScript number keeps are lost when the file is parsed, as
+they are for the slider's bounds. `1.0000000000000001` is read as 1.
 
 The parser and the "could still become valid" check both run in linear time.
 They build no regular expressions from the catalog's separators, and they
@@ -175,8 +177,10 @@ catalog entry is an extension point for now. Adding a decimal-comma locale
 becomes catalog data rather than a parser change. A host supplying a catalog
 for a locale Stagebook doesn't ship supplies this entry too. A host override
 of `numberFormat` is merged field by field. The decimal and grouping
-separators must each be a single character that isn't a digit, `-`, or
-whitespace, and they must differ. Otherwise Stagebook warns and keeps the
+separators must each be a single character that isn't a digit or `-`, and
+they must differ. The decimal separator can't be whitespace. The grouping
+separator can be a space, a no-break space (U+00A0), or a narrow no-break
+space (U+202F), as in `1 000`. Otherwise Stagebook warns and keeps the
 bundled entry.
 
 Guidance writes numbers the way the participant types them: with the locale's
