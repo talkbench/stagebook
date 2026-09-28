@@ -160,7 +160,8 @@ runs from the first non-zero digit through the last digit typed, so trailing
 zeros count and leading zeros don't. Beyond that limit,
 it's a problem ("Too many digits") rather than a silently rounded number.
 Exponents, grouping, hex, and non-Western digits are not numbers in this
-version. Frontmatter bounds have the same 15-digit limit, and guidance writes
+version. Frontmatter bounds must be finite, so YAML's `.inf` and `.nan` are
+authoring errors. They have the same 15-digit limit, and guidance writes
 them in plain notation, never as `1e+21`. Bounds are YAML numbers, so digits
 beyond what a JavaScript number keeps are lost when the file is parsed, as
 they are for the slider's bounds. `1.0000000000000001` is read as 1.
@@ -212,7 +213,8 @@ text, and `isValid` says whether that answer meets the constraints.
 - **`numberFormat`** records the decimal and grouping separators in force when
   the entry was parsed. A host override or a host-supplied catalog isn't
   otherwise in the data, and `entry` can't be reparsed without it: `1,5` is
-  1.5 under one format and not a number under another.
+  1.5 under one format and not a number under another. It documents what was
+  used, but it isn't authoritative; see below.
 - **`isValid`** extends #668's validity function. A blank entry is valid
   unless the prompt is required. A non-blank entry is valid when it parses,
   lies within the bounds, and, with `integer: true`, is whole.
@@ -232,9 +234,14 @@ Recomputing validity for analysis starts from `entry`, not `value`: a blank
 optional answer and `3-4` both lack a `value`, but only the first is valid.
 For an individual prompt, the participant's browser wrote every field in the
 record. So a host that must trust a numeric answer recomputes `value` and
-`isValid` from `entry`, using the exported parser and the record's
-`numberFormat`, and ignores the saved
-`value` and `isValid`.
+`isValid` from `entry`. It uses the exported parser, with the number format
+from its own session configuration: `resolveNumberFormat` given the locale and
+overrides it set for that session. It ignores the saved `value` and
+`isValid`, and it doesn't trust the record's `numberFormat` either, because
+the same browser wrote it. A tampered record could declare a comma decimal so
+that an injected `0,15` passes a bound of 0.1 to 0.2. The saved format is
+only compared against the trusted one; a mismatch marks the record as
+suspect.
 For the same reason, #299 checks at runtime that `value` is a number. The
 type declares it, but a tampered record can say otherwise.
 
@@ -277,13 +284,19 @@ ships with the rest of this type; there's no interim phase.
   notepad and save a string `value`. Without the slot, Prompt shows an
   `ErrorCallout` saying the question can't be shown here, and reports it
   through `onContractViolation`.
-- **The slot's config.** Stagebook passes the constraints, the affixes, the
-  effective `numberFormat`, the `inputmode` derived from the constraints,
-  and the id of the prompt body, which names the field through
-  `aria-labelledby`. It also passes helpers bound to the active message
+- **The slot's config.** Stagebook passes:
+  - the prompt's `name`, which selects the shared document and the
+    `shared.prompt.<name>` record, as `padName` does for notepads;
+  - the constraints, the affixes, and the effective `numberFormat`;
+  - the `inputmode` derived from the constraints;
+  - the id of the prompt body, which names the field through
+    `aria-labelledby`.
+
+  It also passes helpers bound to the active message
   catalog: the keystroke filter, and the feedback state and text. The host
   wires these into its editor rather than reimplementing them, so the rules
   have one source.
+
 - **What stays with Stagebook.** It still renders the prompt body and the
   Required marker. The runner work is talkbench/runner#1015.
 - **Keystrokes.** The filter applies to each participant's own insertions
