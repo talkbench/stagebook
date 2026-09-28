@@ -230,8 +230,13 @@ type declares it, but a tampered record can say otherwise.
 
 `prefix` and `suffix` render inside the field, muted, at its logical start
 and end. So in RTL a suffix sits on the left. They are plain text, rendered
-as text nodes and never through Markdown. Each is a single line of at most 32
-characters, so a label can't crowd out the digits. Both are optional because unit
+as text nodes and never through Markdown. Each is a single line of source
+text, at most 32 characters. A cap can't reserve space on its own, since
+glyph and viewport widths vary. So the input keeps a minimum width of 6rem
+(about ten digits), and the labels give way instead. They wrap within the
+field, which grows taller, and they're never truncated, so the author's
+text stays visible. At a 320px viewport, two 32-character labels still
+leave the input its minimum width. Both are optional because unit
 position depends on the unit and the locale. Units of measure usually follow
 the number, while currency comes first in `en-US` (`$5`) and last in, for
 example, French or German (`5 €`). Some answers need both (`$` … `per year`).
