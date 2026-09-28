@@ -45,10 +45,8 @@ How old are you?
   the same reason the slider shows no thumb before selection.
 - `prefix` and `suffix` are short plain text in the prompt file's own
   language (see [Unit labels](#unit-labels)).
-- A `shared: true` element using this type is always an authoring error.
-  #668's rule rejects shared prompts only when they declare a constraint.
-  This type is stricter, because its value is validated by parsing whether
-  or not any constraint is declared.
+- `shared: true` is supported, through the host's collaborative editor (see
+  [Shared numeric responses](#shared-numeric-responses)).
 
 ## The field
 
@@ -101,7 +99,9 @@ keydown keys, which Android reports as "Unidentified".
 - An insertion with no allowed characters changes nothing, so typing a
   letter over a selection doesn't erase the selection.
 - The entry is capped at 100 characters. A change that would exceed the cap
-  is refused whole, with the pulse; it's never truncated.
+  is refused whole, with the pulse; it's never truncated. If the text is
+  already over the cap, which two merged edits or an undo in a shared field
+  can cause, deletions are accepted and insertions refused.
 - A dropped character counts in the telemetry exactly as a refused overflow
   key does in TextArea. It doesn't start or extend a commit timer.
 
@@ -127,7 +127,7 @@ more at the end could still make the entry valid:
   participant leaves the field. Examples: 3 on the way to 35 when the minimum
   is 18, a lone `-` when negatives are allowed, or `5.`.
 - **After leaving the field:** any non-blank invalid entry shows its problem,
-  and it stays until the next edit.
+  and it stays until the participant's own next edit.
 - **Blank:** muted guidance, never green and never a problem, even though a
   blank optional entry is valid. This matches #668's counter: it shows
   progress, not permission. The Required marker already says an answer is
@@ -139,7 +139,10 @@ Guidance and problems are plain end-aligned text below the field, styled like
 the counter: muted guidance ("Whole number from 18 to 99"), green with ✓ when
 valid, and `--stagebook-warning` text with ⓘ for a problem ("25 is more than
 20", "Enter a single number"). This is the one new use of the warning token
-as text color; it clears AA on white, and the a11y gate measures it. As #668
+as text color; it clears AA on white, and the a11y gate measures it. The
+feedback is plain text, never HTML. A problem quotes the parsed number,
+written the way it would be typed, and never the raw entry, so padding such as
+`00025` isn't echoed back. As #668
 decided, validation state is advisory. The field never uses `aria-invalid`,
 `role="alert"`, or a live region. The feedback element is part of the input's
 `aria-describedby`.
@@ -149,7 +152,9 @@ decided, validation state is advisory. The field never uses `aria-invalid`,
 After trimming surrounding whitespace, an entry is a number if it is an
 optional leading `-`, then digits with at most one decimal separator, with at
 least one digit after the separator if one is present. So `5.` is unfinished,
-and `.5` is 0.5. Leading zeros are allowed. An entry can have at most 15
+and `.5` is 0.5. An entry longer than 100 characters is not a number ("Too
+long"), checked before anything else, whatever wrote it. Leading zeros are
+allowed. An entry can have at most 15
 significant digits, the most a JavaScript number keeps exactly. The count
 runs from the first non-zero digit through the last digit typed, so trailing
 zeros count and leading zeros don't. Beyond that limit,
@@ -200,8 +205,10 @@ text, and `isValid` says whether that answer meets the constraints.
   number to save, and saving the text would break the guarantee that `value`
   is a number. So a cleared entry never becomes 0, and `3-4` is Missing to
   #299.
-- **`entry`** always holds the raw text, so an unfinished entry comes back on
-  reload and appears in the data.
+- **`entry`** holds the raw text, so an unfinished entry comes back on
+  reload and appears in the data. A host stores at most 1,000 characters of
+  it. Anything over 100 is already invalid, so storing less can't change a
+  recomputed verdict.
 - **`numberFormat`** records the decimal and grouping separators in force when
   the entry was parsed. A host override or a host-supplied catalog isn't
   otherwise in the data, and `entry` can't be reparsed without it: `1,5` is
@@ -223,9 +230,10 @@ analysis.
 
 Recomputing validity for analysis starts from `entry`, not `value`: a blank
 optional answer and `3-4` both lack a `value`, but only the first is valid.
-The participant's browser wrote all three fields. So a host that must trust a
-numeric answer recomputes `value` and `isValid` from `entry`, using the
-exported parser and the record's `numberFormat`, and ignores the saved
+For an individual prompt, the participant's browser wrote every field in the
+record. So a host that must trust a numeric answer recomputes `value` and
+`isValid` from `entry`, using the exported parser and the record's
+`numberFormat`, and ignores the saved
 `value` and `isValid`.
 For the same reason, #299 checks at runtime that `value` is a number. The
 type declares it, but a tampered record can say otherwise.
@@ -256,6 +264,70 @@ at a label's edges would take the surrounding direction, and a correctly typed
 accessible description, so a screen reader announces "35, years". In a
 full-width field, a suffix sits a long way from a short number; that's the
 cost of keeping openResponse's footprint.
+
+## Shared numeric responses
+
+A `shared: true` numeric prompt is one answer for the whole group, entered
+through the host's collaborative editor, as a shared open response is. It
+ships with the rest of this type; there's no interim phase.
+
+- **Rendering.** The host renders the field through a new, optional
+  `renderSharedNumericResponse` slot, not a mode on `renderSharedNotepad`.
+  A host without numeric support would otherwise quietly render a free-text
+  notepad and save a string `value`. Without the slot, Prompt shows an
+  `ErrorCallout` saying the question can't be shown here, and reports it
+  through `onContractViolation`.
+- **The slot's config.** Stagebook passes the constraints, the affixes, the
+  effective `numberFormat`, the `inputmode` derived from the constraints,
+  and the id of the prompt body, which names the field through
+  `aria-labelledby`. It also passes helpers bound to the active message
+  catalog: the keystroke filter, and the feedback state and text. The host
+  wires these into its editor rather than reimplementing them, so the rules
+  have one source.
+- **What stays with Stagebook.** It still renders the prompt body and the
+  Required marker. The runner work is talkbench/runner#1015.
+- **Keystrokes.** The filter applies to each participant's own insertions
+  only. Remote changes pass through untouched, because filtering them would
+  make that participant's copy drift from the shared text. Since every client
+  filters its own input, the shared text holds only allowed characters. A
+  tampered client can still write anything, and the parser treats that as
+  invalid. An undo in the shared editor also skips the filter, but it only
+  restores characters that were accepted before. Paste and drop are blocked.
+  Typing telemetry for shared fields is future work covering all shared
+  notepads (talkbench/runner#1014).
+- **Feedback.** Each participant's feedback follows their own focus. There is
+  no special case for watching someone else type, so a participant who has
+  left the field may briefly see a problem while another is partway through a
+  number. Another participant's edit doesn't count as "the next edit" that
+  clears a problem shown after leaving the field; only your own edit does.
+  The feedback sits in one end-aligned row below the field: first the
+  feedback text, then the host's Shared chip at the far end. That way the chip
+  doesn't move as the text changes length. Like the chip, the feedback text
+  has an opaque background, so presence rings pass behind it without changing
+  its contrast.
+- **Saved record.** The host writes `shared.prompt.<name>` mid-stage at the
+  open-response cadence (talkbench/runner#1013), and again at stage end. The
+  record has `value`, `entry`, `isValid`, and `numberFormat`.
+  - **The stage-end record is authoritative.** The host computes it on its
+    server from the merged text, with constraints from the prompt file it
+    fetches, and the number format from `resolveNumberFormat`. That function
+    is given the same locale and overrides the host gives the provider.
+  - **Nothing a browser wrote is trusted.** No input to the stage-end record
+    comes from a client-written attribute.
+  - **Mid-stage records are advisory,** if clients write them. Analysis
+    recomputes from the stage-end `entry`.
+- **Validity.** Here validity describes the group's current answer, which is
+  what a group's submit gate needs. So `numericResponse` is an exception to
+  #668's player-scoped rule. Constraints on a shared numeric prompt are
+  legal, and so are references to `shared.prompt.<name>.isValid`. Any
+  member's edit changes that flag, and a condition on it steers the whole
+  group, so #668's advisory caveat applies to every member at once. #694
+  proposes the same exception for shared open responses.
+- **Concurrent typing.** The editor merges edits character by character, so
+  two participants typing at once can produce a number neither typed.
+  Presence rings show when someone else is in the field, which makes this
+  rare. It's an accepted limitation, documented for researchers. An ownership
+  model could come later.
 
 ## Rejected
 
@@ -291,6 +363,14 @@ cost of keeping openResponse's footprint.
 - **Parsing with `Intl`.** It can't parse, and it varies by browser version.
 - **A unit selector (kg/lb).** Letting the participant choose a unit is a
   different feature. It's out of scope.
+- **A numeric mode on `renderSharedNotepad`.** A host that doesn't implement
+  the mode would ignore it without any error, render free text, and save a
+  string `value`. A separate slot makes a missing implementation visible.
+- **Latest-save-wins for shared numbers.** Saving the whole answer on each
+  commit, as shared sliders do, would never merge two entries into a new
+  number. But it would lose presence, and it would add a second
+  shared-editing model next to the collaborative editor that shared notepads
+  already use.
 
 ## Consequences
 
@@ -298,6 +378,19 @@ The new type touches:
 
 - the discriminated union and the section-count rule in `promptFile.ts`;
 - the switch in `Prompt.tsx`;
+- the provider contract, which gains the optional `renderSharedNumericResponse`
+  slot and its config, along with the unsupported-host state;
+- the viewer, whose shared-notepad stand-in (#591) needs a single-line
+  numeric counterpart for the new slot;
+- the main `stagebook` entry. It must export these without a React
+  dependency, because the runner's server writes shared records:
+  - the parser;
+  - the validity and "could still become valid" checks;
+  - `resolveNumberFormat(locale, overrides)`, which normalizes, falls back
+    and merges exactly as `resolveCatalog` does;
+- the runner, which doesn't pass `locale` to the provider today
+  (talkbench/runner#1016). The server and the client must resolve the same
+  number format;
 - `Element.tsx`, which today passes Prompt only `value`, and must also pass
   `entry` so an unfinished entry is restored on reload;
 - `resolveCatalog`, which merges top-level keys today and must merge and

@@ -45,6 +45,21 @@ No study has needed this yet. The prompt-file rule spans the treatment and
 the prompt file, so it follows the `localeConsistency` pattern and is wired
 into both the CLI and `validateTreatmentDiff`.
 
+`numericResponse` is the exception
+([numeric responses](2026-09-numeric-response.md#shared-numeric-responses)),
+because neither reason holds for it:
+
+- The host renders a shared numeric field through its own slot. That slot
+  receives the constraints, and the host writes `isValid`, so nothing is
+  ignored silently.
+- A shared numeric prompt is one answer for the whole group, so its validity
+  describes the group's current answer. That's what a group's submit gate
+  needs.
+
+Any member's edit changes that flag, and a condition on it steers the whole
+group, so the caveat under Consequences applies to every member at once.
+#694 proposes the same exception for shared open responses.
+
 ## One validity function
 
 A single pure function, exported from `stagebook` with no React dependency,
