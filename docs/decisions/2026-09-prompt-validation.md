@@ -195,9 +195,16 @@ messages, and no study has needed one yet.
 **`isValid` is advisory client state.** The participant's browser writes it,
 like `value`. A condition on it steers that participant's flow; it doesn't
 guarantee anything about stored data. A participant can alter the flag, and a
-gate decided on an earlier commit doesn't recheck at the click. Payment,
-eligibility, exclusion, and analysis should recompute validity from `value`
-and the prompt file with the exported function.
+gate decided on an earlier commit doesn't recheck at the click. A submit
+button gated on `isValid` also covers only that button. A stage timer, stage
+conditions, `submitOnComplete`, Qualtrics completion, or the host can end the
+stage with an invalid answer on record. The researcher docs say so plainly:
+to require a valid answer, gate the submit button on `isValid`, and in stages
+that can end any other way, check `isValid` in derived values and recompute
+it in analysis.
+Payment, eligibility, exclusion, and analysis should recompute validity from
+the saved answer and the prompt file, with the exported function. The saved
+answer is `value`, or `entry` for [numeric responses](2026-09-numeric-response.md).
 
 **Record shape.** Every player-scoped prompt record gains an `isValid` field.
 There's no new storage key, scope, or host API. Hosts that allowlist record
