@@ -133,7 +133,11 @@ more at the end could still make the entry valid:
   progress, not permission. The Required marker already says an answer is
   needed.
 - **Restored on reload:** an invalid entry shows its problem, as if the
-  participant had just left the field.
+  participant had just left the field. A restored entry is parsed with the
+  `numberFormat` saved in its record, and keeps that format until the
+  participant edits it. If a host override changed between sessions, a
+  restored `1,5` saved under a comma decimal still reads as 1.5, and leaving
+  the field unedited can't re-save it under the new format.
 
 Guidance and problems are plain end-aligned text below the field, styled like
 the counter: muted guidance ("Whole number from 18 to 99"), green with ✓ when
@@ -162,7 +166,11 @@ it's a problem ("Too many digits") rather than a silently rounded number.
 Exponents, grouping, hex, and non-Western digits are not numbers in this
 version. Frontmatter bounds must be finite, so YAML's `.inf` and `.nan` are
 authoring errors. They have the same 15-digit limit, and guidance writes
-them in plain notation, never as `1e+21`. Bounds are YAML numbers, so digits
+them in plain notation, never as `1e+21`. Each bound, written in plain
+notation, must also fit within the 100-character entry cap. Bounds are
+inclusive, so the bound itself is then always a valid answer the participant
+can type. Without this rule, `min: 1e-100` with `max: 1e-100` would need 101
+characters, and no answer could ever be valid. Bounds are YAML numbers, so digits
 beyond what a JavaScript number keeps are lost when the file is parsed, as
 they are for the slider's bounds. `1.0000000000000001` is read as 1.
 
@@ -291,8 +299,8 @@ ships with the rest of this type; there's no interim phase.
   - the `inputmode` derived from the constraints;
   - the id of the prompt body, which names the field through
     `aria-labelledby`;
-  - the commit callbacks `onLocalEdit(text)` and `onBlur(text)` (#697, shared
-    with `renderSharedNotepad`).
+  - the commit callbacks `onLocalEdit(text)`, `onRemoteChange(text)`, and
+    `onBlur(text)` (#697, shared with `renderSharedNotepad`).
 
   It also passes helpers bound to the active message catalog: the keystroke
   filter, and the feedback state and text. The host wires these into its
@@ -319,20 +327,29 @@ ships with the rest of this type; there's no interim phase.
   doesn't move as the text changes length. Like the chip, the feedback text
   has an opaque background, so presence rings pass behind it without changing
   its contrast.
-- **Saved record.** The typist writes, through Stagebook (#697). The host
-  calls `onLocalEdit(text)` with the merged text, and only for this
-  participant's own edits, never for remote sync. It calls `onBlur(text)` on
-  blur. Stagebook runs the open-response commit timer: 2s quiet, 5s maximum
-  wait, and blur when an edit is pending. It then builds the record with its
+- **Saved record.** The typist writes, through Stagebook (#697).
+  - `onLocalEdit(text)`: the host calls it with the merged text for this
+    participant's own edits only. It starts or extends the commit timer.
+  - `onRemoteChange(text)`: the host calls it when a remote edit arrives. It
+    refreshes the pending text, but never starts a timer.
+  - `onBlur(text)`: the host calls it on blur. It commits if an edit is
+    pending.
+
+  A commit always writes the latest merged text, not the text from this
+  participant's last edit. So a timer that fires late, for example in a
+  throttled background tab, can't overwrite a newer save with older text.
+  Stagebook runs the open-response commit timer: 2s quiet, 5s maximum wait,
+  and blur when an edit is pending. It then builds the record with its
   normal builder (`value`, `entry`, `isValid`, `numberFormat`, and the usual
   metadata) and saves it through the host's `save` with scope `shared`. The
   runner half is talkbench/runner#1013.
   - **Several writers, one snapshot.** Idle participants never write. Writes
-    are full snapshots of the merged text, taken after the typist's own
-    quiet period, when views have almost always converged. So two people
+    are full snapshots of the latest merged text, taken after the typist's
+    own quiet period, when views have almost always converged. So two people
     typing in the same window write the same text, and the duplicates are
-    harmless. A rare stale snapshot from a lagging view is corrected by the
-    next write or by the stage-end write.
+    harmless. A stale snapshot needs a view that is still lagging at the
+    moment the timer fires. That window is the network delay, not the timer
+    delay, and the other typist's own later save corrects it.
   - **Stage end.** The host's final pull remains the last snapshot. It builds
     the record with Stagebook's exported `buildPromptRecord`, with
     constraints from the prompt file, and the number format from
@@ -343,6 +360,7 @@ ships with the rest of this type; there's no interim phase.
     participants' browsers or from the text they edited, so high-trust
     analysis recomputes from `entry` with the host's own number format,
     exactly as above.
+
 - **Validity.** Here validity describes the group's current answer, which is
   what a group's submit gate needs. So `numericResponse` is an exception to
   #668's player-scoped rule. Constraints on a shared numeric prompt are
@@ -408,8 +426,9 @@ The new type touches:
 - the provider contract, which gains the optional `renderSharedNumericResponse`
   slot and its config, along with the unsupported-host state;
 - the shared commit path (#697): the commit timer extracted from TextArea into
-  a shared hook, the `onLocalEdit` and `onBlur` callbacks on both shared
-  slots, and a React-free `buildPromptRecord` for the host's stage-end write;
+  a shared hook, the `onLocalEdit`, `onRemoteChange`, and `onBlur` callbacks
+  on both shared slots, and a React-free `buildPromptRecord` for the host's
+  stage-end write;
 - the viewer, whose shared-notepad stand-in (#591) needs a single-line
   numeric counterpart for the new slot;
 - the main `stagebook` entry. It must export these without a React
