@@ -848,3 +848,34 @@ treatments:
     expect(hit!.severity).toBe("error");
   });
 });
+
+describe("shared prompt constraints (#668)", () => {
+  it("reports shared constraints at the offending prompt file", async () => {
+    const source = `treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: s
+        duration: 10
+        elements:
+          - type: prompt
+            file: q.prompt.md
+            shared: true
+`;
+    const result = await validateTreatmentWithDiff({
+      source,
+      loadImport: loaderFromMap({
+        "q.prompt.md":
+          "---\ntype: openResponse\nminLength: 5\n---\nQuestion\n---\n>\n",
+      }),
+    });
+    const issue = result.diagnostics.find(
+      (diagnostic) =>
+        diagnostic.message.includes("shared") &&
+        diagnostic.message.includes("minLength"),
+    );
+    expect(issue).toMatchObject({ severity: "error", range: { startLine: 8 } });
+    expect(issue?.message).toContain("q.prompt.md");
+    expect(issue?.message).toContain('treatment "t"');
+  });
+});

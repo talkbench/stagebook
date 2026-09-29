@@ -477,6 +477,34 @@ const thumbPixel = (track: string): Pixel => ({
 // Each case is a participant-facing component in its correctly-used (named,
 // themed) form.
 const cases: Case[] = [
+  ...(["radio", "checkbox", "dropdown", "text"] as const).flatMap(
+    (kind): Case[] =>
+      [false, true].map((answered) => ({
+        name: `Prompt: required ${kind} (${answered ? "answered" : "untouched"})`,
+        node: (
+          <Prompt
+            {...promptProps}
+            name="required"
+            metadata={
+              kind === "text"
+                ? { type: "openResponse", required: true, minLength: 3 }
+                : kind === "dropdown"
+                  ? { type: "dropdown", required: true, placeholder: "Choose" }
+                  : {
+                      type: "multipleChoice",
+                      required: true,
+                      select: kind === "checkbox" ? "multiple" : "single",
+                    }
+            }
+            body="Choose your answer"
+            responseItems={kind === "text" ? [] : ["Alpha", "Beta"]}
+            value={
+              answered ? (kind === "checkbox" ? ["Alpha"] : "Alpha") : undefined
+            }
+          />
+        ),
+      })),
+  ),
   {
     // Checked, so the first row's control carries the accent fill: a
     // state indicator (1.4.11) on the row it sits in. The row fill under a

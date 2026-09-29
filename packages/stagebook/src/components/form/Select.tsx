@@ -35,6 +35,8 @@ export interface SelectProps {
    * #545.
    */
   ariaLabelledBy?: string;
+  /** Advisory required state; does not enable native form validation. */
+  ariaRequired?: boolean;
   /**
    * Forwarded as the `disabled` attribute on the `<select>` (#620). The
    * control keeps rendering — its options, its placeholder — but can't
@@ -144,6 +146,7 @@ export function Select({
   placeholder,
   id,
   ariaLabelledBy,
+  ariaRequired,
   disabled = false,
   "data-testid": dataTestId,
 }: SelectProps) {
@@ -344,6 +347,7 @@ export function Select({
           value={currentValue}
           onChange={handleChange}
           aria-labelledby={ariaLabelledBy}
+          aria-required={ariaRequired}
           disabled={disabled}
           style={{ ...selectBaseStyle, ...stateStyle }}
         >

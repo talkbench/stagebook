@@ -14,6 +14,8 @@ export interface CheckboxGroupProps {
   value: string[];
   onChange: (selected: string[]) => void;
   label?: string;
+  ariaLabelledBy?: string;
+  ariaDescribedBy?: string;
   layout?: CheckboxLayout;
   id?: string;
   "data-testid"?: string;
@@ -92,6 +94,8 @@ export function CheckboxGroup({
   value,
   onChange,
   label = "",
+  ariaLabelledBy,
+  ariaDescribedBy,
   layout = "vertical",
   id,
   "data-testid": dataTestId,
@@ -174,7 +178,8 @@ export function CheckboxGroup({
         // as loose siblings. Native `<input type="checkbox">` already
         // conveys `aria-checked` via its `:checked` state.
         role="group"
-        aria-labelledby={label ? labelId : undefined}
+        aria-labelledby={ariaLabelledBy ?? (label ? labelId : undefined)}
+        aria-describedby={ariaDescribedBy}
         style={{
           marginInlineStart: "1.25rem",
           display: layout === "horizontal" ? "flex" : "grid",

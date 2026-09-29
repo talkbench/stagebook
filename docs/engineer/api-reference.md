@@ -123,6 +123,31 @@ Throws if any `${field}` placeholders remain unresolved.
 
 Also exported: `expandTemplate`, `substituteFields`, `recursivelyFillTemplates` for lower-level control.
 
+### `checkResponse(response, constraints?)`
+
+Exported from the main `stagebook` entry point without a React dependency:
+
+```ts
+import { checkResponse } from "stagebook";
+
+checkResponse("a", { required: true, minLength: 3, maxLength: 100 });
+// { isValid: false, blank: false, failed: "minLength" }
+```
+
+Constraints are `{ required?: boolean; minLength?: number; maxLength?: number }`.
+The result has `isValid: boolean`, `blank: boolean`, and an optional `failed`
+value of `"required"`, `"minLength"`, or `"maxLength"`. Undefined, empty arrays,
+and trim-empty strings are blank; `0` and `false` are not. Blank optional
+answers skip length constraints. Nonblank strings use their untrimmed UTF-16
+length. Prompt schemas limit length declarations to open responses.
+
+Prompt calls this function on every player-scoped save, including dropdown
+mount defaults, and adds `isValid` beside the unchanged `value`. Shared saves
+omit the flag. Hosts that allowlist record fields must retain `isValid`.
+The TextArea counter uses the same function against live text; the saved flag
+can lag by one commit window. It is advisory browser state: recompute from the
+answer and prompt constraints for analysis, payment and eligibility.
+
 ## Validation (`stagebook/validate`)
 
 The `stagebook/validate` subpath exports the position-aware validators shared by the CLI, the VS Code extension, and the viewer: `validateTreatmentSource`, `validatePromptSource`, `loadAndMergeImports`, `expandAndValidateWithImports`, the `Diagnostic` type, and position-mapping helpers.
@@ -378,6 +403,13 @@ friendly element crash fallback. It is not a character counter or field
 validation component.
 
 ### Form Components (standalone)
+
+Required controls support `ariaRequired?: boolean` on `TextArea`, `RadioGroup`
+and `Select`; this forwards `aria-required` without native submit blocking.
+`RadioGroup` and `CheckboxGroup` accept `ariaLabelledBy?: string`, and
+`CheckboxGroup` accepts `ariaDescribedBy?: string` to associate its required
+marker because role `group` does not support `aria-required`. Prompt sets these
+associations and the localized `promptRequired` marker automatically.
 
 | Component       | Key Props                                                                                                                                                          |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

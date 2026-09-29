@@ -105,7 +105,21 @@ export const namedReferenceSchema = z
     name: referenceNameSchema,
     path: referencePathSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((data, ctx) => {
+    if (
+      data.position === "shared" &&
+      data.source === "prompt" &&
+      data.path?.[0] === "isValid"
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["path"],
+        message:
+          "Shared prompt records do not carry isValid. Use a player-scoped prompt reference for response validation (#668).",
+      });
+    }
+  });
 export type NamedReferenceType = z.infer<typeof namedReferenceSchema>;
 
 export const externalReferenceSchema = z

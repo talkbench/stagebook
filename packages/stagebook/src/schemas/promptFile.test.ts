@@ -1278,3 +1278,70 @@ Now your answer:
     }
   });
 });
+
+describe("required constraints (#668)", () => {
+  test.each(["multipleChoice", "dropdown", "openResponse"])(
+    "%s accepts true and false",
+    (type) => {
+      for (const required of [true, false]) {
+        expect(
+          promptMetadataSchema.safeParse({
+            type,
+            required,
+            ...(type === "dropdown" ? { placeholder: "Choose" } : {}),
+          }).success,
+        ).toBe(true);
+      }
+    },
+  );
+  test.each(["listSorter", "noResponse"])(
+    "%s rejects required even when false",
+    (type) => {
+      for (const required of [true, false]) {
+        expect(promptMetadataSchema.safeParse({ type, required }).success).toBe(
+          false,
+        );
+      }
+    },
+  );
+  test("slider required rejects with the keyboard-access dependency", () => {
+    for (const required of [true, false]) {
+      const parsed = promptMetadataSchema.safeParse({
+        type: "slider",
+        min: 0,
+        max: 10,
+        interval: 1,
+        required,
+      });
+      expect(parsed.success).toBe(false);
+      if (!parsed.success)
+        expect(
+          parsed.error.issues.some((issue) => issue.message.includes("#689")),
+        ).toBe(true);
+    }
+  });
+  test("required dropdown needs an explicit placeholder", () => {
+    const parsed = promptMetadataSchema.safeParse({
+      type: "dropdown",
+      required: true,
+    });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      const issue = parsed.error.issues.find(
+        (item) => item.path[0] === "placeholder",
+      );
+      expect(issue?.message).toContain("placeholder");
+    }
+    expect(
+      promptMetadataSchema.safeParse({ type: "dropdown", required: false })
+        .success,
+    ).toBe(true);
+    expect(
+      promptMetadataSchema.safeParse({
+        type: "dropdown",
+        required: true,
+        placeholder: "",
+      }).success,
+    ).toBe(true);
+  });
+});

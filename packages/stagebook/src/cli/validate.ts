@@ -10,6 +10,7 @@ import {
   validatePromptSource,
   expandAndValidateWithImports,
   checkPromptLocaleConsistencyWithLoader,
+  checkSharedPromptValidationWithLoader,
   checkUnsatisfiableConditionsWithLoader,
 } from "../validate/index.js";
 import { checkConsentLocaleCoverage } from "../schemas/index.js";
@@ -255,6 +256,7 @@ export async function run({
       // above runs over the raw source). Adding it here would double-report.
       diagnostics.push(
         ...(await checkLocaleConsistencyDiagnostics(result.fullYaml, dir)),
+        ...(await checkSharedPromptValidationDiagnostics(result.fullYaml, dir)),
         ...(await checkUnsatisfiableConditionDiagnostics(result.fullYaml, dir)),
         ...checkConsentLocaleCoverageDiagnostics(result.fullYaml),
       );
@@ -465,4 +467,32 @@ function writeJson(stream: NodeJS.WritableStream, results: FileResult[]): void {
     summary: { errors: errorCount, warnings: warningCount, files: fileCount },
   };
   stream.write(JSON.stringify(output, null, 2) + "\n");
+}
+
+/** Cross-file constraints run on expanded YAML; the message locates the element. */
+async function checkSharedPromptValidationDiagnostics(
+  fullYaml: string,
+  dir: string,
+): Promise<Diagnostic[]> {
+  let fileObj: unknown;
+  try {
+    fileObj = loadYaml(fullYaml);
+  } catch {
+    return [];
+  }
+  const issues = await checkSharedPromptValidationWithLoader({
+    fileObj,
+    loadPrompt: async (relPath) => {
+      try {
+        return await readFile(resolvePath(dir, relPath), "utf8");
+      } catch {
+        return null;
+      }
+    },
+  });
+  return issues.map((issue) => ({
+    severity: "error" as const,
+    message: issue.message,
+    range: null,
+  }));
 }

@@ -137,6 +137,14 @@ Both forms parse to the same internal shape; either is accepted at every referen
 
 ### Prompt Responses
 
+`self.prompt.<name>.isValid` reads the advisory validity flag on the most recent
+committed response. Use `equals` with `value: true` to wait for a passing answer.
+For an optional answer, use `any` combining `doesNotExist` and `equals: true`;
+an untouched prompt has no flag. See [response validity](prompts.md#response-validity-and-conditions)
+for both complete idioms, timing and trust limits, hidden-prompt gates, and the
+warning against `all.prompt.<name>.isValid`. `shared.prompt.<name>.isValid`
+is rejected: shared records have no flag.
+
 ```
 <position>.prompt.<name>
 ```

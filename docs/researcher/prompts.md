@@ -35,6 +35,18 @@ Each per-type schema is `.strict()` (#243) — unknown frontmatter keys (typos l
 
 ### Type-specific fields
 
+`required: true | false` (default `false`) is supported on `multipleChoice`,
+`dropdown`, and `openResponse`. A required dropdown must declare `placeholder`,
+so it waits for a deliberate choice. `required` is rejected on `listSorter`
+and `noResponse`, and on `slider` until [#689](https://github.com/talkbench/stagebook/issues/689)
+provides keyboard access to untouched sliders.
+
+A required prompt displays a static, muted “Required” line between its body
+and control, localized in English and Hebrew. The marker stays when answered
+or cleared. It describes the question; it does not prevent submission or show
+an error. Required textareas, radio groups and dropdowns expose `aria-required`;
+checkbox groups describe the marker to assistive technology.
+
 **`openResponse`:**
 
 | Field | Type | Description |
@@ -243,7 +255,16 @@ files, for example:
 npx --package=stagebook stagebook validate "prompts/**/*.prompt.md"
 ```
 
-The character counter appears automatically when `minLength` or `maxLength` is set. `maxLength` is enforced (input is capped); `minLength` is displayed but must be enforced separately via conditions if you want to block submission.
+The character counter appears automatically when `minLength` or `maxLength` is
+set. `maxLength` caps typing; both constraints contribute to the saved `isValid`
+flag, so conditions can use that flag without repeating the bounds. Lengths
+count UTF-16 code units: most characters count as one, supplementary-plane
+characters such as many emoji count as two. The untrimmed text determines the
+length of a nonblank answer. `minLength: 0` means no minimum.
+
+The counter is visible before interaction. Whitespace-only text stays muted,
+as does a counter with only a maximum. A blank optional answer is valid even
+when its counter shows no progress toward a minimum.
 
 ### Dropdown
 
@@ -322,3 +343,63 @@ Please read the following instructions carefully before proceeding.
 
 The study will take approximately 15 minutes.
 ```
+
+## Response validity and conditions
+
+Every saved player-scoped prompt record includes `isValid` beside `value`.
+`value` retains the answer even when it fails a constraint. A blank answer is
+`undefined`, an empty selection array, or text that becomes empty after trimming
+Unicode whitespace. `0` and `false` are not blank. Blank answers pass unless
+`required: true`; length bounds do not apply to blank optional answers. Nonblank
+text must satisfy its declared bounds; other nonblank responses pass.
+
+An untouched prompt has no record or `isValid`. Leaving a text field saves its
+text, including `""`. Dropdowns without a placeholder save their first option on
+mount. Each commit computes `isValid`; the counter reads live text, so the flag
+can trail it by one [commit window](../decisions/2026-09-response-commits.md).
+
+Choose the condition idiom by intent:
+
+```yaml
+- type: submitButton
+  conditions:
+    all:
+      # Answered, and it passes.
+      - reference: self.prompt.essay.isValid
+        comparator: equals
+        value: true
+      # Optional, but anything entered must pass.
+      - any:
+          - reference: self.prompt.comments.isValid
+            comparator: doesNotExist
+          - reference: self.prompt.comments.isValid
+            comparator: equals
+            value: true
+```
+
+Use `all` or `any` to combine prompts. Spell out the optional case with
+`doesNotExist`; do not replace it with `doesNotEqual: false`, whose absence
+semantics are due to change in [#299](https://github.com/talkbench/stagebook/issues/299).
+A condition-hidden, untouched prompt has no record: an `equals: true` gate
+waiting on it cannot pass. The optional idiom allows that absence.
+
+Do not gate a group with `all.prompt.<name>.isValid`. The resolver drops
+participants with no record, so that reference can pass as soon as one
+participant has a valid answer. Until #299 preserves missing participant slots,
+list each participant explicitly under `all`, for example
+`0.prompt.essay.isValid`, `1.prompt.essay.isValid`, and so on.
+
+Validation only advises the participant. Gating the submit button on `isValid`
+keeps participants to valid answers, but it cannot guarantee one: a last-moment
+edit can be clicked through before its commit reaches the gate. A stage timer,
+stage conditions, `submitOnComplete`, Qualtrics completion, or the host can still
+end a stage with an invalid answer on record. In those stages, derived values
+and analysis should check `isValid`. The participant's browser writes this flag,
+like `value`; only recomputing validity from the saved `value` and prompt file
+in analysis guarantees validity. Recompute for payment, eligibility and exclusion
+as well, using the exported `checkResponse` function.
+
+These constraints apply to player-scoped prompts. A `shared: true` prompt may
+not declare `required: true`, `minLength`, or `maxLength`; explicit
+`required: false` is allowed. Shared records have no `isValid`, and
+`shared.prompt.<name>.isValid` is an authoring error.

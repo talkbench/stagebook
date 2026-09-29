@@ -205,6 +205,21 @@ Position indices in `showToPositions`, `hideFromPositions`, `groupComposition`, 
 
 ## 11. Prompt Files
 
+`required?: boolean` (default `false`) is accepted on `multipleChoice`,
+`dropdown`, and `openResponse`. Required dropdowns must set `placeholder`.
+`listSorter`, `noResponse`, and currently `slider` reject `required` (#689).
+`openResponse` also accepts `minLength?: integer >= 0` and
+`maxLength?: integer >= 1`, counted in UTF-16 code units.
+
+Player-scoped saves include `isValid: boolean`. Read it with
+`self.prompt.<name>.isValid` (or an explicit participant slot).
+`equals: true` waits for a valid answer; the optional idiom is `any` of
+`doesNotExist` and `equals: true`. See [validity and conditions](prompts.md#response-validity-and-conditions).
+Validation is advisory; it does not automatically block submission.
+Shared prompts reject `required: true`, `minLength`, and `maxLength`, but allow
+explicit `required: false`. Shared records omit `isValid`, and references to
+`shared.prompt.<name>.isValid` are rejected.
+
 Three sections separated by `---`:
 
 ```markdown

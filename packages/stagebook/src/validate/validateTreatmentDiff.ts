@@ -10,6 +10,7 @@ import {
 import type { ZodIssue } from "zod";
 import { loadAndMergeImports } from "./loadAndMergeImports.js";
 import { checkPromptLocaleConsistencyWithLoader } from "./localeConsistency.js";
+import { checkSharedPromptValidationWithLoader } from "./sharedPromptValidation.js";
 import { checkUnsatisfiableConditionsWithLoader } from "./unsatisfiableConditions.js";
 import { createPositionMapper, extractYamlErrors } from "./yamlPositionMap.js";
 import type { Diagnostic } from "./types.js";
@@ -269,6 +270,19 @@ export async function validateTreatmentWithDiff({
         message: mismatch.message,
         severity: "error",
         range: null,
+      });
+    }
+
+    // Shared prompt constraints span the element and its loaded prompt file.
+    const sharedConstraintIssues = await checkSharedPromptValidationWithLoader({
+      fileObj: diff.hydrated,
+      loadPrompt: loadImport,
+    });
+    for (const issue of sharedConstraintIssues) {
+      diagnostics.push({
+        message: issue.message,
+        severity: "error",
+        range: resolveOrWalkUp(mapper, issue.path),
       });
     }
 

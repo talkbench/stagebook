@@ -28,6 +28,8 @@ export interface StagebookMessages {
   // --- Form / submit ---
   /** Default submit-button label when the researcher doesn't set `buttonText`. */
   submitButtonDefault: string;
+  /** Static marker describing a required prompt, regardless of its answer. */
+  promptRequired: string;
   /** Accessible name for the unanchored slider input. */
   sliderLabel: string;
   /** Instruction shown above the slider before the first click. */

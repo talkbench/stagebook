@@ -6,6 +6,8 @@ import { Select } from "../form/Select.js";
 import { TextArea, type DebugMessage } from "../form/TextArea.js";
 import { Slider } from "../form/Slider.js";
 import { ListSorter } from "../form/ListSorter.js";
+import { useMessages, useIsRTL } from "../StagebookProvider.js";
+import { checkResponse } from "../../utils/checkResponse.js";
 import type { MetadataType } from "../../schemas/promptFile.js";
 
 function setEquality(a: Set<string>, b: Set<string>): boolean {
@@ -82,8 +84,12 @@ export function Prompt({
   // than shipping a duplicate visible label (#545). `useId()` keeps
   // it unique when multiple Prompts share a page.
   const bodyId = useId();
+  const requiredId = useId();
+  const messages = useMessages();
+  const isRTL = useIsRTL();
 
   const promptType = metadata.type;
+  const required = "required" in metadata && metadata.required === true;
   // Per-type fields only exist on the discriminated-union branch where
   // they were declared (#243). Safely-narrowed lookups via the type tag.
   const rows = promptType === "openResponse" ? (metadata.rows ?? 5) : 5;
@@ -158,6 +164,15 @@ export function Prompt({
         // in the same event, before a new recordData closure is rendered.
         debugMessages: debugMessagesRef.current,
         value: newValue,
+        ...(!shared
+          ? {
+              isValid: checkResponse(newValue, {
+                required,
+                minLength,
+                maxLength,
+              }).isValid,
+            }
+          : {}),
         // For multipleChoice prompts (#282), record both the chosen value
         // and its display label. In numeric mode `value` is the number and
         // `label` is the text; in text mode `value === label`. Slider
@@ -167,7 +182,7 @@ export function Prompt({
       const scope = shared ? "shared" : "player";
       save(`prompt_${recordData.name}`, updatedRecord, scope);
     },
-    [shared, save],
+    [shared, save, required, minLength, maxLength],
   );
 
   // Auto-save the dropdown's first option as the participant's
@@ -209,6 +224,22 @@ export function Prompt({
         <Markdown text={body} resolveURL={resolveURL} />
       </div>
 
+      {required && (
+        <div
+          id={requiredId}
+          data-testid="required-marker"
+          dir={isRTL ? "rtl" : "ltr"}
+          style={{
+            color: "var(--stagebook-text-muted, #626977)",
+            fontSize: "0.75rem",
+            textAlign: "start",
+            marginBottom: "0.25rem",
+          }}
+        >
+          {messages.promptRequired}
+        </div>
+      )}
+
       {promptType === "multipleChoice" &&
         (metadata.select === "single" || metadata.select === undefined) &&
         // In numeric mode (#282) the option key is the stringified number;
@@ -222,6 +253,8 @@ export function Prompt({
             }))}
             value={typeof value === "number" ? String(value) : undefined}
             layout={metadata.layout}
+            ariaLabelledBy={bodyId}
+            ariaRequired={required || undefined}
             onChange={(e) => {
               const idx = shuffledNumericPoints.findIndex(
                 (p) => String(p) === e.target.value,
@@ -239,6 +272,8 @@ export function Prompt({
             }))}
             value={value as string | undefined}
             layout={metadata.layout}
+            ariaLabelledBy={bodyId}
+            ariaRequired={required || undefined}
             onChange={(e) =>
               // Text mode: label === value.
               saveData(e.target.value, record, e.target.value)
@@ -254,6 +289,8 @@ export function Prompt({
           }))}
           value={(value as string[]) ?? []}
           layout={metadata.layout}
+          ariaLabelledBy={bodyId}
+          ariaDescribedBy={required ? requiredId : undefined}
           onChange={(newSelection) => saveData(newSelection, record)}
         />
       )}
@@ -281,6 +318,7 @@ export function Prompt({
             // #545. Preferred over a visible `label`, which would duplicate
             // the body the participant already reads.
             ariaLabelledBy={bodyId}
+            ariaRequired={required || undefined}
             onChange={(e) => saveData(e.target.value, record, e.target.value)}
           />
         </div>
@@ -301,6 +339,8 @@ export function Prompt({
           showCharacterCount={!!(minLength || maxLength)}
           minLength={minLength}
           maxLength={maxLength}
+          ariaLabelledBy={bodyId}
+          ariaRequired={required || undefined}
         />
       )}
 

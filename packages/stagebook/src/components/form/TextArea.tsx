@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useId } from "react";
+import { checkResponse } from "../../utils/checkResponse.js";
 import { computeIntervalQuantiles } from "./typingQuantiles.js";
 import { useMessages, useIsRTL } from "../StagebookProvider.js";
 import { focusRingCss } from "../focusRing.js";
@@ -63,6 +64,8 @@ export interface TextAreaProps {
   label?: string;
   ariaLabel?: string;
   ariaLabelledBy?: string;
+  /** Advisory required state; does not enable native form validation. */
+  ariaRequired?: boolean;
 }
 
 /**
@@ -116,6 +119,7 @@ export function TextArea({
   label = "",
   ariaLabel,
   ariaLabelledBy,
+  ariaRequired,
 }: TextAreaProps) {
   const messages = useMessages();
   const isRTL = useIsRTL();
@@ -393,19 +397,20 @@ export function TextArea({
     // in handleChange uses this same measure, so the counter and the limit can
     // never disagree.
     const currentLength = localValue.length;
+    const validity = checkResponse(localValue, { minLength, maxLength });
 
     if (minLength && maxLength) {
       countText = messages.charCount(currentLength, minLength, maxLength);
       // The valid range is [minLength, maxLength] inclusive on both ends.
       // Hitting maxLength is "you're at the upper limit" — a fact, not an
       // error. Attempts to type past it pulse red via isOverflowing (#333).
-      if (currentLength >= minLength && currentLength <= maxLength) {
+      if (!validity.blank && validity.isValid) {
         countColor = "var(--stagebook-success, #15803d)";
         countState = "valid";
       }
     } else if (minLength) {
       countText = messages.charCount(currentLength, minLength);
-      if (currentLength >= minLength) {
+      if (!validity.blank && validity.isValid) {
         countColor = "var(--stagebook-success, #15803d)";
         countState = "valid";
       }
@@ -481,6 +486,7 @@ export function TextArea({
         // supplies the name and these stay absent (#538).
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
+        aria-required={ariaRequired}
         autoComplete="off"
         rows={rows}
         placeholder={defaultText}
