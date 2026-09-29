@@ -2,6 +2,14 @@
 
 Status: proposed in [#668](https://github.com/talkbench/stagebook/issues/668).
 
+**Extended by [numeric responses](2026-09-numeric-response.md)** (#687). That
+ADR adds the `numericResponse` prompt type, which is covered by everything
+here, including `required` and the Required marker. It also defines the
+type's own validity rule (parsing, bounds, whole numbers), and it makes
+shared numeric prompts an exception to the player-scoped rule below. Where
+this ADR lists prompt types, read `numericResponse` as included on those
+terms.
+
 Prompt frontmatter declares response constraints, and Stagebook reports
 whether each committed response satisfies them. It never blocks submission.
 Prompt saves the result as `isValid` beside `value`, and a study designer who
@@ -45,21 +53,6 @@ No study has needed this yet. The prompt-file rule spans the treatment and
 the prompt file, so it follows the `localeConsistency` pattern and is wired
 into both the CLI and `validateTreatmentDiff`.
 
-`numericResponse` is the exception
-([numeric responses](2026-09-numeric-response.md#shared-numeric-responses)),
-because neither reason holds for it:
-
-- The host renders a shared numeric field through its own slot. That slot
-  receives the constraints, and the host writes `isValid`, so nothing is
-  ignored silently.
-- A shared numeric prompt is one answer for the whole group, so its validity
-  describes the group's current answer. That's what a group's submit gate
-  needs.
-
-Any member's edit changes that flag, and a condition on it steers the whole
-group, so the caveat under Consequences applies to every member at once.
-#694 proposes the same exception for shared open responses.
-
 ## One validity function
 
 A single pure function, exported from `stagebook` with no React dependency,
@@ -73,9 +66,6 @@ decides validity:
   constraints don't apply to a blank optional answer.
 - A non-blank `openResponse` is valid when its untrimmed length is within
   `[minLength, maxLength]`, inclusive, counted exactly as the counter counts.
-- A non-blank `numericResponse` is valid when it parses as a number within
-  its bounds, and is whole if `integer: true`
-  ([numeric responses](2026-09-numeric-response.md)).
 - A non-blank response of any other type is valid.
 
 The TextArea counter and Prompt's saved flag both call this function, so the
