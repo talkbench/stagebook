@@ -57,6 +57,7 @@ const openResponseMetadataSchema = z
   .object({
     type: z.literal("openResponse"),
     ...baseMetadataFields,
+    required: z.boolean().optional(),
     rows: z.number().int().min(1).optional(),
     minLength: z.number().int().min(0).optional(),
     maxLength: z.number().int().min(1).optional(),
@@ -67,6 +68,7 @@ const multipleChoiceMetadataSchema = z
   .object({
     type: z.literal("multipleChoice"),
     ...baseMetadataFields,
+    required: z.boolean().optional(),
     select: z.enum(["single", "multiple"]).optional().default("single"),
     layout: z.enum(["vertical", "horizontal"]).optional().default("vertical"),
     shuffle: z.boolean().optional(),
@@ -81,6 +83,7 @@ const dropdownMetadataSchema = z
   .object({
     type: z.literal("dropdown"),
     ...baseMetadataFields,
+    required: z.boolean().optional(),
     placeholder: z.string().optional(),
     shuffle: z.boolean().optional(),
   })
@@ -95,21 +98,36 @@ const listSorterMetadataSchema = z
   .strict();
 
 const sliderMetadataSchema = z
-  .object({
-    type: z.literal("slider"),
-    ...baseMetadataFields,
-    min: z.number(),
-    max: z.number(),
-    interval: z.number().positive(),
-    // When true, the slider renders a numeric value badge above the
-    // thumb after the participant has selected a value. Off by
-    // default to preserve the "no anchoring information" posture
-    // (#326); opt in per prompt by setting `showValue: true` in the
-    // frontmatter. Useful on Likert / 1-N scales where seeing the
-    // selected number is a UX win and where the participant could
-    // count tick marks anyway.
-    showValue: z.boolean().optional(),
-  })
+  .object(
+    {
+      type: z.literal("slider"),
+      ...baseMetadataFields,
+      min: z.number(),
+      max: z.number(),
+      interval: z.number().positive(),
+      // When true, the slider renders a numeric value badge above the
+      // thumb after the participant has selected a value. Off by
+      // default to preserve the "no anchoring information" posture
+      // (#326); opt in per prompt by setting `showValue: true` in the
+      // frontmatter. Useful on Likert / 1-N scales where seeing the
+      // selected number is a UX win and where the participant could
+      // count tick marks anyway.
+      showValue: z.boolean().optional(),
+    },
+    {
+      errorMap: (issue, ctx) => {
+        if (
+          issue.code === z.ZodIssueCode.unrecognized_keys &&
+          issue.keys.includes("required")
+        ) {
+          return {
+            message: "`required` isn't supported on sliders yet (#689).",
+          };
+        }
+        return { message: ctx.defaultError };
+      },
+    },
+  )
   .strict();
 
 /**
@@ -133,6 +151,18 @@ export const promptMetadataSchema = z
     sliderMetadataSchema,
   ])
   .superRefine((data, ctx) => {
+    if (
+      data.type === "dropdown" &&
+      data.required &&
+      data.placeholder === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "A required dropdown must declare a placeholder so an answer is not saved before participant interaction.",
+        path: ["placeholder"],
+      });
+    }
     if (data.type === "openResponse") {
       if (
         data.minLength !== undefined &&
