@@ -27,9 +27,10 @@ function toArray(value: unknown): unknown[] {
 }
 
 /** Explicit names only: runtime-derived keys also contain host progressLabel.
- * Reuse with distinct files is ambiguous, as in unsatisfiableConditions; don't
- * invent a uniqueness rule or assume that the earliest producer owns the data. */
-function collectPromptFiles(
+ * A shared reference can only read shared producers: a same-name player record
+ * lives in a different store and cannot make that target ambiguous. Reuse with
+ * distinct shared files remains ambiguous, as in unsatisfiableConditions. */
+function collectSharedPromptFiles(
   stages: unknown[],
   files: Map<string, Set<string>>,
 ): void {
@@ -39,6 +40,7 @@ function collectPromptFiles(
       if (
         !isRecord(element) ||
         element.type !== "prompt" ||
+        element.shared !== true ||
         typeof element.name !== "string" ||
         typeof element.file !== "string"
       )
@@ -57,7 +59,8 @@ function promptFilesInScope(
   kind: string,
 ): Map<string, Set<string>> {
   const files = new Map<string, Set<string>>();
-  for (const list of lists) collectPromptFiles(toArray(container[list]), files);
+  for (const list of lists)
+    collectSharedPromptFiles(toArray(container[list]), files);
   if (kind === "treatment") {
     const declared = container.compatibleIntroSequences;
     // Match validateReferences' can't-prove posture for unresolved pairings.
@@ -69,7 +72,7 @@ function promptFilesInScope(
     for (const sequence of toArray(fileObj.introSequences)) {
       if (!isRecord(sequence)) continue;
       if (concretePairing && !declared.includes(sequence.name)) continue;
-      collectPromptFiles(toArray(sequence.introSteps), files);
+      collectSharedPromptFiles(toArray(sequence.introSteps), files);
     }
   }
   return files;

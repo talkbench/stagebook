@@ -214,6 +214,62 @@ describe("metadata-aware shared validity (#687)", () => {
     };
     expect(checkSharedPromptValidation(file, open)).toEqual([]);
   });
+  test.each([undefined, false])(
+    "player producer (shared=%s) cannot make a shared target ambiguous",
+    (playerShared) => {
+      const file = {
+        treatments: [
+          {
+            name: "t",
+            gameStages: [
+              {
+                elements: [
+                  prompt,
+                  { ...prompt, shared: playerShared, file: "solo.prompt.md" },
+                  { type: "display", reference },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+      expect(
+        checkSharedPromptValidation(
+          file,
+          new Map([
+            ["q.prompt.md", { type: "openResponse" }],
+            ["solo.prompt.md", { type: "numericResponse" }],
+          ]),
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          promptFile: "q.prompt.md",
+          message: expect.stringContaining("isValid") as unknown,
+        }),
+      ]);
+      expect(
+        checkSharedPromptValidation(
+          file,
+          new Map([
+            ["q.prompt.md", { type: "numericResponse" }],
+            ["solo.prompt.md", { type: "openResponse" }],
+          ]),
+        ),
+      ).toEqual([]);
+    },
+  );
+  test("a player-only name does not classify an unknown shared target", () => {
+    expect(
+      checkSharedPromptValidation(
+        study({
+          ...prompt,
+          shared: false,
+          conditions: [{ reference, comparator: "equals", value: true }],
+        }),
+        open,
+      ),
+    ).toEqual([]);
+  });
   test("an unrelated treatment cannot hide a known nonnumeric producer", () => {
     const file = withGate();
     file.treatments.push({

@@ -1148,6 +1148,46 @@ describe("shared numeric validation (#687)", () => {
       true,
     );
   });
+  it.each([
+    ["openResponse", "numericResponse", 1],
+    ["numericResponse", "openResponse", 0],
+  ] as const)(
+    "resolves shared %s independently of same-name player %s",
+    async (sharedType, playerType, errors) => {
+      const withPlayer = source.replace(
+        "          - type: submitButton",
+        `          - type: prompt
+            name: x
+            file: solo.prompt.md
+          - type: submitButton`,
+      );
+      const promptSource = (type: string) =>
+        `---\ntype: ${type}\n---\nQuestion\n${type === "openResponse" ? "---\n>\n" : ""}`;
+      await writeFile(join(dir, "study.stagebook.yaml"), withPlayer);
+      await writeFile(join(dir, "q.prompt.md"), promptSource(sharedType));
+      await writeFile(join(dir, "solo.prompt.md"), promptSource(playerType));
+      const result = await runCli(["--format=json", "study.stagebook.yaml"], {
+        cwd: dir,
+      });
+      const allIssues = diagnostics(result.stdout);
+      // The existing collision rule separately rejects repeated storage names.
+      // This test pins scope-aware validity without changing that policy.
+      expect(
+        allIssues.filter((issue) =>
+          issue.message.includes("Duplicate storage key"),
+        ),
+      ).toHaveLength(2);
+      const issues = allIssues.filter((issue) =>
+        issue.message.includes("isValid"),
+      );
+      expect(issues).toHaveLength(errors);
+      expect(result.code).toBe(1);
+      if (errors) {
+        expect(issues[0].message).toContain("isValid");
+        expect(issues[0].message).toContain("q.prompt.md");
+      }
+    },
+  );
   it.each([null, "not a prompt"])(
     "skips cross-file conclusions for unreadable or malformed %j",
     async (prompt) => {
