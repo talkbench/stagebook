@@ -400,3 +400,25 @@ test("numeric paste and drop preserve the existing answer", async ({
     )
     .toBe(2);
 });
+
+for (const key of ["Backspace", "Delete"]) {
+  test(`numeric repeated-digit ${key} preserves the browser caret and the next insertion`, async ({
+    mount,
+  }) => {
+    const component = await mount(
+      <NumericInput entry="111" ariaLabel="Estimate" />,
+    );
+    const field = component.getByRole("textbox");
+    await field.focus();
+    await field.evaluate((node: HTMLInputElement) =>
+      node.setSelectionRange(1, 1),
+    );
+    await field.press(key);
+    await expect(field).toHaveValue("11");
+    expect(
+      await field.evaluate((node: HTMLInputElement) => node.selectionStart),
+    ).toBe(key === "Backspace" ? 0 : 1);
+    await field.pressSequentially("2");
+    await expect(field).toHaveValue(key === "Backspace" ? "211" : "121");
+  });
+}

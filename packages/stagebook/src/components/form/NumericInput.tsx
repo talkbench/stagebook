@@ -270,6 +270,19 @@ export function NumericInput({
         ),
       };
     }
+    // Repeated digits make a longest-prefix diff ambiguous. For a native
+    // deletion, its resulting caret identifies the removed range exactly.
+    const caret = event.target.selectionStart;
+    if (
+      (event.nativeEvent as InputEvent).inputType?.startsWith("delete") &&
+      caret !== null &&
+      next.length < previous.length
+    ) {
+      const end = caret + previous.length - next.length;
+      if (previous.slice(0, caret) + previous.slice(end) === next) {
+        change = { start: caret, end, inserted: "" };
+      }
+    }
     before.current = undefined;
     applyInsertion(
       { entry: previous, start: change.start, end: change.end },
