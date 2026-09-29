@@ -478,6 +478,37 @@ const thumbPixel = (track: string): Pixel => ({
 // Each case is a participant-facing component in its correctly-used (named,
 // themed) form.
 const cases: Case[] = [
+  ...[false, true].map(
+    (answered): Case => ({
+      name: `Prompt: required numeric (${answered ? "answered" : "untouched"})`,
+      node: (
+        <Prompt
+          {...promptProps}
+          name="required-number"
+          metadata={{
+            type: "numericResponse",
+            required: true,
+            min: 18,
+            max: 99,
+            suffix: "years",
+          }}
+          body="How old are you?"
+          responseItems={[]}
+          value={answered ? 25 : undefined}
+          entry={answered ? "25" : undefined}
+          numberFormat={{ decimal: ".", grouping: "," }}
+        />
+      ),
+      prepare: async (page) => {
+        await expect(
+          page.getByRole("textbox", { name: "How old are you?" }),
+        ).toHaveAttribute("aria-required", "true");
+        await expect(page.getByTestId("required-marker")).toHaveText(
+          "Required",
+        );
+      },
+    }),
+  ),
   ...[false, true].flatMap((affixes): Case[] =>
     (["neutral", "valid", "problem", "pulse"] as const).map((state) => ({
       name: `NumericInput ${state}${affixes ? " with affixes" : ""}`,
