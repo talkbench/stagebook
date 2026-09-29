@@ -28,3 +28,13 @@ export {
   type ResponseConstraints,
   type ResponseCheck,
 } from "./checkResponse.js";
+export {
+  buildPromptRecord,
+  type BuildPromptRecordOptions,
+  type PromptRecord,
+} from "./buildPromptRecord.js";
+export type {
+  TypingStats,
+  PasteAttempt,
+  DebugMessage,
+} from "./promptTelemetry.js";
