@@ -1,6 +1,10 @@
 import React from "react";
 import type { DiscussionType } from "../../schemas/index.js";
 import {
+  useIsRTL,
+  type SharedNumericResponseConfig,
+} from "../../components/StagebookProvider.js";
+import {
   TEXTAREA_METRICS,
   TEXTAREA_FONT_FAMILY,
 } from "../../components/form/TextArea.js";
@@ -265,6 +269,72 @@ function SharedNotepadPlaceholder({
   );
 }
 
+/** Single-line preview of the numeric host slot. It stays blank and read-only:
+ * the viewer has no shared document, and a sample number would anchor answers.
+ * Bound feedback comes from the same catalog/helper as the live host editor. */
+function SharedNumericPlaceholder({
+  name,
+  prefix,
+  suffix,
+  required,
+  inputmode,
+  ariaLabelledBy,
+  getFeedback,
+}: SharedNumericResponseConfig) {
+  const id = React.useId();
+  const isRTL = useIsRTL();
+  const feedback = getFeedback("", false);
+  const describedBy = [
+    prefix !== undefined ? `${id}-prefix` : undefined,
+    suffix !== undefined ? `${id}-suffix` : undefined,
+    `${id}-feedback`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <div
+      data-testid="numeric-placeholder-root"
+      data-prompt-name={name}
+      dir={isRTL ? "rtl" : "ltr"}
+    >
+      <div data-testid="numeric-placeholder-box" style={numericBoxStyle}>
+        {prefix !== undefined && (
+          <bdi id={`${id}-prefix`} style={numericAffixStyle}>
+            {prefix}
+          </bdi>
+        )}
+        <input
+          type="text"
+          dir="ltr"
+          value=""
+          readOnly
+          tabIndex={-1}
+          inputMode={inputmode}
+          aria-labelledby={ariaLabelledBy}
+          aria-describedby={describedBy}
+          aria-required={required}
+          style={{ ...numericInputStyle, textAlign: isRTL ? "right" : "left" }}
+        />
+        {suffix !== undefined && (
+          <bdi id={`${id}-suffix`} style={numericAffixStyle}>
+            {suffix}
+          </bdi>
+        )}
+      </div>
+      <div style={numericFeedbackRowStyle}>
+        <span
+          id={`${id}-feedback`}
+          data-testid="numeric-placeholder-feedback"
+          style={numericFeedbackStyle}
+        >
+          {feedback.text}
+        </span>
+        <SharedChip />
+      </div>
+    </div>
+  );
+}
+
 export function SkeletonPlaceholder({
   type,
   config,
@@ -273,6 +343,13 @@ export function SkeletonPlaceholder({
     return (
       <SharedNotepadPlaceholder
         {...(config as unknown as SharedNotepadConfig)}
+      />
+    );
+  }
+  if (type === "sharedNumericResponse" && config) {
+    return (
+      <SharedNumericPlaceholder
+        {...(config as unknown as SharedNumericResponseConfig)}
       />
     );
   }
@@ -350,6 +427,9 @@ export function createSkeletonRenderers() {
           rows: config.rows,
         }}
       />
+    ),
+    renderSharedNumericResponse: (config: SharedNumericResponseConfig) => (
+      <SharedNumericPlaceholder {...config} />
     ),
   };
 }
@@ -487,6 +567,51 @@ const notepadBoxStyle: React.CSSProperties = {
   // The runner uses CodeMirror here, so the native textarea's Firefox-only
   // inability to scroll hidden placeholder text does not apply to this box.
   overflow: "hidden",
+};
+
+const numericBoxStyle: React.CSSProperties = {
+  ...notepadBoxStyle,
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "0.25rem 0.5rem",
+  overflow: "visible",
+};
+
+const numericInputStyle: React.CSSProperties = {
+  flex: "1 0 6rem",
+  minWidth: "6rem",
+  width: "6rem",
+  maxWidth: "100%",
+  padding: 0,
+  border: 0,
+  outline: 0,
+  background: "transparent",
+  fontFamily: TEXTAREA_FONT_FAMILY,
+  fontSize: `${TEXTAREA_METRICS.fontSizeRem}rem`,
+  lineHeight: `${TEXTAREA_METRICS.lineHeightRem}rem`,
+};
+
+const numericAffixStyle: React.CSSProperties = {
+  flex: "0 1 auto",
+  minWidth: 0,
+  maxWidth: "100%",
+  whiteSpace: "normal",
+  overflowWrap: "anywhere",
+  color: "var(--stagebook-text-muted, #626977)",
+};
+
+const numericFeedbackRowStyle: React.CSSProperties = {
+  ...notepadChipRowStyle,
+  justifyContent: "flex-end",
+};
+
+const numericFeedbackStyle: React.CSSProperties = {
+  minWidth: 0,
+  fontSize: "0.75rem",
+  textAlign: "end",
+  color: "var(--stagebook-text-muted, #626977)",
+  backgroundColor: "var(--stagebook-bg, #fff)",
 };
 
 const notepadHintStyle: React.CSSProperties = {
