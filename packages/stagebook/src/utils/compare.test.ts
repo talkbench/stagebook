@@ -275,3 +275,14 @@ describe("invalid comparator", () => {
     expect(compare("a", "bogus" as never, "b")).toBeUndefined();
   });
 });
+
+// These are the absence semantics behind the two isValid idioms in #668.
+// Keep absence explicit so the optional idiom survives #299's tri-state rules.
+describe("prompt validity condition idioms (#668)", () => {
+  test("doesNotExist permits an untouched prompt with absent isValid", () => {
+    expect(compare(undefined, "doesNotExist")).toBe(true);
+  });
+  test("equals true never permits an untouched prompt with absent isValid", () => {
+    expect(compare(undefined, "equals", true)).toBeUndefined();
+  });
+});

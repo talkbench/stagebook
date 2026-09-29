@@ -14,6 +14,8 @@ export interface RadioGroupProps {
   value?: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   label?: string;
+  ariaLabelledBy?: string;
+  ariaRequired?: boolean;
   layout?: RadioLayout;
   id?: string;
   "data-testid"?: string;
@@ -94,6 +96,8 @@ export function RadioGroup({
   value,
   onChange,
   label = "",
+  ariaLabelledBy,
+  ariaRequired,
   layout = "vertical",
   id,
   "data-testid": dataTestId,
@@ -163,7 +167,8 @@ export function RadioGroup({
       )}
       <div
         role="radiogroup"
-        aria-labelledby={label ? labelId : undefined}
+        aria-labelledby={ariaLabelledBy ?? (label ? labelId : undefined)}
+        aria-required={ariaRequired}
         style={{
           marginInlineStart: "1.25rem",
           display: layout === "horizontal" ? "flex" : "grid",

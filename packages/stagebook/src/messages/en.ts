@@ -10,6 +10,7 @@ import type { StagebookMessages } from "./types.js";
  */
 export const en: StagebookMessages = {
   submitButtonDefault: "Next",
+  promptRequired: "Required",
   sliderLabel: "Slider",
   sliderInstruction: "Click the bar to select a value, then drag to adjust.",
   loadingLabel: "Loading",

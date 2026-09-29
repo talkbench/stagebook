@@ -49,6 +49,12 @@ For each group of parallel prompt files:
       (the label *text* differs by language; the numbers must not).
 - [ ] **Same numeric points** for numeric-mode multipleChoice (the points carry
       the measurement; only the labels translate).
+- [ ] **Same `required`** for corresponding multipleChoice, dropdown and
+      openResponse prompts. Required dropdowns keep a placeholder in every locale.
+- [ ] **Required marker:** review `promptRequired` in both catalogs
+      (`Required` / `נדרש`), its muted appearance and start alignment in RTL, and
+      that it remains after answers and clearing. It describes the question,
+      not an error or live announcement.
 - [ ] **Same `rows` / `minLength` / `maxLength`** for openResponse.
 - [ ] **Same `name`** (the storage-key identifier) — the variants must record to
       the same key so cross-locale analysis lines up.

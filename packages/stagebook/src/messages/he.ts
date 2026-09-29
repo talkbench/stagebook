@@ -10,6 +10,7 @@ import type { StagebookMessages } from "./types.js";
  */
 export const he: StagebookMessages = {
   submitButtonDefault: "הבא",
+  promptRequired: "נדרש",
   sliderLabel: "מחוון",
   sliderInstruction: "לחצו על הפס לבחירת ערך, ואז גררו לכוונון.",
   loadingLabel: "טוען",
