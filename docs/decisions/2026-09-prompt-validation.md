@@ -1,6 +1,6 @@
 # Prompt validation is advisory; conditions enforce it
 
-Status: proposed in [#668](https://github.com/talkbench/stagebook/issues/668).
+Status: accepted in [#668](https://github.com/talkbench/stagebook/issues/668).
 
 **Extended by [numeric responses](2026-09-numeric-response.md)** (#687). That
 ADR adds the `numericResponse` prompt type, which is covered by everything
