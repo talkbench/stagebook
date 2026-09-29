@@ -9,6 +9,33 @@ import { resolveNumberFormat as mainResolveNumberFormat } from "../index.js";
 
 afterEach(() => vi.restoreAllMocks());
 
+test.each(["en", "he", "unknown"])(
+  "resolved %s formats cannot mutate catalog defaults or later calls",
+  (locale) => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const catalog = resolveCatalog(locale);
+    const bundled = { ...catalog.numberFormat };
+    const overrides: (DeepPartial<StagebookMessages> | undefined)[] = [
+      undefined,
+      { numberFormat: { grouping: " " } },
+      { numberFormat: { decimal: "" } },
+    ];
+    for (const override of overrides) {
+      const expected = { ...resolveCatalog(locale, override).numberFormat };
+      try {
+        const format = mainResolveNumberFormat(locale, override);
+        format.decimal = "!";
+        format.grouping = "!";
+        expect(resolveCatalog(locale).numberFormat).toEqual(bundled);
+        expect(mainResolveNumberFormat(locale, override)).toEqual(expected);
+      } finally {
+        // Keep the red regression from leaking a mutated default into other tests.
+        Object.assign(catalog.numberFormat, bundled);
+      }
+    }
+  },
+);
+
 test("number formats follow locale normalization and the main React-free export", () => {
   for (const locale of [undefined, "", "en", "EN-US", "he", "he-IL"]) {
     expect(resolveNumberFormat(locale)).toEqual({

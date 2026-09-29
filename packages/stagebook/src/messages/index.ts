@@ -154,5 +154,5 @@ export function resolveNumberFormat(
   locale: string | undefined,
   overrides?: DeepPartial<StagebookMessages>,
 ): NumberFormat {
-  return resolveCatalog(locale, overrides).numberFormat;
+  return { ...resolveCatalog(locale, overrides).numberFormat };
 }
