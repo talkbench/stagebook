@@ -45,6 +45,9 @@ interface StagebookContext {
     padName: string;
     defaultText?: string;
     rows?: number;
+    onLocalEdit(text: string): void;
+    onRemoteChange(text: string): void;
+    onBlur(text: string): void;
   }) => React.ReactNode;
   // No renderSurvey: the host-rendered survey element was removed in #669.
   // Survey instruments are prompt modules that Stagebook renders itself.
@@ -82,6 +85,14 @@ save(
 ```
 
 The `scope` parameter ("player" or "shared") handles the case where a prompt is shared across participants (saved to group state) vs individual (saved to player state). The platform decides what these scopes mean in its storage model.
+
+Prompt builds records with the React-free `buildPromptRecord` export, including
+the step and elapsed time at the commit boundary. For shared text, the host
+reports local edits, remote changes, and blur through its render-slot callbacks;
+Stagebook commits the latest merged text after 2 seconds quiet, at 5 seconds
+maximum wait, or on blur with a pending local edit. Hosts use the same builder
+for their final stage-end snapshot. See the [shared editor contract](integration-guide.md#shared-notepad)
+for transaction classification and late-merge correction.
 
 ## How timing works across phases
 

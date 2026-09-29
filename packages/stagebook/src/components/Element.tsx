@@ -126,6 +126,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
     getElapsedTime,
     getAssetURL,
     progressLabel,
+    stageId,
     renderSharedNotepad,
     setAllowIdle,
     onContractViolation,
@@ -304,7 +305,10 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           file={element.file}
           shared={element.shared}
           value={currentValue}
-          save={wrappedSave}
+          save={save}
+          step={progressLabel}
+          getElapsedTime={getElapsedTime}
+          stageId={stageId}
           resolveURL={getAssetURL}
           renderSharedNotepad={renderSharedNotepad}
         />

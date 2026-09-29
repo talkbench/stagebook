@@ -1,39 +1,18 @@
 import React, { useEffect, useState, useRef, useId } from "react";
+import { useResponseCommit } from "../hooks/useResponseCommit.js";
 import { checkResponse } from "../../utils/checkResponse.js";
 import { computeIntervalQuantiles } from "./typingQuantiles.js";
 import { useMessages, useIsRTL } from "../StagebookProvider.js";
 import { focusRingCss } from "../focusRing.js";
 
-export interface TypingStats {
-  type: "typingStats";
-  totalKeystrokes: number;
-  // Backspace + Delete — both are participant edits to previously-typed text
-  // and contribute identically to keystroke timing.
-  editingKeyCount: number;
-  arrowKeyCount: number;
-  mouseClickCount: number;
-  focusCount: number;
-  blurCount: number;
-  avgInterval: number;
-  stdDev: number;
-  // 21 values at the 0%, 5%, 10%, ..., 95%, 100% quantiles of inter-keystroke
-  // intervals (ms). null when fewer than 2 keystrokes (and thus zero
-  // intervals) have been recorded. With ≥2 keystrokes the vector is always
-  // 21 values long; a degenerate single-interval distribution emits 21
-  // identical values.
-  intervalQuantiles: number[] | null;
-  firstKeystrokeDelayMs: number | null;
-  totalTypingTimeMs: number | null;
-  focusedDurationMs: number;
-}
+import type { TypingStats, DebugMessage } from "../../utils/promptTelemetry.js";
 
-export interface PasteAttempt {
-  type: "pasteAttempt";
-  length: number;
-  timestamp: number;
-}
-
-export type DebugMessage = TypingStats | PasteAttempt;
+// Preserve the existing component entry point for host type imports.
+export type {
+  TypingStats,
+  PasteAttempt,
+  DebugMessage,
+} from "../../utils/promptTelemetry.js";
 
 export interface TextAreaProps {
   defaultText?: string;
@@ -141,11 +120,12 @@ export function TextArea({
   // would not retrigger the keyframe (the animation prop string is
   // unchanged, so the browser doesn't restart).
   const [overflowPulseId, setOverflowPulseId] = useState(0);
-  const debounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const maxWaitTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingValue = useRef<string | undefined>(undefined);
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  const responseCommit = useResponseCommit({
+    onCommit: onChange,
+    debounceDelay,
+    maxWait,
+  });
+  const { hasPending } = responseCommit;
   const overflowTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Inter-keystroke timing comes from character-producing and editing keys
@@ -168,23 +148,18 @@ export function TextArea({
   const currentFocusStartedAt = useRef<number | null>(null);
   const focusedDurationMs = useRef(0);
 
-  const isDebouncing = useRef(false);
-
   // Sync with external value only when not actively debouncing
   useEffect(() => {
-    if (!isDebouncing.current) {
+    if (!hasPending()) {
       setLocalValue(value || "");
     }
-  }, [value]);
+  }, [value, hasPending]);
 
-  // An automatic cutoff intentionally drops the unsaved tail. Never let
-  // timers emit a response into a stage that has already ended.
+  // The commit hook cancels unsaved responses on unmount. Also clear the
+  // transient overflow feedback timer.
   useEffect(() => {
     return () => {
       if (overflowTimeout.current) clearTimeout(overflowTimeout.current);
-      if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
-      if (maxWaitTimeout.current) clearTimeout(maxWaitTimeout.current);
-      pendingValue.current = undefined;
     };
   }, []);
 
@@ -205,33 +180,6 @@ export function TextArea({
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
-  const clearPending = () => {
-    if (debounceTimeout.current !== null) clearTimeout(debounceTimeout.current);
-    if (maxWaitTimeout.current !== null) clearTimeout(maxWaitTimeout.current);
-    debounceTimeout.current = null;
-    maxWaitTimeout.current = null;
-    pendingValue.current = undefined;
-    isDebouncing.current = false;
-  };
-
-  const emitPending = () => {
-    const next = pendingValue.current;
-    clearPending();
-    if (next !== undefined) onChangeRef.current?.(next);
-  };
-
-  const debouncedSubmit = (val: string) => {
-    pendingValue.current = val;
-    isDebouncing.current = true;
-    if (debounceTimeout.current !== null) clearTimeout(debounceTimeout.current);
-    debounceTimeout.current = setTimeout(emitPending, debounceDelay);
-    // Only the first unsaved edit starts the maximum-wait timer. A quiet
-    // save or blur clears it; there is no recurring idle checkpoint.
-    if (maxWaitTimeout.current === null) {
-      maxWaitTimeout.current = setTimeout(emitPending, maxWait);
-    }
-  };
-
   const recordPasteAttempt = (text: string) => {
     if (onDebugMessage) {
       onDebugMessage({
@@ -250,12 +198,12 @@ export function TextArea({
   const handleDrop = (e: React.DragEvent<HTMLTextAreaElement>) => {
     // Dragged text bypasses typing just like paste; keep the same telemetry.
     e.preventDefault();
-    const latest = pendingValue.current ?? localValue;
-    clearPending();
+    const latest = responseCommit.peek() ?? localValue;
+    responseCommit.cancel();
     recordPasteAttempt(e.dataTransfer.getData("text"));
     // A canceled drop need not focus the field, so there may be no later blur
     // or edit. Commit the unchanged text now to save the attempt in Prompt.
-    onChangeRef.current?.(latest);
+    responseCommit.commit(latest);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -273,7 +221,7 @@ export function TextArea({
       return;
     }
     setLocalValue(newValue);
-    debouncedSubmit(newValue);
+    responseCommit.queue(newValue);
   };
 
   const computeTypingStats = (): TypingStats => {
@@ -341,8 +289,8 @@ export function TextArea({
   };
 
   const handleBlur = () => {
-    const latest = pendingValue.current ?? localValue;
-    clearPending();
+    const latest = responseCommit.peek() ?? localValue;
+    responseCommit.cancel();
     blurCount.current += 1;
     if (currentFocusStartedAt.current !== null) {
       focusedDurationMs.current += Date.now() - currentFocusStartedAt.current;
@@ -352,7 +300,7 @@ export function TextArea({
     // Prompt saves synchronously now. Deliver telemetry first, including
     // focus-only visits after a checkpoint where the text did not change.
     onDebugMessage?.(computeTypingStats());
-    onChangeRef.current?.(latest);
+    responseCommit.commit(latest);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

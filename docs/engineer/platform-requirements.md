@@ -496,10 +496,20 @@ The platform must:
 - Sync edits in real-time across all participants
 - Render `defaultText` as **placeholder text only** — grey hint text that disappears once anyone types, matching non-shared open-response prompts. Do not seed it into the shared document; it must never appear in the saved/exported value.
 - Persist content for the stage duration
+- Report the participant's own transactions through `onLocalEdit(text)`, remote
+  merges through `onRemoteChange(text)`, and focus loss through `onBlur(text)`.
+  Pass the current merged text in every callback. Stagebook owns the 2-second
+  quiet / 5-second maximum commit cadence and saves with scope `shared`.
+- Keep a final stage-end pull and build its record with the main-entry
+  `buildPromptRecord` helper, matching browser commits.
 
 **Services used**: Etherpad (deliberation-empirica); Yjs/CodeMirror coedit service (TalkBench runner)
 
 Provide via: `renderSharedNotepad(config)` on StagebookProvider.
+
+See the [shared editor contract](integration-guide.md#shared-notepad) for
+pending-local blur behavior, bounded corrections after late merges, and the
+host's responsibility for save-delivery ordering.
 
 ---
 
