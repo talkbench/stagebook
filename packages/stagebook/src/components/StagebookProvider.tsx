@@ -168,6 +168,14 @@ export interface StagebookContext {
     padName: string;
     defaultText?: string;
     rows?: number;
+    /** Own transactions only; text is the editor's current merged value. */
+    onLocalEdit: (text: string) => void;
+    /** Refresh pending local text without delaying its commit. A former
+     * typist may coalesce a correction after its last commit; idle observers
+     * never start a batch. */
+    onRemoteChange: (text: string) => void;
+    /** Flush uncommitted local edits, never an idle/correction-only field. */
+    onBlur: (text: string) => void;
   }) => React.ReactNode;
   // No `renderSurvey` slot: the host-rendered `type: survey` element was
   // removed in #669. Survey instruments are prompt elements (imported

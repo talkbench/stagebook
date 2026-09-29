@@ -33,7 +33,7 @@ function render(node: React.ReactElement): HTMLDivElement {
 // boundary as async message channels, so a render prop can't hand JSX back
 // to the browser-side component and the slot would never render.
 describe("Prompt shared mode (renderSharedNotepad slot)", () => {
-  test("passes { padName, defaultText, rows } to the slot (#580)", () => {
+  test("passes notepad rendering and commit callback contract to the slot (#580, #697)", () => {
     const renderSharedNotepad = vi.fn(() => <div data-testid="notepad-slot" />);
     const dom = render(
       <Prompt
@@ -53,6 +53,9 @@ describe("Prompt shared mode (renderSharedNotepad slot)", () => {
       padName: "testShared",
       defaultText: "Please enter your response here.",
       rows: 3,
+      onLocalEdit: expect.any(Function) as unknown,
+      onRemoteChange: expect.any(Function) as unknown,
+      onBlur: expect.any(Function) as unknown,
     });
     expect(dom.querySelector('[data-testid="notepad-slot"]')).not.toBeNull();
     // Shared mode renders the slot INSTEAD of stagebook's own textarea.
@@ -80,6 +83,9 @@ describe("Prompt shared mode (renderSharedNotepad slot)", () => {
       padName: "testShared",
       defaultText: "First line.\nSecond line.",
       rows: 3,
+      onLocalEdit: expect.any(Function) as unknown,
+      onRemoteChange: expect.any(Function) as unknown,
+      onBlur: expect.any(Function) as unknown,
     });
   });
 

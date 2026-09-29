@@ -3,11 +3,17 @@ import { Markdown } from "../form/Markdown.js";
 import { RadioGroup } from "../form/RadioGroup.js";
 import { CheckboxGroup } from "../form/CheckboxGroup.js";
 import { Select } from "../form/Select.js";
-import { TextArea, type DebugMessage } from "../form/TextArea.js";
+import { TextArea } from "../form/TextArea.js";
+import type { DebugMessage } from "../../utils/promptTelemetry.js";
+import { useResponseCommit } from "../hooks/useResponseCommit.js";
+import { buildPromptRecord } from "../../utils/buildPromptRecord.js";
 import { Slider } from "../form/Slider.js";
 import { ListSorter } from "../form/ListSorter.js";
-import { useMessages, useIsRTL } from "../StagebookProvider.js";
-import { checkResponse } from "../../utils/checkResponse.js";
+import {
+  useMessages,
+  useIsRTL,
+  type StagebookContext,
+} from "../StagebookProvider.js";
 import type { MetadataType } from "../../schemas/promptFile.js";
 
 function setEquality(a: Set<string>, b: Set<string>): boolean {
@@ -38,15 +44,31 @@ export interface PromptProps {
   shared?: boolean;
   value: unknown;
   save: (key: string, value: unknown, scope?: "player" | "shared") => void;
+  /** Commit-time record context, provided by Element or a standalone host. */
+  step?: string;
+  getElapsedTime?: () => number;
+  /** Cancellation identity only; never added to the saved record. */
+  stageId?: string;
   resolveURL?: (path: string) => string;
-  renderSharedNotepad?: (config: {
-    padName: string;
-    defaultText?: string;
-    rows?: number;
-  }) => React.ReactNode;
+  renderSharedNotepad?: StagebookContext["renderSharedNotepad"];
 }
 
-export function Prompt({
+export function Prompt(props: PromptProps) {
+  // A host may reuse the same mounted element for another stage or prompt.
+  // Reset the complete instrument lifetime, including timers and telemetry.
+  return (
+    <PromptContent
+      key={JSON.stringify([
+        props.name,
+        props.file,
+        props.stageId ?? props.step,
+      ])}
+      {...props}
+    />
+  );
+}
+
+function PromptContent({
   metadata,
   body,
   responseItems,
@@ -57,6 +79,8 @@ export function Prompt({
   shared = false,
   value,
   save,
+  step,
+  getElapsedTime,
   resolveURL,
   renderSharedNotepad,
 }: PromptProps) {
@@ -71,11 +95,8 @@ export function Prompt({
   // its corresponding numeric value (#282 — without this, a shuffled
   // numeric multipleChoice records the wrong number for the chosen label).
   const [shuffleOrder, setShuffleOrder] = useState<number[]>([]);
-  // `debugMessages` is also mirrored to a ref (`debugMessagesRef`) so that
-  // saveData() reads telemetry delivered just before a response, without
-  // waiting for React to render the corresponding state update. TextArea
-  // emits blur statistics first, then the response in the same event.
-  const [debugMessages, setDebugMessages] = useState<DebugMessage[]>([]);
+  // TextArea emits blur telemetry and the response in one event. Read the
+  // ref at commit time, without waiting for a React state update.
   const debugMessagesRef = useRef<DebugMessage[]>([]);
 
   // Stable id for the wrapper around the rendered prompt body. The
@@ -138,13 +159,12 @@ export function Prompt({
       : numericPoints;
 
   const record = {
-    ...metadata,
+    metadata,
     name,
     file,
     shared,
-    prompt: body,
+    body,
     responses,
-    debugMessages,
   };
 
   // Track whether we've auto-saved the dropdown default for this
@@ -158,31 +178,18 @@ export function Prompt({
 
   const saveData = useCallback(
     (newValue: unknown, recordData: typeof record, label?: string) => {
-      const updatedRecord = {
+      const updatedRecord = buildPromptRecord({
         ...recordData,
-        // Read the ref: blur can append telemetry and emit the response
-        // in the same event, before a new recordData closure is rendered.
-        debugMessages: debugMessagesRef.current,
         value: newValue,
-        ...(!shared
-          ? {
-              isValid: checkResponse(newValue, {
-                required,
-                minLength,
-                maxLength,
-              }).isValid,
-            }
-          : {}),
-        // For multipleChoice prompts (#282), record both the chosen value
-        // and its display label. In numeric mode `value` is the number and
-        // `label` is the text; in text mode `value === label`. Slider
-        // responses don't carry a label since the input is continuous.
-        ...(label !== undefined ? { label } : {}),
-      };
+        debugMessages: debugMessagesRef.current,
+        label,
+        step,
+        stageTimeElapsed: getElapsedTime?.(),
+      });
       const scope = shared ? "shared" : "player";
       save(`prompt_${recordData.name}`, updatedRecord, scope);
     },
-    [shared, save, required, minLength, maxLength],
+    [shared, save, step, getElapsedTime],
   );
 
   // Auto-save the dropdown's first option as the participant's
@@ -332,7 +339,6 @@ export function Prompt({
           onChange={(val) => saveData(val, record)}
           onDebugMessage={(message) => {
             debugMessagesRef.current = [...debugMessagesRef.current, message];
-            setDebugMessages(debugMessagesRef.current);
           }}
           value={value as string | undefined}
           rows={rows}
@@ -344,13 +350,15 @@ export function Prompt({
         />
       )}
 
-      {promptType === "openResponse" &&
-        shared &&
-        renderSharedNotepad?.({
-          padName: name,
-          defaultText: responses.join("\n"),
-          rows,
-        })}
+      {promptType === "openResponse" && shared && renderSharedNotepad && (
+        <SharedNotepadResponse
+          padName={name}
+          defaultText={responses.join("\n")}
+          rows={rows}
+          renderSharedNotepad={renderSharedNotepad}
+          onCommit={(text) => saveData(text, record)}
+        />
+      )}
 
       {promptType === "listSorter" && (
         <ListSorter
@@ -373,4 +381,90 @@ export function Prompt({
       )}
     </>
   );
+}
+
+/** The shared editor lifetime follows the keyed prompt. Unmount cancels
+ * writes and makes callbacks retained by an old host editor inert. */
+function SharedNotepadResponse({
+  padName,
+  defaultText,
+  rows,
+  renderSharedNotepad,
+  onCommit,
+}: {
+  padName: string;
+  defaultText: string;
+  rows: number;
+  renderSharedNotepad: NonNullable<PromptProps["renderSharedNotepad"]>;
+  onCommit: (text: string) => void;
+}) {
+  const pendingKind = useRef<"local" | "correction" | undefined>(undefined);
+  const hasCommitted = useRef(false);
+  const latestText = useRef<string | undefined>(undefined);
+  const active = useRef(true);
+  const commits = useResponseCommit<string>({
+    onCommit: (text) => {
+      pendingKind.current = undefined;
+      hasCommitted.current = true;
+      latestText.current = text;
+      onCommit(text);
+    },
+  });
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
+
+  const onLocalEdit = useCallback(
+    (text: string) => {
+      if (!active.current) return;
+      pendingKind.current = "local";
+      latestText.current = text;
+      // Queue preserves an existing maximum deadline, including promotion
+      // from a correction batch. Equal local values still commit normally.
+      commits.queue(text);
+    },
+    [commits],
+  );
+  const onRemoteChange = useCallback(
+    (text: string) => {
+      if (!active.current) return;
+      if (pendingKind.current === "local") {
+        latestText.current = text;
+        commits.replacePending(text);
+        return;
+      }
+      // A never-editing observer cannot start work. A former typist can fix
+      // its stale snapshot when a late merge arrives, without another edit.
+      // Ignore duplicate merged callbacks so correction delivery cannot loop
+      // or perpetually postpone the quiet deadline.
+      if (!hasCommitted.current || latestText.current === text) return;
+      latestText.current = text;
+      pendingKind.current = "correction";
+      commits.queue(text);
+    },
+    [commits],
+  );
+  const onBlur = useCallback(
+    (text: string) => {
+      if (!active.current || pendingKind.current === undefined) return;
+      latestText.current = text;
+      commits.replacePending(text);
+      // A correction still waits for its existing cadence, but blur may
+      // carry a newer merged snapshot than the last remote notification.
+      if (pendingKind.current === "local") commits.flush();
+    },
+    [commits],
+  );
+
+  return renderSharedNotepad({
+    padName,
+    defaultText,
+    rows,
+    onLocalEdit,
+    onRemoteChange,
+    onBlur,
+  });
 }
