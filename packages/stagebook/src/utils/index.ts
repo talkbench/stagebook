@@ -38,3 +38,16 @@ export type {
   PasteAttempt,
   DebugMessage,
 } from "./promptTelemetry.js";
+export {
+  parseNumericEntry,
+  couldBecomeValidByAppending,
+  filterNumericInsertion,
+  formatNumericPlain,
+  numericInputMode,
+  NUMERIC_ENTRY_LIMIT,
+  NUMERIC_SIGNIFICANT_DIGITS,
+  type NumericConstraints,
+  type NumericParseResult,
+  type NumericInsertion,
+  type NumericInsertionResult,
+} from "./numericResponse.js";
