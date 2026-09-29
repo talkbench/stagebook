@@ -10,6 +10,22 @@ import type { StagebookMessages } from "./types.js";
  */
 export const en: StagebookMessages = {
   numberFormat: { decimal: ".", grouping: "," },
+  numericGuidance: (integer, min, max) => {
+    const kind = integer ? "Whole number" : "Number";
+    if (min !== undefined && max !== undefined)
+      return `${kind} from ${min} to ${max}`;
+    if (min !== undefined) return `${kind} at least ${min}`;
+    if (max !== undefined) return `${kind} at most ${max}`;
+    return integer ? "Enter a whole number" : "Enter a number";
+  },
+  numericLessThan: (value, min) => `${value} is less than ${min}`,
+  numericMoreThan: (value, max) => `${value} is more than ${max}`,
+  numericWholeNumber: "Enter a whole number",
+  numericUnfinished: "Finish entering the number",
+  numericNotNumber: "Enter a number",
+  numericTooManyDigits: "Too many digits",
+  numericTooLong: "Too long",
+  sharedNumericUnavailable: "This question can't be shown here",
   submitButtonDefault: "Next",
   promptRequired: "Required",
   sliderLabel: "Slider",

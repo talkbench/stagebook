@@ -106,10 +106,12 @@ describe("charCount — count-neutral interpolation branches", () => {
 
   it("formats all four bound combinations (he)", () => {
     const { charCount } = resolveCatalog("he");
-    expect(charCount(5)).toBe("(5 תווים)");
-    expect(charCount(5, 10, 20)).toBe("(5 / 10-20 תווים)");
-    expect(charCount(5, 10)).toBe("(5 / 10+ תווים נדרשים)");
-    expect(charCount(5, undefined, 20)).toBe("(5 / 20 תווים לכל היותר)");
+    expect(charCount(5)).toBe("(\u20665\u2069 תווים)");
+    expect(charCount(5, 10, 20)).toBe("(\u20665 / 10-20\u2069 תווים)");
+    expect(charCount(5, 10)).toBe("(\u20665 / 10+\u2069 תווים נדרשים)");
+    expect(charCount(5, undefined, 20)).toBe(
+      "(\u20665 / 20\u2069 תווים לכל היותר)",
+    );
   });
 });
 

@@ -1,5 +1,7 @@
 import type { StagebookMessages } from "./types.js";
 
+const ltr = (value: string | number) => `\u2066${value}\u2069`;
+
 /**
  * Hebrew catalog (RTL).
  *
@@ -10,6 +12,22 @@ import type { StagebookMessages } from "./types.js";
  */
 export const he: StagebookMessages = {
   numberFormat: { decimal: ".", grouping: "," },
+  numericGuidance: (integer, min, max) => {
+    const kind = integer ? "מספר שלם" : "מספר";
+    if (min !== undefined && max !== undefined)
+      return `${kind} בין ${ltr(min)} ל־${ltr(max)}`;
+    if (min !== undefined) return `${kind} גדול או שווה ל־${ltr(min)}`;
+    if (max !== undefined) return `${kind} קטן או שווה ל־${ltr(max)}`;
+    return integer ? "יש להזין מספר שלם" : "יש להזין מספר";
+  },
+  numericLessThan: (value, min) => `${ltr(value)} קטן מ־${ltr(min)}`,
+  numericMoreThan: (value, max) => `${ltr(value)} גדול מ־${ltr(max)}`,
+  numericWholeNumber: "יש להזין מספר שלם",
+  numericUnfinished: "יש להשלים את הזנת המספר",
+  numericNotNumber: "יש להזין מספר",
+  numericTooManyDigits: "יותר מדי ספרות",
+  numericTooLong: "המספר ארוך מדי",
+  sharedNumericUnavailable: "אי אפשר להציג כאן את השאלה",
   submitButtonDefault: "הבא",
   promptRequired: "נדרש",
   sliderLabel: "מחוון",
@@ -17,19 +35,19 @@ export const he: StagebookMessages = {
   loadingLabel: "טוען",
   charCount: (n, min, max) => {
     if (min !== undefined && max !== undefined) {
-      return `(${n} / ${min}-${max} תווים)`;
+      return `(${ltr(`${n} / ${min}-${max}`)} תווים)`;
     }
     if (min !== undefined) {
-      return `(${n} / ${min}+ תווים נדרשים)`;
+      return `(${ltr(`${n} / ${min}+`)} תווים נדרשים)`;
     }
     if (max !== undefined) {
-      return `(${n} / ${max} תווים לכל היותר)`;
+      return `(${ltr(`${n} / ${max}`)} תווים לכל היותר)`;
     }
-    return `(${n} תווים)`;
+    return `(${ltr(n)} תווים)`;
   },
 
   stageTimerLabel: "טיימר שלב",
-  timerRemaining: (time) => `נותרו ${time}`,
+  timerRemaining: (time) => `נותרו ${ltr(time)}`,
 
   errorTechnicalDetails: "פרטים טכניים",
   promptErrorTitle: "השאלה לא נטענה",
@@ -40,19 +58,19 @@ export const he: StagebookMessages = {
   trackedLinkHelperDefault:
     "הקישור נפתח בלשונית חדשה. חזרו ללשונית זו כדי להשלים את המחקר.",
 
-  rangesSelected: (n) => `טווחים שנבחרו: ${n}`,
-  pointsMarked: (n) => `נקודות שסומנו: ${n}`,
+  rangesSelected: (n) => `טווחים שנבחרו: ${ltr(n)}`,
+  pointsMarked: (n) => `נקודות שסומנו: ${ltr(n)}`,
   singleRangeHint: "טווח אחד לכל היותר — מחקו כדי להחליף",
   timelineLabel: (name) => `ציר זמן: ${name}`,
-  timelineTrackFallback: (index) => `רצועה ${index}`,
+  timelineTrackFallback: (index) => `רצועה ${ltr(index)}`,
   timelineNavigationHint:
     "השתמשו בסוגריים מרובעים שמאלה וימינה לבחירת הסימון הקודם או הבא בלי להזיז את ראש הניגון. בטווח, Tab בוחר גבול. Escape מבטל את הבחירה כדי לאפשר יציאה מציר הזמן באמצעות Tab.",
   timelineNoAnnotationSelected: (count) =>
-    `לא נבחר סימון. מספר הסימונים: ${count}.`,
+    `לא נבחר סימון. מספר הסימונים: ${ltr(count)}.`,
   timelinePointSelected: (position, count, time) =>
-    `נקודה ${position} מתוך ${count}, ${time} שניות.`,
+    `נקודה ${ltr(position)} מתוך ${ltr(count)}, ${ltr(time)} שניות.`,
   timelineRangeSelected: (position, count, start, end) =>
-    `טווח ${position} מתוך ${count}, ${start} עד ${end} שניות.`,
+    `טווח ${ltr(position)} מתוך ${ltr(count)}, ${ltr(start)} עד ${ltr(end)} שניות.`,
   timelineStartBoundarySelected: "גבול ההתחלה נבחר.",
   timelineEndBoundarySelected: "גבול הסיום נבחר.",
   timelineZoomIn: "התקרבות",
@@ -107,17 +125,17 @@ export const he: StagebookMessages = {
   mediaErrorDecode: "פענוח הווידאו נכשל",
   mediaErrorFormat: "פורמט הווידאו אינו נתמך (או שלא ניתן היה לטעון את הקובץ)",
   mediaErrorUnknown: "שגיאה לא ידועה",
-  mediaErrorCode: (code) => `קוד שגיאה ${code}`,
+  mediaErrorCode: (code) => `קוד שגיאה ${ltr(code)}`,
   mediaSeekBack: "שנייה אחורה",
   mediaSeekForward: "שנייה קדימה",
   mediaSeekBackTitleFull: "שנייה אחורה (←) · החזיקו לגלילה · J ל־10 שניות",
   mediaSeekForwardTitleFull: "שנייה קדימה (→) · החזיקו לגלילה · L ל־10 שניות",
   mediaSeekBackTitleMini: "שנייה אחורה · J ל־10 שניות",
   mediaSeekForwardTitleMini: "שנייה קדימה · L ל־10 שניות",
-  mediaStepBack: (seconds) => `דילוג ${seconds} שניות אחורה`,
-  mediaStepBackTitle: (seconds) => `דילוג ${seconds} שניות אחורה (,)`,
-  mediaStepForward: (seconds) => `דילוג ${seconds} שניות קדימה`,
-  mediaStepForwardTitle: (seconds) => `דילוג ${seconds} שניות קדימה (.)`,
+  mediaStepBack: (seconds) => `דילוג ${ltr(seconds)} שניות אחורה`,
+  mediaStepBackTitle: (seconds) => `דילוג ${ltr(seconds)} שניות אחורה (,)`,
+  mediaStepForward: (seconds) => `דילוג ${ltr(seconds)} שניות קדימה`,
+  mediaStepForwardTitle: (seconds) => `דילוג ${ltr(seconds)} שניות קדימה (.)`,
   mediaPlay: "ניגון",
   mediaPause: "השהיה",
   mediaPlayTitle: "ניגון (Space)",
