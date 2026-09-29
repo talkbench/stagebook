@@ -148,6 +148,40 @@ The TextArea counter uses the same function against live text; the saved flag
 can lag by one commit window. It is advisory browser state: recompute from the
 answer and prompt constraints for analysis, payment and eligibility.
 
+### `buildPromptRecord(input)`
+
+Pure record construction, exported from `stagebook` without React. Prompt uses
+this helper for its saves; hosts use it for a shared editor's final stage-end
+snapshot. It performs no I/O and does not read a clock.
+
+```typescript
+import { buildPromptRecord } from "stagebook";
+
+const record = buildPromptRecord({
+  metadata: { type: "openResponse" },
+  name: "group_notes",
+  file: "prompts/group_notes.prompt.md",
+  shared: true,
+  body: "What did your group decide?",
+  responses: [],
+  value: mergedText,
+  step: "discussion",
+  stageTimeElapsed: 42,
+});
+```
+
+Required inputs are `metadata`, `name`, `body`, `responses`, and `value`.
+Optional inputs are `file`, `shared` (default `false`), `label`, `debugMessages`,
+`step`, and `stageTimeElapsed`. Supply the clock and step at the commit boundary.
+The result includes metadata, `name`, `file`, `shared`, `prompt` (the body),
+`responses`, `value`, and `debugMessages`, plus supplied label and timing fields.
+Player records include the computed `isValid`; shared open-response records
+omit it and always use empty `debugMessages`. `responses` should be the same
+display order used by the prompt. The builder does not shuffle options.
+
+See the [shared editor contract](integration-guide.md#shared-notepad) for the
+callbacks that trigger browser commits and the host's final-pull example.
+
 ## Validation (`stagebook/validate`)
 
 The `stagebook/validate` subpath exports the position-aware validators shared by the CLI, the VS Code extension, and the viewer: `validateTreatmentSource`, `validatePromptSource`, `loadAndMergeImports`, `expandAndValidateWithImports`, the `Diagnostic` type, and position-mapping helpers.
@@ -467,10 +501,10 @@ Peaks helpers exported alongside it: `createPeaksArrays(channelCount, bucketCoun
 
 ### Render Slots (platform-provided)
 
-| Slot                  | Config                             | When Used                                                                                                                               |
-| --------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `renderDiscussion`    | Full `DiscussionType` config       | Stage with `discussion` block                                                                                                           |
-| `renderSharedNotepad` | `{ padName, defaultText?, rows? }` | `shared: true` open-response prompt. `defaultText` is placeholder-only: hint text, never seeded into the shared document or saved value |
+| Slot                  | Config                                                                  | When Used                                                                                                                                                                                                                                                                                                 |
+| --------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `renderDiscussion`    | Full `DiscussionType` config                                            | Stage with `discussion` block                                                                                                                                                                                                                                                                             |
+| `renderSharedNotepad` | `{ padName, defaultText?, rows?, onLocalEdit, onRemoteChange, onBlur }` | `shared: true` open-response prompt. Each callback takes the latest merged text. `defaultText` is placeholder-only: hint text, never seeded into the shared document or saved value. See the [shared editor contract](integration-guide.md#shared-notepad) for timing and own-transaction classification. |
 
 ### Conditional Components
 

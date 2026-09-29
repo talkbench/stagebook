@@ -656,6 +656,15 @@ Placeholder text (the `> ` line) works exactly as in a non-shared open response:
 
 The host platform implements the collaborative semantics via the `renderSharedNotepad` context slot. The standalone `sharedNotepad` element type was removed in #250; shared prompts are the single path now.
 
+On hosts implementing the shared-edit callbacks, `shared.prompt.group_notes`
+updates during the stage: after 2 seconds without local typing, at most every
+5 seconds during continuous typing, or when a participant leaves a field with
+an uncommitted local edit. The snapshot contains the latest merged text, and
+late merges after a commit trigger a correction within the same cadence. This
+lets conditions and displays read the group's answer during its own stage.
+The host still takes a final snapshot when the stage ends. An automatic cutoff
+can discard an uncommitted tail, just as for solo open responses.
+
 ## Time fields and reference frames
 
 Several element fields are measured in seconds, but they don't all share the same reference frame. Knowing which frame a field uses matters when you mix them — most often when a `mediaPlayer` is timed against the stage clock.

@@ -592,17 +592,83 @@ Collaborative text editors (e.g., a Yjs-backed CodeMirror, or Etherpad) are used
 
 ```typescript
 const context: StagebookContext = {
-  renderSharedNotepad: ({ padName, defaultText, rows }) => (
+  renderSharedNotepad: ({
+    padName,
+    defaultText,
+    rows,
+    onLocalEdit,
+    onRemoteChange,
+    onBlur,
+  }) => (
     <YourCollaborativeEditor
       padName={padName}
       placeholder={defaultText}
       rows={rows}
+      onLocalEdit={onLocalEdit}
+      onRemoteChange={onRemoteChange}
+      onBlur={onBlur}
     />
   ),
 };
 ```
 
 `defaultText` carries the prompt file's `> ` placeholder lines and is **placeholder-only**: render it as ephemeral hint text (e.g. a CodeMirror `placeholder()` extension) that disappears once anyone types. Do not seed it into the shared document — it is never part of the saved/exported value, matching how non-shared open-response prompts treat placeholder text.
+
+Implement these callbacks in the collaborative editor's update listener:
+
+- `onLocalEdit(text)`: report this participant's own document transactions only,
+  passing the current merged text, including an empty string after deletion.
+- `onRemoteChange(text)`: report remote document changes with the current merged
+  text. For Yjs/CodeMirror, classify `yCollab`-annotated sync transactions as
+  remote; never report them as local edits.
+- `onBlur(text)`: report the latest merged text when the editor loses focus.
+
+Stagebook owns the commit timing and calls
+`save("prompt_<name>", record, "shared")`. A local batch commits after 2 seconds
+quiet or 5 seconds maximum wait. Remote updates refresh that batch's text
+without restarting either deadline, so a delayed timer reads the latest merge.
+Blur flushes a pending local edit immediately; an idle blur saves nothing.
+Unmount cancels pending work without flushing. Shared records have empty
+`debugMessages`; shared open-response records omit `isValid`.
+
+A participant who has never edited does not write in response to remote changes.
+After a local commit, a late merge can reveal that the saved snapshot was stale.
+Stagebook then schedules a corrective batch with the same 2-second quiet and
+5-second maximum cadence. Further remote changes coalesce into that batch;
+they do not cause a save per keystroke. This correction is the exception to
+remote changes only refreshing pending text. Several prior typists can each
+produce a correction; their merged snapshots may be duplicates. A local edit
+during correction becomes a local batch and keeps the existing maximum deadline.
+Blur alone does not flush a correction-only batch.
+
+The host keeps its stage-end pull as the final snapshot and uses the same pure
+record builder as Prompt:
+
+```typescript
+import { buildPromptRecord, promptFileSchema } from "stagebook";
+
+const { metadata, body, responseItems } =
+  promptFileSchema.parse(promptMarkdown);
+const record = buildPromptRecord({
+  metadata,
+  name: padName,
+  file: promptPath,
+  shared: true,
+  body,
+  responses: responseItems,
+  value: finalMergedText,
+  step: progressLabel,
+  stageTimeElapsed: elapsedSeconds,
+});
+save(`prompt_${padName}`, record, "shared");
+```
+
+The builder performs no I/O and imports no React. Equal inputs produce the same
+record shape for browser commits and the final pull. These full snapshots have
+the same trust boundary as solo answers. The void-returning `save` contract does
+not acknowledge delivery or order server mutations; hosts remain responsible
+for transport ordering and any submission-settle behavior. A host may add a
+Yjs state-vector guard inside its own `save` implementation.
 
 ### Progressive adoption
 
