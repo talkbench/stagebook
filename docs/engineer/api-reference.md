@@ -610,7 +610,9 @@ For numeric restoration, pass saved raw `entry` and saved `numberFormat` rather
 than reconstructing the field from `value`; this preserves leading zeros and
 unfinished text. Direct numeric callers still pass `value={undefined}` when
 there is no parsed value; `value` remains a required Prompt prop. `Element`
-forwards the stored value, entry, and format.
+forwards the stored value, entry, and format. It reuses a saved format only when
+the complete pair satisfies the catalog separator rules; malformed pairs fall
+back to the active catalog, including host overrides.
 
 ### Render Slots (platform-provided)
 

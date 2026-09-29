@@ -6,6 +6,7 @@ import type {
 } from "./types.js";
 import { en } from "./en.js";
 import { he } from "./he.js";
+import { isNumberFormat } from "./numberFormat.js";
 
 export type {
   RegisteredLocale,
@@ -139,21 +140,8 @@ function mergeNumberFormat(
       fields.decimal === undefined ? base.decimal : fields.decimal;
     const grouping =
       fields.grouping === undefined ? base.grouping : fields.grouping;
-    const separator = (value: unknown): value is string =>
-      typeof value === "string" &&
-      value.length === 1 &&
-      value !== "-" &&
-      !/\p{N}/u.test(value);
-    if (
-      separator(decimal) &&
-      separator(grouping) &&
-      decimal !== grouping &&
-      decimal.trim().length > 0 &&
-      (grouping.trim().length > 0 ||
-        [" ", "\u00a0", "\u202f"].includes(grouping))
-    ) {
-      return { decimal, grouping };
-    }
+    const candidate = { decimal, grouping };
+    if (isNumberFormat(candidate)) return candidate;
   }
   console.warn(
     '[stagebook] Ignoring invalid messages override for "numberFormat"; keeping the bundled separators.',

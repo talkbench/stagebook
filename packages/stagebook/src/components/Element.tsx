@@ -6,6 +6,7 @@ import {
   useTextContent,
   useMessages,
 } from "./StagebookProvider.js";
+import { isNumberFormat } from "../messages/numberFormat.js";
 import { promptFileSchema } from "../schemas/promptFile.js";
 import {
   formatReference,
@@ -303,15 +304,12 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
         metadata.type === "numericResponse"
           ? resolve(`${scope}.prompt.${promptName}.numberFormat`)
           : [];
-      const savedFormat = savedFormats[0] as
-        | { decimal?: unknown; grouping?: unknown }
-        | undefined;
-      const validSavedFormat =
-        savedFormat &&
-        typeof savedFormat.decimal === "string" &&
-        typeof savedFormat.grouping === "string"
-          ? { decimal: savedFormat.decimal, grouping: savedFormat.grouping }
-          : undefined;
+      const savedFormat = savedFormats[0];
+      // Restored records can be client-written. Reuse a complete valid pair;
+      // otherwise the numeric field/slot falls back to the active catalog.
+      const validSavedFormat = isNumberFormat(savedFormat)
+        ? { decimal: savedFormat.decimal, grouping: savedFormat.grouping }
+        : undefined;
 
       return (
         <Prompt

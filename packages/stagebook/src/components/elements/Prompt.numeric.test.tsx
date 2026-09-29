@@ -479,3 +479,84 @@ function GateProbe() {
     </output>
   );
 }
+
+test.each([false, true])(
+  "Element validates restored numeric formats in shared=%s",
+  async (shared) => {
+    const hostFormat = { decimal: ",", grouping: " " };
+    for (const savedFormat of [
+      { decimal: "", grouping: "," },
+      { decimal: ".", grouping: "." },
+      { decimal: " ", grouping: "." },
+      { decimal: "1", grouping: "," },
+      { decimal: "," },
+    ]) {
+      save.mockClear();
+      const get = vi.fn((key: string) =>
+        key === "prompt_age"
+          ? [{ entry: "25,5", numberFormat: savedFormat }]
+          : [],
+      );
+      const ctx = context({
+        get,
+        messages: { numberFormat: hostFormat },
+        renderSharedNumericResponse: renderer,
+      });
+      await act(async () => {
+        root.render(
+          <StagebookProvider value={ctx}>
+            <Element
+              key={JSON.stringify(savedFormat)}
+              element={{
+                type: "prompt",
+                file: "age.prompt",
+                name: "age",
+                shared,
+              }}
+              onSubmit={() => {}}
+            />
+          </StagebookProvider>,
+        );
+        await Promise.resolve();
+      });
+      expect(get).toHaveBeenCalledWith(
+        "prompt_age",
+        shared ? "shared" : "player",
+      );
+      if (shared) {
+        expect(slot.numberFormat).toEqual(hostFormat);
+        expect(slot.getFeedback("25,5", true).state).toBe("valid");
+        expect(
+          slot.filterInsertion({
+            entry: "",
+            start: 0,
+            end: 0,
+            inserted: "25,5",
+          }).entry,
+        ).toBe("25,5");
+        act(() => {
+          slot.onLocalEdit("25,5");
+          slot.onBlur("25,5");
+        });
+      } else {
+        const input = dom.querySelector("input")!;
+        expect(input.value).toBe("25,5");
+        expect(
+          dom
+            .querySelector('[data-testid="numeric-feedback"]')
+            ?.getAttribute("data-state"),
+        ).toBe("valid");
+        act(() => {
+          input.focus();
+          input.blur();
+        });
+      }
+      expect(record()).toMatchObject({
+        entry: "25,5",
+        value: 25.5,
+        isValid: true,
+        numberFormat: hostFormat,
+      });
+    }
+  },
+);
