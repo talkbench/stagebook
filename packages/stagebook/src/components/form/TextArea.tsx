@@ -246,7 +246,12 @@ export function TextArea({
   const handleDrop = (e: React.DragEvent<HTMLTextAreaElement>) => {
     // Dragged text bypasses typing just like paste; keep the same telemetry.
     e.preventDefault();
+    const latest = pendingValue.current ?? localValue;
+    clearPending();
     recordPasteAttempt(e.dataTransfer.getData("text"));
+    // A canceled drop need not focus the field, so there may be no later blur
+    // or edit. Commit the unchanged text now to save the attempt in Prompt.
+    onChangeRef.current?.(latest);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {

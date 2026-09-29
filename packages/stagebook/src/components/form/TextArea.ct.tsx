@@ -130,7 +130,11 @@ for (const eventType of ["paste", "drop"] as const) {
         timestamp: now.getTime(),
       });
       await expect.poll(() => debugMessages).toEqual(expected);
-      expect(changes).toEqual([]);
+      await expect
+        .poll(() => changes)
+        .toEqual(
+          eventType === "drop" ? expected.map(() => "Typed response") : [],
+        );
     }
   });
 }

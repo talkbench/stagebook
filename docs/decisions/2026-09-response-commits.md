@@ -16,6 +16,12 @@ the synchronous Prompt save includes them. Standalone TextArea keeps its
 configurable quiet period (500ms by default) and maximum wait (5 seconds by
 default). Unmount cancels pending timers, without flushing.
 
+Blocked text drops also commit the current response immediately, including any
+pending typed edits, after recording the `pasteAttempt`
+([#691](https://github.com/talkbench/stagebook/issues/691)). Canceling a drop can
+leave the field unfocused, so persistence cannot rely on a later blur or edit.
+This commit clears both timers without adding focus or blur statistics.
+
 Slider previews pointer and held-key changes locally and commits on pointer
 release or completion of the held adjustment keys. Click-to-jump completes
 on release. Native changes without pointer/key events, such as accessibility
