@@ -1056,9 +1056,10 @@ test("YouTube: grabbing the scrubber at stopAt during playback isn't reaching st
       (await component.locator('[data-testid="save-log"]').textContent()) ??
         "[]",
     ) as SavedEvents;
+  // The grab's seek is logged ahead of its pause (#682).
   await expect
     .poll(async () => (await saves()).at(-1)?.value.events.map((e) => e.type))
-    .toEqual(["play", "pause"]);
+    .toEqual(["play", "seek", "pause"]);
   expect(
     await component.locator('[data-testid="completed"]').textContent(),
   ).toBe("false");
@@ -1443,10 +1444,18 @@ test("scrub bar: no play/pause events when scrubbing from paused state", async (
     clientY: box.y + box.height * 0.5,
     pointerId: 1,
   });
-  // No save events should have been recorded (scrubbing while paused = no events)
-  const raw = await component.locator('[data-testid="save-log"]').textContent();
-  const saves = JSON.parse(raw ?? "[]") as Array<unknown>;
-  expect(saves).toHaveLength(0);
+  // Scrubbing while paused logs no play/pause — only the drag, as one seek
+  // once it settles (#682).
+  const events = async () =>
+    (
+      JSON.parse(
+        (await component.locator('[data-testid="save-log"]').textContent()) ??
+          "[]",
+      ) as SavedEvents
+    ).at(-1)?.value.events ?? [];
+  await expect.poll(events).toHaveLength(1);
+  expect((await events())[0]).toMatchObject({ type: "seek", fromTime: 0 });
+  expect((await events())[0].videoTime).toBeCloseTo(70, 0);
 });
 
 // -- Play/pause button state --

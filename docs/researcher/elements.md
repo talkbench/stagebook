@@ -253,6 +253,8 @@ When the player has focus:
 | `<` / `>`      | Decrease / increase speed one step |
 | Hold `←` / `→` | Fast-scrub at 2×                   |
 
+`<` / `>` work only when `controls.speed` is on, so a study without the speed control plays at a fixed speed.
+
 ### Saved data
 
 Each interaction is appended to an event list under the element's name:
@@ -263,32 +265,44 @@ Each interaction is appended to an event list under the element's name:
   "url": "https://example.com/clips/scene1.mp4",
   "startAt": 30,
   "stopAt": 90,
-  "lastVideoTime": 87.4,
+  "lastVideoTime": 90.0,
   "events": [
     { "type": "play", "videoTime": 30.0, "stageTimeElapsed": 4.1 },
     {
       "type": "seek",
-      "videoTime": 45.0,
+      "videoTime": 50.0,
       "stageTimeElapsed": 12.0,
-      "fromTime": 30.0
+      "fromTime": 37.9
     },
-    { "type": "pause", "videoTime": 45.2, "stageTimeElapsed": 19.3 },
+    { "type": "pause", "videoTime": 57.3, "stageTimeElapsed": 19.3 },
     {
       "type": "speed",
-      "videoTime": 45.2,
+      "videoTime": 57.3,
       "stageTimeElapsed": 20.1,
       "playbackRate": 1.5
     },
-    { "type": "play", "videoTime": 45.2, "stageTimeElapsed": 20.5 },
-    { "type": "stopAt", "videoTime": 90.0, "stageTimeElapsed": 74.8 }
+    { "type": "play", "videoTime": 57.3, "stageTimeElapsed": 20.5 },
+    { "type": "stopAt", "videoTime": 90.0, "stageTimeElapsed": 42.3 }
   ],
-  "watchedRanges": [[30.0, 90.0]]
+  "watchedRanges": [
+    [30.0, 37.9],
+    [50.0, 90.0]
+  ]
 }
 ```
 
-Event types: `play`, `pause`, `ended` (natural end), `stopAt` (playback reached stopAt), `seek` (includes `fromTime`; also logged when play replays the clip from the end), `speed` (includes `playbackRate`).
+Event types:
 
-`watchedRanges` is derived from the event log: closed `[start, end]` intervals (in video seconds) of the portions the participant actually watched, with overlapping or touching intervals merged. Open intervals (a `play` with no closing event — e.g. a mid-playback disconnect) are excluded.
+- `play`, `pause`
+- `ended`: the file played to its natural end
+- `stopAt`: playback reached `stopAt`
+- `stageEnd`: the stage ended during playback — the participant submitted, or the stage timed out. Logged at the position playback had reached, so the last stretch still counts as watched.
+- `seek`: includes `fromTime`, the position before the seek. Logged for every seek, whatever moved the player: its seek buttons and keys, its scrub bar, an attached timeline (ruler, playhead drag, arrow keys, mark edits), and play replaying the clip from the end. A continuous seek — a drag, or held keys on the timeline — is logged once it settles, as one seek from where it started to where it landed.
+- `speed`: includes `playbackRate`. Logged for the speed button and the `<` / `>` keys.
+
+`lastVideoTime` is the position at the last event.
+
+`watchedRanges` is derived from the event log: closed `[start, end]` intervals (in video seconds) of the portions the participant actually watched, with overlapping or touching intervals merged. A range runs from a `play` to the next `pause`, `ended`, `stopAt` or `stageEnd`. A seek during playback ends the range where the seek left and starts a new one where it landed, so skipped footage never counts as watched. Open intervals (a `play` with no closing event — e.g. a mid-playback disconnect) are excluded.
 
 ## Timeline
 

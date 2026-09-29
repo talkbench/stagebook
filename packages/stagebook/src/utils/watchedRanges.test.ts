@@ -109,6 +109,85 @@ describe("computeWatchedRanges", () => {
     ).toEqual([[0, 30]]);
   });
 
+  describe("seeks during playback (#682)", () => {
+    function seek(fromTime: number, videoTime: number): VideoEvent {
+      return { type: "seek", videoTime, fromTime, stageTimeElapsed: 0 };
+    }
+
+    it("closes the range at fromTime and reopens it at the target (backward seek)", () => {
+      // Play from 30, seek back from 40 to 10, pause at 12.
+      expect(
+        computeWatchedRanges([ev("play", 30), seek(40, 10), ev("pause", 12)]),
+      ).toEqual([
+        [10, 12],
+        [30, 40],
+      ]);
+    });
+
+    it("doesn't count skipped footage as watched (forward seek)", () => {
+      expect(
+        computeWatchedRanges([ev("play", 0), seek(5, 50), ev("pause", 55)]),
+      ).toEqual([
+        [0, 5],
+        [50, 55],
+      ]);
+    });
+
+    it("ignores seeks while paused", () => {
+      expect(
+        computeWatchedRanges([
+          ev("play", 0),
+          ev("pause", 5),
+          seek(5, 50),
+          ev("play", 50),
+          ev("pause", 55),
+        ]),
+      ).toEqual([
+        [0, 5],
+        [50, 55],
+      ]);
+    });
+
+    it("keeps a range open across successive seeks", () => {
+      expect(
+        computeWatchedRanges([
+          ev("play", 0),
+          seek(2, 20),
+          seek(22, 40),
+          ev("ended", 45),
+        ]),
+      ).toEqual([
+        [0, 2],
+        [20, 22],
+        [40, 45],
+      ]);
+    });
+
+    it("drops an empty range, e.g. a scrub whose pause lands on the target", () => {
+      // The scrub bar pauses, then seeks; the pause reads the target time.
+      expect(
+        computeWatchedRanges([ev("play", 0), seek(5, 50), ev("pause", 50)]),
+      ).toEqual([[0, 5]]);
+    });
+  });
+
+  it("never returns a backwards range", () => {
+    // An unlogged jump (older logs, before seeks were recorded) pairs a
+    // play with a pause earlier in the file.
+    expect(computeWatchedRanges([ev("play", 40), ev("pause", 12)])).toEqual([]);
+  });
+
+  it("closes an open range at stageEnd (#677)", () => {
+    expect(
+      computeWatchedRanges([
+        ev("play", 15.28),
+        ev("pause", 20),
+        ev("play", 20),
+        ev("stageEnd", 24.5),
+      ]),
+    ).toEqual([[15.28, 24.5]]);
+  });
+
   it("returns intervals sorted by start time", () => {
     // Events arrive out of order (e.g. after scrub)
     expect(
