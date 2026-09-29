@@ -24,7 +24,15 @@
  *  consumers. */
 export type RegisteredLocale = "en" | "he";
 
+/** Study-selected separators. Numeric parsing never consults browser Intl. */
+export interface NumberFormat {
+  decimal: string;
+  grouping: string;
+}
+
 export interface StagebookMessages {
+  /** Numeric entry syntax; host overrides merge and validate each field. */
+  numberFormat: NumberFormat;
   // --- Form / submit ---
   /** Default submit-button label when the researcher doesn't set `buttonText`. */
   submitButtonDefault: string;

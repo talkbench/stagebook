@@ -9,6 +9,7 @@ import type { StagebookMessages } from "./types.js";
  * preserve that property (see the localization translator guideline).
  */
 export const en: StagebookMessages = {
+  numberFormat: { decimal: ".", grouping: "," },
   submitButtonDefault: "Next",
   promptRequired: "Required",
   sliderLabel: "Slider",

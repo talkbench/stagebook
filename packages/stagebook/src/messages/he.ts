@@ -9,6 +9,7 @@ import type { StagebookMessages } from "./types.js";
  * to be reviewed.
  */
 export const he: StagebookMessages = {
+  numberFormat: { decimal: ".", grouping: "," },
   submitButtonDefault: "הבא",
   promptRequired: "נדרש",
   sliderLabel: "מחוון",
