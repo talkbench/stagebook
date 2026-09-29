@@ -273,6 +273,49 @@ test.each(["en", "he", "override"])(
     });
     render({ shared: true, renderSharedNumericResponse: renderer }, ctx);
     const catalog = resolveCatalog(ctx.locale, ctx.messages);
+    for (const inserted of ["a", " ", "+", catalog.numberFormat.grouping]) {
+      expect(
+        slot.filterInsertion({ entry: "35", start: 0, end: 2, inserted }),
+      ).toMatchObject({
+        entry: "35",
+        accepted: false,
+        refused: true,
+        selectionStart: 0,
+        selectionEnd: 2,
+      });
+    }
+    for (const inserted of ["-", catalog.numberFormat.decimal]) {
+      expect(
+        slot.filterInsertion({ entry: "", start: 0, end: 0, inserted }),
+      ).toMatchObject({ entry: inserted, accepted: true });
+    }
+    const oversized = "1".repeat(101);
+    expect(
+      slot.filterInsertion({
+        entry: oversized,
+        start: 0,
+        end: 1,
+        inserted: "",
+      }),
+    ).toMatchObject({ entry: "1".repeat(100), accepted: true });
+    expect(
+      slot.filterInsertion({
+        entry: oversized,
+        start: 0,
+        end: 1,
+        inserted: "2",
+      }),
+    ).toMatchObject({ entry: oversized, accepted: false });
+    expect(slot.getFeedback(oversized, false)).toEqual({
+      state: "problem",
+      text: `ⓘ ${catalog.numericTooLong}`,
+    });
+    expect(slot.getFeedback("", true).state).toBe("neutral");
+    expect(slot.getFeedback(`5${catalog.numberFormat.decimal}`, true)).toEqual({
+      state: "problem",
+      text: `ⓘ ${catalog.numericUnfinished}`,
+    });
+    expect(slot.getFeedback("-", false).state).toBe("problem");
     expect(slot.getFeedback("3", false).state).toBe("neutral");
     expect(slot.getFeedback("3", true).state).toBe("problem");
     act(() => slot.onRemoteChange("4"));
@@ -304,6 +347,22 @@ test.each(["en", "he", "override"])(
         inserted: `1${catalog.numberFormat.decimal}5`,
       }).entry,
     ).toBe(`1${catalog.numberFormat.decimal}5`);
+    render(
+      {
+        shared: true,
+        renderSharedNumericResponse: renderer,
+        metadata: { type: "numericResponse", max: 20, integer: true },
+      },
+      ctx,
+    );
+    expect(slot.getFeedback("00025", false)).toEqual({
+      state: "problem",
+      text: `ⓘ ${catalog.numericMoreThan("25", "20")}`,
+    });
+    expect(slot.getFeedback("2", false).state).toBe("valid");
+    expect(
+      slot.getFeedback(`1${catalog.numberFormat.decimal}5`, false),
+    ).toEqual({ state: "problem", text: `ⓘ ${catalog.numericWholeNumber}` });
   },
 );
 test("shared merged text commits through builder, saved format stays pinned across own edits", () => {
