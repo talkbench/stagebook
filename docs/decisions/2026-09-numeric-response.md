@@ -290,12 +290,13 @@ ships with the rest of this type; there's no interim phase.
   - the constraints, the affixes, and the effective `numberFormat`;
   - the `inputmode` derived from the constraints;
   - the id of the prompt body, which names the field through
-    `aria-labelledby`.
+    `aria-labelledby`;
+  - the commit callbacks `onLocalEdit(text)` and `onBlur(text)` (#697, shared
+    with `renderSharedNotepad`).
 
-  It also passes helpers bound to the active message
-  catalog: the keystroke filter, and the feedback state and text. The host
-  wires these into its editor rather than reimplementing them, so the rules
-  have one source.
+  It also passes helpers bound to the active message catalog: the keystroke
+  filter, and the feedback state and text. The host wires these into its
+  editor rather than reimplementing them, so the rules have one source.
 
 - **What stays with Stagebook.** It still renders the prompt body and the
   Required marker. The runner work is talkbench/runner#1015.
@@ -318,17 +319,30 @@ ships with the rest of this type; there's no interim phase.
   doesn't move as the text changes length. Like the chip, the feedback text
   has an opaque background, so presence rings pass behind it without changing
   its contrast.
-- **Saved record.** The host writes `shared.prompt.<name>` mid-stage at the
-  open-response cadence (talkbench/runner#1013), and again at stage end. The
-  record has `value`, `entry`, `isValid`, and `numberFormat`.
-  - **The stage-end record is authoritative.** The host computes it on its
-    server from the merged text, with constraints from the prompt file it
-    fetches, and the number format from `resolveNumberFormat`. That function
-    is given the same locale and overrides the host gives the provider.
-  - **Nothing a browser wrote is trusted.** No input to the stage-end record
-    comes from a client-written attribute.
-  - **Mid-stage records are advisory,** if clients write them. Analysis
-    recomputes from the stage-end `entry`.
+- **Saved record.** The typist writes, through Stagebook (#697). The host
+  calls `onLocalEdit(text)` with the merged text, and only for this
+  participant's own edits, never for remote sync. It calls `onBlur(text)` on
+  blur. Stagebook runs the open-response commit timer: 2s quiet, 5s maximum
+  wait, and blur when an edit is pending. It then builds the record with its
+  normal builder (`value`, `entry`, `isValid`, `numberFormat`, and the usual
+  metadata) and saves it through the host's `save` with scope `shared`. The
+  runner half is talkbench/runner#1013.
+  - **Several writers, one snapshot.** Idle participants never write. Writes
+    are full snapshots of the merged text, taken after the typist's own
+    quiet period, when views have almost always converged. So two people
+    typing in the same window write the same text, and the duplicates are
+    harmless. A rare stale snapshot from a lagging view is corrected by the
+    next write or by the stage-end write.
+  - **Stage end.** The host's final pull remains the last snapshot. It builds
+    the record with Stagebook's exported `buildPromptRecord`, with
+    constraints from the prompt file, and the number format from
+    `resolveNumberFormat` for the session's locale. Those are the sources the
+    server already has, and they keep mid-stage and final records identical
+    in shape.
+  - **Trust is the same as for individual prompts.** Every record comes from
+    participants' browsers or from the text they edited, so high-trust
+    analysis recomputes from `entry` with the host's own number format,
+    exactly as above.
 - **Validity.** Here validity describes the group's current answer, which is
   what a group's submit gate needs. So `numericResponse` is an exception to
   #668's player-scoped rule. Constraints on a shared numeric prompt are
@@ -393,6 +407,9 @@ The new type touches:
 - the switch in `Prompt.tsx`;
 - the provider contract, which gains the optional `renderSharedNumericResponse`
   slot and its config, along with the unsupported-host state;
+- the shared commit path (#697): the commit timer extracted from TextArea into
+  a shared hook, the `onLocalEdit` and `onBlur` callbacks on both shared
+  slots, and a React-free `buildPromptRecord` for the host's stage-end write;
 - the viewer, whose shared-notepad stand-in (#591) needs a single-line
   numeric counterpart for the new slot;
 - the main `stagebook` entry. It must export these without a React
