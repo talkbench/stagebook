@@ -100,6 +100,9 @@ export function NumericInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const [localEntry, setLocalEntry] = useState(entry ?? "");
   const stableEntry = useRef(entry ?? "");
+  const formatPinned = useRef(
+    entry !== undefined || numberFormat !== undefined,
+  );
   const [displayFormat, setDisplayFormat] = useState(
     numberFormat ?? messages.numberFormat,
   );
@@ -130,12 +133,23 @@ export function NumericInput({
       if (restored !== stableEntry.current)
         setRevealProblems(entry !== undefined);
       stableEntry.current = restored;
+      formatPinned.current = entry !== undefined || numberFormat !== undefined;
       setLocalEntry(restored);
       effectiveFormat.current = numberFormat ?? messages.numberFormat;
       setDisplayFormat(effectiveFormat.current);
     }
     // Catalog changes are adopted on an edit, never by silently reparsing a restore.
   }, [entry, numberFormat?.decimal, numberFormat?.grouping]);
+
+  useEffect(() => {
+    // An unanswered field follows catalog hydration. Restored or locally
+    // recorded text keeps its format; this effect never replays restoration
+    // or changes an edit's pending commit deadline.
+    if (!formatPinned.current) {
+      effectiveFormat.current = messages.numberFormat;
+      setDisplayFormat(messages.numberFormat);
+    }
+  }, [messages.numberFormat.decimal, messages.numberFormat.grouping]);
 
   useLayoutEffect(() => {
     if (selection.current && inputRef.current) {
@@ -187,6 +201,7 @@ export function NumericInput({
     }
   };
   const acceptEntry = (text: string, editFormat: NumberFormat) => {
+    formatPinned.current = true;
     setLocalEntry(text);
     stableEntry.current = text;
     effectiveFormat.current = editFormat;
@@ -362,6 +377,7 @@ export function NumericInput({
     });
   const handleBlur = () => {
     finishComposition();
+    formatPinned.current = true;
     commits.cancel();
     const stats = telemetry.onBlur();
     onDebugMessage?.(stats);
@@ -460,6 +476,7 @@ export function NumericInput({
           }}
           onDrop={(event) => {
             event.preventDefault();
+            formatPinned.current = true;
             commits.cancel();
             pasteAttempt(event.dataTransfer.getData("text"));
             commits.commit(snapshotResponse());

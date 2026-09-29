@@ -442,3 +442,109 @@ for (const refusalBetweenEdits of [false, true]) {
     await expect(field).toHaveValue("123");
   });
 }
+
+for (const initialOverride of [undefined, { decimal: ".", grouping: "," }]) {
+  test(`numeric unanswered guidance follows provider ${initialOverride ? "format change" : "format hydration"}`, async ({
+    mount,
+  }) => {
+    const records: Array<{
+      entry: string;
+      format: { decimal: string; grouping: string };
+    }> = [];
+    const save = (
+      entry: string,
+      format: { decimal: string; grouping: string },
+    ) => records.push({ entry, format });
+    const component = await mount(
+      <LocaleProvider
+        locale="en"
+        messages={
+          initialOverride ? { numberFormat: initialOverride } : undefined
+        }
+      >
+        <NumericInput
+          ariaLabel="Estimate"
+          constraints={{ min: 1.5, max: 2.5 }}
+          onChange={save}
+        />
+      </LocaleProvider>,
+    );
+    const field = component.getByRole("textbox");
+    const originalId = await field.getAttribute("id");
+    await expect(component.getByTestId("numeric-feedback")).toContainText(
+      "1.5",
+    );
+    await component.update(
+      <LocaleProvider
+        locale="he"
+        messages={{ numberFormat: { decimal: ",", grouping: "." } }}
+      >
+        <NumericInput
+          ariaLabel="Estimate"
+          constraints={{ min: 1.5, max: 2.5 }}
+          onChange={save}
+        />
+      </LocaleProvider>,
+    );
+    await expect(field).toHaveAttribute("id", originalId!);
+    await expect(field).toHaveValue("");
+    await expect(component.getByTestId("numeric-feedback")).toContainText(
+      "1,5",
+    );
+    expect(records).toHaveLength(0);
+    await field.pressSequentially("1,5");
+    await expect(field).toHaveValue("1,5");
+    await expect(component.getByTestId("numeric-feedback")).toHaveAttribute(
+      "data-state",
+      "valid",
+    );
+    await field.blur();
+    await expect
+      .poll(() => records.at(-1))
+      .toEqual({ entry: "1,5", format: { decimal: ",", grouping: "." } });
+  });
+}
+
+test("numeric provider format changes preserve local text until the next accepted edit", async ({
+  mount,
+}) => {
+  const records: Array<{
+    entry: string;
+    format: { decimal: string; grouping: string };
+  }> = [];
+  const save = (entry: string, format: { decimal: string; grouping: string }) =>
+    records.push({ entry, format });
+  const component = await mount(
+    <LocaleProvider locale="en">
+      <NumericInput
+        ariaLabel="Estimate"
+        constraints={{ min: 1.5, max: 2.5 }}
+        onChange={save}
+      />
+    </LocaleProvider>,
+  );
+  const field = component.getByRole("textbox");
+  await field.pressSequentially("1.5");
+  await component.update(
+    <LocaleProvider
+      locale="he"
+      messages={{ numberFormat: { decimal: ",", grouping: "." } }}
+    >
+      <NumericInput
+        ariaLabel="Estimate"
+        constraints={{ min: 1.5, max: 2.5 }}
+        onChange={save}
+      />
+    </LocaleProvider>,
+  );
+  await expect(field).toHaveValue("1.5");
+  await expect(component.getByTestId("numeric-feedback")).toContainText("1.5");
+  await expect
+    .poll(() => records.at(-1))
+    .toEqual({ entry: "1.5", format: { decimal: ".", grouping: "," } });
+  await field.fill("1,5");
+  await field.blur();
+  await expect
+    .poll(() => records.at(-1))
+    .toEqual({ entry: "1,5", format: { decimal: ",", grouping: "." } });
+});

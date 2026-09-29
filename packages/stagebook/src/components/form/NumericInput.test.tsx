@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { DebugMessage } from "../../utils/promptTelemetry.js";
 import type { NumberFormat } from "../../messages/types.js";
 import { NumericInput } from "./NumericInput.js";
+import { LocaleProvider } from "../testing/LocaleProvider.js";
 
 let root: Root;
 let dom: HTMLDivElement;
@@ -40,6 +41,24 @@ function render(props: React.ComponentProps<typeof NumericInput> = {}) {
       <NumericInput onChange={save} onDebugMessage={debug} {...props} />,
     ),
   );
+}
+function renderWithFormat(
+  props: React.ComponentProps<typeof NumericInput> = {},
+  format?: NumberFormat,
+) {
+  act(() =>
+    root.render(
+      <LocaleProvider
+        locale="en"
+        messages={format ? { numberFormat: format } : undefined}
+      >
+        <NumericInput onChange={save} onDebugMessage={debug} {...props} />
+      </LocaleProvider>,
+    ),
+  );
+}
+function feedbackText() {
+  return dom.querySelector('[data-testid="numeric-feedback"]')!.textContent;
 }
 function input() {
   return dom.querySelector("input")!;
@@ -382,4 +401,124 @@ test("solo undo cannot reinsert text over the entry cap or extend its pending ti
   advance(500);
   expect(save).toHaveBeenCalledTimes(1);
   expect(save).toHaveBeenCalledWith("1".repeat(100), dot);
+});
+
+test.each([undefined, dot])(
+  "unanswered guidance follows provider format hydration/change from %j",
+  (initialFormat) => {
+    const props = { constraints: { min: 1.5, max: 2.5 } };
+    renderWithFormat(props, initialFormat);
+    const originalInput = input();
+    expect(feedbackText()).toContain("1.5");
+    renderWithFormat(props, comma);
+    expect(input()).toBe(originalInput);
+    expect(input().value).toBe("");
+    expect(feedbackText()).toContain("1,5");
+    expect(save).not.toHaveBeenCalled();
+    insert("1,5");
+    advance(2000);
+    expect(save).toHaveBeenLastCalledWith("1,5", comma);
+    expect(
+      dom
+        .querySelector('[data-testid="numeric-feedback"]')!
+        .getAttribute("data-state"),
+    ).toBe("valid");
+  },
+);
+
+test("unanswered blur uses the hydrated format without needing an edit", () => {
+  renderWithFormat({}, dot);
+  renderWithFormat({}, comma);
+  act(() => {
+    input().focus();
+    input().blur();
+  });
+  expect(save).toHaveBeenLastCalledWith("", comma);
+});
+
+test("catalog changes preserve a pending local entry, its format and its commit deadline", () => {
+  const props = { constraints: { min: 1.5, max: 2.5 } };
+  renderWithFormat(props, dot);
+  insert("1.5");
+  advance(1500);
+  renderWithFormat(props, comma);
+  expect(input().value).toBe("1.5");
+  expect(feedbackText()).toContain("1.5");
+  advance(500);
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(save).toHaveBeenLastCalledWith("1.5", dot);
+  act(() => input().setSelectionRange(0, 3));
+  insert("1,5");
+  advance(2000);
+  expect(save).toHaveBeenLastCalledWith("1,5", comma);
+});
+
+test.each([
+  { entry: "1.5", numberFormat: dot },
+  { entry: "", numberFormat: dot },
+  { entry: "1.5" },
+  { numberFormat: dot },
+])(
+  "catalog changes preserve restored or explicitly pinned props %j",
+  (restored) => {
+    const props = { ...restored, constraints: { min: 1.5, max: 2.5 } };
+    renderWithFormat(props, dot);
+    renderWithFormat(props, comma);
+    expect(input().value).toBe(restored.entry ?? "");
+    expect(feedbackText()).toContain("1.5");
+    act(() => {
+      input().focus();
+      input().blur();
+    });
+    expect(save).toHaveBeenLastCalledWith(restored.entry ?? "", dot);
+  },
+);
+
+test("an accepted clear stays pinned and pending when the provider format changes", () => {
+  const props = { constraints: { min: 1.5 } };
+  renderWithFormat(props, dot);
+  insert("1.5");
+  advance(2000);
+  fallbackEdit("");
+  advance(1500);
+  renderWithFormat(props, comma);
+  expect(input().value).toBe("");
+  expect(feedbackText()).toContain("1.5");
+  advance(500);
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(save).toHaveBeenLastCalledWith("", dot);
+});
+
+test.each(["blur", "drop"])(
+  "an explicit blank %s save pins its format across catalog changes",
+  (kind) => {
+    const props = { constraints: { min: 1.5 } };
+    renderWithFormat(props, dot);
+    act(() => {
+      if (kind === "blur") {
+        input().focus();
+        input().blur();
+      } else {
+        const event = new Event("drop", { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "dataTransfer", {
+          value: { getData: () => "123" },
+        });
+        input().dispatchEvent(event);
+      }
+    });
+    expect(save).toHaveBeenLastCalledWith("", dot);
+    renderWithFormat(props, comma);
+    expect(feedbackText()).toContain("1.5");
+    expect(save).toHaveBeenCalledTimes(1);
+  },
+);
+
+test("refused input leaves an unanswered field free to adopt catalog hydration", () => {
+  const props = { constraints: { min: 1.5 } };
+  renderWithFormat(props, dot);
+  insert("x");
+  renderWithFormat(props, comma);
+  expect(feedbackText()).toContain("1,5");
+  act(() => input().blur());
+  expect(save).toHaveBeenLastCalledWith("", comma);
 });
