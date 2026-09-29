@@ -1,6 +1,6 @@
 # Numeric responses are their own prompt type
 
-Status: proposed in [#687](https://github.com/talkbench/stagebook/issues/687).
+Status: accepted in [#687](https://github.com/talkbench/stagebook/issues/687).
 Builds on [prompt validation](2026-09-prompt-validation.md) (#668).
 
 A `numericResponse` prompt lets a participant type a number. The prompt
