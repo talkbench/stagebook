@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { type TreatmentFileType } from "../../schemas/index.js";
 import { checkPromptLocaleConsistencyWithLoader } from "../../validate/localeConsistency.js";
+import { checkSharedPromptValidationWithLoader } from "../../validate/sharedPromptValidation.js";
 import {
   computePreviewState,
   type PostFillIssue,
@@ -136,6 +137,33 @@ export function PreviewHost({
     };
   }, [resolved, getTextContent]);
 
+  const [sharedConstraintIssues, setSharedConstraintIssues] = useState<
+    PostFillIssue[]
+  >([]);
+  useEffect(() => {
+    // A prompt path may only become loadable after host/FieldForm binding.
+    // Re-check the shared rule on that final tree, and on content refreshes.
+    setSharedConstraintIssues([]);
+    if (resolved === null) return;
+    let cancelled = false;
+    void checkSharedPromptValidationWithLoader({
+      fileObj: resolved,
+      loadPrompt: getTextContent,
+    }).then((issues) => {
+      if (!cancelled) {
+        setSharedConstraintIssues(
+          issues.map((issue) => ({
+            path: issue.promptFile,
+            message: issue.message,
+          })),
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [resolved, getTextContent, contentVersion]);
+
   if (previewState.mode === "form") {
     // Keyed on the field set: after a post-fill failure the form can
     // gain fields (host-bound ones become editable), and FieldForm
@@ -212,6 +240,24 @@ export function PreviewHost({
       </div>
     ) : undefined;
 
+  const sharedConstraintBanner =
+    sharedConstraintIssues.length > 0 ? (
+      <div
+        data-testid="shared-prompt-constraint-banner"
+        role="alert"
+        style={localeBannerStyle}
+      >
+        <strong style={localeBannerTitleStyle}>
+          Unsupported shared prompt constraints
+        </strong>
+        <ul style={localeBannerListStyle}>
+          {sharedConstraintIssues.map((issue, index) => (
+            <li key={`${issue.path}:${index}`}>{issue.message}</li>
+          ))}
+        </ul>
+      </div>
+    ) : undefined;
+
   return (
     <Viewer
       treatmentFile={previewState.resolved}
@@ -225,10 +271,11 @@ export function PreviewHost({
       onTreatmentIndexChange={onTreatmentIndexChange}
       onIntroIndexChange={onIntroIndexChange}
       notice={
-        hostNotice || localeBanner ? (
+        hostNotice || localeBanner || sharedConstraintBanner ? (
           <>
             {hostNotice}
             {localeBanner}
+            {sharedConstraintBanner}
           </>
         ) : undefined
       }

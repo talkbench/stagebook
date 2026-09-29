@@ -13,6 +13,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { TreatmentFileType } from "../../schemas/index.js";
 import { PreviewHost } from "./PreviewHost.js";
+import { validateTreatmentWithDiff } from "../../validate/validateTreatmentDiff.js";
 
 beforeAll(() => {
   (
@@ -331,5 +332,188 @@ describe("PreviewHost hostNotice pass-through (#192)", () => {
     // `lang` is unbound → FieldForm gate is up, Viewer (and its notice) is not.
     expect(findHostNotice(container)).toBeNull();
     unmount();
+  });
+});
+
+describe("PreviewHost post-fill shared prompt constraints (#668)", () => {
+  const source = `treatments:
+  - name: study1
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: s1
+        duration: 60
+        elements:
+          - type: prompt
+            file: prompts/\${variant}.prompt.md
+            shared: true
+`;
+  const constrained =
+    "---\ntype: openResponse\nminLength: 5\n---\nQuestion\n---\n>\n";
+  const unconstrained =
+    "---\ntype: openResponse\nrequired: false\n---\nQuestion\n---\n>\n";
+  const findSharedBanner = (container: HTMLElement) =>
+    container.querySelector('[data-testid="shared-prompt-constraint-banner"]');
+
+  it.each([
+    [
+      "required",
+      "---\ntype: multipleChoice\nrequired: true\n---\nPick\n---\n- Yes\n- No\n",
+    ],
+    ["minLength", constrained],
+    [
+      "maxLength",
+      "---\ntype: openResponse\nmaxLength: 5\n---\nQuestion\n---\n>\n",
+    ],
+  ])(
+    "diagnoses %s after a deferred prompt path binds",
+    async (constraint, prompt) => {
+      const getText = vi.fn((path: string) =>
+        path === "prompts/selected.prompt.md"
+          ? Promise.resolve(prompt)
+          : Promise.reject(new Error(`unresolved path: ${path}`)),
+      );
+      const loaded = await validateTreatmentWithDiff({
+        source,
+        loadImport: getText,
+      });
+      // Loading the template-expanded tree cannot inspect the final prompt yet.
+      expect(
+        loaded.diagnostics.some((issue) =>
+          issue.message.includes("is shared but declares"),
+        ),
+      ).toBe(false);
+      const { container, unmount } = render(
+        <PreviewHost
+          treatmentFile={loaded.parsedObj as TreatmentFileType}
+          additionalFields={{ variant: "selected" }}
+          selectedIntroIndex={0}
+          selectedTreatmentIndex={0}
+          getTextContent={getText}
+          getAssetURL={getAsset}
+        />,
+      );
+      try {
+        await flush();
+        expect(getText).toHaveBeenCalledWith("prompts/selected.prompt.md");
+        const diagnostic = findSharedBanner(container);
+        expect(diagnostic).not.toBeNull();
+        expect(diagnostic?.getAttribute("role")).toBe("alert");
+        expect(diagnostic?.textContent).toContain("prompts/selected.prompt.md");
+        expect(diagnostic?.textContent).toContain('treatment "study1"');
+        expect(diagnostic?.textContent).toContain(constraint);
+        expect(banner(container)).toBeNull();
+      } finally {
+        unmount();
+      }
+    },
+  );
+
+  it.each([
+    [true, unconstrained],
+    [false, constrained],
+  ])(
+    "allows explicit required:false or player constraints (shared=%s)",
+    async (shared, prompt) => {
+      const getText = vi.fn(() => Promise.resolve(prompt));
+      const loaded = await validateTreatmentWithDiff({
+        source: source.replace("shared: true", `shared: ${shared}`),
+        loadImport: getText,
+      });
+      const { container, unmount } = render(
+        <PreviewHost
+          treatmentFile={loaded.parsedObj as TreatmentFileType}
+          additionalFields={{ variant: "selected" }}
+          selectedIntroIndex={0}
+          selectedTreatmentIndex={0}
+          getTextContent={getText}
+          getAssetURL={getAsset}
+        />,
+      );
+      try {
+        await flush();
+        expect(getText).toHaveBeenCalledWith("prompts/selected.prompt.md");
+        expect(findSharedBanner(container)).toBeNull();
+      } finally {
+        unmount();
+      }
+    },
+  );
+
+  it("rechecks refreshed prompt content with a stable loader and tree", async () => {
+    let prompt = unconstrained;
+    const getText = vi.fn(() => Promise.resolve(prompt));
+    const loaded = await validateTreatmentWithDiff({
+      source,
+      loadImport: getText,
+    });
+    const fields = { variant: "selected" };
+    const view = (contentVersion: number) => (
+      <PreviewHost
+        treatmentFile={loaded.parsedObj as TreatmentFileType}
+        additionalFields={fields}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        contentVersion={contentVersion}
+      />
+    );
+    const { container, rerender, unmount } = render(view(0));
+    try {
+      await flush();
+      expect(findSharedBanner(container)).toBeNull();
+      prompt = constrained;
+      rerender(view(1));
+      await flush();
+      expect(findSharedBanner(container)?.textContent).toContain("minLength");
+      prompt = unconstrained;
+      rerender(view(2));
+      await flush();
+      expect(findSharedBanner(container)).toBeNull();
+    } finally {
+      unmount();
+    }
+  });
+
+  it("clears on rebinding and ignores a stale pending constraint result", async () => {
+    let finishOld!: (prompt: string) => void;
+    const oldPrompt = new Promise<string>((resolve) => {
+      finishOld = resolve;
+    });
+    const getText = vi.fn(async (path: string) => {
+      if (path === "prompts/initial.prompt.md") return constrained;
+      if (path === "prompts/old.prompt.md") return oldPrompt;
+      if (path === "prompts/new.prompt.md") return unconstrained;
+      throw new Error(`unresolved path: ${path}`);
+    });
+    const loaded = await validateTreatmentWithDiff({
+      source,
+      loadImport: getText,
+    });
+    const view = (variant: string) => (
+      <PreviewHost
+        treatmentFile={loaded.parsedObj as TreatmentFileType}
+        additionalFields={{ variant }}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+      />
+    );
+    const { container, rerender, unmount } = render(view("initial"));
+    try {
+      await flush();
+      expect(findSharedBanner(container)?.textContent).toContain("minLength");
+      rerender(view("old"));
+      expect(findSharedBanner(container)).toBeNull();
+      rerender(view("new"));
+      await flush();
+      finishOld(constrained);
+      await flush();
+      expect(findSharedBanner(container)).toBeNull();
+    } finally {
+      unmount();
+    }
   });
 });
