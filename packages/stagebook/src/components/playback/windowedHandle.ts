@@ -45,13 +45,16 @@ export function withSeekWindow(
   /** How to start playback; defaults to the inner handle's own play. A
    *  MediaPlayer passes its replay-aware play (#684). */
   play: () => void = () => inner.play(),
+  /** How to seek to an in-window time; defaults to the inner handle's own
+   *  seekTo. A MediaPlayer passes one that also logs the seek (#682). */
+  seekTo: (seconds: number) => void = (seconds) => inner.seekTo(seconds),
 ): PlaybackHandle {
   return {
     play,
     pause: () => inner.pause(),
     seekTo: (seconds: number) => {
       const { start, end } = getBounds();
-      inner.seekTo(Math.max(start, Math.min(end, seconds)));
+      seekTo(Math.max(start, Math.min(end, seconds)));
     },
     getCurrentTime: () => inner.getCurrentTime(),
     getDuration: () => inner.getDuration(),

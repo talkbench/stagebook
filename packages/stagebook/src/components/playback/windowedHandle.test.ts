@@ -73,6 +73,21 @@ describe("withSeekWindow (#675)", () => {
     expect([innerPlays, customPlays]).toEqual([1, 1]);
   });
 
+  it("seeks through a given seekTo, with the clamped time (#682)", () => {
+    const { handle, seeks } = recordingHandle();
+    const custom: number[] = [];
+    const windowed = withSeekWindow(
+      handle,
+      () => ({ start: 60, end: 90 }),
+      undefined,
+      (s) => custom.push(s),
+    );
+    windowed.seekTo(120);
+    windowed.seekTo(10);
+    expect(custom).toEqual([90, 60]);
+    expect(seeks).toEqual([]);
+  });
+
   it("reports the window", () => {
     const { handle } = recordingHandle();
     const windowed = withSeekWindow(handle, () => ({ start: 60, end: 90 }));

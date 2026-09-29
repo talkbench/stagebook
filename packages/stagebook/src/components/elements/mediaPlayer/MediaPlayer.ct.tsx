@@ -1056,13 +1056,54 @@ test("YouTube: grabbing the scrubber at stopAt during playback isn't reaching st
       (await component.locator('[data-testid="save-log"]').textContent()) ??
         "[]",
     ) as SavedEvents;
+  // The grab logs its pause where playback stood, then its seek (#682).
   await expect
     .poll(async () => (await saves()).at(-1)?.value.events.map((e) => e.type))
-    .toEqual(["play", "pause"]);
+    .toEqual(["play", "pause", "seek"]);
   expect(
     await component.locator('[data-testid="completed"]').textContent(),
   ).toBe("false");
   await page.mouse.up();
+});
+
+test("YouTube: a backward scrub during playback counts only what played", async ({
+  mount,
+  page,
+}) => {
+  await installYTMock(page);
+  const component = await mount(
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  await fireYTOnReady(page);
+  await component.locator('[data-testid="mediaPlayer"]').hover();
+  await ytStateAt(page, 40, 1);
+  await page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__ytCurrentTime = 50; // played on to 50
+  });
+  const scrub = component.locator('[data-testid="mediaPlayer-scrubBar"]');
+  const box = await scrub.boundingBox();
+  if (!box) throw new Error("scrub bar not found");
+  // Grab at 10% (6 s of the 60 s stub). The iframe may report the pause
+  // with its time from before the seek.
+  await page.mouse.move(box.x + box.width * 0.1, box.y + box.height / 2);
+  await page.mouse.down();
+  await ytStateAt(page, 50, 2);
+  await page.mouse.up();
+  const record = async () =>
+    (
+      JSON.parse(
+        (await component.locator('[data-testid="save-log"]').textContent()) ??
+          "[]",
+      ) as Array<{ value: { watchedRanges: [number, number][] } }>
+    ).at(-1)?.value;
+  await expect
+    .poll(async () => (await record())?.watchedRanges)
+    .toEqual([[40, 50]]);
 });
 
 test("YouTube: pausing just past stopAt counts as reaching it", async ({
@@ -1443,10 +1484,18 @@ test("scrub bar: no play/pause events when scrubbing from paused state", async (
     clientY: box.y + box.height * 0.5,
     pointerId: 1,
   });
-  // No save events should have been recorded (scrubbing while paused = no events)
-  const raw = await component.locator('[data-testid="save-log"]').textContent();
-  const saves = JSON.parse(raw ?? "[]") as Array<unknown>;
-  expect(saves).toHaveLength(0);
+  // Scrubbing while paused logs no play/pause — only the drag, as one seek
+  // once it settles (#682).
+  const events = async () =>
+    (
+      JSON.parse(
+        (await component.locator('[data-testid="save-log"]').textContent()) ??
+          "[]",
+      ) as SavedEvents
+    ).at(-1)?.value.events ?? [];
+  await expect.poll(events).toHaveLength(1);
+  expect((await events())[0]).toMatchObject({ type: "seek", fromTime: 0 });
+  expect((await events())[0].videoTime).toBeCloseTo(70, 0);
 });
 
 // -- Play/pause button state --

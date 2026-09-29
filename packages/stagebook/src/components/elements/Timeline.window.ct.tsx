@@ -291,7 +291,9 @@ test("Space on the timeline at the window end replays the clip (#684)", async ({
       .textContent();
     const log = JSON.parse(text ?? "[]") as Array<{
       key: string;
-      value: { events?: Array<{ type: string; videoTime: number }> };
+      value: {
+        events?: Array<{ type: string; videoTime: number; fromTime?: number }>;
+      };
     }>;
     return (
       log.filter((s) => s.key === "mediaPlayer_clip").pop()?.value.events ?? []
@@ -300,13 +302,65 @@ test("Space on the timeline at the window end replays the clip (#684)", async ({
   await expect
     .poll(async () => (await playerEvents()).map((e) => e.type))
     .toContain("play");
-  expect(await playerEvents()).toContainEqual(
-    expect.objectContaining({
-      type: "seek",
-      videoTime: START_AT,
-      fromTime: STOP_AT,
-    }),
+  const events = await playerEvents();
+  const replay = events.findIndex(
+    (e) => e.type === "seek" && e.videoTime === START_AT,
   );
+  expect(events[replay]).toMatchObject({ fromTime: STOP_AT });
+  // The arrow keys' seeks were logged first (#682), from startAt to stopAt
+  // — as one seek unless the presses were more than 500ms apart…
+  const arrows = events.slice(0, replay);
+  expect(arrows.length).toBeGreaterThan(0);
+  expect(arrows.every((e) => e.type === "seek")).toBe(true);
+  expect(arrows[0].fromTime).toBeCloseTo(START_AT, 2);
+  expect(arrows.at(-1)?.videoTime).toBeCloseTo(STOP_AT, 2);
+  // …and playback restarted at startAt.
+  expect(events[replay + 1]).toMatchObject({ type: "play" });
+});
+
+test("holding a key to move a mark logs one player seek (#682)", async ({
+  mount,
+}) => {
+  const component = await mount(windowed("point"));
+  const { overlay, timeline } = await whenReady(component);
+  // A click-created point stays selected, so → moves it — and the player
+  // follows it.
+  await clickTrack(overlay, 0.5);
+  await expect.poll(() => savedMarks(component)).toHaveLength(1);
+  const playerSeeks = async () => {
+    const text = await component
+      .locator('[data-testid="save-log"]')
+      .textContent();
+    const log = JSON.parse(text ?? "[]") as Array<{
+      key: string;
+      value: { events?: Array<{ type: string }> };
+    }>;
+    const events =
+      log.filter((s) => s.key === "mediaPlayer_clip").pop()?.value.events ?? [];
+    return events.filter((e) => e.type === "seek").length;
+  };
+  // Let anything the click logged settle first.
+  await component.page().waitForTimeout(700);
+  const before = await playerSeeks();
+
+  // Hold → for five repeats, in one task so no stall splits the burst.
+  await timeline.evaluate((el) => {
+    for (let i = 0; i < 5; i++) {
+      el.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowRight",
+          repeat: i > 0,
+          bubbles: true,
+        }),
+      );
+    }
+    el.dispatchEvent(
+      new KeyboardEvent("keyup", { key: "ArrowRight", bubbles: true }),
+    );
+  });
+  await expect.poll(playerSeeks).toBe(before + 1);
+  await component.page().waitForTimeout(700);
+  expect(await playerSeeks()).toBe(before + 1);
 });
 
 // -- YouTube --

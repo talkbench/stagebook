@@ -15,7 +15,11 @@ import { useRegisterPlayback } from "../playback/PlaybackProvider.js";
 import type { PlaybackHandle } from "../playback/PlaybackHandle.js";
 import { seekWindow, withSeekWindow } from "../playback/windowedHandle.js";
 import { atClipEnd, clipWindow } from "./mediaPlayer/clipEnd.js";
-import { computeWatchedRanges } from "../../utils/watchedRanges.js";
+import { createSeekCoalescer } from "./mediaPlayer/seekCoalescer.js";
+import {
+  computeWatchedRanges,
+  endsMidPlayback,
+} from "../../utils/watchedRanges.js";
 import {
   computeBucketCount,
   createPeaksArrays,
@@ -27,7 +31,11 @@ import { useMessages, useIsRTL } from "../StagebookProvider.js";
 import { focusRingCss } from "../focusRing.js";
 
 export interface VideoEvent {
-  type: "play" | "pause" | "ended" | "seek" | "speed" | "stopAt";
+  /**
+   * `removed`: the player left the page during playback — the stage ended
+   * (submit, timer), or hideTime or a condition hid it (#677).
+   */
+  type: "play" | "pause" | "ended" | "seek" | "speed" | "stopAt" | "removed";
   videoTime: number;
   stageTimeElapsed: number;
   /** Present on seek events: the position before seeking */
@@ -97,6 +105,10 @@ function isSafeURL(url: string): boolean {
 // Number of repeated keydown events before entering fast-scrub mode
 const HOLD_REPEAT_THRESHOLD = 10;
 
+// Quiet period that ends a stream of seeks — a drag, held keys — logged as
+// one seek (#682).
+const SEEK_SETTLE_MS = 500;
+
 export function MediaPlayer({
   name,
   url,
@@ -144,6 +156,13 @@ export function MediaPlayer({
 
   const eventsRef = useRef<VideoEvent[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
+  // The <video> as last mounted. React clears videoRef before unmount
+  // cleanups run, and the stage-end close still reads its position (#677).
+  const lastVideoElRef = useRef<HTMLVideoElement | null>(null);
+  const attachVideo = useCallback((el: HTMLVideoElement | null) => {
+    videoRef.current = el;
+    if (el) lastVideoElRef.current = el;
+  }, []);
   const containerRef = useRef<HTMLDivElement>(null);
   const autoplayAttemptedRef = useRef(false);
   // Per-instance class for the container's `:focus` ring. Same useId
@@ -166,6 +185,33 @@ export function MediaPlayer({
   onCompleteRef.current = onComplete;
   const getElapsedTimeRef = useRef(getElapsedTime);
   getElapsedTimeRef.current = getElapsedTime;
+
+  // Seeks that arrive as a stream — from a sibling Timeline, or the scrub
+  // bar — are logged once the stream settles (#682). appendEventRef is set
+  // below, once the record's fields are in scope.
+  const appendEventRef = useRef<(event: VideoEvent) => void>(() => {});
+  // Set once the player has unmounted and closed its log (#677). A sibling
+  // can still hold the handle until it re-renders; its seeks log nothing.
+  const logClosedRef = useRef(false);
+  const [seekLog] = useState(() =>
+    createSeekCoalescer(
+      (seek) =>
+        appendEventRef.current({
+          type: "seek",
+          videoTime: seek.videoTime,
+          stageTimeElapsed: seek.stageTimeElapsed,
+          fromTime: seek.fromTime,
+        }),
+      SEEK_SETTLE_MS,
+    ),
+  );
+  const recordSeek = useCallback(
+    (fromTime: number, videoTime: number) => {
+      if (logClosedRef.current) return;
+      seekLog.seek(fromTime, videoTime, getElapsedTimeRef.current());
+    },
+    [seekLog],
+  );
 
   const [isPaused, setIsPaused] = useState(true);
   // YouTube reported ENDED. Its time can then fall a little short of its
@@ -246,9 +292,10 @@ export function MediaPlayer({
   // pause on grab and resume on release (records proper play/pause events for
   // watchedRanges without spamming the server during the drag).
   const scrubWasPlayingRef = useRef(false);
-  // Set just before a scrub pauses playback. That pause is reported after the
-  // scrub's seek, so it reads the grabbed time; it must not count as
-  // playback reaching stopAt. Consumed by the next pause report.
+  // Set when a scrub pauses playback. The scrub logs that pause itself, at
+  // the grab position; the pause report that follows can read the time from
+  // before or after the scrub's seek, so it is swallowed (#682). Consumed by
+  // the next pause report.
   const scrubPauseRef = useRef(false);
 
   // Set to true just before programmatically pausing the video at stopAt, so
@@ -514,6 +561,9 @@ export function MediaPlayer({
   // Siblings start playback through playRef too, so a Timeline's Space
   // replays the clip at its end just as the play button does (#684).
   const playRef = useRef<() => void>(() => {});
+  // Their seeks are logged here: a Timeline's ruler, playhead drag, arrow
+  // keys and mark edits all move the player without its own controls
+  // (#682).
   const registeredHandle = useMemo(
     () =>
       sourceHandle &&
@@ -521,8 +571,13 @@ export function MediaPlayer({
         sourceHandle,
         () => seekWindow(seekBoundsRef.current, sourceHandle.getDuration()),
         () => playRef.current(),
+        (seconds) => {
+          const fromTime = sourceHandle.getCurrentTime();
+          sourceHandle.seekTo(seconds);
+          recordSeek(fromTime, seconds);
+        },
       ),
-    [sourceHandle],
+    [sourceHandle, recordSeek],
   );
   useRegisterPlayback(name, registeredHandle);
 
@@ -599,18 +654,9 @@ export function MediaPlayer({
     });
   }, [effectivePlayback, duration]);
 
-  const recordEvent = useCallback(
-    (
-      type: VideoEvent["type"],
-      videoTime: number,
-      extra?: Partial<Pick<VideoEvent, "fromTime" | "playbackRate">>,
-    ) => {
-      const event: VideoEvent = {
-        type,
-        videoTime,
-        stageTimeElapsed: getElapsedTimeRef.current(),
-        ...extra,
-      };
+  const appendEvent = useCallback(
+    (event: VideoEvent) => {
+      if (logClosedRef.current) return;
       eventsRef.current = [...eventsRef.current, event];
       const record: VideoRecord = {
         name,
@@ -618,13 +664,66 @@ export function MediaPlayer({
         ...(startAt !== undefined && { startAt }),
         ...(stopAt !== undefined && { stopAt }),
         events: eventsRef.current,
-        lastVideoTime: videoTime,
+        lastVideoTime: event.videoTime,
         watchedRanges: computeWatchedRanges(eventsRef.current),
       };
       saveRef.current(saveKey, record);
     },
     [name, url, startAt, stopAt, saveKey],
   );
+  appendEventRef.current = appendEvent;
+
+  const recordEvent = useCallback(
+    (
+      type: VideoEvent["type"],
+      videoTime: number,
+      extra?: Partial<Pick<VideoEvent, "fromTime" | "playbackRate">>,
+    ) => {
+      // A pending seek came first; log it first.
+      seekLog.flush();
+      appendEvent({
+        type,
+        videoTime,
+        stageTimeElapsed: getElapsedTimeRef.current(),
+        ...extra,
+      });
+    },
+    [appendEvent, seekLog],
+  );
+
+  // The stage can end mid-playback: a submit, or the stage's timer. The
+  // stage's elements unmount then (as they do when hideTime or a condition
+  // hides the player), with no pause to close the open range, so close it
+  // here at the current position; lastVideoTime follows (#677). A pending
+  // seek is logged first. The host gets this save after submit() — unlike a
+  // response, this records what already happened.
+  const positionRef = useRef<() => number>(() => 0);
+  positionRef.current = () => {
+    try {
+      const t = ytHandle
+        ? ytHandle.getCurrentTime()
+        : lastVideoElRef.current?.currentTime;
+      if (t !== undefined && Number.isFinite(t)) return t;
+    } catch {
+      // A YouTube player already torn down; use the last polled time.
+    }
+    return currentTime;
+  };
+  useEffect(() => {
+    // Reopened by StrictMode's simulated remount.
+    logClosedRef.current = false;
+    return () => {
+      seekLog.flush();
+      if (endsMidPlayback(eventsRef.current)) {
+        appendEventRef.current({
+          type: "removed",
+          videoTime: positionRef.current(),
+          stageTimeElapsed: getElapsedTimeRef.current(),
+        });
+      }
+      logClosedRef.current = true;
+    };
+  }, [seekLog]);
 
   const handlePlay = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -650,12 +749,12 @@ export function MediaPlayer({
         return;
       }
       setIsPaused(true);
+      if (fromScrub) return;
       const ct = e.currentTarget.currentTime;
       // Playback crossed stopAt between timeupdates and the participant
       // paused first. A "pause" event only follows playback, never a paused
-      // seek, so this is the clip reaching stopAt (#679) — unless a scrub
-      // paused it, whose seek has already moved the time.
-      if (!fromScrub && stopAt !== undefined && ct >= stopAt) {
+      // seek, so this is the clip reaching stopAt (#679).
+      if (stopAt !== undefined && ct >= stopAt) {
         recordEvent("stopAt", ct);
         if (submitOnComplete) onCompleteRef.current?.();
         return;
@@ -818,15 +917,23 @@ export function MediaPlayer({
     h.play();
   };
 
+  // Every speed change — the button or the < / > keys — is logged the same
+  // way (#676).
+  const setSpeed = useCallback(
+    (next: number) => {
+      const v = videoRef.current;
+      if (!v || next === playbackRate) return;
+      v.playbackRate = next;
+      setPlaybackRate(next);
+      recordEvent("speed", v.currentTime, { playbackRate: next });
+    },
+    [playbackRate, recordEvent],
+  );
+
   const cycleSpeed = useCallback(() => {
-    const v = videoRef.current;
-    if (!v) return;
     const idx = SPEEDS.indexOf(playbackRate as (typeof SPEEDS)[number]);
-    const next = SPEEDS[(idx + 1) % SPEEDS.length];
-    v.playbackRate = next;
-    setPlaybackRate(next);
-    recordEvent("speed", v.currentTime, { playbackRate: next });
-  }, [playbackRate, recordEvent]);
+    setSpeed(SPEEDS[(idx + 1) % SPEEDS.length]);
+  }, [playbackRate, setSpeed]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -926,27 +1033,34 @@ export function MediaPlayer({
           e.preventDefault();
           seek(-stepDuration);
           break;
-        case ">": {
+        // The speed keys follow the speed control: without it, a study's
+        // playback speed stays fixed (#676).
+        case ">":
+          if (!controls?.speed) break;
           e.preventDefault();
-          const faster =
-            SPEEDS.find((s) => s > playbackRate) ?? SPEEDS[SPEEDS.length - 1];
-          v.playbackRate = faster;
-          setPlaybackRate(faster);
+          setSpeed(
+            SPEEDS.find((s) => s > playbackRate) ?? SPEEDS[SPEEDS.length - 1],
+          );
           break;
-        }
-        case "<": {
+        case "<":
+          if (!controls?.speed) break;
           e.preventDefault();
-          const slower =
-            [...SPEEDS].reverse().find((s) => s < playbackRate) ?? SPEEDS[0];
-          v.playbackRate = slower;
-          setPlaybackRate(slower);
+          setSpeed(
+            [...SPEEDS].reverse().find((s) => s < playbackRate) ?? SPEEDS[0],
+          );
           break;
-        }
         default:
           break;
       }
     },
-    [effectivePlayback, seek, stepDuration, playbackRate],
+    [
+      effectivePlayback,
+      seek,
+      stepDuration,
+      playbackRate,
+      controls?.speed,
+      setSpeed,
+    ],
   );
 
   const handleKeyUp = useCallback((e: React.KeyboardEvent) => {
@@ -1008,35 +1122,53 @@ export function MediaPlayer({
     else v.pause();
   }, []);
 
-  // Scrub bar: pause on grab (records "pause" event at pre-scrub position),
-  // seek in real-time during drag, resume on release (records "play" event).
-  const onScrubStart = useCallback((t: number) => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (!v.paused) {
-      scrubWasPlayingRef.current = true;
-      scrubPauseRef.current = true;
-      v.pause();
-    }
-    v.currentTime = t;
-    setCurrentTime(t);
-  }, []);
+  // Scrub bar: pause on grab, seek in real-time during drag, resume on
+  // release. A grab during playback logs its pause at once, where playback
+  // stood, so the watched range ends at the grab; the drag logs as one seek
+  // (#682).
+  const onScrubStart = useCallback(
+    (t: number) => {
+      const v = videoRef.current;
+      if (!v) return;
+      if (!v.paused) {
+        scrubWasPlayingRef.current = true;
+        scrubPauseRef.current = true;
+        recordEvent("pause", v.currentTime);
+        v.pause();
+      }
+      recordSeek(v.currentTime, t);
+      v.currentTime = t;
+      setCurrentTime(t);
+    },
+    [recordEvent, recordSeek],
+  );
 
-  const onScrubMove = useCallback((t: number) => {
-    if (videoRef.current) videoRef.current.currentTime = t;
-    setCurrentTime(t);
-  }, []);
+  const onScrubMove = useCallback(
+    (t: number) => {
+      const v = videoRef.current;
+      if (v) {
+        recordSeek(v.currentTime, t);
+        v.currentTime = t;
+      }
+      setCurrentTime(t);
+    },
+    [recordSeek],
+  );
 
-  const onScrubEnd = useCallback((t: number) => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.currentTime = t;
-    setCurrentTime(t);
-    if (scrubWasPlayingRef.current) {
-      scrubWasPlayingRef.current = false;
-      void v.play();
-    }
-  }, []);
+  const onScrubEnd = useCallback(
+    (t: number) => {
+      const v = videoRef.current;
+      if (!v) return;
+      recordSeek(v.currentTime, t);
+      v.currentTime = t;
+      setCurrentTime(t);
+      if (scrubWasPlayingRef.current) {
+        scrubWasPlayingRef.current = false;
+        void v.play();
+      }
+    },
+    [recordSeek],
+  );
 
   // YouTube-specific scrub callbacks
   const ytOnPlayPause = useCallback(() => {
@@ -1052,37 +1184,45 @@ export function MediaPlayer({
     seek(1);
   }, [seek]);
 
+  // Logged like the HTML5 scrub (#682).
   const ytOnScrubStart = useCallback(
     (t: number) => {
-      if (ytHandle && !ytHandle.isPaused()) {
+      if (!ytHandle) return;
+      if (!ytHandle.isPaused()) {
         scrubWasPlayingRef.current = true;
         scrubPauseRef.current = true;
+        recordEvent("pause", ytHandle.getCurrentTime());
         ytHandle.pause();
       }
-      ytHandle?.seekTo(t);
+      recordSeek(ytHandle.getCurrentTime(), t);
+      ytHandle.seekTo(t);
       setCurrentTime(t);
     },
-    [ytHandle],
+    [ytHandle, recordEvent, recordSeek],
   );
 
   const ytOnScrubMove = useCallback(
     (t: number) => {
-      ytHandle?.seekTo(t);
+      if (!ytHandle) return;
+      recordSeek(ytHandle.getCurrentTime(), t);
+      ytHandle.seekTo(t);
       setCurrentTime(t);
     },
-    [ytHandle],
+    [ytHandle, recordSeek],
   );
 
   const ytOnScrubEnd = useCallback(
     (t: number) => {
-      ytHandle?.seekTo(t);
+      if (!ytHandle) return;
+      recordSeek(ytHandle.getCurrentTime(), t);
+      ytHandle.seekTo(t);
       setCurrentTime(t);
       if (scrubWasPlayingRef.current) {
         scrubWasPlayingRef.current = false;
-        ytHandle?.play();
+        ytHandle.play();
       }
     },
-    [ytHandle],
+    [ytHandle, recordSeek],
   );
 
   // ---------------------------------------------------------------------------
@@ -1273,6 +1413,10 @@ export function MediaPlayer({
               stopAtReachedRef.current = false;
               scrubPauseRef.current = false;
               setCurrentTime(t);
+              // YouTube reports PLAYING again once a seek during playback
+              // has buffered. Nothing changed; logging it would also split
+              // a Timeline drag into a seek per report (#682).
+              if (endsMidPlayback(eventsRef.current)) return;
               recordEvent("play", t);
             }}
             onPause={(t) => {
@@ -1280,20 +1424,24 @@ export function MediaPlayer({
               scrubPauseRef.current = false;
               setIsPaused(true);
               setCurrentTime(t);
+              // The scrub logged this pause itself, at the grab (#682).
+              if (fromScrub) return;
               // stopAt reached via the poll — or crossed between ticks and
               // paused by the participant first: record "stopAt" (#679).
               // `isPaused` is this render's value: only a pause that ends
-              // playback counts, not a PAUSED report after a paused seek,
-              // nor a scrub's pause (reported after its seek).
+              // playback counts, not a PAUSED report after a paused seek.
               if (
                 stopAtReachedRef.current ||
-                (!fromScrub && !isPaused && stopAt !== undefined && t >= stopAt)
+                (!isPaused && stopAt !== undefined && t >= stopAt)
               ) {
                 stopAtReachedRef.current = false;
                 recordEvent("stopAt", t);
                 if (submitOnComplete) onCompleteRef.current?.();
                 return;
               }
+              // YouTube also reports PAUSED after a seek made while paused;
+              // log only a pause that ends playback (#682).
+              if (!endsMidPlayback(eventsRef.current)) return;
               recordEvent("pause", t);
             }}
             onEnded={(t) => {
@@ -1377,7 +1525,7 @@ export function MediaPlayer({
       {/* Audio-only: hidden video element (no viewport div) */}
       {!playVideo && (
         <video
-          ref={videoRef}
+          ref={attachVideo}
           data-testid="mediaPlayer-video"
           src={url}
           muted={!playAudio}
@@ -1404,7 +1552,7 @@ export function MediaPlayer({
       {playVideo && (
         <div data-testid="mediaPlayer-viewport" style={VIEWPORT_STYLE}>
           <video
-            ref={videoRef}
+            ref={attachVideo}
             data-testid="mediaPlayer-video"
             src={url}
             muted={!playAudio}
