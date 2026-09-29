@@ -424,7 +424,9 @@ export function NumericInput({
             padding: 0,
             margin: 0,
             border: 0,
-            outline: "none",
+            // The group paints the ordinary indicator. Keep the native
+            // focus outline available for forced-colors to repaint too.
+            outlineColor: "transparent",
             boxShadow: "none",
             borderRadius: 0,
             background: "transparent",
