@@ -12,6 +12,7 @@ export {
   useIsRTL,
   useTextContent,
   type StagebookContext,
+  type SharedNumericResponseConfig,
   type TextContentResult,
 } from "./StagebookProvider.js";
 

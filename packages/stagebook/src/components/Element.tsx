@@ -128,6 +128,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
     progressLabel,
     stageId,
     renderSharedNotepad,
+    renderSharedNumericResponse,
     setAllowIdle,
     onContractViolation,
   } = ctx;
@@ -294,6 +295,23 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
       const scope = element.shared ? "shared" : "self";
       const currentValues = resolve(`${scope}.prompt.${promptName}`);
       const currentValue = currentValues[0];
+      const savedEntries =
+        metadata.type === "numericResponse"
+          ? resolve(`${scope}.prompt.${promptName}.entry`)
+          : [];
+      const savedFormats =
+        metadata.type === "numericResponse"
+          ? resolve(`${scope}.prompt.${promptName}.numberFormat`)
+          : [];
+      const savedFormat = savedFormats[0] as
+        | { decimal?: unknown; grouping?: unknown }
+        | undefined;
+      const validSavedFormat =
+        savedFormat &&
+        typeof savedFormat.decimal === "string" &&
+        typeof savedFormat.grouping === "string"
+          ? { decimal: savedFormat.decimal, grouping: savedFormat.grouping }
+          : undefined;
 
       return (
         <Prompt
@@ -305,12 +323,18 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           file={element.file}
           shared={element.shared}
           value={currentValue}
+          entry={
+            typeof savedEntries[0] === "string" ? savedEntries[0] : undefined
+          }
+          numberFormat={validSavedFormat}
           save={save}
           step={progressLabel}
           getElapsedTime={getElapsedTime}
           stageId={stageId}
           resolveURL={getAssetURL}
           renderSharedNotepad={renderSharedNotepad}
+          renderSharedNumericResponse={renderSharedNumericResponse}
+          onContractViolation={onContractViolation}
         />
       );
     }
