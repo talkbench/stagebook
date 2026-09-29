@@ -73,4 +73,12 @@ describe("createSeekCoalescer (#682)", () => {
     vi.advanceTimersByTime(500);
     expect(logged).toEqual([]);
   });
+
+  it("ignores seeks with a non-finite time, which JSON would save as null", () => {
+    seeks.seek(4, NaN, 0);
+    seeks.seek(NaN, 6, 0);
+    seeks.seek(4, Infinity, 0);
+    vi.advanceTimersByTime(500);
+    expect(logged).toEqual([]);
+  });
 });

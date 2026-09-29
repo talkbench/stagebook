@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeWatchedRanges } from "./watchedRanges.js";
+import { computeWatchedRanges, endsMidPlayback } from "./watchedRanges.js";
 import type { VideoEvent } from "../components/elements/MediaPlayer.js";
 
 function ev(type: VideoEvent["type"], videoTime: number): VideoEvent {
@@ -92,7 +92,7 @@ describe("computeWatchedRanges", () => {
     ).toEqual([[0, 10]]);
   });
 
-  it("ignores stopAt events (not play/pause/ended)", () => {
+  it("closes on stopAt, ignoring the pause that follows it", () => {
     expect(
       computeWatchedRanges([ev("play", 0), ev("stopAt", 15), ev("pause", 15)]),
     ).toEqual([[0, 15]]);
@@ -134,17 +134,19 @@ describe("computeWatchedRanges", () => {
     });
 
     it("ignores seeks while paused", () => {
+      // The next range starts at the next play, even where it isn't the
+      // seek's target (a jump the log didn't see).
       expect(
         computeWatchedRanges([
           ev("play", 0),
           ev("pause", 5),
           seek(5, 50),
-          ev("play", 50),
-          ev("pause", 55),
+          ev("play", 70),
+          ev("pause", 75),
         ]),
       ).toEqual([
         [0, 5],
-        [50, 55],
+        [70, 75],
       ]);
     });
 
@@ -201,5 +203,34 @@ describe("computeWatchedRanges", () => {
       [10, 20],
       [50, 60],
     ]);
+  });
+});
+
+describe("endsMidPlayback (#677)", () => {
+  const seek: VideoEvent = {
+    type: "seek",
+    videoTime: 50,
+    fromTime: 5,
+    stageTimeElapsed: 0,
+  };
+  const speed: VideoEvent = {
+    type: "speed",
+    videoTime: 5,
+    stageTimeElapsed: 0,
+    playbackRate: 1.5,
+  };
+
+  it("is true after a play, through seeks and speed changes", () => {
+    expect(endsMidPlayback([ev("play", 0)])).toBe(true);
+    expect(endsMidPlayback([ev("play", 0), seek])).toBe(true);
+    expect(endsMidPlayback([ev("play", 0), speed])).toBe(true);
+  });
+
+  it("is false before playback starts and once it is closed", () => {
+    expect(endsMidPlayback([])).toBe(false);
+    expect(endsMidPlayback([seek])).toBe(false);
+    for (const type of ["pause", "ended", "stopAt", "stageEnd"] as const) {
+      expect(endsMidPlayback([ev("play", 0), ev(type, 5)])).toBe(false);
+    }
   });
 });

@@ -40,6 +40,7 @@ export function createSeekCoalescer(
 
   return {
     seek(fromTime, videoTime, stageTimeElapsed) {
+      if (!Number.isFinite(fromTime) || !Number.isFinite(videoTime)) return;
       pending = pending
         ? { ...pending, videoTime }
         : { fromTime, videoTime, stageTimeElapsed };

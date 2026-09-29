@@ -1,25 +1,24 @@
 import type { VideoEvent } from "../components/elements/MediaPlayer.js";
 
 /**
- * Derives watched time ranges from a VideoEvent log.
+ * Walks a VideoEvent log. A "play" opens a range. A "pause", "ended",
+ * "stopAt" or "stageEnd" closes it. A "seek" during playback closes it at the
+ * seek's `fromTime` and opens a new one at its target, so skipped footage
+ * never counts as watched (#682); seeks while paused change nothing. Empty or
+ * backwards ranges are dropped.
  *
- * A "play" opens a range. A "pause", "ended", "stopAt" or "stageEnd" closes
- * it. A "seek" during playback closes it at the seek's `fromTime` and opens
- * a new one at its target, so skipped footage never counts as watched
- * (#682); seeks while paused change nothing. Empty or backwards ranges are
- * dropped. Overlapping or touching ranges are merged. An open range at the
- * end of the log (a "play" with no closing event — e.g. a mid-playback
- * disconnect) is excluded, as we can't confirm how far the participant got.
- *
- * Returns intervals sorted by start time in the form [startSeconds, endSeconds].
+ * Returns the closed ranges, unsorted, and the start of the range still open
+ * at the end of the log, if any.
  */
-export function computeWatchedRanges(events: VideoEvent[]): [number, number][] {
-  // 1. Build closed intervals
-  const intervals: [number, number][] = [];
+function walk(events: VideoEvent[]): {
+  closed: [number, number][];
+  openStart: number | null;
+} {
+  const closed: [number, number][] = [];
   let openStart: number | null = null;
   const close = (end: number) => {
     if (openStart !== null && end > openStart) {
-      intervals.push([openStart, end]);
+      closed.push([openStart, end]);
     }
     openStart = null;
   };
@@ -47,14 +46,28 @@ export function computeWatchedRanges(events: VideoEvent[]): [number, number][] {
         break;
     }
   }
-  // open play at end is intentionally excluded
+  return { closed, openStart };
+}
 
+/** True when the log ends mid-playback: a range is still open (#677). */
+export function endsMidPlayback(events: VideoEvent[]): boolean {
+  return walk(events).openStart !== null;
+}
+
+/**
+ * Derives watched time ranges from a VideoEvent log: the ranges `walk`
+ * closes, with overlapping or touching ranges merged. An open range at the
+ * end of the log (a "play" with no closing event — e.g. a mid-playback
+ * disconnect) is excluded, as we can't confirm how far the participant got.
+ *
+ * Returns intervals sorted by start time in the form [startSeconds, endSeconds].
+ */
+export function computeWatchedRanges(events: VideoEvent[]): [number, number][] {
+  const intervals = walk(events).closed;
   if (intervals.length === 0) return [];
 
-  // 2. Sort by start time
   intervals.sort((a, b) => a[0] - b[0]);
 
-  // 3. Merge overlapping / adjacent intervals
   const merged: [number, number][] = [intervals[0]];
   for (let i = 1; i < intervals.length; i++) {
     const last = merged[merged.length - 1];

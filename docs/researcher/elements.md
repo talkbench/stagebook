@@ -296,8 +296,8 @@ Event types:
 - `play`, `pause`
 - `ended`: the file played to its natural end
 - `stopAt`: playback reached `stopAt`
-- `stageEnd`: the stage ended during playback — the participant submitted, or the stage timed out. Logged at the position playback had reached, so the last stretch still counts as watched.
-- `seek`: includes `fromTime`, the position before the seek. Logged for every seek, whatever moved the player: its seek buttons and keys, its scrub bar, an attached timeline (ruler, playhead drag, arrow keys, mark edits), and play replaying the clip from the end. A continuous seek — a drag, or held keys on the timeline — is logged once it settles, as one seek from where it started to where it landed.
+- `stageEnd`: the player was removed during playback — usually because the stage ended (the participant submitted, or the stage timed out), but also if `hideTime` or a condition hides the player mid-stage. Logged at the position playback had reached, so the last stretch still counts as watched.
+- `seek`: includes `fromTime`, the position before the seek. Logged for every seek made through stagebook: the player's seek buttons and keys, its scrub bar, an attached timeline (ruler, playhead drag, arrow keys, mark edits), and play replaying the clip from the end. A continuous seek — a drag, or held keys on the timeline — is logged once it settles, as one seek from where it started to where it landed. Seeks made with a YouTube video's own in-frame controls aren't logged yet.
 - `speed`: includes `playbackRate`. Logged for the speed button and the `<` / `>` keys.
 
 `lastVideoTime` is the position at the last event.

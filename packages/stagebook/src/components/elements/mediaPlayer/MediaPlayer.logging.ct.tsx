@@ -106,9 +106,9 @@ async function pause(component: Locator, video: Locator) {
 
 async function rulerReady(component: Locator) {
   const ruler = component.locator('[data-testid="time-ruler"]');
-  await expect
-    .poll(async () => (await ruler.boundingBox())?.width ?? 0)
-    .toBeGreaterThan(0);
+  // Until the duration is known the ruler is an empty placeholder; its tick
+  // labels mean it can seek.
+  await expect(ruler).not.toBeEmpty();
   return ruler;
 }
 
@@ -185,24 +185,35 @@ test("dragging the Timeline's ruler logs one seek, not one per move", async ({
 }) => {
   const component = await mount(<MockLoggedPlayer url={URL} withTimeline />);
   const video = await mockVideo(component);
-  const ruler = await rulerReady(component);
-  const box = await ruler.boundingBox();
-  if (!box) throw new Error("ruler not found");
-  const page = component.page();
-  const y = box.y + box.height / 2;
+  await rulerReady(component);
 
-  await page.mouse.move(box.x + box.width * 0.2, y);
-  await page.mouse.down();
-  for (const f of [0.3, 0.4, 0.5, 0.6, 0.7, 0.8]) {
-    await page.mouse.move(box.x + box.width * f, y);
-  }
-  await page.mouse.up();
+  // The whole drag in one task, so a slow runner can't stall it past the
+  // settle window and split it in two.
+  await component.evaluate((root) => {
+    const ruler = root.querySelector('[data-testid="time-ruler"]');
+    if (!ruler) throw new Error("ruler not found");
+    const r = ruler.getBoundingClientRect();
+    const at = (f: number, buttons: number) => ({
+      bubbles: true,
+      clientX: r.left + r.width * f,
+      clientY: r.top + r.height / 2,
+      pointerId: 1,
+      button: 0,
+      buttons,
+      isPrimary: true,
+    });
+    ruler.dispatchEvent(new PointerEvent("pointerdown", at(0.2, 1)));
+    for (const f of [0.3, 0.4, 0.5, 0.6, 0.7, 0.8]) {
+      ruler.dispatchEvent(new PointerEvent("pointermove", at(f, 1)));
+    }
+    ruler.dispatchEvent(new PointerEvent("pointerup", at(0.8, 0)));
+  });
   const landed = await getTime(video);
   expect(landed).toBeGreaterThan(60);
 
   await expect.poll(() => lastEventType(component)).toBe("seek");
   // Let any straggling per-move save arrive before counting.
-  await page.waitForTimeout(700);
+  await component.page().waitForTimeout(700);
   const saves = await playerSaves(component);
   expect(saves).toHaveLength(1);
   expect(saves[0].events).toEqual([
@@ -299,9 +310,10 @@ test("submitting right after a Timeline seek logs that seek at once", async ({
   await mockVideo(component);
   await rulerReady(component);
 
-  // Seek and submit in one task, well inside the seek's settle window, then
-  // read the log before that window could have closed.
+  // Seek and submit in one task, then read the log before the seek's settle
+  // window (500ms) could have closed.
   const events = await component.evaluate(async (root) => {
+    const started = performance.now();
     const ruler = root.querySelector('[data-testid="time-ruler"]');
     const submit = root.querySelector<HTMLElement>('[data-testid="submit"]');
     if (!ruler || !submit) throw new Error("harness not found");
@@ -318,13 +330,18 @@ test("submitting right after a Timeline seek logs that seek at once", async ({
     ruler.dispatchEvent(new PointerEvent("pointerdown", init));
     ruler.dispatchEvent(new PointerEvent("pointerup", { ...init, buttons: 0 }));
     submit.click();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const log = JSON.parse(
-      root.querySelector('[data-testid="save-log"]')?.textContent ?? "[]",
-    ) as Array<{ key: string; value: { events: Array<{ type: string }> } }>;
-    return (
-      log.filter((s) => s.key === "mediaPlayer_clip").at(-1)?.value.events ?? []
-    );
+    const read = () =>
+      (
+        JSON.parse(
+          root.querySelector('[data-testid="save-log"]')?.textContent ?? "[]",
+        ) as Array<{ key: string; value: { events: Array<{ type: string }> } }>
+      )
+        .filter((s) => s.key === "mediaPlayer_clip")
+        .at(-1)?.value.events ?? [];
+    while (read().length === 0 && performance.now() - started < 400) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    return read();
   });
   expect(events.map((e) => e.type)).toEqual(["seek"]);
 
