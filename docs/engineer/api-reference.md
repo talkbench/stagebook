@@ -489,7 +489,7 @@ Peaks helpers exported alongside it: `createPeaksArrays(channelCount, bucketCoun
 
 | Component       | Key Props                                                                                                   |
 | --------------- | ----------------------------------------------------------------------------------------------------------- |
-| `Prompt`        | `metadata`, `body`, `responseItems`, `name`, `save`, `getElapsedTime`, `value`, `progressLabel`             |
+| `Prompt`        | `metadata`, `body`, `responseItems`, `name`, `save`, `value`, `step?`, `getElapsedTime?`, `stageId?`        |
 | `Display`       | `reference`, `values`, `position?`                                                                          |
 | `SubmitButton`  | `onSubmit`, `name`, `save`, `getElapsedTime`, `buttonText?`                                                 |
 | `AudioElement`  | `src`                                                                                                       |
@@ -498,6 +498,12 @@ Peaks helpers exported alongside it: `createPeaksArrays(channelCount, bucketCoun
 | `TrackedLink`   | `name`, `url`, `displayText`, `save`, `getElapsedTime`, `progressLabel`, `resolvedParams?`                  |
 | `TrainingVideo` | `url`, `getElapsedTime`, `onComplete`                                                                       |
 | `Qualtrics`     | `url`, `resolvedParams?`, `stableParticipantId?`, `sampleId?`, `onContractViolation?`, `save`, `onComplete` |
+
+For a directly rendered `Prompt`, pass `step` and `getElapsedTime` to include
+commit-time context in its records. When reusing it across stages, pass the
+host's `stageId`; changes cancel pending work from the old prompt lifetime.
+Without `stageId`, `step` supplies that stage identity. `Element` forwards
+these values from the provider. The identity is not an extra record field.
 
 ### Render Slots (platform-provided)
 
