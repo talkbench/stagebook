@@ -228,16 +228,30 @@ export function TextArea({
     }
   };
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    e.preventDefault();
-    const pastedText = e.clipboardData.getData("text");
+  const recordPasteAttempt = (text: string) => {
     if (onDebugMessage) {
       onDebugMessage({
         type: "pasteAttempt",
-        length: pastedText.length,
+        length: text.length,
         timestamp: Date.now(),
       });
     }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    e.preventDefault();
+    recordPasteAttempt(e.clipboardData.getData("text"));
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLTextAreaElement>) => {
+    // Dragged text bypasses typing just like paste; keep the same telemetry.
+    e.preventDefault();
+    const latest = pendingValue.current ?? localValue;
+    clearPending();
+    recordPasteAttempt(e.dataTransfer.getData("text"));
+    // A canceled drop need not focus the field, so there may be no later blur
+    // or edit. Commit the unchanged text now to save the attempt in Prompt.
+    onChangeRef.current?.(latest);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -476,6 +490,7 @@ export function TextArea({
         onBlur={handleBlur}
         onClick={handleClick}
         onPaste={handlePaste}
+        onDrop={handleDrop}
         onKeyDown={handleKeyDown}
         style={{
           // Keep the native surface and scrollbar light under host/OS themes.

@@ -205,6 +205,63 @@ test.describe("Open Response", () => {
     await expect(component.locator("textarea")).toBeVisible();
   });
 
+  for (const value of [undefined, "Typed response"]) {
+    test(`unfocused drop is saved before unmount with ${value === undefined ? "no prior response" : "an existing response"} (#691)`, async ({
+      mount,
+      page,
+    }) => {
+      const now = new Date("2026-09-29T12:00:00Z");
+      await page.clock.setFixedTime(now);
+      const saved: { key: string; value: unknown; scope?: string }[] = [];
+      const component = await mount(
+        <Prompt
+          {...openResponse}
+          name="testOpen"
+          value={value}
+          save={(key, value, scope) => saved.push({ key, value, scope })}
+        />,
+      );
+      const textarea = component.locator("textarea");
+      await expect(textarea).not.toBeFocused();
+      const droppedText = "Text dragged from the prompt 📝";
+      const prevented = await textarea.evaluate((el, text) => {
+        const data = new DataTransfer();
+        data.setData("text/plain", text);
+        const event = new DragEvent("drop", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: data,
+        });
+        el.dispatchEvent(event);
+        return event.defaultPrevented;
+      }, droppedText);
+
+      expect(prevented).toBe(true);
+      await expect(textarea).toHaveValue(value ?? "");
+      await expect(textarea).not.toBeFocused();
+      // Stage exit must not lose the attempt when no focus, blur, or edit follows.
+      await component.unmount();
+      await expect
+        .poll(() => saved)
+        .toEqual([
+          {
+            key: "prompt_testOpen",
+            value: expect.objectContaining({
+              value: value ?? "",
+              debugMessages: [
+                {
+                  type: "pasteAttempt",
+                  length: droppedText.length,
+                  timestamp: now.getTime(),
+                },
+              ],
+            }),
+            scope: "player",
+          },
+        ]);
+    });
+  }
+
   test("shows character counter with min/max limits", async ({ mount }) => {
     const component = await mount(
       <Prompt

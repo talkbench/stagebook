@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/experimental-ct-react";
-import { TextArea } from "./TextArea";
+import { TextArea, type DebugMessage } from "./TextArea";
 import { MockTextArea } from "../testing/MockTextArea";
 
 // -- Standalone accessible name (#538) --
@@ -78,6 +78,66 @@ test("textarea renders full width", async ({ mount }) => {
   await expect(textarea).toHaveCSS("width", /[4-9]\d\d|[1-9]\d{3}/);
   await expect(textarea).toHaveAttribute("rows", "3");
 });
+
+// -- Block non-typed text insertion (#691) --
+
+for (const eventType of ["paste", "drop"] as const) {
+  test(`${eventType} is blocked and records pasteAttempt telemetry`, async ({
+    mount,
+    page,
+  }) => {
+    const now = new Date("2026-09-29T12:00:00Z");
+    await page.clock.setFixedTime(now);
+    const debugMessages: DebugMessage[] = [];
+    const changes: string[] = [];
+    const component = await mount(
+      <TextArea
+        value="Typed response"
+        onChange={(value) => changes.push(value)}
+        onDebugMessage={(message) => debugMessages.push(message)}
+      />,
+    );
+    const textarea = component.locator("textarea");
+    const expected: DebugMessage[] = [];
+
+    // Preserve paste's UTF-16 length semantics, including empty attempts.
+    for (const text of ["Copied text 📝\nfrom elsewhere", ""]) {
+      const prevented = await textarea.evaluate(
+        (el, { eventType, text }) => {
+          const data = new DataTransfer();
+          data.setData("text/plain", text);
+          const options = { bubbles: true, cancelable: true };
+          const event =
+            eventType === "paste"
+              ? new ClipboardEvent("paste", { ...options, clipboardData: data })
+              : new DragEvent("drop", { ...options, dataTransfer: data });
+          // Firefox gives synthetic clipboard events a separate data store.
+          if (event instanceof ClipboardEvent) {
+            event.clipboardData?.setData("text/plain", text);
+          }
+          el.dispatchEvent(event);
+          return event.defaultPrevented;
+        },
+        { eventType, text },
+      );
+
+      // Synthetic events never insert text themselves: pin cancellation too.
+      expect(prevented).toBe(true);
+      await expect(textarea).toHaveValue("Typed response");
+      expected.push({
+        type: "pasteAttempt",
+        length: text.length,
+        timestamp: now.getTime(),
+      });
+      await expect.poll(() => debugMessages).toEqual(expected);
+      await expect
+        .poll(() => changes)
+        .toEqual(
+          eventType === "drop" ? expected.map(() => "Typed response") : [],
+        );
+    }
+  });
+}
 
 // -- Character counter: min only --
 

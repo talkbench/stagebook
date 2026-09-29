@@ -155,6 +155,55 @@ test("unmount cancels pending work without saving the partial response", () => {
   expect(save).not.toHaveBeenCalled();
 });
 
+for (const pendingText of ["Latest typed response", ""]) {
+  test(`drop commits pending ${pendingText === "" ? "deletion" : "text"} and clears its timers`, () => {
+    render(
+      <Prompt
+        {...openResponse}
+        value="Saved response"
+        name="answer"
+        save={save}
+      />,
+    );
+    edit(pendingText);
+    advance(1000);
+    expect(save).not.toHaveBeenCalled();
+    const timestamp = Date.now();
+    const droppedText = "Dragged text";
+    const drop = new Event("drop", { bubbles: true, cancelable: true });
+    // jsdom does not provide DataTransfer or DragEvent constructors.
+    Object.defineProperty(drop, "dataTransfer", {
+      value: { getData: () => droppedText },
+    });
+    act(() => {
+      dom.querySelector("textarea")!.dispatchEvent(drop);
+    });
+
+    expect(drop.defaultPrevented).toBe(true);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenLastCalledWith(
+      "prompt_answer",
+      expect.objectContaining({
+        value: pendingText,
+        debugMessages: [
+          { type: "pasteAttempt", length: droppedText.length, timestamp },
+        ],
+      }),
+      "player",
+    );
+    advance(10000);
+    expect(save).toHaveBeenCalledTimes(1);
+
+    // A later edit starts its own commit window after the drop flushed this one.
+    edit("Continued typing");
+    advance(1999);
+    expect(save).toHaveBeenCalledTimes(1);
+    advance(1);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(savedValue()).toBe("Continued typing");
+  });
+}
+
 test("pending text uses the latest callback after a harmless rerender", () => {
   render();
   edit("latest");
