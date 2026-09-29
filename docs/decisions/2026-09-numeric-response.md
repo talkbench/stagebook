@@ -40,9 +40,11 @@ How old are you?
   bounds that `isValid` checks. An out-of-range answer is still saved and
   marked invalid, as a too-short text answer is under `minLength`. This
   differs from the slider, whose bounds limit the value itself.
-- **Every declared range must be answerable.** Bounds must be finite, whole
-  when `integer: true`, and short enough to type within the entry limit
-  below.
+- **Every declared range must be answerable.** Bounds must be finite, and
+  `min` must not exceed `max`. With `integer: true`, bounds must be whole.
+  Each bound must be writable as a valid entry under the rules below, within
+  the length limit and the 15-significant-digit limit. Because bounds are
+  inclusive, the bound itself is then always an answer someone can type.
 - **No placeholder.** The file has two sections, like `noResponse`, because
   an example value would anchor answers. That's the same reason the slider
   shows no thumb before selection.
