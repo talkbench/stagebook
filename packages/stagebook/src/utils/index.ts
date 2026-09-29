@@ -26,6 +26,8 @@ export { sanitizeName, deriveStorageKeyName } from "./deriveStorageKeyName.js";
 export {
   checkResponse,
   type ResponseConstraints,
+  type TextResponseConstraints,
+  type NumericResponseConstraints,
   type ResponseCheck,
 } from "./checkResponse.js";
 export {
