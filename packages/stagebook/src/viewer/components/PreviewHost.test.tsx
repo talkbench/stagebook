@@ -517,3 +517,106 @@ describe("PreviewHost post-fill shared prompt constraints (#668)", () => {
     }
   });
 });
+
+describe("PreviewHost final-field shared numeric validity (#687)", () => {
+  const source = `treatments:
+  - name: t
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: s
+        duration: 10
+        elements:
+          - type: prompt
+            name: x
+            file: prompts/\${variant}.prompt.md
+            shared: true
+          - type: submitButton
+            conditions:
+              - reference: shared.prompt.x.isValid
+                comparator: equals
+                value: true
+`;
+  const numeric =
+    "---\ntype: numericResponse\nrequired: true\nmin: 18\nmax: 99\ninteger: true\n---\nNumber\n";
+  const open = "---\ntype: openResponse\nminLength: 5\n---\nQuestion\n---\n>\n";
+  const findSharedBanner = (container: HTMLElement) =>
+    container.querySelector('[data-testid="shared-prompt-constraint-banner"]');
+  it("allows numeric after final binding, then diagnoses refreshed nonnumeric constraints and validity", async () => {
+    let prompt = numeric;
+    const getText = vi.fn((path: string) =>
+      path === "prompts/selected.prompt.md"
+        ? Promise.resolve(prompt)
+        : Promise.reject(new Error("unbound")),
+    );
+    const loaded = await validateTreatmentWithDiff({
+      source,
+      loadImport: getText,
+    });
+    expect(
+      loaded.diagnostics.filter((issue) => issue.severity === "error"),
+    ).toEqual([]);
+    const fields = { variant: "selected" };
+    const view = (contentVersion: number) => (
+      <PreviewHost
+        treatmentFile={loaded.parsedObj as TreatmentFileType}
+        additionalFields={fields}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        contentVersion={contentVersion}
+      />
+    );
+    const { container, rerender, unmount } = render(view(0));
+    try {
+      await flush();
+      expect(getText).toHaveBeenCalledWith("prompts/selected.prompt.md");
+      expect(findSharedBanner(container)).toBeNull();
+      prompt = open;
+      rerender(view(1));
+      await flush();
+      expect(findSharedBanner(container)?.textContent).toContain("minLength");
+      expect(findSharedBanner(container)?.textContent).toContain("isValid");
+      prompt = numeric;
+      rerender(view(2));
+      await flush();
+      expect(findSharedBanner(container)).toBeNull();
+    } finally {
+      unmount();
+    }
+  });
+  it.each([null, "not a prompt"])(
+    "leaves unknown final prompt metadata %j unclassified",
+    async (prompt) => {
+      const getText = vi.fn(() =>
+        prompt === null
+          ? Promise.reject(new Error("missing"))
+          : Promise.resolve(prompt),
+      );
+      const loaded = await validateTreatmentWithDiff({
+        source,
+        loadImport: getText,
+      });
+      expect(
+        loaded.diagnostics.filter((issue) => issue.severity === "error"),
+      ).toEqual([]);
+      const { container, unmount } = render(
+        <PreviewHost
+          treatmentFile={loaded.parsedObj as TreatmentFileType}
+          additionalFields={{ variant: "selected" }}
+          selectedIntroIndex={0}
+          selectedTreatmentIndex={0}
+          getTextContent={getText}
+          getAssetURL={getAsset}
+        />,
+      );
+      try {
+        await flush();
+        expect(findSharedBanner(container)).toBeNull();
+      } finally {
+        unmount();
+      }
+    },
+  );
+});

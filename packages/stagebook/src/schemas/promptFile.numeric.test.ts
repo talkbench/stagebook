@@ -105,3 +105,40 @@ describe("numericResponse metadata and sections (#687)", () => {
     },
   );
 });
+
+describe("numeric bound canonical spelling (#687)", () => {
+  test.each([
+    1e15, 1e-99, 1e-100, -1e-98, 1.234567890123456, 1.7976931348623157e308,
+  ])("rejects untypeable bound %s at each bound path", (bound) => {
+    for (const field of ["min", "max"]) {
+      const result = promptMetadataSchema.safeParse({
+        type: "numericResponse",
+        [field]: bound,
+      });
+      expect(result.success).toBe(false);
+      if (!result.success)
+        expect(result.error.issues).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              path: [field],
+              message: expect.stringMatching(
+                /100 characters|15 significant digits/,
+              ) as unknown,
+            }),
+          ]),
+        );
+    }
+  });
+  test.each([0, -0, 999999999999999, 1e-98, -1e-97, 1.23456789012345])(
+    "accepts typeable canonical bound %s",
+    (bound) => {
+      expect(
+        promptMetadataSchema.safeParse({
+          type: "numericResponse",
+          min: bound,
+          max: bound,
+        }).success,
+      ).toBe(true);
+    },
+  );
+});

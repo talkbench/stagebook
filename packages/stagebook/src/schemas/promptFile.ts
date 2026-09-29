@@ -1,6 +1,10 @@
 import { z, ZodIssue } from "zod";
 import { load as loadYaml } from "js-yaml";
 import { nameSchema, localeSchema } from "./primitives.js";
+import {
+  formatNumericPlain,
+  parseNumericEntry,
+} from "../utils/numericResponse.js";
 
 // ---------------------------------------------------------------------------
 // Prompt file format (#243)
@@ -13,7 +17,7 @@ import { nameSchema, localeSchema } from "./primitives.js";
 //   <YAML frontmatter — `type:` discriminates the response shape>
 //   ---
 //   <markdown body — the participant-facing question>
-//   ---                       <-- third section omitted for `noResponse`
+//   ---                       <-- omitted for noResponse / numericResponse
 //   <response items — `-` lines for list types, `>` lines for openResponse>
 //
 // Per-type frontmatter is `.strict()` — unknown keys (`tytle:`,
@@ -184,6 +188,23 @@ export const promptMetadataSchema = z
       }
       for (const field of ["min", "max"] as const) {
         const bound = data[field];
+        if (bound !== undefined && Number.isFinite(bound)) {
+          // Bounds must themselves be possible participant entries. Use the
+          // same canonical spelling and parser as the field so exponent YAML
+          // cannot evade the entry-length or significant-digit limits.
+          const format = { decimal: ".", grouping: "," };
+          const parsed = parseNumericEntry(
+            formatNumericPlain(bound, format),
+            format,
+          );
+          if (parsed.status !== "parsed") {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `${field} must have a plain spelling of at most 100 characters and 15 significant digits`,
+              path: [field],
+            });
+          }
+        }
         if (bound !== undefined && data.integer && !Number.isInteger(bound)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,

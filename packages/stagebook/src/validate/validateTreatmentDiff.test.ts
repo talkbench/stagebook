@@ -879,3 +879,71 @@ describe("shared prompt constraints (#668)", () => {
     expect(issue?.message).toContain('treatment "t"');
   });
 });
+
+describe("shared numeric validation (#687)", () => {
+  const source = `treatments:
+  - name: t
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: s
+        duration: 10
+        elements:
+          - type: prompt
+            name: x
+            file: q.prompt.md
+            shared: true
+          - type: submitButton
+            conditions:
+              - reference: shared.prompt.x.isValid
+                comparator: equals
+                value: true
+`;
+  it.each(["required: true", "min: 18", "max: 99", "integer: true"])(
+    "allows shared numeric %s plus a validity gate",
+    async (fields) => {
+      const result = await validateTreatmentWithDiff({
+        source,
+        loadImport: loaderFromMap({
+          "q.prompt.md": `---\ntype: numericResponse\n${fields}\n---\nNumber\n`,
+        }),
+      });
+      expect(
+        result.diagnostics.filter((issue) => issue.severity === "error"),
+      ).toEqual([]);
+    },
+  );
+  it("retains nonnumeric constraint and validity errors at their separate source locations", async () => {
+    const result = await validateTreatmentWithDiff({
+      source,
+      loadImport: loaderFromMap({
+        "q.prompt.md":
+          "---\ntype: openResponse\nminLength: 5\n---\nQuestion\n---\n>\n",
+      }),
+    });
+    const issues = result.diagnostics.filter(
+      (issue) => issue.severity === "error",
+    );
+    expect(issues).toHaveLength(2);
+    expect(
+      issues.find((issue) => issue.message.includes("minLength")),
+    ).toMatchObject({ range: { startLine: 10 } });
+    expect(
+      issues.find((issue) => issue.message.includes("isValid")),
+    ).toMatchObject({ range: { startLine: 14 } });
+  });
+  it.each([null, "not a prompt"])(
+    "skips unknown metadata after unreadable or malformed %j",
+    async (prompt) => {
+      const result = await validateTreatmentWithDiff({
+        source,
+        loadImport: loaderFromMap(
+          prompt === null ? {} : { "q.prompt.md": prompt },
+        ),
+      });
+      expect(
+        result.diagnostics.filter((issue) => issue.severity === "error"),
+      ).toEqual([]);
+    },
+  );
+});

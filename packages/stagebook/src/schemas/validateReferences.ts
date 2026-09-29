@@ -633,7 +633,7 @@ interface RefSite {
  *  operator object, or a single leaf — `walkConditionLeaves` flattens
  *  the tree and yields each leaf with its absolute path.
  */
-function enumerateStepSites(
+export function enumerateStepSites(
   step: unknown,
   stepPath: (string | number)[],
 ): RefSite[] {
@@ -706,6 +706,25 @@ function enumerateStepSites(
     }
   });
 
+  return sites;
+}
+
+/** Registered condition references for metadata-aware post-hydration rules.
+ * Keep boolean-tree and dotted/structured normalization shared with the
+ * reachability walker; arbitrary properties named `reference` aren't sites. */
+export function enumerateConditionReferenceSites(
+  conditions: unknown,
+  path: (string | number)[],
+): { reference: ReferenceType; path: (string | number)[] }[] {
+  const sites: { reference: ReferenceType; path: (string | number)[] }[] = [];
+  for (const { leaf, path: leafPath } of walkConditionLeaves(
+    conditions,
+    path,
+  )) {
+    const reference = normalizeReference(leaf.reference);
+    if (reference !== null)
+      sites.push({ reference, path: [...leafPath, "reference"] });
+  }
   return sites;
 }
 

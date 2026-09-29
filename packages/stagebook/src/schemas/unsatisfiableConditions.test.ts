@@ -654,3 +654,24 @@ test("self.prompt.x.isValid equals true is not a dead value gate (#668)", () => 
     ),
   ).toEqual([]);
 });
+
+describe("numericResponse has advisory bounds, not a bounded stored domain (#687)", () => {
+  test.each(["self", "shared"])(
+    "does not flag %s value above the declared maximum",
+    (position) => {
+      const file = fileWith([
+        {
+          reference: `${position}.prompt.q.value`,
+          comparator: "isAbove",
+          value: 99,
+        },
+      ]);
+      const parsed = parsePrompt(
+        "---\ntype: numericResponse\nmax: 99\n---\nNumber\n",
+      );
+      expect(
+        checkUnsatisfiableConditions(file, new Map([["q.prompt.md", parsed]])),
+      ).toEqual([]);
+    },
+  );
+});

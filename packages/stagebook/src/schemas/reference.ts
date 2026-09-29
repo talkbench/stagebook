@@ -105,21 +105,10 @@ export const namedReferenceSchema = z
     name: referenceNameSchema,
     path: referencePathSchema.optional(),
   })
-  .strict()
-  .superRefine((data, ctx) => {
-    if (
-      data.position === "shared" &&
-      data.source === "prompt" &&
-      data.path?.[0] === "isValid"
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["path"],
-        message:
-          "Shared prompt records do not carry isValid. Use a player-scoped prompt reference for response validation (#668).",
-      });
-    }
-  });
+  // Whether shared.prompt.<name>.isValid exists depends on the target
+  // prompt's metadata (#687), not the reference syntax. The post-hydration
+  // shared-prompt validator checks that once the host has loaded the file.
+  .strict();
 export type NamedReferenceType = z.infer<typeof namedReferenceSchema>;
 
 export const externalReferenceSchema = z
