@@ -25,6 +25,7 @@ import { ErrorCallout } from "./ErrorCallout";
 import { RadioGroup } from "./form/RadioGroup";
 import { CheckboxGroup } from "./form/CheckboxGroup";
 import { Select } from "./form/Select";
+import { NumericInput } from "./form/NumericInput";
 import { TextArea } from "./form/TextArea";
 import { Slider } from "./form/Slider";
 import { Button } from "./form/Button";
@@ -72,6 +73,20 @@ interface Case {
 }
 
 const cases: Case[] = [
+  {
+    name: "NumericInput with affixes",
+    node: (
+      <NumericInput
+        entry="12"
+        ariaLabel="Your estimate"
+        prefix="$"
+        suffix="per year"
+      />
+    ),
+    target: "input",
+    ring: '[data-testid="numeric-field"]',
+    kind: "halo",
+  },
   {
     name: "ErrorCallout disclosure",
     node: (

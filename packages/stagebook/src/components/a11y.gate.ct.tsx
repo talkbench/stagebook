@@ -43,6 +43,7 @@ import type { MetadataType } from "../schemas/promptFile";
 import { RadioGroup } from "./form/RadioGroup";
 import { CheckboxGroup } from "./form/CheckboxGroup";
 import { Select } from "./form/Select";
+import { NumericInput } from "./form/NumericInput";
 import { TextArea } from "./form/TextArea";
 import { Slider } from "./form/Slider";
 import { Button } from "./form/Button";
@@ -477,6 +478,42 @@ const thumbPixel = (track: string): Pixel => ({
 // Each case is a participant-facing component in its correctly-used (named,
 // themed) form.
 const cases: Case[] = [
+  ...[false, true].flatMap((affixes): Case[] =>
+    (["neutral", "valid", "problem", "pulse"] as const).map((state) => ({
+      name: `NumericInput ${state}${affixes ? " with affixes" : ""}`,
+      node: (
+        <NumericInput
+          ariaLabel="Your estimate"
+          ariaRequired
+          constraints={{ min: 1, max: 20 }}
+          entry={
+            state === "valid" ? "12" : state === "problem" ? "25" : undefined
+          }
+          prefix={affixes ? "$" : undefined}
+          suffix={affixes ? "per year" : undefined}
+        />
+      ),
+      prepare:
+        state === "pulse"
+          ? async (page) => {
+              // Hold the transient feedback state long enough for axe's full scan.
+              await page.evaluate(() => {
+                const schedule = window.setTimeout.bind(window);
+                window.setTimeout = ((handler, delay, ...args) =>
+                  schedule(
+                    handler,
+                    delay === 300 ? 30000 : delay,
+                    ...args,
+                  )) as typeof window.setTimeout;
+              });
+              await page.getByRole("textbox").pressSequentially("x");
+              await expect(
+                page.getByTestId("numeric-feedback"),
+              ).toHaveAttribute("data-pulsing", "true");
+            }
+          : undefined,
+    })),
+  ),
   ...(["radio", "checkbox", "dropdown", "text"] as const).flatMap(
     (kind): Case[] =>
       [false, true].map((answered) => ({
