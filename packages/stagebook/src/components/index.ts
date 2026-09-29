@@ -12,6 +12,7 @@ export {
   useIsRTL,
   useTextContent,
   type StagebookContext,
+  type SharedNumericResponseConfig,
   type TextContentResult,
 } from "./StagebookProvider.js";
 
@@ -53,6 +54,8 @@ export {
   Select,
   type SelectProps,
   type SelectOption,
+  NumericInput,
+  type NumericInputProps,
   TextArea,
   type TextAreaProps,
   type DebugMessage,

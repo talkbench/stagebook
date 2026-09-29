@@ -1079,3 +1079,139 @@ describe("shared prompt constraints (#668)", () => {
     expect(issue?.message).toContain('treatment "t"');
   });
 });
+
+describe("shared numeric validation (#687)", () => {
+  let dir: string;
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "stagebook-cli-numeric-"));
+  });
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+  const source = `treatments:
+  - name: t
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: s
+        duration: 10
+        elements:
+          - type: prompt
+            name: x
+            file: q.prompt.md
+            shared: true
+          - type: submitButton
+            conditions:
+              - reference: shared.prompt.x.isValid
+                comparator: equals
+                value: true
+`;
+  const diagnostics = (stdout: string) =>
+    (
+      JSON.parse(stdout) as {
+        files: { diagnostics: { severity: string; message: string }[] }[];
+      }
+    ).files
+      .flatMap((file) => file.diagnostics)
+      .filter((issue) => issue.severity === "error");
+  it.each(["required: true", "min: 18", "max: 99", "integer: true"])(
+    "allows shared numeric %s plus a validity gate",
+    async (fields) => {
+      await writeFile(join(dir, "study.stagebook.yaml"), source);
+      await writeFile(
+        join(dir, "q.prompt.md"),
+        `---\ntype: numericResponse\n${fields}\n---\nNumber\n`,
+      );
+      const result = await runCli(["--format=json", "study.stagebook.yaml"], {
+        cwd: dir,
+      });
+      expect(diagnostics(result.stdout)).toEqual([]);
+      expect(result.code).toBe(0);
+    },
+  );
+  it("retains both nonnumeric constraint and known nonnumeric validity errors", async () => {
+    await writeFile(join(dir, "study.stagebook.yaml"), source);
+    await writeFile(
+      join(dir, "q.prompt.md"),
+      "---\ntype: openResponse\nminLength: 5\n---\nQuestion\n---\n>\n",
+    );
+    const result = await runCli(["--format=json", "study.stagebook.yaml"], {
+      cwd: dir,
+    });
+    const issues = diagnostics(result.stdout);
+    expect(result.code).toBe(1);
+    expect(issues).toHaveLength(2);
+    expect(issues.some((issue) => issue.message.includes("minLength"))).toBe(
+      true,
+    );
+    expect(issues.some((issue) => issue.message.includes("isValid"))).toBe(
+      true,
+    );
+  });
+  it.each([
+    ["openResponse", "numericResponse", 1],
+    ["numericResponse", "openResponse", 0],
+  ] as const)(
+    "resolves shared %s independently of same-name player %s",
+    async (sharedType, playerType, errors) => {
+      const withPlayer = source.replace(
+        "          - type: submitButton",
+        `          - type: prompt
+            name: x
+            file: solo.prompt.md
+          - type: submitButton`,
+      );
+      const promptSource = (type: string) =>
+        `---\ntype: ${type}\n---\nQuestion\n${type === "openResponse" ? "---\n>\n" : ""}`;
+      await writeFile(join(dir, "study.stagebook.yaml"), withPlayer);
+      await writeFile(join(dir, "q.prompt.md"), promptSource(sharedType));
+      await writeFile(join(dir, "solo.prompt.md"), promptSource(playerType));
+      const result = await runCli(["--format=json", "study.stagebook.yaml"], {
+        cwd: dir,
+      });
+      const allIssues = diagnostics(result.stdout);
+      // The existing collision rule separately rejects repeated storage names.
+      // This test pins scope-aware validity without changing that policy.
+      expect(
+        allIssues.filter((issue) =>
+          issue.message.includes("Duplicate storage key"),
+        ),
+      ).toHaveLength(2);
+      const issues = allIssues.filter((issue) =>
+        issue.message.includes("isValid"),
+      );
+      expect(issues).toHaveLength(errors);
+      expect(result.code).toBe(1);
+      if (errors) {
+        expect(issues[0].message).toContain("isValid");
+        expect(issues[0].message).toContain("q.prompt.md");
+      }
+    },
+  );
+  it.each([null, "not a prompt"])(
+    "skips cross-file conclusions for unreadable or malformed %j",
+    async (prompt) => {
+      await writeFile(join(dir, "study.stagebook.yaml"), source);
+      await rm(join(dir, "q.prompt.md"), { force: true });
+      if (prompt !== null) await writeFile(join(dir, "q.prompt.md"), prompt);
+      const result = await runCli(["--format=json", "study.stagebook.yaml"], {
+        cwd: dir,
+      });
+      expect(diagnostics(result.stdout)).toEqual([]);
+      expect(result.code).toBe(0);
+    },
+  );
+  it("keeps --no-expand structural-only, without guessing a referenced prompt type", async () => {
+    await writeFile(join(dir, "study.stagebook.yaml"), source);
+    await writeFile(
+      join(dir, "q.prompt.md"),
+      "---\ntype: openResponse\nminLength: 5\n---\nQuestion\n---\n>\n",
+    );
+    const result = await runCli(
+      ["--format=json", "--no-expand", "study.stagebook.yaml"],
+      { cwd: dir },
+    );
+    expect(diagnostics(result.stdout)).toEqual([]);
+    expect(result.code).toBe(0);
+  });
+});

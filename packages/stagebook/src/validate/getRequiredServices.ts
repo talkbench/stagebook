@@ -18,7 +18,8 @@
 // Trigger → service mapping (walk of the EXPANDED treatment):
 //
 //   coedit         prompt element, `shared: true`, whose referenced
-//                  prompt file frontmatter is `type: openResponse`.
+//                  prompt file frontmatter is `type: openResponse` or
+//                  `type: numericResponse`.
 //                  The `shared` flag lives in the treatment YAML; the
 //                  `type` lives in the separate `.prompt.md` file, so
 //                  the frontmatter must be resolved via the injected
@@ -47,7 +48,7 @@ import { load as loadYaml } from "js-yaml";
 import { splitOnTopLevelHrules } from "../schemas/promptFile.js";
 
 export interface RequiredServices {
-  /** Any shared openResponse prompt → a paired coedit pod. */
+  /** Any shared openResponse or numericResponse prompt → a paired coedit pod. */
   coedit: boolean;
   /** A discussion with `chatType` video/audio → Daily / WebRTC. */
   video: boolean;
@@ -135,13 +136,13 @@ export function mergeRequiredServices(
  * Deliberately loose — it parses the frontmatter YAML directly rather
  * than running the full `promptFileSchema`, so a body-section problem
  * (a `>` marker mismatch, a stray delimiter) in an otherwise
- * openResponse prompt can't hide the fact that it IS openResponse and
- * so needs coedit. Anything we can't read as an openResponse type is
+ * openResponse or numericResponse prompt can't hide its coedit need.
+ * Anything we can't read as one of those response types is
  * treated as "not coedit"; hosts call this on already-validated,
  * expanded treatments, so a malformed shared prompt is an upstream
  * error, not this primitive's concern.
  */
-function isOpenResponsePrompt(source: string): boolean {
+function isCollaborativeResponsePrompt(source: string): boolean {
   const sections = splitOnTopLevelHrules(source.trim());
   // sections[0] is the empty string before the leading `---`;
   // sections[1] is the frontmatter YAML.
@@ -152,7 +153,10 @@ function isOpenResponsePrompt(source: string): boolean {
   } catch {
     return false;
   }
-  return isRecord(metadata) && metadata.type === "openResponse";
+  return (
+    isRecord(metadata) &&
+    (metadata.type === "openResponse" || metadata.type === "numericResponse")
+  );
 }
 
 interface ScopeScan {
@@ -186,7 +190,7 @@ const PLACEHOLDER_PATTERN = /\$\{[^}]*\}/;
  *  `options`) isn't mistaken for a real element. */
 function classifyElement(el: Record<string, unknown>, acc: ScopeScan): void {
   const type = el.type;
-  // Shared open-response prompt → candidate for coedit. Only the path is
+  // Shared prompt → candidate for coedit. Only the path is
   // collected here; the frontmatter is resolved (async) after the walk.
   if (
     type === "prompt" &&
@@ -283,7 +287,7 @@ function namedEntries(
  * tolerance of pre-schema input.
  *
  * Async because the coedit signal is split across files: `shared: true`
- * lives in the treatment YAML but `type: openResponse` lives in the
+ * lives in the treatment YAML but the response type lives in the
  * separate `.prompt.md`, so shared prompts' frontmatter must be resolved
  * via `opts.loadPrompt`. Every referenced shared prompt is loaded at
  * most once across all arms; loader errors propagate to the caller — a
@@ -332,17 +336,19 @@ export async function getRequiredServices(
   for (const s of allScans) {
     for (const f of s.sharedPromptFiles) allSharedFiles.add(f);
   }
-  const openResponseByFile = new Map<string, boolean>();
+  const collaborativeResponseByFile = new Map<string, boolean>();
   await Promise.all(
     [...allSharedFiles].map(async (path) => {
-      const isOpen = isOpenResponsePrompt(await opts.loadPrompt(path));
-      openResponseByFile.set(path, isOpen);
+      const isCollaborative = isCollaborativeResponsePrompt(
+        await opts.loadPrompt(path),
+      );
+      collaborativeResponseByFile.set(path, isCollaborative);
     }),
   );
 
   const toServices = (s: ScopeScan): RequiredServices => ({
     coedit: [...s.sharedPromptFiles].some(
-      (f) => openResponseByFile.get(f) === true,
+      (f) => collaborativeResponseByFile.get(f) === true,
     ),
     video: s.video,
     textChat: s.textChat,

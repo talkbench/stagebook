@@ -26,6 +26,8 @@ export { sanitizeName, deriveStorageKeyName } from "./deriveStorageKeyName.js";
 export {
   checkResponse,
   type ResponseConstraints,
+  type TextResponseConstraints,
+  type NumericResponseConstraints,
   type ResponseCheck,
 } from "./checkResponse.js";
 export {
@@ -38,3 +40,16 @@ export type {
   PasteAttempt,
   DebugMessage,
 } from "./promptTelemetry.js";
+export {
+  parseNumericEntry,
+  couldBecomeValidByAppending,
+  filterNumericInsertion,
+  formatNumericPlain,
+  numericInputMode,
+  NUMERIC_ENTRY_LIMIT,
+  NUMERIC_SIGNIFICANT_DIGITS,
+  type NumericConstraints,
+  type NumericParseResult,
+  type NumericInsertion,
+  type NumericInsertionResult,
+} from "./numericResponse.js";

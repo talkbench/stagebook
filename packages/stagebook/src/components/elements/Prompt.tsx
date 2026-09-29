@@ -3,6 +3,14 @@ import { Markdown } from "../form/Markdown.js";
 import { RadioGroup } from "../form/RadioGroup.js";
 import { CheckboxGroup } from "../form/CheckboxGroup.js";
 import { Select } from "../form/Select.js";
+import { NumericInput } from "../form/NumericInput.js";
+import { ErrorCallout } from "../ErrorCallout.js";
+import type { NumberFormat } from "../../messages/types.js";
+import {
+  filterNumericInsertion,
+  numericInputMode,
+} from "../../utils/numericResponse.js";
+import { getNumericFeedback } from "../../utils/numericFeedback.js";
 import { TextArea } from "../form/TextArea.js";
 import type { DebugMessage } from "../../utils/promptTelemetry.js";
 import { useResponseCommit } from "../hooks/useResponseCommit.js";
@@ -43,6 +51,9 @@ export interface PromptProps {
   file?: string;
   shared?: boolean;
   value: unknown;
+  /** Numeric responses restore raw text and its parsing format verbatim. */
+  entry?: string;
+  numberFormat?: NumberFormat;
   save: (key: string, value: unknown, scope?: "player" | "shared") => void;
   /** Commit-time record context, provided by Element or a standalone host. */
   step?: string;
@@ -51,6 +62,8 @@ export interface PromptProps {
   stageId?: string;
   resolveURL?: (path: string) => string;
   renderSharedNotepad?: StagebookContext["renderSharedNotepad"];
+  renderSharedNumericResponse?: StagebookContext["renderSharedNumericResponse"];
+  onContractViolation?: StagebookContext["onContractViolation"];
 }
 
 export function Prompt(props: PromptProps) {
@@ -78,11 +91,15 @@ function PromptContent({
   file,
   shared = false,
   value,
+  entry,
+  numberFormat,
   save,
   step,
   getElapsedTime,
   resolveURL,
   renderSharedNotepad,
+  renderSharedNumericResponse,
+  onContractViolation,
 }: PromptProps) {
   // Prefer `responsePoints` (#282 canonical name); fall back to the
   // deprecated `sliderPoints` alias if a caller still uses it.
@@ -177,10 +194,18 @@ function PromptContent({
   const dropdownDefaultSavedRef = useRef(false);
 
   const saveData = useCallback(
-    (newValue: unknown, recordData: typeof record, label?: string) => {
+    (
+      newValue: unknown,
+      recordData: typeof record,
+      label?: string,
+      format?: NumberFormat,
+    ) => {
       const updatedRecord = buildPromptRecord({
         ...recordData,
         value: newValue,
+        ...(recordData.metadata.type === "numericResponse"
+          ? { entry: newValue as string, numberFormat: format }
+          : {}),
         debugMessages: debugMessagesRef.current,
         label,
         step,
@@ -360,6 +385,72 @@ function PromptContent({
         />
       )}
 
+      {promptType === "numericResponse" && !shared && (
+        <NumericInput
+          entry={entry}
+          numberFormat={numberFormat}
+          nextEditNumberFormat={messages.numberFormat}
+          constraints={metadata}
+          prefix={metadata.prefix}
+          suffix={metadata.suffix}
+          ariaLabelledBy={bodyId}
+          ariaRequired={required || undefined}
+          onChange={(text, format) => saveData(text, record, undefined, format)}
+          onDebugMessage={(message) => {
+            debugMessagesRef.current = [...debugMessagesRef.current, message];
+          }}
+        />
+      )}
+
+      {promptType === "numericResponse" &&
+        shared &&
+        (renderSharedNumericResponse ? (
+          <SharedResponse
+            onCommit={(text) =>
+              saveData(
+                text,
+                record,
+                undefined,
+                numberFormat ?? messages.numberFormat,
+              )
+            }
+          >
+            {(callbacks) =>
+              renderSharedNumericResponse({
+                name,
+                constraints: {
+                  required: metadata.required,
+                  min: metadata.min,
+                  max: metadata.max,
+                  integer: metadata.integer,
+                },
+                prefix: metadata.prefix,
+                suffix: metadata.suffix,
+                required,
+                numberFormat: numberFormat ?? messages.numberFormat,
+                inputmode: numericInputMode(metadata),
+                ariaLabelledBy: bodyId,
+                filterInsertion: (change) =>
+                  filterNumericInsertion(
+                    change,
+                    numberFormat ?? messages.numberFormat,
+                  ),
+                getFeedback: (text, revealProblems) =>
+                  getNumericFeedback(
+                    text,
+                    metadata,
+                    numberFormat ?? messages.numberFormat,
+                    revealProblems,
+                    messages,
+                  ),
+                ...callbacks,
+              })
+            }
+          </SharedResponse>
+        ) : (
+          <MissingNumericRenderer onContractViolation={onContractViolation} />
+        ))}
+
       {promptType === "listSorter" && (
         <ListSorter
           items={(value as string[]) ?? responses}
@@ -383,8 +474,24 @@ function PromptContent({
   );
 }
 
-/** The shared editor lifetime follows the keyed prompt. Unmount cancels
- * writes and makes callbacks retained by an old host editor inert. */
+function MissingNumericRenderer({
+  onContractViolation,
+}: Pick<PromptProps, "onContractViolation">) {
+  const messages = useMessages();
+  const reported = useRef(false);
+  useEffect(() => {
+    if (reported.current) return;
+    reported.current = true;
+    const info = {
+      kind: "missingSharedNumericResponse" as const,
+      message: "Shared numeric prompts require renderSharedNumericResponse.",
+    };
+    console.error(info.message);
+    onContractViolation?.(info);
+  }, [onContractViolation]);
+  return <ErrorCallout>{messages.sharedNumericUnavailable}</ErrorCallout>;
+}
+
 function SharedNotepadResponse({
   padName,
   defaultText,
@@ -397,6 +504,28 @@ function SharedNotepadResponse({
   rows: number;
   renderSharedNotepad: NonNullable<PromptProps["renderSharedNotepad"]>;
   onCommit: (text: string) => void;
+}) {
+  return (
+    <SharedResponse onCommit={onCommit}>
+      {(callbacks) =>
+        renderSharedNotepad({ padName, defaultText, rows, ...callbacks })
+      }
+    </SharedResponse>
+  );
+}
+
+/** Shared editor lifetime follows the keyed prompt. The same scheduler serves
+ * text and numeric documents; retained callbacks become inert on unmount. */
+function SharedResponse({
+  onCommit,
+  children,
+}: {
+  onCommit: (text: string) => void;
+  children: (callbacks: {
+    onLocalEdit: (text: string) => void;
+    onRemoteChange: (text: string) => void;
+    onBlur: (text: string) => void;
+  }) => React.ReactNode;
 }) {
   const pendingKind = useRef<"local" | "correction" | undefined>(undefined);
   const hasCommitted = useRef(false);
@@ -459,12 +588,5 @@ function SharedNotepadResponse({
     [commits],
   );
 
-  return renderSharedNotepad({
-    padName,
-    defaultText,
-    rows,
-    onLocalEdit,
-    onRemoteChange,
-    onBlur,
-  });
+  return children({ onLocalEdit, onRemoteChange, onBlur });
 }

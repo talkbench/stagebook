@@ -879,3 +879,112 @@ describe("shared prompt constraints (#668)", () => {
     expect(issue?.message).toContain('treatment "t"');
   });
 });
+
+describe("shared numeric validation (#687)", () => {
+  const source = `treatments:
+  - name: t
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: s
+        duration: 10
+        elements:
+          - type: prompt
+            name: x
+            file: q.prompt.md
+            shared: true
+          - type: submitButton
+            conditions:
+              - reference: shared.prompt.x.isValid
+                comparator: equals
+                value: true
+`;
+  it.each(["required: true", "min: 18", "max: 99", "integer: true"])(
+    "allows shared numeric %s plus a validity gate",
+    async (fields) => {
+      const result = await validateTreatmentWithDiff({
+        source,
+        loadImport: loaderFromMap({
+          "q.prompt.md": `---\ntype: numericResponse\n${fields}\n---\nNumber\n`,
+        }),
+      });
+      expect(
+        result.diagnostics.filter((issue) => issue.severity === "error"),
+      ).toEqual([]);
+    },
+  );
+  it("retains nonnumeric constraint and validity errors at their separate source locations", async () => {
+    const result = await validateTreatmentWithDiff({
+      source,
+      loadImport: loaderFromMap({
+        "q.prompt.md":
+          "---\ntype: openResponse\nminLength: 5\n---\nQuestion\n---\n>\n",
+      }),
+    });
+    const issues = result.diagnostics.filter(
+      (issue) => issue.severity === "error",
+    );
+    expect(issues).toHaveLength(2);
+    expect(
+      issues.find((issue) => issue.message.includes("minLength")),
+    ).toMatchObject({ range: { startLine: 10 } });
+    expect(
+      issues.find((issue) => issue.message.includes("isValid")),
+    ).toMatchObject({ range: { startLine: 14 } });
+  });
+  it.each([
+    ["openResponse", "numericResponse", 1],
+    ["numericResponse", "openResponse", 0],
+  ] as const)(
+    "resolves shared %s independently of same-name player %s",
+    async (sharedType, playerType, errors) => {
+      const withPlayer = source.replace(
+        "          - type: submitButton",
+        `          - type: prompt
+            name: x
+            file: solo.prompt.md
+          - type: submitButton`,
+      );
+      const promptSource = (type: string) =>
+        `---\ntype: ${type}\n---\nQuestion\n${type === "openResponse" ? "---\n>\n" : ""}`;
+      const result = await validateTreatmentWithDiff({
+        source: withPlayer,
+        loadImport: loaderFromMap({
+          "q.prompt.md": promptSource(sharedType),
+          "solo.prompt.md": promptSource(playerType),
+        }),
+      });
+      const allIssues = result.diagnostics.filter(
+        (issue) => issue.severity === "error",
+      );
+      // Preserve the separate existing collision diagnostics.
+      expect(
+        allIssues.filter((issue) =>
+          issue.message.includes("Duplicate storage key"),
+        ),
+      ).toHaveLength(2);
+      const issues = allIssues.filter((issue) =>
+        issue.message.includes("isValid"),
+      );
+      expect(issues).toHaveLength(errors);
+      if (errors) {
+        expect(issues[0].message).toContain("isValid");
+        expect(issues[0].message).toContain("q.prompt.md");
+      }
+    },
+  );
+  it.each([null, "not a prompt"])(
+    "skips unknown metadata after unreadable or malformed %j",
+    async (prompt) => {
+      const result = await validateTreatmentWithDiff({
+        source,
+        loadImport: loaderFromMap(
+          prompt === null ? {} : { "q.prompt.md": prompt },
+        ),
+      });
+      expect(
+        result.diagnostics.filter((issue) => issue.severity === "error"),
+      ).toEqual([]);
+    },
+  );
+});

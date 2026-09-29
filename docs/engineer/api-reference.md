@@ -134,7 +134,8 @@ checkResponse("a", { required: true, minLength: 3, maxLength: 100 });
 // { isValid: false, blank: false, failed: "minLength" }
 ```
 
-Constraints are `{ required?: boolean; minLength?: number; maxLength?: number }`.
+For text and selected answers, constraints are
+`{ required?: boolean; minLength?: number; maxLength?: number }`.
 The result has `isValid: boolean`, `blank: boolean`, and an optional `failed`
 value of `"required"`, `"minLength"`, or `"maxLength"`. Undefined, empty arrays,
 and trim-empty strings are blank; `0` and `false` are not. Blank optional
@@ -142,11 +143,99 @@ answers skip length constraints. Nonblank strings use their untrimmed UTF-16
 length. Prompt schemas limit length declarations to open responses.
 
 Prompt calls this function on every player-scoped save, including dropdown
-mount defaults, and adds `isValid` beside the unchanged `value`. Shared saves
-omit the flag. Hosts that allowlist record fields must retain `isValid`.
+mount defaults, and adds `isValid`. Shared numeric saves include group validity;
+shared nonnumeric saves omit the flag. Hosts that allowlist record fields must
+retain `isValid`, and numeric `entry` and `numberFormat`.
 The TextArea counter uses the same function against live text; the saved flag
 can lag by one commit window. It is advisory browser state: recompute from the
 answer and prompt constraints for analysis, payment and eligibility.
+
+For numeric answers, pass raw `entry` and the numeric constraint discriminator:
+
+```ts
+checkResponse("25", {
+  type: "numericResponse",
+  numberFormat: { decimal: ".", grouping: "," },
+  required: true,
+  max: 20,
+});
+// { isValid: false, blank: false, failed: "max" }
+```
+
+Numeric constraints are `{ type: "numericResponse", numberFormat,
+required?: boolean, min?: number, max?: number, integer?: boolean }`.
+In addition to `"required"`, numeric failure codes are `"unfinished"`,
+`"malformed"`, `"tooLong"`, `"tooManyDigits"`, `"integer"`, `"min"`, and `"max"`.
+Blank optional entries pass; no bound or whole-number rule rounds or clamps a
+parsed value. Passing a number instead of raw entry is a malformed response.
+
+### Numeric entries and number formats
+
+These functions and their types are exported from `stagebook` without React:
+
+| Function | Result / behavior |
+| --- | --- |
+| `parseNumericEntry(entry, numberFormat)` | `{ status: "parsed", value: number }`, or `{ status: "blank" \| "unfinished" \| "malformed" \| "tooLong" \| "tooManyDigits" }`; normalizes `-0` to `0` |
+| `couldBecomeValidByAppending(entry, constraints, numberFormat)` | Whether the entry already passes or appending allowed characters could make it pass; respects the entry and precision limits |
+| `formatNumericPlain(value, numberFormat)` | Finite number as plain decimal text, without grouping or an exponent |
+| `filterNumericInsertion({ entry, start, end, inserted }, numberFormat)` | `{ entry, selectionStart, selectionEnd, accepted, refused }`; filters a local insertion using UTF-16 selection offsets |
+| `numericInputMode(constraints)` | `"numeric"` only with `integer: true` and `min >= 0`; otherwise `undefined` (omit the attribute) |
+| `resolveNumberFormat(locale, overrides?)` | `{ decimal, grouping }`, with the same locale normalization, fallback, and message overrides as `resolveCatalog` |
+
+`NumberFormat` has `decimal: string` and `grouping: string`. `NumericConstraints`
+has optional `required`, `min`, `max`, and `integer`. The parser accepts a trimmed
+optional leading minus, Western digits, and one decimal separator with digits
+after it; `.5` is valid. It rejects grouping, exponents, hex, over 100 characters,
+and over 15 significant digits. The insertion filter drops unsupported inserted
+characters but leaves a selection intact when nothing is accepted. Remote text
+and collaborative undo bypass this filter. An over-cap shared document accepts
+deletions and refuses insertions.
+
+The bundled `en` and `he` formats use decimal `.` and grouping `,`. A host can
+supply `messages: { numberFormat: { decimal: ",", grouping: "." } }`; partial
+format overrides merge field by field. Each separator must be one character,
+neither a digit nor `-`, and the two must differ. Decimal whitespace is rejected;
+grouping may be ordinary space, U+00A0, or U+202F. Invalid formats warn and retain
+the bundled pair. Parsing does not use browser `Intl`.
+
+**Recomputing a trusted answer.** Treat the full browser record as client input.
+Load metadata from the trusted prompt file, then resolve the session's format
+from host configuration. The saved format is only a cross-check:
+
+```ts
+import {
+  checkResponse,
+  parseNumericEntry,
+  promptFileSchema,
+  resolveNumberFormat,
+} from "stagebook";
+
+const { metadata } = promptFileSchema.parse(promptMarkdown);
+if (metadata.type !== "numericResponse" || typeof saved.entry !== "string") {
+  throw new TypeError("Expected numeric metadata and a raw entry");
+}
+const hostFormat = resolveNumberFormat(sessionLocale, hostMessages);
+const formatMismatch =
+  saved.numberFormat?.decimal !== hostFormat.decimal ||
+  saved.numberFormat?.grouping !== hostFormat.grouping;
+const parsed = parseNumericEntry(saved.entry, hostFormat);
+const recomputedValue = parsed.status === "parsed" ? parsed.value : undefined;
+const verdict = checkResponse(saved.entry, {
+  type: "numericResponse",
+  numberFormat: hostFormat,
+  required: metadata.required,
+  min: metadata.min,
+  max: metadata.max,
+  integer: metadata.integer,
+});
+```
+
+A format mismatch marks the record as suspect; it does not select the parser's
+format. Use the recomputed value and verdict for analysis, eligibility, or
+payment, according to the study's policy. Recompute from `entry`, not `value`:
+a blank optional answer and malformed `3-4` both lack a value but have different
+validity. A live shared document's saved-format pin ensures consistent display
+across participants; it is not a trusted server-side format pin.
 
 ### `buildPromptRecord(input)`
 
@@ -170,14 +259,26 @@ const record = buildPromptRecord({
 });
 ```
 
-Required inputs are `metadata`, `name`, `body`, `responses`, and `value`.
-Optional inputs are `file`, `shared` (default `false`), `label`, `debugMessages`,
-`step`, and `stageTimeElapsed`. Supply the clock and step at the commit boundary.
+Required inputs are `metadata`, `name`, `body`, and `responses`. Supply `value`
+for a nonnumeric response. Numeric metadata requires raw `entry` and
+`numberFormat`; the builder derives `value` itself and throws if either input
+is missing. Optional inputs are `file`, `shared` (default `false`), `label`,
+`debugMessages`, `step`, and `stageTimeElapsed`. Supply the clock and step at
+the commit boundary.
 The result includes metadata, `name`, `file`, `shared`, `prompt` (the body),
 `responses`, `value`, and `debugMessages`, plus supplied label and timing fields.
-Player records include the computed `isValid`; shared open-response records
-omit it and always use empty `debugMessages`. `responses` should be the same
-display order used by the prompt. The builder does not shuffle options.
+Player records include computed `isValid`; shared numeric records do too.
+Every shared record uses empty `debugMessages`, and shared nonnumeric records
+omit `isValid`. `responses` should be the same display order used by the prompt.
+The builder does not shuffle options.
+
+For numeric records, `entry` retains up to 1,000 raw characters and `numberFormat`
+records the effective separators. Anything over the 100-character parsing cap
+is already invalid, so the storage cap preserves that verdict. A parsed entry
+includes a numeric `value` even when out of range; blank, unfinished, malformed,
+and over-limit entries omit the property entirely. Clearing never becomes zero
+or retains an earlier numeric value. Do not pass `value` as a substitute for
+numeric `entry`.
 
 See the [shared editor contract](integration-guide.md#shared-notepad) for the
 callbacks that trigger browser commits and the host's final-pull example.
@@ -244,12 +345,12 @@ if (needs.externalSurvey) requireQualtricsCreds();
 
 | Service          | Trigger                                                                               |
 | ---------------- | ------------------------------------------------------------------------------------- |
-| `coedit`         | `prompt` element, `shared: true`, referenced prompt file `type: openResponse`         |
+| `coedit`         | `prompt` element, `shared: true`, referenced prompt file `type: openResponse` or `numericResponse`         |
 | `video`          | stage `discussion` block, `chatType: video` or `audio` (→ Daily / WebRTC)             |
 | `textChat`       | stage `discussion` block, `chatType: text`                                            |
 | `externalSurvey` | `type: qualtrics` element (prompt-module survey instruments need no external service) |
 
-Async because the coedit signal is **split across files**: `shared: true` lives in the treatment YAML but `type: openResponse` lives in the separate `.prompt.md`, so shared prompts' frontmatter is resolved via `loadPrompt` — the same loader-injection shape `loadAndMergeImports` uses (the host owns path resolution and I/O). `loadPrompt` is only called for prompts flagged `shared: true` (its `file:` path skipped if it still holds a `${...}` placeholder), and every referenced shared prompt is loaded at most once across all arms; loader errors propagate rather than silently under-provisioning.
+Async because the coedit signal is **split across files**: `shared: true` lives in the treatment YAML but the `openResponse` / `numericResponse` type lives in the separate `.prompt.md`, so shared prompts' frontmatter is resolved via `loadPrompt` — the same loader-injection shape `loadAndMergeImports` uses (the host owns path resolution and I/O). `loadPrompt` is only called for prompts flagged `shared: true` (its `file:` path skipped if it still holds a `${...}` placeholder), and every referenced shared prompt is loaded at most once across all arms; loader errors propagate rather than silently under-provisioning.
 
 Expects a **fully hydrated** tree — imports merged **and** templates expanded (`fillTemplates` run), e.g. `parseTreatmentSource(...).data` or your own hydration pipeline. A merely import-merged tree (`loadAndMergeImports().merged`) is not enough: it still carries `templates:` definitions and unsubstituted `${...}` fields. Service triggers are read only from real DSL positions (`elements:` items and a stage's `discussion:` block), so an element-shaped object sitting in an opaque config bag (e.g. a discussion layout feed's `options`) is never mistaken for an element.
 
@@ -438,8 +539,8 @@ validation component.
 
 ### Form Components (standalone)
 
-Required controls support `ariaRequired?: boolean` on `TextArea`, `RadioGroup`
-and `Select`; this forwards `aria-required` without native submit blocking.
+Required controls support `ariaRequired?: boolean` on `TextArea`, `NumericInput`,
+`RadioGroup`, and `Select`; this forwards `aria-required` without native submit blocking.
 `RadioGroup` and `CheckboxGroup` accept `ariaLabelledBy?: string`, and
 `CheckboxGroup` accepts `ariaDescribedBy?: string` to associate its required
 marker because role `group` does not support `aria-required`. Prompt sets these
@@ -453,6 +554,7 @@ associations and the localized `promptRequired` marker automatically.
 | `CheckboxGroup` | `options`, `value`, `onChange`, `label?`                                                                                                                           |
 | `Select`        | `options`, `value`, `onChange`, `label?`, `placeholder?`, `disabled?`                                                                                              |
 | `TextArea`      | `value`, `onChange`, `rows?`, `minLength?`, `maxLength?`, `showCharacterCount?`, `onDebugMessage?`                                                                 |
+| `NumericInput` | `entry?`, `numberFormat?`, `nextEditNumberFormat?`, `constraints?`, `prefix?`, `suffix?`, `onChange?`, `onDebugMessage?`, `ariaLabel?`, `ariaLabelledBy?`, `ariaRequired?` |
 | `Slider`        | `min`, `max`, `interval`, `value?`, `onChange`, `labelPts?` (parallel to `labels?`, sourced from `promptFileSchema.parse(...).sliderPoints` after #243), `labels?` |
 | `ListSorter`    | `items`, `onChange`                                                                                                                                                |
 | `Markdown`      | `text`, `resolveURL?`                                                                                                                                              |
@@ -489,7 +591,7 @@ Peaks helpers exported alongside it: `createPeaksArrays(channelCount, bucketCoun
 
 | Component       | Key Props                                                                                                   |
 | --------------- | ----------------------------------------------------------------------------------------------------------- |
-| `Prompt`        | `metadata`, `body`, `responseItems`, `name`, `save`, `value`, `step?`, `getElapsedTime?`, `stageId?`        |
+| `Prompt`        | `metadata`, `body`, `responseItems`, `name`, `save`, `value`, `entry?`, `numberFormat?`, `step?`, `getElapsedTime?`, `stageId?`        |
 | `Display`       | `reference`, `values`, `position?`                                                                          |
 | `SubmitButton`  | `onSubmit`, `name`, `save`, `getElapsedTime`, `buttonText?`                                                 |
 | `AudioElement`  | `src`                                                                                                       |
@@ -504,6 +606,13 @@ commit-time context in its records. When reusing it across stages, pass the
 host's `stageId`; changes cancel pending work from the old prompt lifetime.
 Without `stageId`, `step` supplies that stage identity. `Element` forwards
 these values from the provider. The identity is not an extra record field.
+For numeric restoration, pass saved raw `entry` and saved `numberFormat` rather
+than reconstructing the field from `value`; this preserves leading zeros and
+unfinished text. Direct numeric callers still pass `value={undefined}` when
+there is no parsed value; `value` remains a required Prompt prop. `Element`
+forwards the stored value, entry, and format. It reuses a saved format only when
+the complete pair satisfies the catalog separator rules; malformed pairs fall
+back to the active catalog, including host overrides.
 
 ### Render Slots (platform-provided)
 
@@ -511,6 +620,7 @@ these values from the provider. The identity is not an extra record field.
 | --------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `renderDiscussion`    | Full `DiscussionType` config                                            | Stage with `discussion` block                                                                                                                                                                                                                                                                             |
 | `renderSharedNotepad` | `{ padName, defaultText?, rows?, onLocalEdit, onRemoteChange, onBlur }` | `shared: true` open-response prompt. Each callback takes the latest merged text. `defaultText` is placeholder-only: hint text, never seeded into the shared document or saved value. See the [shared editor contract](integration-guide.md#shared-notepad) for timing and own-transaction classification. |
+| `renderSharedNumericResponse` | `SharedNumericResponseConfig` (exported from `stagebook/components`) | `shared: true` numeric prompt. Its own optional slot; missing support renders an error and reports a contract violation. See [Shared numeric responses](integration-guide.md#shared-numeric-responses). |
 
 ### Conditional Components
 

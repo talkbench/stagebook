@@ -29,3 +29,5 @@ export { Slider, type SliderProps } from "./Slider.js";
 export { ListSorter, type ListSorterProps } from "./ListSorter.js";
 export { Markdown, type MarkdownProps } from "./Markdown.js";
 export { Loading, type LoadingProps } from "./Loading.js";
+
+export { NumericInput, type NumericInputProps } from "./NumericInput.js";

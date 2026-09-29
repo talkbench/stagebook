@@ -670,6 +670,104 @@ not acknowledge delivery or order server mutations; hosts remain responsible
 for transport ordering and any submission-settle behavior. A host may add a
 Yjs state-vector guard inside its own `save` implementation.
 
+### Shared numeric responses
+
+A `shared: true` prompt with `type: numericResponse` uses the optional
+`renderSharedNumericResponse` slot and the coedit service. It never uses
+`renderSharedNotepad`: a free-text fallback would produce the wrong record type.
+Without this slot, Prompt shows an error callout and invokes
+`onContractViolation`. Stagebook still renders the body and Required marker.
+
+The host renders a single-line collaborative field with affixes and an
+end-aligned feedback row followed by its Shared chip. Use the format,
+constraints, input mode, and bound filtering/feedback helpers supplied by
+Stagebook. The number reads left to right; labels follow the page's reading
+order. The field's accessible name comes from the prompt body, and its
+accessible description includes the affixes and feedback.
+
+The exported `SharedNumericResponseConfig` contains:
+
+| Field | Contract |
+| --- | --- |
+| `name` | Selects the shared document and `prompt_<name>` record |
+| `constraints` | Stagebook's `NumericConstraints` (`required`, `min`, `max`, `integer`) |
+| `prefix?`, `suffix?` | Plain-text affixes, rendered with isolated direction |
+| `required` | Boolean for `aria-required`; Stagebook renders the marker |
+| `numberFormat` | Effective `{ decimal, grouping }` for this live shared answer |
+| `inputmode` | `"numeric"` or `undefined`; omit the attribute for the default keyboard |
+| `ariaLabelledBy` | Prompt body ID for the input's `aria-labelledby` |
+| `filterInsertion(change)` | Bound `(NumericInsertion) => NumericInsertionResult`; returns the accepted text and selection, plus `accepted` / `refused` |
+| `getFeedback(entry, revealProblems)` | `{ state: "neutral" \| "valid" \| "problem", text: string }`; `text` is localized plain text including its symbol, rendered without recreating messages in the host |
+| `onLocalEdit`, `onRemoteChange`, `onBlur` | Each takes the current merged string, including `""` |
+
+The host keeps `revealProblems` for the current participant: set it on blur,
+clear it only after an accepted own edit, and preserve it across refocus and
+remote updates. Render feedback without `aria-invalid`, an alert role, or a
+live region. A refused insertion pulses the field, with a static glow under
+reduced motion.
+
+Apply insertion filtering to this participant's own inserted text, including
+completed IME composition, autofill, and dictation. Remote changes and
+collaborative undo pass through untouched. Block paste and drop. Do not emit
+a local-edit callback for a refused insertion, and do not clear a blur-visible
+problem in response to remote edits. Only an accepted local edit clears it.
+Per-participant shared typing telemetry remains future work.
+
+Report `onLocalEdit(text)`, `onRemoteChange(text)`, and `onBlur(text)` with the
+latest merged text, exactly as in the [shared notepad contract](#shared-notepad).
+Stagebook owns browser commits and bounded late-merge corrections. Numeric
+shared records include `entry`, `numberFormat`, a parsed `value` when available,
+and the group's `isValid`; their `debugMessages` are empty. An over-limit entry
+is invalid, and the builder retains no more than 1,000 raw characters.
+
+**Live format consistency.** A saved shared answer pins its number format for
+the live document across edits and across participants. Do not switch one
+participant to a new host override on their first edit: the same shared text
+must have the same meaning on every screen. A solo restored answer instead
+keeps the saved format until its first accepted edit, then adopts the current
+host format. The shared pin comes from client state and serves display
+consistency; it is not a trusted server-side guarantee.
+
+**Final snapshot.** Pull the final merged text and construct the record with
+the same pure builder, resolving the current trusted host format for this write:
+
+```typescript
+import {
+  buildPromptRecord,
+  promptFileSchema,
+  resolveNumberFormat,
+} from "stagebook";
+
+const { metadata, body, responseItems } = promptFileSchema.parse(promptMarkdown);
+if (metadata.type !== "numericResponse") {
+  throw new TypeError("Expected a numeric prompt");
+}
+const record = buildPromptRecord({
+  metadata,
+  name: promptName,
+  file: promptPath,
+  shared: true,
+  body,
+  responses: responseItems,
+  entry: finalMergedText,
+  numberFormat: resolveNumberFormat(sessionLocale, hostMessages),
+  step: progressLabel,
+  stageTimeElapsed: elapsedSeconds,
+});
+save(`prompt_${promptName}`, record, "shared");
+```
+
+If current host configuration differs from the live document's saved format,
+this trusted recomputation can interpret the text differently. Compare any
+client-written format with the host format and mark a mismatch as suspect;
+do not use it to choose the trusted parser format. See the
+[analysis recomputation example](api-reference.md#numeric-entries-and-number-formats).
+Concurrent edits can merge into a number nobody typed. The existing void `save`
+contract still makes no delivery-order or submission-settle guarantee.
+
 ### Progressive adoption
 
-All render slots are optional. If a slot is not provided, the element renders nothing (no error). This lets you progressively add service integrations — start with prompts and submit buttons, add video calls later.
+Render slots are optional integrations, but a study that uses one requires
+its support. Shared numeric prompts explicitly report missing support instead
+of silently falling back to text. Hosts can add integrations progressively,
+then check the services required by the selected study before launch.

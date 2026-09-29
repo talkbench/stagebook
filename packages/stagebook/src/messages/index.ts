@@ -2,14 +2,17 @@ import type {
   RegisteredLocale,
   StagebookMessages,
   DeepPartial,
+  NumberFormat,
 } from "./types.js";
 import { en } from "./en.js";
 import { he } from "./he.js";
+import { isNumberFormat } from "./numberFormat.js";
 
 export type {
   RegisteredLocale,
   StagebookMessages,
   DeepPartial,
+  NumberFormat,
 } from "./types.js";
 
 /**
@@ -101,6 +104,10 @@ export function resolveCatalog(
     }
     const overrideValue = overrides[key];
     if (overrideValue === undefined) continue;
+    if (key === "numberFormat") {
+      merged.numberFormat = mergeNumberFormat(base.numberFormat, overrideValue);
+      continue;
+    }
     // Malformed-override guard: the override must match the bundled entry's
     // runtime type (string vs function). Otherwise keep the bundled entry.
     if (typeof overrideValue !== typeof base[key]) {
@@ -117,4 +124,35 @@ export function resolveCatalog(
       overrideValue;
   }
   return merged;
+}
+
+function mergeNumberFormat(
+  base: NumberFormat,
+  override: unknown,
+): NumberFormat {
+  if (
+    override !== null &&
+    typeof override === "object" &&
+    !Array.isArray(override)
+  ) {
+    const fields = override as Record<string, unknown>;
+    const decimal =
+      fields.decimal === undefined ? base.decimal : fields.decimal;
+    const grouping =
+      fields.grouping === undefined ? base.grouping : fields.grouping;
+    const candidate = { decimal, grouping };
+    if (isNumberFormat(candidate)) return candidate;
+  }
+  console.warn(
+    '[stagebook] Ignoring invalid messages override for "numberFormat"; keeping the bundled separators.',
+  );
+  return base;
+}
+
+/** Pure host-side resolution, identical to the provider's catalog behavior. */
+export function resolveNumberFormat(
+  locale: string | undefined,
+  overrides?: DeepPartial<StagebookMessages>,
+): NumberFormat {
+  return { ...resolveCatalog(locale, overrides).numberFormat };
 }

@@ -206,7 +206,7 @@ Position indices in `showToPositions`, `hideFromPositions`, `groupComposition`, 
 ## 11. Prompt Files
 
 `required?: boolean` (default `false`) is accepted on `multipleChoice`,
-`dropdown`, and `openResponse`. Required dropdowns must set `placeholder`.
+`dropdown`, `openResponse`, and `numericResponse`. Required dropdowns must set `placeholder`.
 `listSorter`, `noResponse`, and currently `slider` reject `required` (#689).
 `openResponse` also accepts `minLength?: integer >= 0` and
 `maxLength?: integer >= 1`, counted in UTF-16 code units.
@@ -216,15 +216,18 @@ Player-scoped saves include `isValid: boolean`. Read it with
 `equals: true` waits for a valid answer; the optional idiom is `any` of
 `doesNotExist` and `equals: true`. See [validity and conditions](prompts.md#response-validity-and-conditions).
 Validation is advisory; it does not automatically block submission.
-Shared prompts reject `required: true`, `minLength`, and `maxLength`, but allow
-explicit `required: false`. Shared records omit `isValid`, and references to
-`shared.prompt.<name>.isValid` are rejected.
+Shared numeric prompts permit their constraints and include the group's
+`isValid`, addressable as `shared.prompt.<name>.isValid`. Every other shared type
+rejects `required: true`, `minLength`, and `maxLength`, but allows explicit
+`required: false`; those records omit `isValid`, and shared validity references
+are rejected after loading the prompt metadata.
 
-Three sections separated by `---`:
+Two or three sections separated by `---`. `noResponse` and `numericResponse`
+omit the response section and its preceding delimiter:
 
 ```markdown
 ---
-type: multipleChoice | dropdown | openResponse | noResponse | listSorter | slider
+type: multipleChoice | dropdown | openResponse | numericResponse | noResponse | listSorter | slider
 name: My Prompt # optional — human-readable identifier
 ---
 
@@ -237,3 +240,27 @@ name: My Prompt # optional — human-readable identifier
 `name` is optional. Can be any string — use it as a human-readable identifier. Prompt files must use the `.prompt.md` extension.
 
 Slider requires `min`, `max`, `interval` in metadata. Slider initializes without a visible thumb (anti-anchoring).
+
+`numericResponse` accepts optional `required?: boolean`, `min?: number`,
+`max?: number`, `integer?: boolean`, `prefix?: string`, and `suffix?: string`.
+Bounds are inclusive, finite, and ordered (`min <= max`); whole-number mode
+requires whole bounds. Each bound's plain spelling must fit within 100 characters
+and 15 significant digits. Affixes are single-line plain text of at most 32 UTF-16
+code units. `rows`, `minLength`, `maxLength`, `interval`, and `placeholder` are
+rejected for this type.
+
+```markdown
+---
+type: numericResponse
+min: 0
+integer: true
+suffix: items
+---
+How many items did you count?
+```
+
+Numeric records keep raw `entry`, `{ decimal, grouping }` in `numberFormat`, and
+`isValid`. `value` is a number whenever parsing succeeds, even if invalid under
+the constraints; otherwise it is omitted. Blank never becomes zero. See
+[Numeric Response](prompts.md#numeric-response) for parsing, feedback, shared
+editing, and the researcher caveat.

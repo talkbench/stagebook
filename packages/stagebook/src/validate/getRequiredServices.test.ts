@@ -10,12 +10,12 @@ import {
  * `byTreatment`, `byIntroSequence`). Mirrors the injection shape of
  * `loadAndMergeImports` — the host supplies a `loadPrompt` loader so the
  * coedit signal (split between the treatment YAML's `shared: true` and
- * the prompt file's `type: openResponse`) can be resolved.
+ * the prompt file's open/numeric response type) can be resolved.
  */
 
 function promptFile(type: string): string {
-  if (type === "noResponse") {
-    return `---\ntype: noResponse\n---\nBody.`;
+  if (type === "noResponse" || type === "numericResponse") {
+    return `---\ntype: ${type}\n---\nBody.`;
   }
   if (type === "openResponse") {
     return `---\ntype: openResponse\n---\nBody.\n---\n> placeholder`;
@@ -53,30 +53,33 @@ describe("getRequiredServices", () => {
     expect(load).not.toHaveBeenCalled();
   });
 
-  test("shared openResponse prompt → coedit", async () => {
-    const file = {
-      treatments: [
-        {
-          name: "t",
-          gameStages: [
-            {
-              name: "s",
-              elements: [
-                { type: "prompt", file: "notes.prompt.md", shared: true },
-              ],
-            },
-          ],
-        },
-      ],
-    };
-    const load = loaderFrom({ "notes.prompt.md": promptFile("openResponse") });
-    const report = await getRequiredServices(file, { loadPrompt: load });
-    expect(report.overall.coedit).toBe(true);
-    expect(report.byTreatment.t.coedit).toBe(true);
-    expect(load).toHaveBeenCalledWith("notes.prompt.md");
-  });
+  test.each(["openResponse", "numericResponse"])(
+    "shared %s prompt → coedit",
+    async (type) => {
+      const file = {
+        treatments: [
+          {
+            name: "t",
+            gameStages: [
+              {
+                name: "s",
+                elements: [
+                  { type: "prompt", file: "notes.prompt.md", shared: true },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+      const load = loaderFrom({ "notes.prompt.md": promptFile(type) });
+      const report = await getRequiredServices(file, { loadPrompt: load });
+      expect(report.overall.coedit).toBe(true);
+      expect(report.byTreatment.t.coedit).toBe(true);
+      expect(load).toHaveBeenCalledWith("notes.prompt.md");
+    },
+  );
 
-  test("shared prompt that is NOT openResponse → no coedit", async () => {
+  test("shared multipleChoice prompt → no coedit", async () => {
     const file = {
       treatments: [
         {
@@ -95,21 +98,24 @@ describe("getRequiredServices", () => {
     expect(report.overall.coedit).toBe(false);
   });
 
-  test("unshared openResponse prompt → no coedit and no load", async () => {
-    const file = {
-      treatments: [
-        {
-          gameStages: [
-            { elements: [{ type: "prompt", file: "notes.prompt.md" }] },
-          ],
-        },
-      ],
-    };
-    const load = loaderFrom({ "notes.prompt.md": promptFile("openResponse") });
-    const report = await getRequiredServices(file, { loadPrompt: load });
-    expect(report.overall.coedit).toBe(false);
-    expect(load).not.toHaveBeenCalled();
-  });
+  test.each(["openResponse", "numericResponse"])(
+    "unshared %s prompt → no coedit and no load",
+    async (type) => {
+      const file = {
+        treatments: [
+          {
+            gameStages: [
+              { elements: [{ type: "prompt", file: "notes.prompt.md" }] },
+            ],
+          },
+        ],
+      };
+      const load = loaderFrom({ "notes.prompt.md": promptFile(type) });
+      const report = await getRequiredServices(file, { loadPrompt: load });
+      expect(report.overall.coedit).toBe(false);
+      expect(load).not.toHaveBeenCalled();
+    },
+  );
 
   test("a shared prompt referenced twice is loaded once", async () => {
     const file = {
@@ -136,23 +142,28 @@ describe("getRequiredServices", () => {
     expect(load).toHaveBeenCalledTimes(1);
   });
 
-  test("the same shared prompt across two treatments is loaded once", async () => {
-    const t = (name: string) => ({
-      name,
-      gameStages: [
-        {
-          elements: [{ type: "prompt", file: "notes.prompt.md", shared: true }],
-        },
-      ],
-    });
-    const file = { treatments: [t("a"), t("b")] };
-    const load = loaderFrom({ "notes.prompt.md": promptFile("openResponse") });
-    const report = await getRequiredServices(file, { loadPrompt: load });
-    expect(report.byTreatment.a.coedit).toBe(true);
-    expect(report.byTreatment.b.coedit).toBe(true);
-    // Deduped across arms, not just within one arm.
-    expect(load).toHaveBeenCalledTimes(1);
-  });
+  test.each(["openResponse", "numericResponse"])(
+    "the same shared %s across two treatments is loaded once",
+    async (type) => {
+      const t = (name: string) => ({
+        name,
+        gameStages: [
+          {
+            elements: [
+              { type: "prompt", file: "notes.prompt.md", shared: true },
+            ],
+          },
+        ],
+      });
+      const file = { treatments: [t("a"), t("b")] };
+      const load = loaderFrom({ "notes.prompt.md": promptFile(type) });
+      const report = await getRequiredServices(file, { loadPrompt: load });
+      expect(report.byTreatment.a.coedit).toBe(true);
+      expect(report.byTreatment.b.coedit).toBe(true);
+      // Deduped across arms, not just within one arm.
+      expect(load).toHaveBeenCalledTimes(1);
+    },
+  );
 
   test("discussion chatType maps to video / text", async () => {
     const load = loaderFrom({});
@@ -219,29 +230,30 @@ describe("getRequiredServices", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  test("openResponse frontmatter with an invalid body still → coedit (loose parse)", async () => {
-    // A `-` response marker is illegal for openResponse (which uses `>`), so
-    // the full promptFileSchema would reject this file — but its frontmatter
-    // IS openResponse, so it still requires coedit. This pins the deliberate
-    // divergence from running the full schema.
-    const brokenBody = `---\ntype: openResponse\n---\nBody.\n---\n- illegal marker`;
-    const file = {
-      treatments: [
-        {
-          gameStages: [
-            {
-              elements: [
-                { type: "prompt", file: "notes.prompt.md", shared: true },
-              ],
-            },
-          ],
-        },
-      ],
-    };
-    const load = loaderFrom({ "notes.prompt.md": brokenBody });
-    const report = await getRequiredServices(file, { loadPrompt: load });
-    expect(report.overall.coedit).toBe(true);
-  });
+  test.each(["openResponse", "numericResponse"])(
+    "%s frontmatter with an invalid body still → coedit (loose parse)",
+    async (type) => {
+      // The marker is invalid for openResponse; numericResponse forbids a third
+      // section entirely. Neither problem should hide the infrastructure need.
+      const brokenBody = `---\ntype: ${type}\n---\nBody.\n---\n- illegal marker`;
+      const file = {
+        treatments: [
+          {
+            gameStages: [
+              {
+                elements: [
+                  { type: "prompt", file: "notes.prompt.md", shared: true },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+      const load = loaderFrom({ "notes.prompt.md": brokenBody });
+      const report = await getRequiredServices(file, { loadPrompt: load });
+      expect(report.overall.coedit).toBe(true);
+    },
+  );
 
   test("shared prompt with missing/unparseable frontmatter → coedit false, no throw", async () => {
     const base = {

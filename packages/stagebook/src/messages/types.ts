@@ -24,7 +24,25 @@
  *  consumers. */
 export type RegisteredLocale = "en" | "he";
 
+/** Study-selected separators. Numeric parsing never consults browser Intl. */
+export interface NumberFormat {
+  decimal: string;
+  grouping: string;
+}
+
 export interface StagebookMessages {
+  /** Numeric entry syntax; host overrides merge and validate each field. */
+  numberFormat: NumberFormat;
+  /** Arguments are already formatted in plain notation using numberFormat. */
+  numericGuidance: (integer: boolean, min?: string, max?: string) => string;
+  numericLessThan: (value: string, min: string) => string;
+  numericMoreThan: (value: string, max: string) => string;
+  numericWholeNumber: string;
+  numericUnfinished: string;
+  numericNotNumber: string;
+  numericTooManyDigits: string;
+  numericTooLong: string;
+  sharedNumericUnavailable: string;
   // --- Form / submit ---
   /** Default submit-button label when the researcher doesn't set `buttonText`. */
   submitButtonDefault: string;
@@ -158,8 +176,8 @@ export interface StagebookMessages {
 }
 
 /** Recursive partial — host overrides supply any subset of the catalog. The
- *  catalog is flat today, but `DeepPartial` keeps overrides future-proof if a
- *  nested group is ever added. */
+ *  numberFormat merges field by field; string and function keys replace their
+ *  bundled entry. */
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends (...args: never[]) => unknown
     ? T[K]

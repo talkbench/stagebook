@@ -462,8 +462,8 @@ for (const selected of [false, true]) {
     );
     await expect(status).toHaveText(
       selected
-        ? "טווח 1 מתוך 1, 10 עד 15 שניות. גבול הסיום נבחר."
-        : "לא נבחר סימון. מספר הסימונים: 1.",
+        ? "טווח \u20661\u2069 מתוך \u20661\u2069, \u206610\u2069 עד \u206615\u2069 שניות. גבול הסיום נבחר."
+        : "לא נבחר סימון. מספר הסימונים: \u20661\u2069.",
     );
     if (selected) {
       await component.update(
@@ -475,7 +475,7 @@ for (const selected of [false, true]) {
         </LocaleProvider>,
       );
       await expect(status).toHaveText(
-        "טווח 1 מתוך 1, 10 עד 15 שניות. End boundary override.",
+        "טווח \u20661\u2069 מתוך \u20661\u2069, \u206610\u2069 עד \u206615\u2069 שניות. End boundary override.",
       );
     }
     await expect(page.getByTestId("save-log")).toHaveText("[]");
