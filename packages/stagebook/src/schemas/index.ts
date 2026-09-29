@@ -164,3 +164,8 @@ export {
   type ResolvedTreatmentFileType,
   type ResolvedConditionType,
 } from "./resolved.js";
+export {
+  checkSharedPromptValidation,
+  type SharedPromptConstraintMetadata,
+  type SharedPromptValidationIssue,
+} from "./sharedPromptValidation.js";

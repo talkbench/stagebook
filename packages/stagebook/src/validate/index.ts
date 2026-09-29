@@ -19,3 +19,4 @@ export * from "./validateTreatmentDiff.js";
 export * from "./checkPairing.js";
 export * from "./getRequiredServices.js";
 export * from "./getTreatmentDurations.js";
+export * from "./sharedPromptValidation.js";

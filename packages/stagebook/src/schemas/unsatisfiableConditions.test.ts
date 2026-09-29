@@ -641,3 +641,16 @@ describe("checkUnsatisfiableConditions", () => {
     expect(checkUnsatisfiableConditions("nope", domains({}))).toEqual([]);
   });
 });
+
+test("self.prompt.x.isValid equals true is not a dead value gate (#668)", () => {
+  const file = fileWith(
+    [{ reference: "self.prompt.x.isValid", comparator: "equals", value: true }],
+    { promptName: "x" },
+  );
+  expect(
+    checkUnsatisfiableConditions(
+      file,
+      domains({ "q.prompt.md": mcText(["Yes", "No"]) }),
+    ),
+  ).toEqual([]);
+});

@@ -1028,3 +1028,54 @@ describe("placeholder overflow warning (#590)", () => {
     },
   );
 });
+
+describe("shared prompt constraints (#668)", () => {
+  let dir: string;
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "stagebook-cli-shared-"));
+  });
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+  it("reports shared constraints with the prompt path and treatment location", async () => {
+    await writeFile(
+      join(dir, "study.stagebook.yaml"),
+      `treatments:
+  - name: t
+    playerCount: 1
+    gameStages:
+      - name: s
+        duration: 10
+        elements:
+          - type: prompt
+            file: q.prompt.md
+            shared: true
+`,
+    );
+    await writeFile(
+      join(dir, "q.prompt.md"),
+      "---\ntype: openResponse\nminLength: 5\n---\nQuestion\n---\n>\n",
+    );
+    const result = await runCli(["--format=json", "study.stagebook.yaml"], {
+      cwd: dir,
+    });
+    const parsed = JSON.parse(result.stdout) as {
+      files: {
+        path: string;
+        diagnostics: { severity: string; message: string; range: unknown }[];
+      }[];
+    };
+    const issue = parsed.files
+      .flatMap((file) => file.diagnostics)
+      .find(
+        (diagnostic) =>
+          diagnostic.message.includes("shared") &&
+          diagnostic.message.includes("minLength"),
+      );
+    expect(result.code).toBe(1);
+    expect(parsed.files[0].path).toContain("study.stagebook.yaml");
+    expect(issue).toMatchObject({ severity: "error", range: null });
+    expect(issue?.message).toContain("q.prompt.md");
+    expect(issue?.message).toContain('treatment "t"');
+  });
+});
