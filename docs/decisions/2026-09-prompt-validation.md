@@ -2,6 +2,14 @@
 
 Status: proposed in [#668](https://github.com/talkbench/stagebook/issues/668).
 
+**Extended by [numeric responses](2026-09-numeric-response.md)** (#687). That
+ADR adds the `numericResponse` prompt type, which is covered by everything
+here, including `required` and the Required marker. It also defines the
+type's own validity rule (parsing, bounds, whole numbers), and it makes
+shared numeric prompts an exception to the player-scoped rule below. Where
+this ADR lists prompt types, read `numericResponse` as included on those
+terms.
+
 Prompt frontmatter declares response constraints, and Stagebook reports
 whether each committed response satisfies them. It never blocks submission.
 Prompt saves the result as `isValid` beside `value`, and a study designer who
@@ -195,9 +203,18 @@ messages, and no study has needed one yet.
 **`isValid` is advisory client state.** The participant's browser writes it,
 like `value`. A condition on it steers that participant's flow; it doesn't
 guarantee anything about stored data. A participant can alter the flag, and a
-gate decided on an earlier commit doesn't recheck at the click. Payment,
-eligibility, exclusion, and analysis should recompute validity from `value`
-and the prompt file with the exported function.
+gate decided on an earlier commit doesn't recheck at the click. A submit
+button gated on `isValid` also covers only that button. A stage timer, stage
+conditions, `submitOnComplete`, Qualtrics completion, or the host can end the
+stage with an invalid answer on record. The researcher docs say so plainly.
+Gating the submit button on `isValid` keeps participants to valid answers,
+but it can't guarantee one. A last-moment edit can be clicked through before
+its commit reaches the gate, and the button advances without rechecking. In
+stages that can end any other way, check `isValid` in derived values. The
+only guarantee is recomputing validity afterward. Payment, eligibility,
+exclusion, and analysis should recompute it from the saved answer and the
+prompt file, with the exported function. The saved answer is `value`, or
+`entry` for [numeric responses](2026-09-numeric-response.md).
 
 **Record shape.** Every player-scoped prompt record gains an `isValid` field.
 There's no new storage key, scope, or host API. Hosts that allowlist record
