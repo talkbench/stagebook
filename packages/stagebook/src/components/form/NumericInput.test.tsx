@@ -52,7 +52,11 @@ function advance(ms: number) {
 function insert(inserted: string) {
   act(() => {
     input().focus();
-    input().dispatchEvent(
+    const field = input();
+    const before = field.value;
+    const start = field.selectionStart ?? 0;
+    const end = field.selectionEnd ?? 0;
+    const native = field.dispatchEvent(
       new InputEvent("beforeinput", {
         bubbles: true,
         cancelable: true,
@@ -60,9 +64,31 @@ function insert(inserted: string) {
         data: inserted,
       }),
     );
+    if (native) {
+      // jsdom dispatches beforeinput but does not perform its default edit.
+      Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!.call(
+        field,
+        before.slice(0, start) + inserted + before.slice(end),
+      );
+      field.setSelectionRange(start + inserted.length, start + inserted.length);
+      field.dispatchEvent(
+        new InputEvent("input", {
+          bubbles: true,
+          inputType: "insertText",
+          data: inserted,
+        }),
+      );
+    }
   });
 }
-function fallbackEdit(value: string, data: string | null = null) {
+function fallbackEdit(
+  value: string,
+  data: string | null = null,
+  inputType = "insertReplacementText",
+) {
   act(() => {
     Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
@@ -71,7 +97,7 @@ function fallbackEdit(value: string, data: string | null = null) {
     input().dispatchEvent(
       new InputEvent("input", {
         bubbles: true,
-        inputType: "insertReplacementText",
+        inputType,
         data,
       }),
     );
@@ -320,4 +346,40 @@ test("composition replaces its original selection only once when a final input f
   advance(500);
   expect(save).toHaveBeenCalledTimes(1);
   expect(save).toHaveBeenCalledWith("165", dot);
+});
+
+test("same-value native replacement clears revealed feedback and commits the accepted edit", () => {
+  render({ entry: "3", constraints: { min: 18 } });
+  const feedback = () => dom.querySelector('[data-testid="numeric-feedback"]')!;
+  expect(feedback().getAttribute("data-state")).toBe("problem");
+  act(() => input().setSelectionRange(0, 1));
+  insert("3");
+  expect(feedback().getAttribute("data-state")).toBe("neutral");
+  advance(2000);
+  expect(save).toHaveBeenCalledWith("3", dot);
+});
+
+test("native history insertions follow the current numeric format filter", () => {
+  render({ entry: "1,5", numberFormat: comma, nextEditNumberFormat: dot });
+  act(() => input().setSelectionRange(0, 3));
+  insert("25");
+  advance(2000);
+  fallbackEdit("1,5", null, "historyUndo");
+  expect(input().value).toBe("15");
+  advance(2000);
+  expect(save).toHaveBeenLastCalledWith("15", dot);
+  fallbackEdit("25", null, "historyRedo");
+  advance(2000);
+  expect(save).toHaveBeenLastCalledWith("25", dot);
+});
+
+test("solo undo cannot reinsert text over the entry cap or extend its pending timer", () => {
+  render({ entry: "1".repeat(101) });
+  fallbackEdit("1".repeat(100), null, "deleteContentBackward");
+  advance(1500);
+  fallbackEdit("1".repeat(101), null, "historyUndo");
+  expect(input().value).toBe("1".repeat(100));
+  advance(500);
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(save).toHaveBeenCalledWith("1".repeat(100), dot);
 });

@@ -171,17 +171,34 @@ export function NumericInput({
   };
   const display = (text: string, nextSelection: Selection) => {
     setLocalEntry(text);
-    selection.current = nextSelection;
     // Restore immediately too: a wholly refused edit may leave React state unchanged.
     if (inputRef.current) {
-      inputRef.current.value = text;
-      inputRef.current.setSelectionRange(
-        nextSelection.start,
-        nextSelection.end,
-      );
+      if (inputRef.current.value !== text) inputRef.current.value = text;
+      if (
+        inputRef.current.selectionStart !== nextSelection.start ||
+        inputRef.current.selectionEnd !== nextSelection.end
+      ) {
+        selection.current = nextSelection;
+        inputRef.current.setSelectionRange(
+          nextSelection.start,
+          nextSelection.end,
+        );
+      }
     }
   };
-  const applyInsertion = (snapshot: Snapshot, inserted: string) => {
+  const acceptEntry = (text: string, editFormat: NumberFormat) => {
+    setLocalEntry(text);
+    stableEntry.current = text;
+    effectiveFormat.current = editFormat;
+    setDisplayFormat(editFormat);
+    setRevealProblems(false);
+    commits.queue({ entry: text, numberFormat: editFormat });
+  };
+  const applyInsertion = (
+    snapshot: Snapshot,
+    inserted: string,
+    nativeValue?: string,
+  ) => {
     const editFormat = nextEditNumberFormat ?? messages.numberFormat;
     const result = filterNumericInsertion(
       { ...snapshot, inserted },
@@ -191,19 +208,35 @@ export function NumericInput({
       start: result.selectionStart,
       end: result.selectionEnd,
     };
-    display(result.entry, nextSelection);
-    if (result.refused) refuse();
-    if (result.accepted) {
-      stableEntry.current = result.entry;
-      effectiveFormat.current = editFormat;
-      setDisplayFormat(editFormat);
-      setRevealProblems(false);
-      commits.queue({ entry: result.entry, numberFormat: editFormat });
+    // Keep the browser's selection and history when its own mutation already
+    // matches the allowed result. Only a filtered result needs replacement.
+    if (result.entry === nativeValue && !result.refused) {
+      setLocalEntry(result.entry);
+    } else {
+      display(result.entry, nextSelection);
     }
+    if (result.refused) refuse();
+    if (result.accepted) acceptEntry(result.entry, editFormat);
     return { entry: result.entry, selection: nextSelection };
   };
-  const insertionRef = useRef(applyInsertion);
-  insertionRef.current = applyInsertion;
+  const prepareInsertion = (snapshot: Snapshot, inserted: string) => {
+    const editFormat = nextEditNumberFormat ?? messages.numberFormat;
+    const result = filterNumericInsertion(
+      { ...snapshot, inserted },
+      editFormat,
+    );
+    if (!result.refused) {
+      // Let accepted text enter through the native input path, retaining
+      // browser undo history. React may omit onChange for equal replacements.
+      if (result.accepted && result.entry === snapshot.entry)
+        acceptEntry(result.entry, editFormat);
+      return false;
+    }
+    applyInsertion(snapshot, inserted);
+    return true;
+  };
+  const insertionRef = useRef(prepareInsertion);
+  insertionRef.current = prepareInsertion;
 
   useEffect(() => {
     const input = inputRef.current!;
@@ -231,9 +264,10 @@ export function NumericInput({
       ) {
         event.preventDefault();
       } else if (event.inputType.startsWith("insert") && event.data !== null) {
-        event.preventDefault();
-        insertionRef.current(before.current, event.data);
-        before.current = undefined;
+        if (insertionRef.current(before.current, event.data)) {
+          event.preventDefault();
+          before.current = undefined;
+        }
       }
     };
     input.addEventListener("beforeinput", onBeforeInput);
@@ -287,6 +321,7 @@ export function NumericInput({
     applyInsertion(
       { entry: previous, start: change.start, end: change.end },
       change.inserted,
+      next,
     );
   };
   const finishComposition = (data?: string) => {

@@ -422,3 +422,23 @@ for (const key of ["Backspace", "Delete"]) {
     await expect(field).toHaveValue(key === "Backspace" ? "211" : "121");
   });
 }
+
+for (const refusalBetweenEdits of [false, true]) {
+  test(`numeric native undo and redo preserve typing${refusalBetweenEdits ? " across a refused character" : ""}`, async ({
+    mount,
+  }) => {
+    const component = await mount(<NumericInput ariaLabel="Estimate" />);
+    const field = component.getByRole("textbox");
+    await field.pressSequentially("12");
+    if (refusalBetweenEdits) {
+      await field.pressSequentially("x");
+      await expect(field).toHaveValue("12");
+    }
+    await field.pressSequentially("3");
+    await expect(field).toHaveValue("123");
+    await field.press("ControlOrMeta+z");
+    await expect(field).not.toHaveValue("123");
+    await field.press("ControlOrMeta+Shift+z");
+    await expect(field).toHaveValue("123");
+  });
+}
