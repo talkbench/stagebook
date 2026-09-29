@@ -142,14 +142,39 @@ committed response. Use `equals` with `value: true` to wait for a passing answer
 For an optional answer, use `any` combining `doesNotExist` and `equals: true`;
 an untouched prompt has no flag. See [response validity](prompts.md#response-validity-and-conditions)
 for both complete idioms, timing and trust limits, hidden-prompt gates, and the
-warning against `all.prompt.<name>.isValid`. `shared.prompt.<name>.isValid`
-is rejected: shared records have no flag.
+warning against `all.prompt.<name>.isValid`. Shared numeric prompts support
+`shared.prompt.<name>.isValid` for the group's answer. Shared nonnumeric prompts
+still have no flag, so references to their shared validity are rejected.
 
 ```
 <position>.prompt.<name>
 ```
 
 Returns the value saved by a prompt element. The `<name>` matches what you set in the treatment YAML.
+
+A `numericResponse` returns a number when its `entry` parses, even outside the
+authored bounds. Use numeric YAML values in comparisons:
+
+```yaml
+- type: submitButton
+  conditions:
+    all:
+      - reference: self.prompt.age.isValid
+        comparator: equals
+        value: true
+      - reference: self.prompt.age
+        comparator: isAtLeast
+        value: 18
+```
+
+For a shared numeric group answer, replace `self` with `shared`. The same optional
+`any` idiom above applies when an untouched answer is allowed. Blank, unfinished,
+malformed, and over-limit numeric entries have no `value`; `doesNotExist` on the
+value alone does not distinguish an optional blank from malformed text. Read
+`isValid` when that distinction matters. Validity can trail the live entry by a
+commit window, and a late edit can pass a gate before its commit arrives; use
+[recomputation for analysis](prompts.md#response-validity-and-conditions).
+
 
 ### Survey Instruments
 
@@ -557,5 +582,10 @@ conditions:
 ```
 
 The check compares against the prompt's bounded value domain: `multipleChoice` / `dropdown` options (a numeric-mode choice stores its number, not its label), the `slider` range `[min, max]`, and `openResponse` length capped by `maxLength`. It runs on **every** `conditions:` block — display and submit alike — so chained gates (an element shown only if a prior answer matches, whose own answer then gates submit) fall out naturally.
+
+`numericResponse` bounds are advisory and do not define a bounded stored domain.
+For example, `isAbove: 99` is possible even when the prompt declares `max: 99`,
+for both player and shared answers: the value is saved and marked invalid.
+Combine value conditions with `isValid` when you need an in-range answer.
 
 It stays silent whenever it can't _prove_ a gate is dead, so false positives are near zero: negative comparators (`doesNotEqual`, `doesNotInclude`, …) and `exists` / `doesNotExist` are satisfiable before any answer arrives; free-text `openResponse` value comparisons can't be disproven; a `slider` equality is only flagged when the target is fully outside `[min, max]` (an in-range value may land on an unlabeled snap point); leaves inside `any:` / `none:` operators aren't flagged (a sibling can carry the gate); and `matches` regexes, multi-select checkboxes, and `listSorter` are not checked. It proves _reachability_ (at least one option can satisfy the gate), not _correctness_ — a gate that matches the wrong option still passes.

@@ -4,7 +4,7 @@ Prompts are Markdown files with two or three sections separated by lines of thre
 
 1. **Metadata** — YAML frontmatter defining the prompt type and behavior.
 2. **Body** — Markdown-formatted text displayed to the participant.
-3. **Responses** — Response options (format depends on type). Required for `multipleChoice`, `dropdown`, `openResponse`, `listSorter`, `slider`. **Omitted entirely for `noResponse`** (#243 — `noResponse` files are two-section).
+3. **Responses** — Response options (format depends on type). Required for `multipleChoice`, `dropdown`, `openResponse`, `listSorter`, `slider`. **Omitted entirely for `noResponse` and `numericResponse`**; these files have two sections.
 
 ## Example
 
@@ -30,13 +30,13 @@ Each per-type schema is `.strict()` (#243) — unknown frontmatter keys (typos l
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | no | Optional human-readable identifier. Can be any string. |
-| `type` | enum | yes | `multipleChoice`, `dropdown`, `openResponse`, `noResponse`, `listSorter`, `slider` |
+| `type` | enum | yes | `multipleChoice`, `dropdown`, `openResponse`, `numericResponse`, `noResponse`, `listSorter`, `slider` |
 | `notes` | string | no | Internal notes (not displayed) |
 
 ### Type-specific fields
 
 `required: true | false` (default `false`) is supported on `multipleChoice`,
-`dropdown`, and `openResponse`. A required dropdown must declare `placeholder`,
+`dropdown`, `openResponse`, and `numericResponse`. A required dropdown must declare `placeholder`,
 so it waits for a deliberate choice. `required` is rejected on `listSorter`
 and `noResponse`, and on `slider` until [#689](https://github.com/talkbench/stagebook/issues/689)
 provides keyboard access to untouched sliders.
@@ -44,7 +44,7 @@ provides keyboard access to untouched sliders.
 A required prompt displays a static, muted “Required” line between its body
 and control, localized in English and Hebrew. The marker stays when answered
 or cleared. It describes the question; it does not prevent submission or show
-an error. Required textareas, radio groups and dropdowns expose `aria-required`;
+an error. Required textareas, numeric fields, radio groups and dropdowns expose `aria-required`;
 checkbox groups describe the marker to assistive technology.
 
 **`openResponse`:**
@@ -54,6 +54,22 @@ checkbox groups describe the marker to assistive technology.
 | `rows` | integer >= 1 | Height of the text area in lines (default: 5) |
 | `minLength` | integer >= 0 | Display a character counter; show progress toward minimum |
 | `maxLength` | integer >= 1 | Enforce a maximum character count |
+
+**`numericResponse`:** All fields are optional. The file has two sections and no placeholder or response options.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `min` | finite number | Inclusive lower bound for validity |
+| `max` | finite number | Inclusive upper bound for validity |
+| `integer` | boolean | Require a whole number (default: `false`) |
+| `prefix` | string | Plain-text unit label at the field's reading start |
+| `suffix` | string | Plain-text unit label at the field's reading end |
+
+Bounds must satisfy `min <= max`; either may appear alone. With `integer: true`,
+bounds must be whole. A bound's plain decimal spelling must fit within 100
+characters and 15 significant digits. Each affix is a single line of at most
+32 UTF-16 code units. Textarea fields (`rows`, `minLength`, `maxLength`), slider
+`interval`, and `placeholder` are not accepted.
 
 **`multipleChoice`:**
 
@@ -162,9 +178,9 @@ Slider tick labels are inline `- <number>(: <label>)?` lines (#243). The number 
 
 Mixed labeled and unlabeled points are valid. Labels can themselves contain colons — everything after the first colon is the label.
 
-### No Response
+### No Response / Numeric Response
 
-`noResponse` files don't have a response section at all. Drop the trailing `---` and the third section entirely.
+`noResponse` and `numericResponse` files don't have a response section at all. Drop the trailing `---` and the third section entirely.
 
 ## Prompt Types in Detail
 
@@ -266,6 +282,89 @@ The counter is visible before interaction. Whitespace-only text stays muted,
 as does a counter with only a maximum. A blank optional answer is valid even
 when its counter shows no progress toward a minimum.
 
+### Numeric Response
+
+Use `numericResponse` for a typed estimate, count, amount, or age. Its saved
+`value` is a number; an `openResponse` containing `"00123"` still saves a string.
+
+```markdown
+---
+type: numericResponse
+required: true
+min: 18
+max: 99
+integer: true
+suffix: years
+---
+How old are you?
+```
+
+There is no third section and no placeholder value. `min` and `max` are
+inclusive, and they determine validity without limiting what is saved. With a
+maximum of 20, entering `25` saves `value: 25` and `isValid: false`. Whole-number
+mode accepts `3.0`, marks `3.5` invalid, and never rounds the answer.
+
+Digits, `-`, and the study's decimal separator are accepted. Other inserted
+characters are dropped with a brief pulse; a rejected insertion does not erase
+a selection. The bundled English and Hebrew formats use `.` for decimals and
+`,` for grouping. Typing `1,000` therefore produces `1000`; typing `1,5` produces
+`15`, not one and a half. Grouping, exponents, hex, and non-Western digits are
+not numeric entries. Paste and drop are blocked and recorded for solo fields.
+
+Entries allow surrounding whitespace when parsed, leading zeros, and forms
+such as `.5` and `-3.5`. A trailing separator (`5.`), a lone sign, or malformed
+text (`3-4`) has no numeric value. The limit is 100 characters and 15 significant
+digits, counted from the first nonzero digit through the last digit entered.
+A change beyond the character cap is refused whole. More than 15 significant
+digits produces “Too many digits,” not a rounded value.
+
+The field gives muted guidance while more typing could complete a valid answer:
+`3` can become `35` when the minimum is 18. A problem appears immediately when
+appending cannot fix it, such as `25` with a maximum of 20. Leaving the field
+shows a remaining problem until the participant's next edit. A nonblank valid
+answer is green with ✓; blank stays muted, even when required. Restored invalid
+text shows its problem. Feedback advises; it does not block typing or submission.
+
+`prefix` and `suffix` display plain-text units inside the field and contribute
+to its accessible description. They wrap rather than truncate. Their positions
+follow reading order; the number itself always reads left to right, including
+in Hebrew. Guidance spells bounds in plain notation, such as `0.0000001`.
+
+The record retains raw `entry` and the effective `numberFormat`, so `007` and
+`5.` return verbatim on reload. Parsed entries save a numeric `value`, including
+out-of-range values; `-0` becomes `0`. Blank, unfinished, malformed, or over-limit
+entries omit `value` and remove any previous number. A solo restored entry keeps
+its saved format until the participant's first accepted edit, then uses the
+current host format. Saves follow the text-response schedule: 2 seconds quiet,
+5 seconds maximum wait, or blur.
+
+#### Shared numeric answers
+
+Set `shared: true` on the treatment's prompt element to collect one group answer.
+The host must support the shared numeric editor; Stagebook reports a clear error
+if it is unavailable. This does not fall back to a free-text notepad.
+
+Shared numeric prompts may declare `required`, `min`, `max`, and `integer`.
+Their `isValid` flag describes the group's answer, and a gate can read
+`shared.prompt.<name>.isValid`. Any member's edit can change that flag for the
+whole group. Concurrent typing can merge into a number nobody typed; this is
+an accepted limitation of the collaborative editor.
+
+Stagebook commits the typist's edits and coalesces late-merge corrections on the
+same bounded schedule as shared notes. Participants who have never edited do
+not write in response to remote changes.
+The shared live answer retains its saved number format across edits so every
+participant interprets the same text consistently. This is a display and parsing
+convention, not a guarantee that a client-written format is trustworthy. The
+host's final snapshot may recompute with its current configured format.
+
+For numeric analysis, recompute from **`entry`**, not `value`: an optional blank
+and `3-4` both lack a value, but only the blank is valid. Use the prompt's trusted
+constraints and the host's configured number format; compare the client-written
+`numberFormat` against it rather than trusting it. See the
+[recomputation example](../engineer/api-reference.md#numeric-entries-and-number-formats)
+and the [validity caveat](#response-validity-and-conditions).
+
 ### Dropdown
 
 A compact single-choice picker. Use it when `multipleChoice` would render too many radio buttons (long option lists like countries / languages, or many-step Likert scales where the rows take more vertical space than the question itself).
@@ -351,7 +450,9 @@ Every saved player-scoped prompt record includes `isValid` beside `value`.
 `undefined`, an empty selection array, or text that becomes empty after trimming
 Unicode whitespace. `0` and `false` are not blank. Blank answers pass unless
 `required: true`; length bounds do not apply to blank optional answers. Nonblank
-text must satisfy its declared bounds; other nonblank responses pass.
+text must satisfy its declared bounds. Numeric validity is computed from raw
+`entry`: it must parse, meet the inclusive bounds, and be whole when required.
+Other nonblank responses pass.
 
 An untouched prompt has no record or `isValid`. Leaving a text field saves its
 text, including `""`. Dropdowns without a placeholder save their first option on
@@ -395,11 +496,13 @@ edit can be clicked through before its commit reaches the gate. A stage timer,
 stage conditions, `submitOnComplete`, Qualtrics completion, or the host can still
 end a stage with an invalid answer on record. In those stages, derived values
 and analysis should check `isValid`. The participant's browser writes this flag,
-like `value`; only recomputing validity from the saved `value` and prompt file
-in analysis guarantees validity. Recompute for payment, eligibility and exclusion
-as well, using the exported `checkResponse` function.
+like `value`; recompute validity from the saved response and trusted prompt file
+for analysis, payment, eligibility, and exclusion. For numeric prompts, use raw
+`entry` and the host's configured number format, not `value` or the client-written
+format. The exported `checkResponse` function supports both cases.
 
-These constraints apply to player-scoped prompts. A `shared: true` prompt may
-not declare `required: true`, `minLength`, or `maxLength`; explicit
-`required: false` is allowed. Shared records have no `isValid`, and
-`shared.prompt.<name>.isValid` is an authoring error.
+Shared `numericResponse` is the exception: its constraints and
+`shared.prompt.<name>.isValid` apply to the group answer. Every other shared prompt
+type still rejects `required: true`, `minLength`, and `maxLength`; explicit
+`required: false` is allowed. Those nonnumeric shared records omit `isValid`,
+and references to their shared validity are authoring errors.

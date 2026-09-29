@@ -488,13 +488,13 @@ Provide via: `renderDiscussion(config)` on StagebookProvider (same slot as video
 
 ### Shared Notepad
 
-Required for `shared: true` open-response prompts. (The standalone `sharedNotepad` element type was removed in #250 — shared prompts are the single path now.)
+Required for `shared: true` open-response and numeric-response prompts. (The standalone `sharedNotepad` element type was removed in #250 — shared prompts are the single path now.)
 
 The platform must:
 
 - Provide a collaborative text editor
 - Sync edits in real-time across all participants
-- Render `defaultText` as **placeholder text only** — grey hint text that disappears once anyone types, matching non-shared open-response prompts. Do not seed it into the shared document; it must never appear in the saved/exported value.
+- For open-response prompts, render `defaultText` as **placeholder text only** — grey hint text that disappears once anyone types, matching non-shared open-response prompts. Do not seed it into the shared document; it must never appear in the saved/exported value.
 - Persist content for the stage duration
 - Report the participant's own transactions through `onLocalEdit(text)`, remote
   merges through `onRemoteChange(text)`, and focus loss through `onBlur(text)`.
@@ -505,7 +505,16 @@ The platform must:
 
 **Services used**: Etherpad (deliberation-empirica); Yjs/CodeMirror coedit service (TalkBench runner)
 
-Provide via: `renderSharedNotepad(config)` on StagebookProvider.
+Provide open-response editing via `renderSharedNotepad(config)` on StagebookProvider.
+
+Shared numeric prompts require their own `renderSharedNumericResponse` slot,
+using Stagebook's bound filtering and feedback helpers. They save numeric
+`value` when parsing succeeds, raw `entry`, `numberFormat`, and the group's
+`isValid`. Preserve all of these fields in storage. The live shared format
+stays pinned across edits; trusted final snapshots recompute from merged text
+with the host's current configured format. Missing numeric-slot support is a
+contract violation with a visible error, not a free-text fallback. See
+[Shared numeric responses](integration-guide.md#shared-numeric-responses).
 
 See the [shared editor contract](integration-guide.md#shared-notepad) for
 pending-local blur behavior, bounded corrections after late merges, and the

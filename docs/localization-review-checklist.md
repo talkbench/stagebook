@@ -35,7 +35,7 @@ the language differs; **everything structural must match.**
 For each group of parallel prompt files:
 
 - [ ] **Same `type`** (`multipleChoice` / `slider` / `openResponse` /
-      `dropdown` / `listSorter` / `noResponse`). A slider in one language and a
+      `numericResponse` / `dropdown` / `listSorter` / `noResponse`). A slider in one language and a
       multipleChoice in another is a bug.
 - [ ] **Same number of response items** (the `-` option lines, or `>` lines for
       openResponse). A missing or extra option is the most common drift.
@@ -50,12 +50,15 @@ For each group of parallel prompt files:
 - [ ] **Same numeric points** for numeric-mode multipleChoice (the points carry
       the measurement; only the labels translate).
 - [ ] **Same `required`** for corresponding multipleChoice, dropdown and
-      openResponse prompts. Required dropdowns keep a placeholder in every locale.
+      openResponse and numericResponse prompts. Required dropdowns keep a placeholder in every locale.
 - [ ] **Required marker:** review `promptRequired` in both catalogs
       (`Required` / `נדרש`), its muted appearance and start alignment in RTL, and
       that it remains after answers and clearing. It describes the question,
       not an error or live announcement.
 - [ ] **Same `rows` / `minLength` / `maxLength`** for openResponse.
+- [ ] **Same numeric constraints** (`min`, `max`, `integer`) for numericResponse.
+      Unit labels may move between `prefix` and `suffix` to follow locale
+      conventions, but must describe the same unit and measurement.
 - [ ] **Same `name`** (the storage-key identifier) — the variants must record to
       the same key so cross-locale analysis lines up.
 
@@ -77,10 +80,13 @@ For each group of parallel prompt files:
       English version contains appears, intact, in every translation.
 - [ ] **No bidi-override spoofing.** Flag bidi-control characters (U+202A–202E,
       U+2066–2069) in participant-facing strings — especially
-      `trackedLink.displayText`, where a right-to-left override can make the
-      visible link text disagree with the real destination. Legitimate
+      `trackedLink.displayText` and numeric `prefix` / `suffix`, where a
+      right-to-left override can change the apparent character order. In a link,
+      it can make visible link text disagree with the real destination. Legitimate
       Hebrew/Arabic content does *not* need these override characters; their
-      presence in a tagged-RTL file is a red flag, not normal RTL.
+      presence in a tagged-RTL prompt file is a red flag, not normal RTL. This does
+      not prohibit Stagebook's deliberate LRI (U+2066) … PDI (U+2069) isolation
+      around formatted numbers inside trusted RTL catalog messages.
 
 ## C. Treatment-level consistency
 
@@ -105,6 +111,11 @@ For each group of parallel prompt files:
       counters, radio rows, blockquote rails) mirror; time-axis components
       (media scrubber, timeline) stay left-to-right; nothing overflows
       (especially Slider endpoint labels, which are tight even in English).
+- [ ] **Numeric fields preserve meaning in RTL.** The number reads LTR and
+      aligns to the page's reading start; `-2.5` keeps its sign, `°C` keeps its
+      character order, and a suffix occupies the logical end. Guidance isolates
+      signed numbers with LRI … PDI. At narrow widths, both unit labels remain
+      fully visible and the input retains at least 6rem of width.
 - [ ] **No English leaks through** anywhere in the rendered RTL view.
 
 ## What this checklist does NOT cover
