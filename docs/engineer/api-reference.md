@@ -591,7 +591,7 @@ Peaks helpers exported alongside it: `createPeaksArrays(channelCount, bucketCoun
 
 | Component       | Key Props                                                                                                   |
 | --------------- | ----------------------------------------------------------------------------------------------------------- |
-| `Prompt`        | `metadata`, `body`, `responseItems`, `name`, `save`, `value?`, `entry?`, `numberFormat?`, `step?`, `getElapsedTime?`, `stageId?`        |
+| `Prompt`        | `metadata`, `body`, `responseItems`, `name`, `save`, `value`, `entry?`, `numberFormat?`, `step?`, `getElapsedTime?`, `stageId?`        |
 | `Display`       | `reference`, `values`, `position?`                                                                          |
 | `SubmitButton`  | `onSubmit`, `name`, `save`, `getElapsedTime`, `buttonText?`                                                 |
 | `AudioElement`  | `src`                                                                                                       |
@@ -608,7 +608,9 @@ Without `stageId`, `step` supplies that stage identity. `Element` forwards
 these values from the provider. The identity is not an extra record field.
 For numeric restoration, pass saved raw `entry` and saved `numberFormat` rather
 than reconstructing the field from `value`; this preserves leading zeros and
-unfinished text. `Element` forwards both from the stored record.
+unfinished text. Direct numeric callers still pass `value={undefined}` when
+there is no parsed value; `value` remains a required Prompt prop. `Element`
+forwards the stored value, entry, and format.
 
 ### Render Slots (platform-provided)
 
