@@ -228,16 +228,25 @@ export function TextArea({
     }
   };
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    e.preventDefault();
-    const pastedText = e.clipboardData.getData("text");
+  const recordPasteAttempt = (text: string) => {
     if (onDebugMessage) {
       onDebugMessage({
         type: "pasteAttempt",
-        length: pastedText.length,
+        length: text.length,
         timestamp: Date.now(),
       });
     }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    e.preventDefault();
+    recordPasteAttempt(e.clipboardData.getData("text"));
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLTextAreaElement>) => {
+    // Dragged text bypasses typing just like paste; keep the same telemetry.
+    e.preventDefault();
+    recordPasteAttempt(e.dataTransfer.getData("text"));
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -476,6 +485,7 @@ export function TextArea({
         onBlur={handleBlur}
         onClick={handleClick}
         onPaste={handlePaste}
+        onDrop={handleDrop}
         onKeyDown={handleKeyDown}
         style={{
           // Keep the native surface and scrollbar light under host/OS themes.
