@@ -179,13 +179,13 @@ describe("computeWatchedRanges", () => {
     expect(computeWatchedRanges([ev("play", 40), ev("pause", 12)])).toEqual([]);
   });
 
-  it("closes an open range at stageEnd (#677)", () => {
+  it("closes an open range when the player is removed (#677)", () => {
     expect(
       computeWatchedRanges([
         ev("play", 15.28),
         ev("pause", 20),
         ev("play", 20),
-        ev("stageEnd", 24.5),
+        ev("removed", 24.5),
       ]),
     ).toEqual([[15.28, 24.5]]);
   });
@@ -229,7 +229,7 @@ describe("endsMidPlayback (#677)", () => {
   it("is false before playback starts and once it is closed", () => {
     expect(endsMidPlayback([])).toBe(false);
     expect(endsMidPlayback([seek])).toBe(false);
-    for (const type of ["pause", "ended", "stopAt", "stageEnd"] as const) {
+    for (const type of ["pause", "ended", "stopAt", "removed"] as const) {
       expect(endsMidPlayback([ev("play", 0), ev(type, 5)])).toBe(false);
     }
   });

@@ -223,7 +223,7 @@ describe("HTML5", () => {
     expect(record()?.events).toEqual([
       expect.objectContaining({ type: "play", videoTime: 10 }),
       expect.objectContaining({ type: "seek", fromTime: 20, videoTime: 50 }),
-      expect.objectContaining({ type: "stageEnd", videoTime: 55 }),
+      expect.objectContaining({ type: "removed", videoTime: 55 }),
     ]);
     expect(record()?.lastVideoTime).toBe(55);
     expect(record()?.watchedRanges).toEqual([
@@ -244,7 +244,7 @@ describe("HTML5", () => {
     });
     moveTo(video, 14);
     unmount();
-    expect(types()).toEqual(["play", "speed", "stageEnd"]);
+    expect(types()).toEqual(["play", "speed", "removed"]);
     expect(record()?.watchedRanges).toEqual([[10, 14]]);
   });
 
@@ -361,7 +361,7 @@ describe("YouTube", () => {
     stub.time = 27.3;
     unmount();
     expect(record()?.events.at(-1)).toMatchObject({
-      type: "stageEnd",
+      type: "removed",
       videoTime: 27.3,
     });
     expect(record()?.watchedRanges).toEqual([[12, 27.3]]);

@@ -296,13 +296,13 @@ Event types:
 - `play`, `pause`
 - `ended`: the file played to its natural end
 - `stopAt`: playback reached `stopAt`
-- `stageEnd`: the player was removed during playback — usually because the stage ended (the participant submitted, or the stage timed out), but also if `hideTime` or a condition hides the player mid-stage. Logged at the position playback had reached, so the last stretch still counts as watched.
+- `removed`: the player was removed from the page during playback — usually because the stage ended (the participant submitted, or the stage timed out), but also if `hideTime` or a condition hides the player mid-stage. Logged at the position playback had reached, so the last stretch still counts as watched.
 - `seek`: includes `fromTime`, the position before the seek. Logged for every seek made through stagebook: the player's seek buttons and keys, its scrub bar, an attached timeline (ruler, playhead drag, arrow keys, mark edits), and play replaying the clip from the end. A continuous seek — a drag, or held keys on the timeline — is logged once it settles, as one seek from where it started to where it landed. Seeks made with a YouTube video's own in-frame controls aren't logged yet.
 - `speed`: includes `playbackRate`. Logged for the speed button and the `<` / `>` keys.
 
 `lastVideoTime` is the position at the last event.
 
-`watchedRanges` is derived from the event log: closed `[start, end]` intervals (in video seconds) of the portions the participant actually watched, with overlapping or touching intervals merged. A range runs from a `play` to the next `pause`, `ended`, `stopAt` or `stageEnd`. A seek during playback ends the range where the seek left and starts a new one where it landed, so skipped footage never counts as watched. Open intervals (a `play` with no closing event — e.g. a mid-playback disconnect) are excluded.
+`watchedRanges` is derived from the event log: closed `[start, end]` intervals (in video seconds) of the portions the participant actually watched, with overlapping or touching intervals merged. A range runs from a `play` to the next `pause`, `ended`, `stopAt` or `removed`. A seek during playback ends the range where the seek left and starts a new one where it landed, so skipped footage never counts as watched. Open intervals (a `play` with no closing event — e.g. a mid-playback disconnect) are excluded.
 
 ## Timeline
 

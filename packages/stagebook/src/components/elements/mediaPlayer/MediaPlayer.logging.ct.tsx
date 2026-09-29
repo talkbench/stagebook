@@ -277,10 +277,10 @@ test("submitting during playback closes the open range where playback stood", as
   await setTime(video, 24.5);
   await component.locator('[data-testid="submit"]').click();
 
-  await expect.poll(() => lastEventType(component)).toBe("stageEnd");
+  await expect.poll(() => lastEventType(component)).toBe("removed");
   const record = await lastRecord(component);
   expect(record?.events.at(-1)).toMatchObject({
-    type: "stageEnd",
+    type: "removed",
     videoTime: 24.5,
   });
   expect(record?.lastVideoTime).toBe(24.5);

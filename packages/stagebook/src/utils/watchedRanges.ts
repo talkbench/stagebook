@@ -2,7 +2,7 @@ import type { VideoEvent } from "../components/elements/MediaPlayer.js";
 
 /**
  * Walks a VideoEvent log. A "play" opens a range. A "pause", "ended",
- * "stopAt" or "stageEnd" closes it. A "seek" during playback closes it at the
+ * "stopAt" or "removed" closes it. A "seek" during playback closes it at the
  * seek's `fromTime` and opens a new one at its target, so skipped footage
  * never counts as watched (#682); seeks while paused change nothing. Empty or
  * backwards ranges are dropped.
@@ -39,7 +39,7 @@ function walk(events: VideoEvent[]): {
       case "pause":
       case "ended":
       case "stopAt":
-      case "stageEnd":
+      case "removed":
         close(event.videoTime);
         break;
       case "speed":

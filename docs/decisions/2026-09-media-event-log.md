@@ -43,11 +43,13 @@ split a Timeline drag into a seek per report.
 
 **Stage end.** When the stage ends during playback, by submit or timeout,
 the player unmounts without a pause, and nothing closed the open range. It
-now logs a `stageEnd` event at the current position when it unmounts with
+now logs a `removed` event at the current position when it unmounts with
 the log mid-playback, after logging any pending seek, and then closes its
 log: a sibling still holding the handle logs nothing more. The same happens
-if `hideTime` or a condition hides the player mid-stage. That is a
-deliberate exception to
+if `hideTime` or a condition hides the player mid-stage. The player can't
+tell those causes apart, so the event is named for what it observes — the
+player leaving the page — rather than `stageEnd`, which #677 suggested but
+would mislabel a mid-stage hide. That is a deliberate exception to
 [Components own response commit boundaries](2026-09-response-commits.md),
 where unmount cancels pending work without flushing. That rule keeps an
 unfinished gesture from becoming an answer. Here, the playback and the seek

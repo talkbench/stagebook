@@ -31,8 +31,11 @@ import { useMessages, useIsRTL } from "../StagebookProvider.js";
 import { focusRingCss } from "../focusRing.js";
 
 export interface VideoEvent {
-  /** `stageEnd`: the stage ended (submit, timer) during playback (#677). */
-  type: "play" | "pause" | "ended" | "seek" | "speed" | "stopAt" | "stageEnd";
+  /**
+   * `removed`: the player left the page during playback — the stage ended
+   * (submit, timer), or hideTime or a condition hid it (#677).
+   */
+  type: "play" | "pause" | "ended" | "seek" | "speed" | "stopAt" | "removed";
   videoTime: number;
   stageTimeElapsed: number;
   /** Present on seek events: the position before seeking */
@@ -713,7 +716,7 @@ export function MediaPlayer({
       seekLog.flush();
       if (endsMidPlayback(eventsRef.current)) {
         appendEventRef.current({
-          type: "stageEnd",
+          type: "removed",
           videoTime: positionRef.current(),
           stageTimeElapsed: getElapsedTimeRef.current(),
         });
