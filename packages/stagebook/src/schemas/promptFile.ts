@@ -64,6 +64,24 @@ const openResponseMetadataSchema = z
   })
   .strict();
 
+const numericAffixSchema = z
+  .string()
+  .max(32)
+  .regex(/^[^\r\n\u2028\u2029]*$/, "Unit labels must be a single line");
+
+const numericResponseMetadataSchema = z
+  .object({
+    type: z.literal("numericResponse"),
+    ...baseMetadataFields,
+    required: z.boolean().optional(),
+    min: z.number().finite().optional(),
+    max: z.number().finite().optional(),
+    integer: z.boolean().optional(),
+    prefix: numericAffixSchema.optional(),
+    suffix: numericAffixSchema.optional(),
+  })
+  .strict();
+
 const multipleChoiceMetadataSchema = z
   .object({
     type: z.literal("multipleChoice"),
@@ -145,12 +163,36 @@ export const promptMetadataSchema = z
   .discriminatedUnion("type", [
     noResponseMetadataSchema,
     openResponseMetadataSchema,
+    numericResponseMetadataSchema,
     multipleChoiceMetadataSchema,
     dropdownMetadataSchema,
     listSorterMetadataSchema,
     sliderMetadataSchema,
   ])
   .superRefine((data, ctx) => {
+    if (data.type === "numericResponse") {
+      if (
+        data.min !== undefined &&
+        data.max !== undefined &&
+        data.min > data.max
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "min cannot be greater than max",
+          path: ["min"],
+        });
+      }
+      for (const field of ["min", "max"] as const) {
+        const bound = data[field];
+        if (bound !== undefined && data.integer && !Number.isInteger(bound)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `${field} must be a whole number when integer is true`,
+            path: [field],
+          });
+        }
+      }
+    }
     if (
       data.type === "dropdown" &&
       data.required &&
@@ -456,15 +498,17 @@ export const promptFileSchema: z.ZodType<
     }
 
     // Section-count rules per #243:
-    //   noResponse — exactly two sections (frontmatter + body).
+    //   noResponse / numericResponse — two sections (frontmatter + body).
     //   everyone else — exactly three (frontmatter + body + responses).
-    if (parsedMetadata.type === "noResponse") {
+    if (
+      parsedMetadata.type === "noResponse" ||
+      parsedMetadata.type === "numericResponse"
+    ) {
       if (sections.length > 3) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["responses"],
-          message:
-            "noResponse prompt must have exactly two sections (frontmatter + body). Drop the trailing `---` and any third section.",
+          message: `${parsedMetadata.type} prompt must have exactly two sections (frontmatter + body). Drop the trailing \`---\` and any third section.`,
         });
       }
       return {
