@@ -73,6 +73,9 @@ decides validity:
   constraints don't apply to a blank optional answer.
 - A non-blank `openResponse` is valid when its untrimmed length is within
   `[minLength, maxLength]`, inclusive, counted exactly as the counter counts.
+- A non-blank `numericResponse` is valid when it parses as a number within
+  its bounds, and is whole if `integer: true`
+  ([numeric responses](2026-09-numeric-response.md)).
 - A non-blank response of any other type is valid.
 
 The TextArea counter and Prompt's saved flag both call this function, so the

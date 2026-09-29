@@ -109,7 +109,10 @@ more could still make the entry valid:
   #668's counter, which shows progress, not permission.
 - **Restored on reload:** an invalid entry shows its problem, as if the
   participant had just left the field. A restored entry keeps the number
-  format it was saved with until the participant edits it.
+  format it was saved with until the participant edits it. For a shared
+  answer, every participant reads it with the same number format at all
+  times, so the same text never gets different feedback on different
+  screens.
 
 The feedback is plain text below the field, at the end, styled like the
 counter: muted guidance ("Whole number from 18 to 99"), green with ✓ when
