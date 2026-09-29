@@ -245,6 +245,16 @@ npx --package=stagebook stagebook validate "prompts/**/*.prompt.md"
 
 The character counter appears automatically when `minLength` or `maxLength` is set. `maxLength` is enforced (input is capped); `minLength` is displayed but must be enforced separately via conditions if you want to block submission.
 
+**Typing statistics.** Along with the answer, the prompt's saved record keeps a `debugMessages` list. Each time the participant leaves the text box it gets a `typingStats` entry. The entry holds counts of keystrokes, Backspace/Delete presses, cursor-key presses (arrows, Home/End, Page Up/Down), clicks, focuses and blurs. It also holds the mean, standard deviation and quantiles of the intervals between keystrokes, the delay before the first keystroke, total typing time, and total time focused. Each entry is a running total since the text box appeared, so use the last one rather than adding them up. Pasting is blocked. Each attempt adds a `pasteAttempt` entry with the clipboard text's length and a timestamp.
+
+The keystroke fields come from key presses. A press counts only when it reports a character, Enter, Tab, Backspace or Delete. Text entered any other way is missed:
+
+- Android on-screen keyboards report most keys as `Unidentified`, often including Backspace.
+- Dictation and tapped autocomplete suggestions insert text without a key press.
+- With IME composition, the usual way to type Chinese, Japanese or Korean, Chrome and Firefox report keys as `Process`, so they are missed. Safari reports the underlying keys, so there the count reflects raw key presses rather than the characters entered.
+
+For affected participants `totalKeystrokes`, the Backspace/Delete count and the timing fields undercount, or come out `0` or `null`, even when the whole answer was typed, and nothing in the record flags it. Treat these fields as reliable only for physical-keyboard input without an IME, and don't compare them across devices or input methods (#692).
+
 ### Dropdown
 
 A compact single-choice picker. Use it when `multipleChoice` would render too many radio buttons (long option lists like countries / languages, or many-step Likert scales where the rows take more vertical space than the question itself).
