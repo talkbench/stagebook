@@ -18,6 +18,13 @@ import {
   isRTLLocale,
   defaultMessages,
 } from "../messages/index.js";
+import type {
+  NumericConstraints,
+  NumericInsertion,
+  NumericInsertionResult,
+} from "../utils/numericResponse.js";
+import type { NumericFeedback } from "../utils/numericFeedback.js";
+import type { NumberFormat } from "../messages/types.js";
 import type { StagebookMessages, DeepPartial } from "../messages/index.js";
 
 /**
@@ -34,6 +41,26 @@ function parseToStructuredRef(
 }
 
 // --------------- StagebookContext Interface ---------------
+
+/** Shared numeric editor contract. Helpers apply only to own insertions;
+ * remote/undo transactions bypass the filter. The host owns participant focus
+ * history: blur reveals problems, only an accepted own edit clears them. */
+export interface SharedNumericResponseConfig {
+  name: string;
+  constraints: NumericConstraints;
+  prefix?: string;
+  suffix?: string;
+  required: boolean;
+  numberFormat: NumberFormat;
+  /** Undefined means omit the attribute (the default keyboard). */
+  inputmode: "numeric" | undefined;
+  ariaLabelledBy: string;
+  filterInsertion: (change: NumericInsertion) => NumericInsertionResult;
+  getFeedback: (entry: string, revealProblems: boolean) => NumericFeedback;
+  onLocalEdit: (text: string) => void;
+  onRemoteChange: (text: string) => void;
+  onBlur: (text: string) => void;
+}
 
 export interface StagebookContext {
   // Look up raw stored values by storage key.
@@ -177,6 +204,13 @@ export interface StagebookContext {
     /** Flush uncommitted local edits, never an idle/correction-only field. */
     onBlur: (text: string) => void;
   }) => React.ReactNode;
+  /** Dedicated numeric collaboration slot; never falls back to a notepad.
+   * Block paste/drop; render affixes in bdi and feedback on an opaque end-aligned
+   * row followed by the Shared chip. Use the supplied format for the live
+   * document, including edits; it can differ from the current host catalog. */
+  renderSharedNumericResponse?: (
+    config: SharedNumericResponseConfig,
+  ) => React.ReactNode;
   // No `renderSurvey` slot: the host-rendered `type: survey` element was
   // removed in #669. Survey instruments are prompt elements (imported
   // module templates) that stagebook renders itself.
@@ -193,8 +227,7 @@ export interface StagebookContext {
   }) => void;
 
   /**
-   * Optional telemetry hook for host-contract violations (#473) — currently
-   * the one case is a missing `attributes.stableParticipantId` at the point
+   * Optional telemetry hook for host-contract violations (#473) — including an unavailable shared numeric renderer and a missing `attributes.stableParticipantId` at the point
    * stagebook needs it: the Qualtrics `stableParticipantId` URL-param
    * injection, where an empty id silently orphans the survey response. It is
    * **not** checked
@@ -207,7 +240,7 @@ export interface StagebookContext {
    * payload never includes participant values.
    */
   onContractViolation?: (info: {
-    kind: "missingStableParticipantId";
+    kind: "missingStableParticipantId" | "missingSharedNumericResponse";
     message: string;
   }) => void;
 }
