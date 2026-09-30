@@ -66,7 +66,7 @@ Un-prefixed references like `prompt.topicVote` are rejected at parse time. The e
 ```yaml
 reference:
   source:
-    prompt | survey | submitButton | qualtrics | timeline | trackedLink | discussion |
+    prompt | submitButton | qualtrics | timeline | trackedLink | discussion |
     entryUrl | attributes
   name: <element name> # required for named sources, forbidden for external sources
   path: [<segments>...] # optional for named sources, required for external sources
@@ -256,6 +256,7 @@ min: 0
 integer: true
 suffix: items
 ---
+
 How many items did you count?
 ```
 
