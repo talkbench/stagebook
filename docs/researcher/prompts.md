@@ -245,15 +245,36 @@ npx --package=stagebook stagebook validate "prompts/**/*.prompt.md"
 
 The character counter appears automatically when `minLength` or `maxLength` is set. `maxLength` is enforced (input is capped); `minLength` is displayed but must be enforced separately via conditions if you want to block submission.
 
-**Typing statistics.** Along with the answer, an `openResponse` prompt's saved record keeps a `debugMessages` list. This doesn't apply to shared prompts (`shared: true`): the platform's shared notepad renders those, and none of the following is recorded. Each time the participant leaves the text box it gets a `typingStats` entry. The entry holds counts of keystrokes, Backspace/Delete presses, cursor-key presses (arrows, Home/End, Page Up/Down), clicks, focuses and blurs. It also holds the mean, standard deviation and quantiles of the intervals between keystrokes, the delay before the first keystroke, total typing time, and total time focused. Each entry is a running total since the text box appeared, so use the last one rather than adding them up. If the prompt is shown again, for example after a page reload, the counts and the list start over, and the next save replaces the earlier entries. Pasting is blocked. Each attempt adds a `pasteAttempt` entry with the clipboard text's length and a timestamp. Entries are saved along with the answer, and the answer is saved whenever the participant leaves the text box. If the stage ends while the participant is still in the text box, the final `typingStats` entry is not recorded, and neither are any paste attempts since the last save. A participant who types until the stage ends without ever leaving the box has no `typingStats` entry at all.
+**Typing statistics.** Along with the answer, an `openResponse` prompt's saved record keeps a `debugMessages` list. Shared prompts (`shared: true`) are the exception: the platform's shared notepad renders them, and none of what follows is recorded.
 
-The keystroke count, the Backspace/Delete count and the keystroke timings (the interval statistics, first-keystroke delay and total typing time) come from key presses. A press counts toward them only when it reports a character, Enter, Tab, Backspace or Delete. Cursor keys are counted separately. Text entered any other way is missed:
+Each time the participant leaves the text box, a `typingStats` entry is added. Each entry is a running total since the text box appeared, so use the last one rather than adding them up. Entries are saved along with the answer, and the answer is saved whenever the participant leaves the box. If the stage ends while the participant is still in the box, the final entry is not recorded. So a participant who types until the stage ends without ever leaving has no `typingStats` entry at all. If the prompt is shown again, for example after a page reload, the counts and the list start over, and the next save replaces the earlier entries.
+
+Pasting is blocked. Each attempt adds a `pasteAttempt` entry with the clipboard text's `length` and a `timestamp`. Attempts made after the last save are lost if the stage ends first.
+
+A `typingStats` entry has the fields below. Times are wall-clock milliseconds, so they include any time the participant spent outside the box unless the row says otherwise. The first row defines a counted keystroke.
+
+| Field | What it measures | From key presses |
+|-------|------------------|------------------|
+| `totalKeystrokes` | Counted keystrokes: key presses that report a character, plus Enter, Tab, Backspace and Delete. Includes shortcuts such as Ctrl/Cmd+V and the repeats from a held-down key. | Yes |
+| `editingKeyCount` | Backspace and Delete presses. These are also included in `totalKeystrokes`. | Yes |
+| `arrowKeyCount` | Cursor-key presses: arrows, Home/End and Page Up/Down. These are not in `totalKeystrokes` or the timings. | Yes |
+| `mouseClickCount` | Clicks or taps on the text box. | No |
+| `focusCount` | Times the text box gained focus. | No |
+| `blurCount` | Times the text box lost focus. | No |
+| `avgInterval` | Mean gap between successive counted keystrokes. A pause, or a visit elsewhere, becomes one long gap. `0` with fewer than two keystrokes. | Yes |
+| `stdDev` | Standard deviation of those gaps (population: divided by the number of gaps). `0` with fewer than two keystrokes. | Yes |
+| `intervalQuantiles` | 21 values: the 0%, 5%, 10%, …, 100% quantiles of those gaps, linearly interpolated. `null` with fewer than two keystrokes. | Yes |
+| `firstKeystrokeDelayMs` | From the first time the box gained focus to the first counted keystroke, including any time spent away in between. `null` with no keystrokes. | Yes |
+| `totalTypingTimeMs` | From the first counted keystroke to the last, including pauses and time spent away. It is not time spent actively typing. `null` with fewer than two keystrokes. | Yes |
+| `focusedDurationMs` | Total time the box has had focus. This is the only duration that excludes time spent away. | No |
+
+The key-press fields see only counted keystrokes, so text entered any other way is missed:
 
 - Android on-screen keyboards report most keys as `Unidentified`, often including Backspace.
 - Dictation and tapped autocomplete suggestions insert text without a key press.
 - With IME composition, the usual way to type Chinese, Japanese or Korean, Chrome and Firefox report keys as `Process`, so they are missed. Safari reports the underlying keys, so there the count reflects raw key presses rather than the characters entered.
 
-For affected participants, `totalKeystrokes` and the Backspace/Delete count come out too low. The keystroke timings are distorted rather than simply low: a missed key merges the gaps on either side of it, and missing the first keys makes the first-keystroke delay too long. Fields can come out `0` or `null` even when the whole answer was typed, and nothing in the record flags it. Click, focus and focused-time fields don't depend on key presses and are unaffected. Treat the keystroke fields as reliable only for physical-keyboard input without an IME, and don't compare them across devices or input methods (#692).
+For affected participants the counts come out too low. The timings are distorted rather than simply low: a missed key merges the gaps on either side of it, and missing the first keys makes the first-keystroke delay too long. Fields can come out `0` or `null` even when the whole answer was typed, and nothing in the record flags it. Treat the key-press fields as reliable only for physical-keyboard input without an IME, and don't compare them across devices or input methods (#692).
 
 ### Dropdown
 
