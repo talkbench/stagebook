@@ -4,9 +4,11 @@ export {
   metadataLogicalSchema,
   validateSliderLabels,
   promptFileSchema,
+  promptValueType,
   type MetadataType,
   type MetadataRefineType,
   type PromptFileType,
+  type PromptValueType,
 } from "./promptFile.js";
 
 export {
