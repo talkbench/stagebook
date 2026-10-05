@@ -2845,6 +2845,34 @@ test("focus is left alone when activeElement is somewhere else entirely", async 
   await expect(other).toBeFocused();
 });
 
+// -- #695: a click on a control doesn't take focus --
+// The HTML5 controls are covered with a real Timeline in
+// Timeline.playerFocus.ct.tsx; the YouTube controls are a separate component.
+
+test("YouTube: clicking a control leaves focus where it was", async ({
+  mount,
+  page,
+}) => {
+  await installYTMock(page);
+  const component = await mount(
+    <div>
+      <input data-testid="other-input" />
+      <MockMediaPlayer
+        url="https://youtu.be/QC8iQqtG0hg"
+        name="test"
+        controls={{ playPause: true, seek: true }}
+      />
+    </div>,
+  );
+  await fireYTOnReady(page);
+  const other = component.locator('[data-testid="other-input"]');
+  for (const control of ["seekBack", "playPause", "seekForward", "scrubBar"]) {
+    await other.focus();
+    await component.locator(`[data-testid="mediaPlayer-${control}"]`).click();
+    await expect(other, control).toBeFocused();
+  }
+});
+
 // -- Unsafe / invalid URL handling (#484) --
 
 test("renders an invalid-URL alert for a dangerous protocol", async ({

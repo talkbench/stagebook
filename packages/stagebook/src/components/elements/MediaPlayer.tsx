@@ -10,7 +10,11 @@ import React, {
 import { isYouTubeURL } from "./mediaPlayer/isYouTubeURL.js";
 import { parseVTT, type CaptionCue } from "./mediaPlayer/parseVTT.js";
 import { YouTubePlayer } from "./mediaPlayer/YouTubePlayer.js";
-import { HTML5Controls, YouTubeControls } from "./mediaPlayer/controls.js";
+import {
+  HTML5Controls,
+  YouTubeControls,
+  preventFocusOnPress,
+} from "./mediaPlayer/controls.js";
 import { useRegisterPlayback } from "../playback/PlaybackProvider.js";
 import type { PlaybackHandle } from "../playback/PlaybackHandle.js";
 import { seekWindow, withSeekWindow } from "../playback/windowedHandle.js";
@@ -1259,6 +1263,8 @@ export function MediaPlayer({
   // pausing. We catch that exact transition and move focus to the container
   // (tabIndex=0), which is always mounted; :focus-within keeps the ring lit
   // and the keydown handler keeps Space wired to play/pause.
+  // A mouse click doesn't focus a control (#695), so only keyboard focus gets
+  // here, and focus held outside the player (a timeline) is never moved.
   const prevControlsVisibleRef = useRef(controlsVisible);
   useEffect(() => {
     const prev = prevControlsVisibleRef.current;
@@ -1398,7 +1404,7 @@ export function MediaPlayer({
                 from the shared focusRingCss(), so the rings no longer
                 differ between components.
              2. focus-within (not :focus). The container is
-                tabbable, but clicking interior controls (play /
+                tabbable, but tabbing to interior controls (play /
                 scrub / etc.) moves focus to those children, which
                 drops :focus on the parent. The user is still
                 "in" the MediaPlayer though — keyboard shortcuts
@@ -1676,6 +1682,7 @@ export function MediaPlayer({
               data-testid="mediaPlayer-playOnce"
               aria-label={messages.mediaPlayVideo}
               tabIndex={0}
+              onMouseDown={preventFocusOnPress}
               onClick={() => {
                 setShowPlayOnce(false);
                 const v = videoRef.current;
@@ -1726,6 +1733,7 @@ export function MediaPlayer({
           aria-label={messages.mediaPlayAudio}
           dir={localeDir}
           tabIndex={0}
+          onMouseDown={preventFocusOnPress}
           onClick={() => {
             setShowPlayOnce(false);
             const v = videoRef.current;

@@ -51,6 +51,18 @@ export const controlBtnLarge: React.CSSProperties = {
   height: 48,
 };
 
+/**
+ * onMouseDown for every control: a pointer press doesn't move focus (#695).
+ * A timeline handles Enter only while it holds focus, so a click on the
+ * speed button or scrub bar must not take focus from it. Focus moves as the
+ * default action of mousedown, so cancelling that leaves Tab and keyboard
+ * activation unchanged. The player's container is left alone: clicking the
+ * video still focuses the player, which turns on its shortcuts.
+ */
+export function preventFocusOnPress(e: React.MouseEvent) {
+  e.preventDefault();
+}
+
 // ---------------------------------------------------------------------------
 // HTML5Controls
 // ---------------------------------------------------------------------------
@@ -143,7 +155,10 @@ export function HTML5Controls({
             title={messages.mediaSeekBackTitleFull}
             tabIndex={0}
             style={controlBtnSmall}
-            onMouseDown={() => onSeekButtonPress(-1)}
+            onMouseDown={(e) => {
+              preventFocusOnPress(e);
+              onSeekButtonPress(-1);
+            }}
             onMouseUp={() => onSeekButtonRelease(-1)}
             onMouseLeave={onSeekButtonLeave}
           >
@@ -158,6 +173,7 @@ export function HTML5Controls({
             title={messages.mediaStepBackTitle(stepDuration)}
             tabIndex={0}
             style={controlBtnSmall}
+            onMouseDown={preventFocusOnPress}
             onClick={() => onSeek(-stepDuration)}
           >
             <StepBackIcon />
@@ -183,6 +199,7 @@ export function HTML5Controls({
             }
             tabIndex={0}
             style={controlBtnLarge}
+            onMouseDown={preventFocusOnPress}
             onClick={onPlayPause}
           >
             {atEnd ? <ReplayIcon /> : isPaused ? <PlayIcon /> : <PauseIcon />}
@@ -196,6 +213,7 @@ export function HTML5Controls({
             title={messages.mediaStepForwardTitle(stepDuration)}
             tabIndex={0}
             style={controlBtnSmall}
+            onMouseDown={preventFocusOnPress}
             onClick={() => onSeek(stepDuration)}
           >
             <StepForwardIcon />
@@ -209,7 +227,10 @@ export function HTML5Controls({
             title={messages.mediaSeekForwardTitleFull}
             tabIndex={0}
             style={controlBtnSmall}
-            onMouseDown={() => onSeekButtonPress(1)}
+            onMouseDown={(e) => {
+              preventFocusOnPress(e);
+              onSeekButtonPress(1);
+            }}
             onMouseUp={() => onSeekButtonRelease(1)}
             onMouseLeave={onSeekButtonLeave}
           >
@@ -229,6 +250,7 @@ export function HTML5Controls({
               fontWeight: 500,
               fontVariantNumeric: "tabular-nums",
             }}
+            onMouseDown={preventFocusOnPress}
             onClick={onCycleSpeed}
           >
             {playbackRate}×
@@ -256,6 +278,7 @@ export function HTML5Controls({
               display: "flex",
               alignItems: "center",
             }}
+            onMouseDown={preventFocusOnPress}
             onPointerDown={(e) => {
               try {
                 e.currentTarget.setPointerCapture(e.pointerId);
@@ -417,6 +440,7 @@ export function YouTubeControls({
             title={messages.mediaSeekBackTitleMini}
             tabIndex={0}
             style={controlBtnSmall}
+            onMouseDown={preventFocusOnPress}
             onClick={onSeekBack}
           >
             <SeekBackIcon />
@@ -442,6 +466,7 @@ export function YouTubeControls({
             }
             tabIndex={0}
             style={controlBtnLarge}
+            onMouseDown={preventFocusOnPress}
             onClick={onPlayPause}
           >
             {atEnd ? <ReplayIcon /> : isPaused ? <PlayIcon /> : <PauseIcon />}
@@ -455,6 +480,7 @@ export function YouTubeControls({
             title={messages.mediaSeekForwardTitleMini}
             tabIndex={0}
             style={controlBtnSmall}
+            onMouseDown={preventFocusOnPress}
             onClick={onSeekForward}
           >
             <SeekForwardIcon />
@@ -481,6 +507,7 @@ export function YouTubeControls({
               display: "flex",
               alignItems: "center",
             }}
+            onMouseDown={preventFocusOnPress}
             onPointerDown={(e) => {
               try {
                 e.currentTarget.setPointerCapture(e.pointerId);
