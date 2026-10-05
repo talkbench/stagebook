@@ -12,15 +12,20 @@ import type { PlaybackHandle } from "../playback/PlaybackHandle.js";
 // `paused` and fire their events, and time is moved by hand. YouTube runs
 // against a stub window.YT, which YouTubePlayer picks up synchronously.
 
+type Logged = {
+  type: string;
+  videoTime: number;
+  stageTimeElapsed: number;
+  fromTime?: number;
+  playbackRate?: number;
+};
+
 type Saved = {
-  events: {
-    type: string;
-    videoTime: number;
-    fromTime?: number;
-    playbackRate?: number;
-  }[];
+  events: Logged[];
   lastVideoTime: number;
   watchedRanges: [number, number][];
+  firstPlay?: Logged;
+  firstEnd?: Logged;
 };
 
 let seen: (PlaybackHandle | null | undefined)[] = [];
@@ -440,6 +445,95 @@ describe("HTML5", () => {
     });
   });
 
+  describe("playback milestones (#710)", () => {
+    let stageTime = 0;
+    const clock = { getElapsedTime: () => stageTime };
+    beforeEach(() => {
+      stageTime = 0;
+    });
+
+    it("records neither before playback, though seeks and speed changes save", () => {
+      setup(clock);
+      act(() => {
+        handle().seekTo(10);
+      });
+      settle();
+      const player = container!.querySelector('[data-testid="mediaPlayer"]')!;
+      act(() => {
+        player.dispatchEvent(
+          new KeyboardEvent("keydown", { key: ">", bubbles: true }),
+        );
+      });
+      expect(types()).toEqual(["seek", "speed"]);
+      expect(record()).not.toHaveProperty("firstPlay");
+      expect(record()).not.toHaveProperty("firstEnd");
+    });
+
+    it("keeps the first play through pause and another play", () => {
+      const video = setup(clock);
+      moveTo(video, 5);
+      stageTime = 3;
+      act(() => handle().play());
+      expect(record()?.firstPlay).toEqual({
+        type: "play",
+        videoTime: 5,
+        stageTimeElapsed: 3,
+      });
+      moveTo(video, 9);
+      stageTime = 7;
+      act(() => handle().pause());
+      stageTime = 12;
+      act(() => handle().play());
+      expect(types()).toEqual(["play", "pause", "play"]);
+      expect(record()?.firstPlay).toEqual({
+        type: "play",
+        videoTime: 5,
+        stageTimeElapsed: 3,
+      });
+    });
+
+    it("records playback reaching stopAt, and keeps it through a replay", () => {
+      const video = setup({ ...clock, stopAt: 60 });
+      moveTo(video, 10);
+      act(() => handle().play());
+      stageTime = 50;
+      moveTo(video, 60.1);
+      const reached = { type: "stopAt", videoTime: 60.1, stageTimeElapsed: 50 };
+      expect(record()?.firstEnd).toEqual(reached);
+      stageTime = 55;
+      act(() => handle().play()); // replays from the start
+      moveTo(video, 20);
+      act(() => handle().pause());
+      expect(types()).toEqual(["play", "stopAt", "seek", "play", "pause"]);
+      expect(record()?.firstEnd).toEqual(reached);
+    });
+
+    it("records playback reaching the file's natural end", () => {
+      const video = setup(clock);
+      act(() => handle().play());
+      stageTime = 100;
+      moveTo(video, 100);
+      act(() => {
+        video.dispatchEvent(new Event("ended"));
+      });
+      expect(record()?.firstEnd).toEqual({
+        type: "ended",
+        videoTime: 100,
+        stageTimeElapsed: 100,
+      });
+    });
+
+    it("does not count a paused seek to stopAt as reaching the end", () => {
+      setup({ ...clock, stopAt: 60 });
+      act(() => {
+        handle().seekTo(60);
+      });
+      settle();
+      expect(types()).toEqual(["seek"]);
+      expect(record()).not.toHaveProperty("firstEnd");
+    });
+  });
+
   it("logs nothing through a handle a sibling still holds after unmount", () => {
     setup();
     const stale = handle();
@@ -573,6 +667,19 @@ describe("YouTube", () => {
       });
     },
   );
+
+  it("records the first play and the end from state reports (#710)", async () => {
+    await setup();
+    stub.time = 12;
+    act(() => handle().play());
+    stub.time = 20;
+    act(() => stub.change(3)); // BUFFERING
+    act(() => stub.change(1)); // PLAYING again: not a new play
+    expect(record()?.firstPlay).toMatchObject({ type: "play", videoTime: 12 });
+    stub.time = 100;
+    act(() => stub.change(0)); // ENDED
+    expect(record()?.firstEnd).toMatchObject({ type: "ended", videoTime: 100 });
+  });
 
   it("closes playback at unmount at the player's live position", async () => {
     await setup();

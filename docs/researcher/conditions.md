@@ -106,7 +106,7 @@ For OR logic on a single reference (across positions, comparators, etc.), `any:`
 
 References point to data collected earlier in the experiment. The dotted form is always `<position>.<source>.<...>`, where the position selector (`self`, `shared`, `all`, or a numeric slot index — see the note at the top) is required as the first segment and the rest depends on the source:
 
-- **Named sources** (`prompt`, `submitButton`, `qualtrics`, `timeline`, `trackedLink`, `discussion`): `<position>.<source>.<name>(.<path>...)` — `name` is required, `path` is optional.
+- **Named sources** (`prompt`, `submitButton`, `qualtrics`, `mediaPlayer`, `timeline`, `trackedLink`, `discussion`): `<position>.<source>.<name>(.<path>...)` — `name` is required, `path` is optional.
 - **External sources** (`entryUrl`, `attributes`): `<position>.<source>.<path>...` — no `name`, `path` is required. `entryUrl` references must currently use the `params` subpath (see [URL Parameters](#url-parameters) below).
 
 ```yaml
@@ -175,7 +175,6 @@ value alone does not distinguish an optional blank from malformed text. Read
 commit window, and a late edit can pass a gate before its commit arrives; use
 [recomputation for analysis](prompts.md#response-validity-and-conditions).
 
-
 ### Survey Instruments
 
 Survey instruments are prompt modules (see [Survey instruments](elements.md#survey-instruments)), so each item is an ordinary prompt reference: `<position>.prompt.<prefix>_<item>`. The former `survey` reference source was removed with the `type: survey` element in [#669](https://github.com/talkbench/stagebook/issues/669) and is rejected at validation time.
@@ -205,6 +204,35 @@ conditions:
     comparator: isAbove
     value: 0
 ```
+
+### Media Player Playback
+
+```
+<position>.mediaPlayer.<name>.firstPlay
+<position>.mediaPlayer.<name>.firstEnd
+```
+
+A [`mediaPlayer`](elements.md#saved-data) saves its event log, and with it two playback milestones. `firstPlay` is the first `play` event: playback started. `firstEnd` is the first `ended` or `stopAt` event: playback reached the end of the clip, the moment `submitOnComplete` advances on. Each is absent until it happens and never changes after, so gate on it with `exists`. Pausing, replaying or seeking afterwards doesn't take it away. One exception: when the player remounts — a page reload, or a condition hiding the player and showing it again — it doesn't read its saved record back, so its next event replaces the record, milestones included ([#728](https://github.com/talkbench/stagebook/issues/728)).
+
+To show **Next** once the participant has started the video:
+
+```yaml
+- type: mediaPlayer
+  name: example_nod
+  file: https://example.com/clips/nod.mp4
+  controls:
+    playPause: true
+    seek: true
+- type: submitButton
+  name: next
+  conditions:
+    - reference: self.mediaPlayer.example_nod.firstPlay
+      comparator: exists
+```
+
+To wait until playback reaches the end instead, use `self.mediaPlayer.example_nod.firstEnd`. Reaching the end is not watching all of it: a participant who seeks close to the end and plays from there reaches it too. In Firefox and Safari, seeking to the file's very end while paused also counts, because the browser reports the end ([#729](https://github.com/talkbench/stagebook/issues/729)); a `stopAt` is only reached by playback.
+
+Don't gate on the record itself (`self.mediaPlayer.example_nod`) or on its `events`: seeks and speed changes save the record before anything plays. Neither milestone shows that someone watched attentively; use `watchedRanges` in analysis for how much they played.
 
 ### URL Parameters
 

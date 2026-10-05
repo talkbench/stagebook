@@ -118,6 +118,21 @@ test("reference timeline with nested path", () => {
   expect(result.success).toBe(true);
 });
 
+test("reference media player playback milestone (#710)", () => {
+  const reference = "self.mediaPlayer.example_nod.firstPlay";
+  const result = referenceSchema.safeParse(reference);
+  if (!result.success) console.log(result.error);
+  expect(result.success).toBe(true);
+});
+
+test("reference media player with no name", () => {
+  const result = referenceSchema.safeParse("self.mediaPlayer");
+  expect(result.success).toBe(false);
+  if (!result.success) {
+    expect(result.error.issues[0].message).toContain("A name must be provided");
+  }
+});
+
 test("reference timeline with no name", () => {
   const reference = "self.timeline";
   const result = referenceSchema.safeParse(reference);
