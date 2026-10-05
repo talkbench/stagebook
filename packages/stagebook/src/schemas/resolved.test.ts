@@ -4,8 +4,10 @@ import {
   treatmentFileSchema,
   promptFilePathSchema,
   SURVEY_ELEMENT_REMOVED_MESSAGE,
+  NON_FINITE_SECONDS_MESSAGE,
 } from "./treatment.js";
 import {
+  resolvedElementSchema,
   resolvedStageSchema,
   resolvedTreatmentSchema,
   resolvedTreatmentFileSchema,
@@ -973,4 +975,58 @@ describe("resolved schema rejects the removed survey element (#669)", () => {
       "type",
     ]);
   });
+});
+
+describe("resolved time fields are finite and keep their authoring sign (#681)", () => {
+  // A `${field}` placeholder passes the authoring schema, so a value filled
+  // in at hydration (e.g. `.inf` from a YAML broadcast row) is only checked
+  // here. These must match the authoring constraints in treatment.ts.
+  const cases = [
+    { type: "mediaPlayer", field: "startAt" },
+    { type: "mediaPlayer", field: "stopAt" },
+    { type: "mediaPlayer", field: "stepDuration" },
+    { type: "timer", field: "startTime" },
+    { type: "timer", field: "endTime" },
+    { type: "timer", field: "warnTimeRemaining" },
+  ];
+  const parse = (type: string, field: string, value: number) =>
+    resolvedElementSchema.safeParse({ type, [field]: value });
+
+  test.each(cases)("$type $field: Infinity is rejected", ({ type, field }) => {
+    const result = parse(type, field, Infinity);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.includes(field));
+      expect(issue?.message).toBe(NON_FINITE_SECONDS_MESSAGE);
+    }
+  });
+
+  test.each(cases)("$type $field: -Infinity is rejected", ({ type, field }) => {
+    expect(parse(type, field, -Infinity).success).toBe(false);
+  });
+
+  test.each(cases)(
+    "$type $field: a negative value is rejected",
+    ({ type, field }) => {
+      expect(parse(type, field, -1).success).toBe(false);
+    },
+  );
+
+  test.each(cases.filter((c) => c.field !== "startAt"))(
+    "$type $field: zero is rejected (must be positive)",
+    ({ type, field }) => {
+      expect(parse(type, field, 0).success).toBe(false);
+    },
+  );
+
+  test("mediaPlayer startAt: zero is accepted (nonnegative)", () => {
+    expect(parse("mediaPlayer", "startAt", 0).success).toBe(true);
+  });
+
+  test.each(cases)(
+    "$type $field: a finite positive value is accepted",
+    ({ type, field }) => {
+      expect(parse(type, field, 2.5).success).toBe(true);
+    },
+  );
 });

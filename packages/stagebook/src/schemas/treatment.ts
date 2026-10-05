@@ -1363,12 +1363,28 @@ const submitButtonSchema = elementBaseSchema
 export const SURVEY_ELEMENT_REMOVED_MESSAGE =
   "`type: survey` was removed (#669). Author the instrument as prompt elements instead: import its module with `imports:` and invoke its template (e.g. `- template: tipi_questions`), reference its answers as `<position>.prompt.<name>`, and add a `submitButton` (or another advancement element) where the step must advance.";
 
+/**
+ * Message for a time field (in seconds) given a non-finite value. YAML's
+ * `.inf` parses to `Infinity`, which a bare `z.number().positive()`
+ * accepts; a media element then throws when seeking to it (#681).
+ * Exported so the resolved schema and tests share it.
+ */
+export const NON_FINITE_SECONDS_MESSAGE =
+  "Must be a finite number of seconds — `.inf` (infinity) is not a valid time.";
+
+/**
+ * A time in seconds: any finite number. Callers add the sign constraint.
+ */
+export const finiteSecondsSchema = z
+  .number()
+  .finite({ message: NON_FINITE_SECONDS_MESSAGE });
+
 const timerSchema = elementBaseSchema
   .extend({
     type: z.literal("timer"),
-    startTime: z.number().gt(0).optional(),
-    endTime: z.number().gt(0).optional(),
-    warnTimeRemaining: z.number().gt(0).optional(),
+    startTime: finiteSecondsSchema.gt(0).optional(),
+    endTime: finiteSecondsSchema.gt(0).optional(),
+    warnTimeRemaining: finiteSecondsSchema.gt(0).optional(),
     // Todo: check that startTime < endTime
     // Todo: check that warnTimeRemaining < endTime - startTime
   })
@@ -1393,10 +1409,19 @@ export const mediaPlayerSchema = elementBaseSchema
     playVideo: z.boolean().optional(),
     playAudio: z.boolean().optional(),
     captionsFile: fileSchema.optional(),
-    startAt: z.number().nonnegative().or(fieldPlaceholderSchema).optional(),
-    stopAt: z.number().positive().or(fieldPlaceholderSchema).optional(),
+    startAt: finiteSecondsSchema
+      .nonnegative()
+      .or(fieldPlaceholderSchema)
+      .optional(),
+    stopAt: finiteSecondsSchema
+      .positive()
+      .or(fieldPlaceholderSchema)
+      .optional(),
     allowScrubOutsideBounds: z.boolean().optional(),
-    stepDuration: z.number().positive().or(fieldPlaceholderSchema).optional(),
+    stepDuration: finiteSecondsSchema
+      .positive()
+      .or(fieldPlaceholderSchema)
+      .optional(),
     syncToStageTime: z.boolean().optional(),
     submitOnComplete: z.boolean().optional(),
     playback: z.enum(["once", "manual"]).optional(),

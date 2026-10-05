@@ -1,4 +1,5 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
+import { parse as parseYaml } from "yaml";
 
 import {
   referenceSchema,
@@ -23,6 +24,7 @@ import {
   isAdvancementElement,
   ADVANCEMENT_ELEMENT_MESSAGE,
   SURVEY_ELEMENT_REMOVED_MESSAGE,
+  NON_FINITE_SECONDS_MESSAGE,
 } from "./treatment.js";
 import { getValidKeysForElementType } from "./treatment.js";
 import { fillTemplates } from "../templates/fillTemplates.js";
@@ -965,6 +967,36 @@ test("mediaPlayer: startAt < stopAt is valid", () => {
   });
   if (!result.success) console.log(result.error.message);
   expect(result.success).toBe(true);
+});
+
+// Infinite time values (#681). YAML's `.inf` parses to `Infinity`, which a
+// bare `z.number().positive()` accepts; the media element then throws when
+// it seeks to `currentTime = Infinity`. The sign checks already reject
+// `-.inf` on every one of these fields, so only `.inf` needs its own case.
+describe("non-finite time values are rejected (#681)", () => {
+  const cases = [
+    { field: "startAt", yaml: "type: mediaPlayer\nfile: a.mp4\nstartAt: .inf" },
+    { field: "stopAt", yaml: "type: mediaPlayer\nfile: a.mp4\nstopAt: .inf" },
+    {
+      field: "stepDuration",
+      yaml: "type: mediaPlayer\nfile: a.mp4\nstepDuration: .inf",
+    },
+    { field: "startTime", yaml: "type: timer\nstartTime: .inf" },
+    { field: "endTime", yaml: "type: timer\nendTime: .inf" },
+    {
+      field: "warnTimeRemaining",
+      yaml: "type: timer\nwarnTimeRemaining: .inf",
+    },
+  ];
+
+  test.each(cases)("$field: .inf is rejected", ({ field, yaml }) => {
+    const result = elementSchema.safeParse(parseYaml(yaml));
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.includes(field));
+      expect(issue?.message).toBe(NON_FINITE_SECONDS_MESSAGE);
+    }
+  });
 });
 
 test("mediaPlayer: playback 'once' is valid", () => {
