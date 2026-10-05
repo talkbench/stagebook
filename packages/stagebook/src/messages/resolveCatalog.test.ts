@@ -201,20 +201,22 @@ describe("catalog completeness", () => {
 });
 
 describe("range-mode shortcut table describes the real gestures (#680)", () => {
-  // In range mode a click on empty track space creates a 1 s range; the
-  // time ruler is the seek surface. The table must say so in every locale.
+  // In range mode a click on empty track space creates a short range (at
+  // least 1 s and at least 6 px wide, so no fixed duration is promised);
+  // the time ruler is the seek surface. The table must say so in every
+  // locale.
   const expected = {
     en: {
       clickEmpty: {
         keys: "Click empty space",
-        description: "Create 1 s range",
+        description: "Create short range",
       },
       ruler: { keys: "Click / drag the ruler", description: "Seek playhead" },
     },
     he: {
       clickEmpty: {
         keys: "לחיצה על שטח ריק",
-        description: "יצירת טווח של 1 שנ׳",
+        description: "יצירת טווח קצר",
       },
       ruler: {
         keys: "לחיצה / גרירה על סרגל הזמן",

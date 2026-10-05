@@ -86,7 +86,7 @@ export const en: StagebookMessages = {
     { keys: "Click / drag the ruler", description: "Seek playhead" },
     { keys: "←  → (no selection)", description: "Scrub playhead ±1s" },
     { keys: ", . (no selection)", description: "Scrub ±1 frame" },
-    { keys: "Click empty space", description: "Create 1 s range" },
+    { keys: "Click empty space", description: "Create short range" },
     { keys: "Click and drag", description: "Create range" },
     {
       keys: "Enter (press and hold)",

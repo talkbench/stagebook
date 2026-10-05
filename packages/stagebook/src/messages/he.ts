@@ -87,7 +87,7 @@ export const he: StagebookMessages = {
     { keys: "לחיצה / גרירה על סרגל הזמן", description: "הזזת ראש הניגון" },
     { keys: "←  → (ללא בחירה)", description: "גלילת ראש הניגון ±1 שנ׳" },
     { keys: ", . (ללא בחירה)", description: "גלילה ±1 פריים" },
-    { keys: "לחיצה על שטח ריק", description: "יצירת טווח של 1 שנ׳" },
+    { keys: "לחיצה על שטח ריק", description: "יצירת טווח קצר" },
     { keys: "לחיצה וגרירה", description: "יצירת טווח" },
     { keys: "Enter (לחיצה ממושכת)", description: "סימון טווח תוך כדי צפייה" },
     { keys: "לחיצה על טווח", description: "בחירת הטווח" },
