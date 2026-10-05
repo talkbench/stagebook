@@ -29,9 +29,11 @@ time when it started. Any other event logs a pending seek first, so the log
 stays in order. Separate seeks less than 500ms apart merge too; during
 playback, the moments played between them are then not counted, which errs
 toward undercounting. The player's discrete seeks (buttons, `J`/`L`, arrows,
-the replay jump) are logged at once, as before; its own held keys and held
-seek buttons still log every step
-([#698](https://github.com/talkbench/stagebook/issues/698)).
+the replay jump) are logged at once, as before. Holding an arrow key or a
+seek button makes a stream too
+([#698](https://github.com/talkbench/stagebook/issues/698)): a held key's
+first step is logged at once, and the steps after it are logged as one seek
+from where that first step landed.
 
 A grab of the scrub bar during playback logs its pause at once, where
 playback stood, and ignores the pause report that follows: the browser, and
