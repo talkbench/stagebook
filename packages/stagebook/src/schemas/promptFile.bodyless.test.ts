@@ -226,6 +226,51 @@ body: none
     }
   });
 
+  // The options are all a bodyless choice prompt shows, and each one's label
+  // is the only thing that names its control.
+  test("a bodyless choice prompt needs at least one option", () => {
+    const result = promptFileSchema.safeParse(
+      "---\ntype: multipleChoice\nselect: multiple\nbody: none\n---\n\n---\n",
+    );
+    expect(result.success).toBe(false);
+    expect(issueAt(result, "responses")?.message).toContain(
+      "at least one option",
+    );
+  });
+
+  test.each([
+    ["a bare dash", "- Briefing\n-"],
+    ["a dash and spaces", "- Briefing\n-   "],
+  ])("a bodyless choice prompt rejects an option with %s", (_name, options) => {
+    for (const frontmatter of [
+      "select: multiple",
+      "select: single\nariaLabel: Materials",
+    ]) {
+      const result = promptFileSchema.safeParse(
+        `---\ntype: multipleChoice\n${frontmatter}\nbody: none\n---\n\n---\n${options}`,
+      );
+      expect(result.success).toBe(false);
+      expect(issueAt(result, "responses")?.message).toContain("label");
+    }
+  });
+
+  test("a numeric option without label text is labelled by its number", () => {
+    const result = promptFileSchema.safeParse(
+      "---\ntype: multipleChoice\nbody: none\nariaLabel: Agreement\n---\n\n---\n- 1:\n- 2: Agree",
+    );
+    expect(result.success).toBe(true);
+    if (result.success)
+      expect(result.data.responseItems).toEqual(["1", "Agree"]);
+  });
+
+  test("a prompt with a body keeps accepting a blank option", () => {
+    // Its body names the group; tightening this is outside #718.
+    const result = promptFileSchema.safeParse(
+      "---\ntype: multipleChoice\nselect: multiple\n---\nWhich?\n---\n- Briefing\n-",
+    );
+    expect(result.success).toBe(true);
+  });
+
   test("a bodyless openResponse keeps its placeholder section", () => {
     const result = promptFileSchema.safeParse(`---
 type: openResponse

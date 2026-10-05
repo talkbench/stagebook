@@ -808,6 +808,29 @@ export const promptFileSchema: z.ZodType<
         );
     }
 
+    // A bodyless choice prompt shows only its options, and each option's
+    // label is the only thing that names its control.
+    if (
+      parsedMetadata.type === "multipleChoice" &&
+      parsedMetadata.body === "none"
+    ) {
+      if (responseItems.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["responses"],
+          message:
+            "A `body: none` prompt needs at least one option: the options are all it shows.",
+        });
+      } else if (responseItems.some((item) => item.trim().length === 0)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["responses"],
+          message:
+            "With `body: none`, every option needs a label: it's the only thing that names the control.",
+        });
+      }
+    }
+
     return {
       metadata: parsedMetadata,
       body: body?.trim() ?? "",

@@ -140,7 +140,9 @@ notes: No question text; the option labels are the prompt.
 ```
 
 The options then render with nothing above them: no body, and no gap or indent
-where the question would be. Each checkbox is named by its own label.
+where the question would be. Each checkbox is named by its own label, so a
+bodyless choice prompt needs at least one option, and every option needs label
+text.
 
 The saved value is the usual list of checked labels. To show content while a
 checkbox is checked, gate it on `includes`; to hide content while it's
