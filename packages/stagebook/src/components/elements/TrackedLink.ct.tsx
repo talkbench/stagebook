@@ -158,7 +158,7 @@ test("clicking the link saves a record with a `click` event", async ({
       name="signup"
       url="https://example.org/form"
       displayText="Open form"
-      getElapsedTime={() => 12.5}
+      elapsedTime={12.5}
       progressLabel="game_0_intro"
     />,
   );
@@ -173,6 +173,7 @@ test("clicking the link saves a record with a `click` event", async ({
   const record = await readLastRecord(component);
   if (!record) throw new Error("no save was emitted");
   expect(record.events.map((e) => e.type)).toEqual(["click"]);
+  expect(record.events[0].stageTimeSeconds).toBe(12.5);
   // Pre-blur, no time-away accumulation yet.
   expect(record.totalTimeAwaySeconds).toBe(0);
 });
@@ -186,7 +187,7 @@ test("blur after click then focus accumulates totalTimeAwaySeconds", async ({
       name="signup"
       url="https://example.org/form"
       displayText="Open form"
-      getElapsedTime={() => 0}
+      elapsedTime={0}
       progressLabel="game_0_intro"
     />,
   );
@@ -217,6 +218,7 @@ test("blur after click then focus accumulates totalTimeAwaySeconds", async ({
   record = await readLastRecord(component);
   if (!record) throw new Error("no save");
   expect(record.events.map((e) => e.type)).toEqual(["click", "blur", "focus"]);
+  expect(record.events.map((e) => e.stageTimeSeconds)).toEqual([0, 0, 0]);
   // The focus event carries the per-trip timeAwaySeconds.
   const focusEvent = record.events.find((e) => e.type === "focus");
   expect(focusEvent?.timeAwaySeconds).toBeGreaterThan(0.05);
