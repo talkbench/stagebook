@@ -274,10 +274,14 @@ export function YouTubePlayer({
     // Re-create the player when any of its creation options change.
   }, [videoId, startAt, hideNativeControls]);
 
+  // The API gives the iframe this div's attributes. With YouTube's keyboard
+  // off, keys pressed in the frame do nothing, so it leaves the tab order
+  // (#724); the player's own shortcuts are the keyboard route.
   return (
     <div
       ref={containerRef}
       data-testid="mediaPlayer-youtube"
+      tabIndex={hideNativeControls ? -1 : undefined}
       style={{ width: "100%", aspectRatio: "16/9" }}
     />
   );

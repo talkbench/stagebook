@@ -1522,6 +1522,23 @@ export function MediaPlayer({
               if (submitOnComplete) onCompleteRef.current?.();
             }}
           />
+          {/* With YouTube's keyboard off (#699), a click into its frame
+              would leave keys going nowhere. This layer takes the click
+              instead (#724): it plays or pauses as the play button does,
+              so it is logged the same way, and as the nearest focusable
+              ancestor the player container takes focus, so the shortcuts
+              work next. It sits under the control bar, which comes later
+              in the DOM. It also keeps clicks off YouTube's own overlays,
+              such as suggested videos (#725), and off its double-click
+              fullscreen. Pointer-only: keyboard users have the shortcuts. */}
+          {hasControls && (
+            <div
+              data-testid="mediaPlayer-clickLayer"
+              aria-hidden="true"
+              onClick={ytOnPlayPause}
+              style={{ position: "absolute", inset: 0 }}
+            />
+          )}
           {ytControlsVisible && (
             <div
               data-testid="mediaPlayer-controls"
