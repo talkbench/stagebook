@@ -20,6 +20,9 @@
  *     preview);
  *   - `validateTreatmentDiff` (inline editor squiggle on the source object).
  *
+ * Skipped when `syncToStageTime: true` or `playback: "once"`: the schema
+ * already rejects `controls` there, so this warning would be beside the point.
+ *
  * A `file` that is still a `${field}` placeholder isn't a URL yet, so
  * `isYouTubeURL` returns null and the lint stays quiet; it fires on the
  * expanded pass once the placeholder is filled. Same walk as the alt-text
@@ -68,6 +71,10 @@ export function collectYouTubeUnsupportedControls(
   const out: YouTubeUnsupportedControls[] = [];
   forEachConcreteElement(data, (el, path) => {
     if (el.type !== "mediaPlayer" || !isRecord(el.controls)) return;
+    // `controls` is already a schema ERROR with either of these
+    // (checkMediaPlayerCrossFields); a second diagnostic on the same range
+    // about which controls YouTube supports would only be noise.
+    if (el.syncToStageTime === true || el.playback === "once") return;
     if (typeof el.file !== "string" || isYouTubeURL(el.file) === null) return;
     const { playPause, seek, step, speed } = el.controls;
     const unsupported = [

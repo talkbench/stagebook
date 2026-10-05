@@ -108,6 +108,18 @@ describe("collectYouTubeUnsupportedControls (#723)", () => {
     );
   });
 
+  it.each([
+    ["syncToStageTime: true", { syncToStageTime: true }],
+    ['playback: "once"', { playback: "once" }],
+  ])(
+    "is silent when %s already makes `controls` a schema error",
+    (_label, extra) => {
+      const data = fileWith(YOUTUBE, { step: true });
+      Object.assign(data.treatments[0].gameStages[0].elements[0], extra);
+      expect(collectYouTubeUnsupportedControls(data)).toEqual([]);
+    },
+  );
+
   it("skips an unfilled ${field} placeholder file without crashing", () => {
     expect(
       collectYouTubeUnsupportedControls(
@@ -222,8 +234,8 @@ treatments:
     expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual(
       [],
     );
-    const warn = result.diagnostics.find((d) => /YouTube/.test(d.message));
-    expect(warn).toBeDefined();
-    expect(warn!.severity).toBe("warning");
+    const youTube = result.diagnostics.filter((d) => /YouTube/.test(d.message));
+    expect(youTube).toHaveLength(1);
+    expect(youTube[0].severity).toBe("warning");
   });
 });
