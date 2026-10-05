@@ -36,8 +36,9 @@ An answer is missing when:
   `value: null`;
 - **a value has the wrong type**, which also reports a contract violation
   (#690, decision 1);
-- **a calculation can't produce a finite number**, for example division by
-  a zero that came from data.
+- **a calculation can't produce a finite number**, for example dividing by
+  a count that comes out as 0. A divisor written as a literal `0` is a
+  validation error instead.
 
 There is no separate "never answered". Conditions are re-evaluated whenever
 data arrives, so "not answered yet" is the only state a condition needs, and

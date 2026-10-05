@@ -887,7 +887,7 @@ Not from a study. One row per rule, so the strict and lenient forms sit side by 
 | `product: [0, M]`                                | missing        | —     | M (calculations stay strict, even when the result looks certain) |
 | `minExisting: [3, M, 5]`                         | 3              | —     | 3                                                                |
 | `sumExisting` with `atLeast: 2` over `[4, M, M]` | missing        | —     | M                                                                |
-| `divide` by a count that came out 0              | missing        | —     | M (division by a zero from data)                                 |
+| `divide` by a count that came out 0              | missing        | —     | M (the divisor is 0, and it came from data)                      |
 | `firstExisting: [M, 0]`                          | 0              | —     | 0                                                                |
 
 ## F. Authoring errors
