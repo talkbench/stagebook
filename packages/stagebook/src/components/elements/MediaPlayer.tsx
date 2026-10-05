@@ -10,11 +10,7 @@ import React, {
 import { isYouTubeURL } from "./mediaPlayer/isYouTubeURL.js";
 import { parseVTT, type CaptionCue } from "./mediaPlayer/parseVTT.js";
 import { YouTubePlayer } from "./mediaPlayer/YouTubePlayer.js";
-import {
-  HTML5Controls,
-  YouTubeControls,
-  preventFocusOnPress,
-} from "./mediaPlayer/controls.js";
+import { HTML5Controls, YouTubeControls } from "./mediaPlayer/controls.js";
 import { useRegisterPlayback } from "../playback/PlaybackProvider.js";
 import type { PlaybackHandle } from "../playback/PlaybackHandle.js";
 import { seekWindow, withSeekWindow } from "../playback/windowedHandle.js";
@@ -95,6 +91,20 @@ const VIEWPORT_STYLE: React.CSSProperties = {
   overflow: "hidden",
   boxShadow: "0 0 0 1px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06)",
 };
+
+/**
+ * onMouseDown for the control bar and the play-once button: a pointer press
+ * on them doesn't move focus (#695). A timeline handles Enter only while it
+ * holds focus, so clicking the speed button, the scrub bar, or a gap between
+ * controls must not take focus from it. Focus moves as the default action of
+ * mousedown, so cancelling that leaves Tab and keyboard activation unchanged.
+ * The bar handles it once, since mousedown bubbles from every control in it.
+ * Clicking the video surface still focuses the player, which turns on its
+ * shortcuts.
+ */
+function preventFocusOnPress(e: React.MouseEvent) {
+  e.preventDefault();
+}
 
 /** Reject URLs with dangerous protocols (javascript:, data:, vbscript:, etc.) */
 function isSafeURL(url: string): boolean {
@@ -1263,8 +1273,9 @@ export function MediaPlayer({
   // pausing. We catch that exact transition and move focus to the container
   // (tabIndex=0), which is always mounted; :focus-within keeps the ring lit
   // and the keydown handler keeps Space wired to play/pause.
-  // A mouse click doesn't focus a control (#695), so only keyboard focus gets
-  // here, and focus held outside the player (a timeline) is never moved.
+  // A mouse click no longer focuses a control (#695), so this fires when focus
+  // fell to <body>: after keyboard focus on a control, or when nothing was
+  // focused. Focus held elsewhere, such as a timeline, is never moved.
   const prevControlsVisibleRef = useRef(controlsVisible);
   useEffect(() => {
     const prev = prevControlsVisibleRef.current;
@@ -1476,6 +1487,7 @@ export function MediaPlayer({
           {ytControlsVisible && (
             <div
               data-testid="mediaPlayer-controls"
+              onMouseDown={preventFocusOnPress}
               style={{
                 position: "absolute",
                 bottom: 0,
@@ -1659,6 +1671,7 @@ export function MediaPlayer({
           {controlsVisible && !loadError && (
             <div
               data-testid="mediaPlayer-controls"
+              onMouseDown={preventFocusOnPress}
               style={{
                 position: "absolute",
                 bottom: 0,
@@ -1764,6 +1777,7 @@ export function MediaPlayer({
       {!playVideo && controlsVisible && !loadError && (
         <div
           data-testid="mediaPlayer-controls"
+          onMouseDown={preventFocusOnPress}
           style={{
             background: "rgba(28,28,30,0.96)",
             borderRadius: "0.5rem",

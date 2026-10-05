@@ -2866,7 +2866,13 @@ test("YouTube: clicking a control leaves focus where it was", async ({
   );
   await fireYTOnReady(page);
   const other = component.locator('[data-testid="other-input"]');
-  for (const control of ["seekBack", "playPause", "seekForward", "scrubBar"]) {
+  for (const control of [
+    "seekBack",
+    "playPause",
+    "seekForward",
+    "scrubBar",
+    "time",
+  ]) {
     await other.focus();
     await component.locator(`[data-testid="mediaPlayer-${control}"]`).click();
     await expect(other, control).toBeFocused();

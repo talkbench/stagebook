@@ -5,7 +5,7 @@
  * A Timeline handles Enter only while it holds focus. If a pointer click on
  * the player's speed button or scrub bar took focus, the annotator's next
  * Enter would go to the player, which swallows it (#268), and the mark would
- * be lost. The controls cancel the focus a mouse press would give them;
+ * be lost. The control bar cancels the focus a mouse press would give it;
  * keyboard users still Tab to them, and clicking the video surface still
  * focuses the player so its own shortcuts work without a timeline.
  *
@@ -25,12 +25,16 @@ const ALL_CONTROLS = {
   speed: true,
 };
 
-function attached() {
+function attached({
+  playVideo = true,
+  selectionType = "point",
+}: { playVideo?: boolean; selectionType?: "point" | "range" } = {}) {
   return (
     <MockWindowedTimeline
       url={URL}
-      selectionType="point"
+      selectionType={selectionType}
       controls={ALL_CONTROLS}
+      playVideo={playVideo}
     />
   );
 }
@@ -91,6 +95,48 @@ for (const control of [
   });
 }
 
+// -- A near miss on the control bar doesn't take focus either --
+// The padding, the gaps between buttons and the time readout belong to the
+// controls, not to the video surface. In audio-only mode the bar is the whole
+// player, so there is no video surface at all.
+
+for (const playVideo of [true, false]) {
+  const mode = playVideo ? "video" : "audio-only";
+
+  test(`${mode}: clicking the time readout leaves the timeline focused`, async ({
+    mount,
+    page,
+  }) => {
+    const component = await mount(attached({ playVideo }));
+    const { timeline } = await whenReady(component);
+    await timeline.focus();
+
+    await component.getByTestId("mediaPlayer-time").click();
+    await expect(timeline).toBeFocused();
+
+    await page.keyboard.press("Enter");
+    await expect.poll(async () => (await savedMarks(component)).length).toBe(1);
+  });
+
+  test(`${mode}: clicking the gap beside the speed button leaves the timeline focused`, async ({
+    mount,
+    page,
+  }) => {
+    const component = await mount(attached({ playVideo }));
+    const { timeline } = await whenReady(component);
+    await timeline.focus();
+
+    const box = await component.getByTestId("mediaPlayer-speed").boundingBox();
+    if (!box) throw new Error("speed button not found");
+    // The 0.25rem gap just before the button, which no control covers.
+    await page.mouse.click(box.x - 2, box.y + box.height / 2);
+    await expect(timeline).toBeFocused();
+
+    await page.keyboard.press("Enter");
+    await expect.poll(async () => (await savedMarks(component)).length).toBe(1);
+  });
+}
+
 test("the speed click still changes the speed", async ({ mount }) => {
   const component = await mount(attached());
   const { video, timeline } = await whenReady(component);
@@ -115,12 +161,49 @@ test("dragging the scrub bar still seeks, and the timeline keeps focus", async (
   await page.mouse.move(box.x + box.width * 0.2, y);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.6, y, { steps: 4 });
-  await page.mouse.up();
   // 60% of the 10 s file.
   await expect
     .poll(() => video.evaluate((el: HTMLVideoElement) => el.currentTime))
     .toBeCloseTo(6, 0);
+  // Pointer capture keeps the drag going off the bar; past its end it clamps.
+  await page.mouse.move(box.x + box.width * 1.2, y - 40, { steps: 4 });
+  await page.mouse.up();
+  await expect
+    .poll(() => video.evaluate((el: HTMLVideoElement) => el.currentTime))
+    .toBeCloseTo(10, 0);
   await expect(timeline).toBeFocused();
+});
+
+test("a range held open with Enter survives scrubbing with the mouse", async ({
+  mount,
+  page,
+}) => {
+  // On main the click blurred the timeline, which dropped the pending start.
+  const component = await mount(attached({ selectionType: "range" }));
+  const { video, timeline } = await whenReady(component);
+  await timeline.focus();
+  await page.keyboard.down("Enter");
+
+  const bar = component.getByTestId("mediaPlayer-scrubBar");
+  const box = await bar.boundingBox();
+  if (!box) throw new Error("scrub bar not found");
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width * 0.2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, y, { steps: 4 });
+  await page.mouse.up();
+  await expect
+    .poll(() => video.evaluate((el: HTMLVideoElement) => el.currentTime))
+    .toBeCloseTo(6, 0);
+
+  await page.keyboard.up("Enter");
+  await expect.poll(async () => (await savedMarks(component)).length).toBe(1);
+  const [range] = (await savedMarks(component)) as Array<{
+    start: number;
+    end: number;
+  }>;
+  expect(range.start).toBeCloseTo(0, 0);
+  expect(range.end).toBeCloseTo(6, 0);
 });
 
 // -- The #300 focus rescue only follows keyboard focus --
@@ -219,32 +302,41 @@ test("clicking the video surface focuses the player, and Space then plays", asyn
 
 // -- The play-once button --
 
-test("clicking the play-once button leaves focus where it was", async ({
-  mount,
-  page,
-}) => {
-  // Blocked autoplay is what shows the play-once button.
-  await page.route("**/blocked.mp4", (route) => route.abort());
-  const component = await mount(
-    <div>
-      <input data-testid="other-input" />
-      <MockMediaPlayer url="/blocked.mp4" name="clip" playback="once" />
-    </div>,
-  );
-  await component.getByTestId("mediaPlayer-video").evaluate((el) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (el as any).play = () =>
-      Promise.reject(new DOMException("NotAllowedError"));
-    Object.defineProperty(el, "duration", {
-      get: () => 60,
-      configurable: true,
+for (const playVideo of [true, false]) {
+  const mode = playVideo ? "video" : "audio-only";
+
+  test(`${mode}: clicking the play-once button leaves focus where it was`, async ({
+    mount,
+    page,
+  }) => {
+    // Blocked autoplay is what shows the play-once button.
+    await page.route("**/blocked.mp4", (route) => route.abort());
+    const component = await mount(
+      <div>
+        <input data-testid="other-input" />
+        <MockMediaPlayer
+          url="/blocked.mp4"
+          name="clip"
+          playback="once"
+          playVideo={playVideo}
+        />
+      </div>,
+    );
+    await component.getByTestId("mediaPlayer-video").evaluate((el) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (el as any).play = () =>
+        Promise.reject(new DOMException("NotAllowedError"));
+      Object.defineProperty(el, "duration", {
+        get: () => 60,
+        configurable: true,
+      });
+      el.dispatchEvent(new Event("loadedmetadata"));
     });
-    el.dispatchEvent(new Event("loadedmetadata"));
+    const other = component.getByTestId("other-input");
+    const playOnce = component.getByTestId("mediaPlayer-playOnce");
+    await expect(playOnce).toBeVisible();
+    await other.focus();
+    await playOnce.click();
+    await expect(other).toBeFocused();
   });
-  const other = component.getByTestId("other-input");
-  const playOnce = component.getByTestId("mediaPlayer-playOnce");
-  await expect(playOnce).toBeVisible();
-  await other.focus();
-  await playOnce.click();
-  await expect(other).toBeFocused();
-});
+}
