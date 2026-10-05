@@ -373,43 +373,100 @@ for (const playVideo of [true, false]) {
   });
 }
 
+// The press focuses the player without scrolling it into view: with the top of
+// a video scrolled off-screen, clicking the visible control bar must not jump
+// the page under the pointer. (Chromium and WebKit would scroll a partly
+// visible element on focus(); Firefox doesn't, so it passes either way.)
+test("with nothing focused, clicking play doesn't scroll the player into view", async ({
+  mount,
+  page,
+}) => {
+  const component = await mount(
+    <div>
+      <div style={{ height: 1500 }} />
+      <div style={{ width: 400 }}>
+        <MockMediaPlayer
+          url={URL}
+          name="clip"
+          playback="manual"
+          controls={ALL_CONTROLS}
+        />
+      </div>
+      <div style={{ height: 1500 }} />
+    </div>,
+  );
+  const player = component.getByTestId("mediaPlayer");
+  const video = component.getByTestId("mediaPlayer-video");
+  await expect
+    .poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState))
+    .toBeGreaterThanOrEqual(1);
+  const playPause = component.getByTestId("mediaPlayer-playPause");
+  // Scroll so the control bar sits just inside the top of the viewport and
+  // the rest of the player is above it.
+  await playPause.evaluate((el) => {
+    const top = el.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo(0, top - 8);
+  });
+  expect(
+    await player.evaluate((el) => el.getBoundingClientRect().top),
+  ).toBeLessThan(0);
+  await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+  const before = await page.evaluate(() => window.scrollY);
+
+  await playPause.click();
+  await expect(player).toBeFocused();
+  expect(await page.evaluate(() => window.scrollY)).toBe(before);
+});
+
 // -- The play-once button --
+// Blocked autoplay shows the play-once button, which unmounts on click. With
+// an input focused, focus stays there; with nothing focused, the press
+// focuses the player rather than leaving focus to fall back to <body>.
 
 for (const playVideo of [true, false]) {
   const mode = playVideo ? "video" : "audio-only";
 
-  test(`${mode}: clicking the play-once button leaves focus where it was`, async ({
-    mount,
-    page,
-  }) => {
-    // Blocked autoplay is what shows the play-once button.
-    await page.route("**/blocked.mp4", (route) => route.abort());
-    const component = await mount(
-      <div>
-        <input data-testid="other-input" />
-        <MockMediaPlayer
-          url="/blocked.mp4"
-          name="clip"
-          playback="once"
-          playVideo={playVideo}
-        />
-      </div>,
-    );
-    await component.getByTestId("mediaPlayer-video").evaluate((el) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (el as any).play = () =>
-        Promise.reject(new DOMException("NotAllowedError"));
-      Object.defineProperty(el, "duration", {
-        get: () => 60,
-        configurable: true,
+  for (const focused of ["input", "nothing"] as const) {
+    test(`${mode}, ${focused} focused: clicking the play-once button keeps focus off the button`, async ({
+      mount,
+      page,
+    }) => {
+      await page.route("**/blocked.mp4", (route) => route.abort());
+      const component = await mount(
+        <div>
+          <input data-testid="other-input" />
+          <MockMediaPlayer
+            url="/blocked.mp4"
+            name="clip"
+            playback="once"
+            playVideo={playVideo}
+          />
+        </div>,
+      );
+      await component.getByTestId("mediaPlayer-video").evaluate((el) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (el as any).play = () =>
+          Promise.reject(new DOMException("NotAllowedError"));
+        Object.defineProperty(el, "duration", {
+          get: () => 60,
+          configurable: true,
+        });
+        el.dispatchEvent(new Event("loadedmetadata"));
       });
-      el.dispatchEvent(new Event("loadedmetadata"));
+      const other = component.getByTestId("other-input");
+      const playOnce = component.getByTestId("mediaPlayer-playOnce");
+      await expect(playOnce).toBeVisible();
+      if (focused === "input") {
+        await other.focus();
+      } else {
+        await page.evaluate(() =>
+          (document.activeElement as HTMLElement).blur(),
+        );
+      }
+      await playOnce.click();
+      await expect(
+        focused === "input" ? other : component.getByTestId("mediaPlayer"),
+      ).toBeFocused();
     });
-    const other = component.getByTestId("other-input");
-    const playOnce = component.getByTestId("mediaPlayer-playOnce");
-    await expect(playOnce).toBeVisible();
-    await other.focus();
-    await playOnce.click();
-    await expect(other).toBeFocused();
-  });
+  }
 }

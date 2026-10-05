@@ -2879,6 +2879,24 @@ test("YouTube: clicking a control leaves focus where it was", async ({
   }
 });
 
+test("YouTube: with nothing focused, clicking a control focuses the player", async ({
+  mount,
+  page,
+}) => {
+  await installYTMock(page);
+  const component = await mount(
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  await fireYTOnReady(page);
+  await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+  await component.locator('[data-testid="mediaPlayer-seekForward"]').click();
+  await expect(component.locator('[data-testid="mediaPlayer"]')).toBeFocused();
+});
+
 // -- Unsafe / invalid URL handling (#484) --
 
 test("renders an invalid-URL alert for a dangerous protocol", async ({
