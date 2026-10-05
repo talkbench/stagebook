@@ -1063,9 +1063,22 @@ describe("resolved time fields are finite (#681)", () => {
         templates: [{ name: "el", contentType: "element", content: element }],
       }) as { result: { elements: Record<string, unknown>[] } };
       expect(result.elements[0][field]).toBe(-1);
-      // ...and the resolved schema rejects the filled value.
-      expect(resolvedElementSchema.safeParse(result.elements[0]).success).toBe(
-        false,
+      // ...and the resolved schema rejects the filled value, on that field.
+      const parsed = resolvedElementSchema.safeParse(result.elements[0]);
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) {
+        expect(parsed.error.issues.some((i) => i.path.includes(field))).toBe(
+          true,
+        );
+      }
+      // Positive control: the same element filled with a valid value parses,
+      // so the rejection above comes from the sign check, not the shape.
+      const { result: ok } = fillTemplates({
+        obj: { elements: [{ template: "el", fields: { t: 2.5 } }] },
+        templates: [{ name: "el", contentType: "element", content: element }],
+      }) as { result: { elements: Record<string, unknown>[] } };
+      expect(resolvedElementSchema.safeParse(ok.elements[0]).success).toBe(
+        true,
       );
     },
   );
