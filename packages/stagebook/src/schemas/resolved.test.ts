@@ -979,22 +979,27 @@ describe("resolved schema rejects the removed survey element (#669)", () => {
   });
 });
 
-describe("resolved time fields are finite and keep their authoring sign (#681)", () => {
-  // These must match the authoring constraints in treatment.ts. On the
-  // mediaPlayer fields a `${field}` placeholder skips the authoring sign
-  // check, so a filled negative or zero value is only caught here (see the
-  // fillTemplates case below). A filled `.inf` never arrives as Infinity on
-  // that path — fillTemplates substitutes through JSON, which turns it into
-  // `null` (a type error) — so the finiteness check guards resolved objects
-  // that hosts build without fillTemplates.
-  const cases = [
+describe("resolved time fields are finite (#681)", () => {
+  // Every time field rejects non-finite values. Only the mediaPlayer fields
+  // also mirror the authoring sign checks: they accept a `${field}`
+  // placeholder, which skips the authoring sign check, so a host that runs
+  // only the resolved schema still catches a filled negative or zero value
+  // (validateTreatmentDiff's hydrated authoring pass catches it too). The
+  // timer fields take no placeholder, so they get finiteness only. A filled
+  // `.inf` never arrives as Infinity on the fill path — fillTemplates
+  // substitutes through JSON, which turns it into `null` (a type error) — so
+  // the finiteness check guards resolved objects hosts build directly.
+  const mediaCases = [
     { type: "mediaPlayer", field: "startAt" },
     { type: "mediaPlayer", field: "stopAt" },
     { type: "mediaPlayer", field: "stepDuration" },
+  ];
+  const timerCases = [
     { type: "timer", field: "startTime" },
     { type: "timer", field: "endTime" },
     { type: "timer", field: "warnTimeRemaining" },
   ];
+  const cases = [...mediaCases, ...timerCases];
   const parse = (type: string, field: string, value: number) =>
     resolvedElementSchema.safeParse({ type, [field]: value });
 
@@ -1012,13 +1017,20 @@ describe("resolved time fields are finite and keep their authoring sign (#681)",
   });
 
   test.each(cases)(
+    "$type $field: a finite positive value is accepted",
+    ({ type, field }) => {
+      expect(parse(type, field, 2.5).success).toBe(true);
+    },
+  );
+
+  test.each(mediaCases)(
     "$type $field: a negative value is rejected",
     ({ type, field }) => {
       expect(parse(type, field, -1).success).toBe(false);
     },
   );
 
-  test.each(cases.filter((c) => c.field !== "startAt"))(
+  test.each(mediaCases.filter((c) => c.field !== "startAt"))(
     "$type $field: zero is rejected (must be positive)",
     ({ type, field }) => {
       expect(parse(type, field, 0).success).toBe(false);
@@ -1029,15 +1041,18 @@ describe("resolved time fields are finite and keep their authoring sign (#681)",
     expect(parse("mediaPlayer", "startAt", 0).success).toBe(true);
   });
 
-  test.each(cases)(
-    "$type $field: a finite positive value is accepted",
+  // The resolved schema adds no sign check to the timer fields, so a
+  // host-built timer with the documented default `startTime: 0` (#726)
+  // still parses.
+  test.each(timerCases)(
+    "$type $field: zero is accepted (finiteness only)",
     ({ type, field }) => {
-      expect(parse(type, field, 2.5).success).toBe(true);
+      expect(parse(type, field, 0).success).toBe(true);
     },
   );
 
   // Only the mediaPlayer fields accept a `${field}` placeholder.
-  test.each(cases.filter((c) => c.type === "mediaPlayer"))(
+  test.each(mediaCases)(
     "$type $field: a negative value filled into a placeholder is rejected",
     ({ type, field }) => {
       const element = { type, file: "a.mp4", [field]: "${t}" };
@@ -1048,7 +1063,7 @@ describe("resolved time fields are finite and keep their authoring sign (#681)",
         templates: [{ name: "el", contentType: "element", content: element }],
       }) as { result: { elements: Record<string, unknown>[] } };
       expect(result.elements[0][field]).toBe(-1);
-      // ...so the filled value is only caught by the resolved schema.
+      // ...and the resolved schema rejects the filled value.
       expect(resolvedElementSchema.safeParse(result.elements[0]).success).toBe(
         false,
       );
