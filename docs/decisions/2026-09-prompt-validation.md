@@ -105,12 +105,18 @@ even when that is `""`. Designers choose the idiom by intent:
 ```
 
 `equals: true` waits for an answer. The optional idiom spells out absence
-with `doesNotExist` instead of writing `doesNotEqual: false`. Today a negative
+with `doesNotExist` instead of writing `doesNotEqual: false`. A negative
 comparator is satisfied by an absent value
-([#348](https://github.com/talkbench/stagebook/issues/348)), but
-[#299](https://github.com/talkbench/stagebook/issues/299) makes it Missing, so
-the shorter form would stop passing on an untouched prompt. The spelled-out
-form means the same thing under both rules.
+([#348](https://github.com/talkbench/stagebook/issues/348)), so the shorter
+form also passes on an untouched prompt. The spelled-out form says what it
+means.
+
+> **Updated 2026-10:** This section originally said that
+> [#299](https://github.com/talkbench/stagebook/issues/299) would make a
+> negative comparator Missing for an absent value. That plan was reversed:
+> under [missing answers in conditions](2026-10-missing-answers-in-conditions.md),
+> negative comparators stay true when there's no answer, and both forms keep
+> passing on an untouched prompt.
 
 `all` and `any` combine several prompts, so rules spanning prompts stay in
 conditions, and a prompt file never names the prompts around it. A gate using
