@@ -122,6 +122,11 @@ export {
 } from "./imageAltText.js";
 
 export {
+  collectYouTubeUnsupportedControls,
+  type YouTubeUnsupportedControls,
+} from "./youTubeUnsupportedControls.js";
+
+export {
   collectReferencedPromptFiles,
   checkPromptLocaleConsistency,
   checkConsentLocaleCoverage,
