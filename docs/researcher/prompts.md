@@ -510,8 +510,9 @@ Choose the condition idiom by intent:
 ```
 
 Use `all` or `any` to combine prompts. Spell out the optional case with
-`doesNotExist`; do not replace it with `doesNotEqual: false`, whose absence
-semantics are due to change in [#299](https://github.com/talkbench/stagebook/issues/299).
+`doesNotExist`. `doesNotEqual: false` would also pass on an untouched prompt,
+because a negative comparator is true when there's no answer, but the
+spelled-out form says what you mean.
 A condition-hidden, untouched prompt has no record: an `equals: true` gate
 waiting on it cannot pass. The optional idiom allows that absence.
 
