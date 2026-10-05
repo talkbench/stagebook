@@ -2897,6 +2897,35 @@ test("YouTube: with nothing focused, clicking a control focuses the player", asy
   await expect(component.locator('[data-testid="mediaPlayer"]')).toBeFocused();
 });
 
+test("YouTube: with the player's own iframe focused, clicking a control focuses the player", async ({
+  mount,
+  page,
+}) => {
+  // Clicking the embedded video focuses YouTube's cross-origin iframe, and
+  // keys pressed there never reach the player's shortcut handler. A control
+  // press moves focus to the player container: focus stays in this player.
+  await installYTMock(page);
+  const component = await mount(
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  await fireYTOnReady(page);
+  // The mock doesn't build an iframe; stand one in where the API puts it.
+  await page.evaluate(() => {
+    const host = document.querySelector('[data-testid="mediaPlayer-youtube"]');
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("data-testid", "yt-iframe");
+    host?.appendChild(iframe);
+    iframe.focus();
+  });
+  await expect(component.locator('[data-testid="yt-iframe"]')).toBeFocused();
+  await component.locator('[data-testid="mediaPlayer-seekForward"]').click();
+  await expect(component.locator('[data-testid="mediaPlayer"]')).toBeFocused();
+});
+
 // -- Unsafe / invalid URL handling (#484) --
 
 test("renders an invalid-URL alert for a dangerous protocol", async ({

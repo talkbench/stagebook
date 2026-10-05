@@ -1261,13 +1261,21 @@ export function MediaPlayer({
   // unchanged. When nothing holds focus, the press focuses the player
   // container instead, so Space and the arrow keys then control this player;
   // audio-only mode has no video surface, so this is its only mouse route to
-  // them. The bar handles it once, since mousedown bubbles from every control
-  // in it. Clicking the video surface still focuses the player as before.
+  // them. The same goes when this player's own YouTube iframe holds focus:
+  // keys pressed in that cross-origin frame never reach the shortcut handler,
+  // and focus stays in this player. The bar handles it once, since mousedown
+  // bubbles from every control in it. Clicking the video surface still
+  // focuses the player as before.
   const keepFocusOnPress = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const active = document.activeElement;
-    if (active === null || active === document.body) {
-      containerRef.current?.focus({ preventScroll: true });
+    const container = containerRef.current;
+    if (
+      active === null ||
+      active === document.body ||
+      (active instanceof HTMLIFrameElement && !!container?.contains(active))
+    ) {
+      container?.focus({ preventScroll: true });
     }
   }, []);
 
