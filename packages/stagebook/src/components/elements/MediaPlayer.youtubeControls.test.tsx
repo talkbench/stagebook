@@ -136,3 +136,31 @@ describe("YouTube native controls (#699)", () => {
     expect(iframe.style.aspectRatio).toBe("16/9");
   });
 });
+
+describe("YouTube iframe tab order (#724)", () => {
+  // With YouTube's keyboard off, Tab must not land in a frame where keys do
+  // nothing: the player container's shortcuts are the keyboard route.
+  function iframe(): HTMLIFrameElement {
+    const frames = container!.querySelectorAll("iframe");
+    expect(frames).toHaveLength(1);
+    return frames[0];
+  }
+
+  it("takes the iframe out of the tab order when stagebook controls are on", () => {
+    mount({ playback: "manual", controls: { playPause: true } });
+    expect(iframe().getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("leaves the iframe's tab order alone without stagebook controls", () => {
+    mount({});
+    expect(iframe().hasAttribute("tabindex")).toBe(false);
+  });
+
+  it("follows the controls when the player is re-created", () => {
+    mount({ playback: "manual" });
+    render({ playback: "manual", controls: { playPause: true } });
+    expect(iframe().getAttribute("tabindex")).toBe("-1");
+    render({ playback: "manual" });
+    expect(iframe().hasAttribute("tabindex")).toBe(false);
+  });
+});
