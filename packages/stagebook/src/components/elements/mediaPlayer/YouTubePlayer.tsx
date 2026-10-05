@@ -218,7 +218,8 @@ export interface YouTubePlayerProps {
   hideNativeControls?: boolean;
   onHandleReady: (handle: PlaybackHandle) => void;
   /** The player behind the last handle was destroyed (unmount, or a new
-   *  videoId/startAt/hideNativeControls). Drop that handle: it must not be read again. */
+   *  videoId/startAt/hideNativeControls). Drop that handle: it must not be
+   *  read again. */
   onHandleGone?: () => void;
   onPlay: (currentTime: number) => void;
   onPause: (currentTime: number) => void;

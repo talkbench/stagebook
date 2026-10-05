@@ -45,10 +45,7 @@ afterEach(() => {
   delete (window as unknown as { YT?: unknown }).YT;
 });
 
-function mount(props: Partial<MediaPlayerProps>) {
-  container = document.createElement("div");
-  document.body.appendChild(container);
-  root = createRoot(container);
+function render(props: Partial<MediaPlayerProps>) {
   act(() =>
     root!.render(
       <MediaPlayer
@@ -60,6 +57,13 @@ function mount(props: Partial<MediaPlayerProps>) {
       />,
     ),
   );
+}
+
+function mount(props: Partial<MediaPlayerProps>) {
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  render(props);
 }
 
 function playerVars(): PlayerVars {
@@ -90,8 +94,20 @@ describe("YouTube native controls (#699)", () => {
     expect(playerVars()).toEqual(UNCHANGED);
   });
 
-  it("leaves them unchanged when playback follows stage time", () => {
-    mount({ syncToStageTime: true, startAt: 5 });
+  it("leaves them unchanged when playback follows stage time, even with controls", () => {
+    // Stage-time sync suppresses stagebook's controls, so YouTube's stay.
+    mount({ syncToStageTime: true, startAt: 5, controls: { playPause: true } });
     expect(playerVars()).toEqual({ start: 5, ...UNCHANGED });
+  });
+
+  it("re-creates the player when stagebook's controls are turned on after mount", () => {
+    // The flag is a creation option, so a change rebuilds the player rather
+    // than leaving YouTube's controls out of step with stagebook's.
+    mount({ playback: "manual" });
+    render({ playback: "manual", controls: { playPause: true } });
+    expect(created).toEqual([
+      UNCHANGED,
+      { ...UNCHANGED, controls: 0, disablekb: 1 },
+    ]);
   });
 });
