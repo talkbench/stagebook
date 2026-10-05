@@ -83,9 +83,10 @@ export const en: StagebookMessages = {
   timelineShortcutRowsRange: () => [
     { keys: "[ / ]", description: "Previous / next annotation (no seek)" },
     { keys: "Space", description: "Play / Pause" },
-    { keys: "Click empty space", description: "Seek playhead" },
+    { keys: "Click / drag the ruler", description: "Seek playhead" },
     { keys: "←  → (no selection)", description: "Scrub playhead ±1s" },
     { keys: ", . (no selection)", description: "Scrub ±1 frame" },
+    { keys: "Click empty space", description: "Create short range" },
     { keys: "Click and drag", description: "Create range" },
     {
       keys: "Enter (press and hold)",

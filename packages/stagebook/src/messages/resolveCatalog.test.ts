@@ -199,3 +199,44 @@ describe("catalog completeness", () => {
     }
   });
 });
+
+describe("range-mode shortcut table describes the real gestures (#680)", () => {
+  // In range mode a click on empty track space creates a short range (at
+  // least 1 s and at least 6 px wide, so no fixed duration is promised);
+  // the time ruler is the seek surface. The table must say so in every
+  // locale.
+  const expected = {
+    en: {
+      clickEmpty: {
+        keys: "Click empty space",
+        description: "Create short range",
+      },
+      ruler: { keys: "Click / drag the ruler", description: "Seek playhead" },
+    },
+    he: {
+      clickEmpty: {
+        keys: "לחיצה על שטח ריק",
+        description: "יצירת טווח קצר",
+      },
+      ruler: {
+        keys: "לחיצה / גרירה על סרגל הזמן",
+        description: "הזזת ראש הניגון",
+      },
+    },
+  } as const;
+
+  for (const locale of REGISTERED_LOCALES) {
+    it(`${locale}: empty-space click creates a range; the ruler seeks`, () => {
+      const rows = expected[locale];
+      const range = defaultMessages[locale].timelineShortcutRowsRange();
+      // Exactly one row each: a stale copy of the old "Click empty space →
+      // Seek playhead" row next to the new ones would contradict them.
+      expect(range.filter((r) => r.keys === rows.clickEmpty.keys)).toEqual([
+        rows.clickEmpty,
+      ]);
+      expect(
+        range.filter((r) => r.description === rows.ruler.description),
+      ).toEqual([rows.ruler]);
+    });
+  }
+});

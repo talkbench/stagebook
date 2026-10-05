@@ -84,9 +84,10 @@ export const he: StagebookMessages = {
   timelineShortcutRowsRange: () => [
     { keys: "[ / ]", description: "הסימון הקודם / הבא (בלי הזזת ראש הניגון)" },
     { keys: "Space", description: "ניגון / השהיה" },
-    { keys: "לחיצה על שטח ריק", description: "הזזת ראש הניגון" },
+    { keys: "לחיצה / גרירה על סרגל הזמן", description: "הזזת ראש הניגון" },
     { keys: "←  → (ללא בחירה)", description: "גלילת ראש הניגון ±1 שנ׳" },
     { keys: ", . (ללא בחירה)", description: "גלילה ±1 פריים" },
+    { keys: "לחיצה על שטח ריק", description: "יצירת טווח קצר" },
     { keys: "לחיצה וגרירה", description: "יצירת טווח" },
     { keys: "Enter (לחיצה ממושכת)", description: "סימון טווח תוך כדי צפייה" },
     { keys: "לחיצה על טווח", description: "בחירת הטווח" },
