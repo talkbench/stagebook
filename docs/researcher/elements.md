@@ -206,6 +206,8 @@ When you add `controls`, the playback mode automatically switches to `manual` �
   stopAt: 90 # pause and record event at 90s
 ```
 
+`step` and `speed` apply to uploaded media files, not YouTube videos: stagebook's YouTube player has only play/pause and seek. The validator warns when a YouTube `mediaPlayer` turns either one on. If it has neither `playPause` nor `seek` as well, participants see no on-screen control at all, since YouTube's own controls are turned off whenever stagebook's are on.
+
 **At the end of the clip.** Playback pauses at `stopAt`, or at the end of the file. The play button then shows a replay icon: pressing it (or `Space` / `K`, or `Space` on a linked timeline) replays the clip from `startAt` (or 0). The jump is logged as a `seek`. Only playback reaches `stopAt`: a seek that lands there while paused records no `stopAt` event and doesn't trigger `submitOnComplete`.
 
 ### Synchronized mode
@@ -237,8 +239,8 @@ Ties video time to stage elapsed time so all participants stay in sync. Hides al
 | `submitOnComplete`        | boolean                | `false`  | Auto-submit the stage when the video ends                                                                                                      |
 | `controls.playPause`      | boolean                | —        | Show play/pause button                                                                                                                         |
 | `controls.seek`           | boolean                | —        | Show ±1s seek buttons and scrub bar                                                                                                            |
-| `controls.step`           | boolean                | —        | Show step-back / step-forward buttons                                                                                                          |
-| `controls.speed`          | boolean                | —        | Show speed-cycle button (0.5×, 0.75×, 1×, 1.25×, 1.5×, 2×)                                                                                     |
+| `controls.step`           | boolean                | —        | Show step-back / step-forward buttons (uploaded files only, not YouTube)                                                                       |
+| `controls.speed`          | boolean                | —        | Show speed-cycle button (0.5×, 0.75×, 1×, 1.25×, 1.5×, 2×); uploaded files only, not YouTube                                                   |
 
 ### Keyboard shortcuts
 

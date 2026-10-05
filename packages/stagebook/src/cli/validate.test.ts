@@ -697,6 +697,56 @@ treatments:
 });
 
 // ---------------------------------------------------------------------------
+// YouTube step/speed controls lint (#723): a YouTube `mediaPlayer` whose
+// `controls` turn on `step` or `speed` is a WARNING (not an error). The lint
+// lives inside `validateTreatmentSource`, which the CLI calls on both the
+// expand path and `--no-expand`; these pin that it reaches the CLI surface.
+// ---------------------------------------------------------------------------
+
+describe("YouTube step/speed controls lint (#723)", () => {
+  let dir: string;
+
+  const study = `treatments:
+  - name: t1
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: s1
+        duration: 10
+        elements:
+          - type: mediaPlayer
+            name: clip
+            file: https://www.youtube.com/watch?v=QC8iQqtG0hg
+            controls:
+              speed: true
+          - type: submitButton
+`;
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "stagebook-cli-youtube-"));
+    await writeFile(join(dir, "study.stagebook.yaml"), study);
+  });
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("warns (but does not error) on the default expand path", async () => {
+    const r = await runCli([join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(0); // warning does not fail the build
+    expect(r.stdout).toContain("warning:");
+    expect(r.stdout).toContain("YouTube");
+  });
+
+  it("still warns under --no-expand", async () => {
+    const r = await runCli(["--no-expand", join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("warning:");
+    expect(r.stdout).toContain("YouTube");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Unsatisfiable-condition rule (#480): a condition reading a prompt's answer
 // whose comparator can never match any value the prompt produces (dead gate)
 // is flagged as an error, reading the referenced prompt's option domain from

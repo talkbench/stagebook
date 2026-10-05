@@ -5,6 +5,7 @@ import {
   validateResolvedTreatmentFile,
   checkConsentLocaleCoverage,
   collectMissingImageAltText,
+  collectYouTubeUnsupportedControls,
   type PreHydrationIssue,
 } from "../index.js";
 import type { ZodIssue } from "zod";
@@ -109,7 +110,13 @@ export async function validateTreatmentWithDiff({
   // `templates:` here, not in a concrete stage yet) surfaces instead through
   // the CLI / expanded-preview pass. Kept OUT of the schema on purpose — see
   // `collectMissingImageAltText` — so it never flips `safeParse` to failure.
-  for (const issue of collectMissingImageAltText(parsedObj)) {
+  // The YouTube step/speed controls lint (#723) is the same kind of warning,
+  // squiggling the player's `controls:`; a player whose `file` comes from a
+  // template field surfaces through the expanded pass instead.
+  for (const issue of [
+    ...collectMissingImageAltText(parsedObj),
+    ...collectYouTubeUnsupportedControls(parsedObj),
+  ]) {
     diagnostics.push({
       message: issue.message,
       severity: "warning",

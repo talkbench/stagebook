@@ -1,6 +1,7 @@
 import {
   safeParseTreatmentFile,
   collectMissingImageAltText,
+  collectYouTubeUnsupportedControls,
 } from "../index.js";
 import { createPositionMapper, extractYamlErrors } from "./yamlPositionMap.js";
 import type { Diagnostic } from "./types.js";
@@ -110,7 +111,14 @@ export function validateTreatmentSource(source: string): ValidationResult {
   // expanded preview. The inline editor diff runs its own copy over the
   // un-expanded source (validateTreatmentDiff) for a precise squiggle. Uses the
   // same mapper + walk-up as the schema issues above.
-  for (const issue of collectMissingImageAltText(parsedObj)) {
+  //
+  // The YouTube step/speed controls lint (#723) is the same kind of warning and
+  // rides the same channel: a `${field}` placeholder `file` stays quiet here and
+  // fires on the expanded YAML once it's filled.
+  for (const issue of [
+    ...collectMissingImageAltText(parsedObj),
+    ...collectYouTubeUnsupportedControls(parsedObj),
+  ]) {
     let range = mapper.resolve(issue.path);
     let ancestorPath = issue.path;
     while (!range && ancestorPath.length > 0) {

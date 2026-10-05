@@ -591,6 +591,60 @@ ${imageBody}
     });
   });
 
+  describe("YouTube mediaPlayer step/speed controls lint (#723)", () => {
+    const study = (file: string, controls: string) => `treatments:
+  - name: t
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: mediaPlayer
+            name: clip
+            file: ${file}
+            controls:
+${controls}
+          - type: submitButton
+`;
+
+    it("warns (not errors) on the controls of a YouTube player with step", async () => {
+      const source = study(
+        "https://youtu.be/QC8iQqtG0hg",
+        "              step: true",
+      );
+      const result = await validateTreatmentWithDiff({
+        source,
+        loadImport: noImports,
+      });
+      expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual(
+        [],
+      );
+      const warns = result.diagnostics.filter((d) => /YouTube/.test(d.message));
+      expect(warns).toHaveLength(1);
+      expect(warns[0].severity).toBe("warning");
+      expect(warns[0].message).toMatch(/no on-screen control/i);
+      // Squiggles the player's `controls` map (the mapper resolves a path to
+      // its value, which starts on the line after `controls:`), not a generic
+      // top-of-file range.
+      const controlsLine = source
+        .split("\n")
+        .findIndex((l) => l.includes("controls:"));
+      expect(warns[0].range?.startLine).toBe(controlsLine + 1);
+    });
+
+    it("is clean for an uploaded file with step and speed", async () => {
+      const result = await validateTreatmentWithDiff({
+        source: study(
+          "shared/clip.mp4",
+          "              step: true\n              speed: true",
+        ),
+        loadImport: noImports,
+      });
+      expect(result.diagnostics).toEqual([]);
+    });
+  });
+
   describe("unsatisfiable conditions (#480)", () => {
     const withGate = (comparator: string, value: string) => `treatments:
   - name: t
