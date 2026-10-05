@@ -5,9 +5,11 @@
  * A Timeline handles Enter only while it holds focus. If a pointer click on
  * the player's speed button or scrub bar took focus, the annotator's next
  * Enter would go to the player, which swallows it (#268), and the mark would
- * be lost. The control bar cancels the focus a mouse press would give it;
- * keyboard users still Tab to them, and clicking the video surface still
- * focuses the player so its own shortcuts work without a timeline.
+ * be lost. The control bar cancels the focus a mouse press would give it, so
+ * focus held anywhere stays put; when nothing holds focus, the press focuses
+ * the player instead, so its own shortcuts work without a timeline. Keyboard
+ * users still Tab to the controls, and clicking the video surface still
+ * focuses the player.
  *
  * Real browser focus is the subject here, so these are CT tests in all three
  * engines (jsdom doesn't focus on mousedown).
@@ -299,6 +301,77 @@ test("clicking the video surface focuses the player, and Space then plays", asyn
     .poll(() => video.evaluate((el: HTMLVideoElement) => el.paused))
     .toBe(false);
 });
+
+// -- Without a timeline, clicking a control focuses the player --
+// When nothing holds focus, a press on the control bar focuses the player
+// container instead, so Space and the arrow keys then work. In audio-only mode
+// the bar is the player's only mouse target.
+
+for (const playVideo of [true, false]) {
+  const mode = playVideo ? "video" : "audio-only";
+
+  test(`${mode}: with nothing focused, clicking play focuses the player, and Space then pauses`, async ({
+    mount,
+    page,
+  }) => {
+    const component = await mount(
+      <MockMediaPlayer
+        url={URL}
+        name="clip"
+        playback="manual"
+        playVideo={playVideo}
+        controls={ALL_CONTROLS}
+      />,
+    );
+    const player = component.getByTestId("mediaPlayer");
+    const video = component.getByTestId("mediaPlayer-video");
+    await expect
+      .poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState))
+      .toBeGreaterThanOrEqual(1);
+    await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+    expect(
+      await page.evaluate(() => document.activeElement === document.body),
+    ).toBe(true);
+
+    await component.getByTestId("mediaPlayer-playPause").click();
+    await expect(player).toBeFocused();
+    await expect
+      .poll(() => video.evaluate((el: HTMLVideoElement) => el.paused))
+      .toBe(false);
+
+    await page.keyboard.press(" ");
+    await expect
+      .poll(() => video.evaluate((el: HTMLVideoElement) => el.paused))
+      .toBe(true);
+  });
+
+  test(`${mode}: clicking a control leaves focus in a text field elsewhere`, async ({
+    mount,
+  }) => {
+    const component = await mount(
+      <div>
+        <input data-testid="other-input" />
+        <MockMediaPlayer
+          url={URL}
+          name="clip"
+          playback="manual"
+          playVideo={playVideo}
+          controls={ALL_CONTROLS}
+        />
+      </div>,
+    );
+    const video = component.getByTestId("mediaPlayer-video");
+    await expect
+      .poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState))
+      .toBeGreaterThanOrEqual(1);
+    const other = component.getByTestId("other-input");
+    for (const control of ["speed", "time", "seekForward"]) {
+      await other.focus();
+      await component.getByTestId(`mediaPlayer-${control}`).click();
+      await expect(other, control).toBeFocused();
+    }
+  });
+}
 
 // -- The play-once button --
 

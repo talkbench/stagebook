@@ -92,20 +92,6 @@ const VIEWPORT_STYLE: React.CSSProperties = {
   boxShadow: "0 0 0 1px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06)",
 };
 
-/**
- * onMouseDown for the control bar and the play-once button: a pointer press
- * on them doesn't move focus (#695). A timeline handles Enter only while it
- * holds focus, so clicking the speed button, the scrub bar, or a gap between
- * controls must not take focus from it. Focus moves as the default action of
- * mousedown, so cancelling that leaves Tab and keyboard activation unchanged.
- * The bar handles it once, since mousedown bubbles from every control in it.
- * Clicking the video surface still focuses the player, which turns on its
- * shortcuts.
- */
-function preventFocusOnPress(e: React.MouseEvent) {
-  e.preventDefault();
-}
-
 /** Reject URLs with dangerous protocols (javascript:, data:, vbscript:, etc.) */
 function isSafeURL(url: string): boolean {
   try {
@@ -1266,6 +1252,25 @@ export function MediaPlayer({
   // In audio-only mode (playVideo:false) there's no video to obscure, so always show.
   const controlsVisible = hasControls && (isPaused || isHovered || !playVideo);
 
+  // onMouseDown for the control bar and the play-once button (#695). A pointer
+  // press never moves focus off something that holds it: a timeline handles
+  // Enter only while it holds focus, so clicking the speed button, the scrub
+  // bar or a gap between controls must not take focus from it, and a text
+  // field elsewhere keeps its caret. Focus moves as the default action of
+  // mousedown, so cancelling that leaves Tab and keyboard activation
+  // unchanged. When nothing holds focus, the press focuses the player
+  // container instead, so Space and the arrow keys then control this player;
+  // audio-only mode has no video surface, so this is its only mouse route to
+  // them. The bar handles it once, since mousedown bubbles from every control
+  // in it. Clicking the video surface still focuses the player as before.
+  const keepFocusOnPress = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const active = document.activeElement;
+    if (active === null || active === document.body) {
+      containerRef.current?.focus({ preventScroll: true });
+    }
+  }, []);
+
   // Focus rescue (#300): when the controls overlay hides (mouse leaves while
   // playing), any control that currently held focus — e.g. the play/pause
   // button the user just keyboard-toggled — unmounts. The browser drops focus
@@ -1273,9 +1278,10 @@ export function MediaPlayer({
   // pausing. We catch that exact transition and move focus to the container
   // (tabIndex=0), which is always mounted; :focus-within keeps the ring lit
   // and the keydown handler keeps Space wired to play/pause.
-  // A mouse click no longer focuses a control (#695), so this fires when focus
-  // fell to <body>: after keyboard focus on a control, or when nothing was
-  // focused. Focus held elsewhere, such as a timeline, is never moved.
+  // A mouse press on the controls never focuses a control (#695): it focuses
+  // the container when nothing held focus, and otherwise leaves focus alone.
+  // So this fires after keyboard focus on a control. Focus held elsewhere,
+  // such as a timeline, is never moved.
   const prevControlsVisibleRef = useRef(controlsVisible);
   useEffect(() => {
     const prev = prevControlsVisibleRef.current;
@@ -1487,7 +1493,7 @@ export function MediaPlayer({
           {ytControlsVisible && (
             <div
               data-testid="mediaPlayer-controls"
-              onMouseDown={preventFocusOnPress}
+              onMouseDown={keepFocusOnPress}
               style={{
                 position: "absolute",
                 bottom: 0,
@@ -1671,7 +1677,7 @@ export function MediaPlayer({
           {controlsVisible && !loadError && (
             <div
               data-testid="mediaPlayer-controls"
-              onMouseDown={preventFocusOnPress}
+              onMouseDown={keepFocusOnPress}
               style={{
                 position: "absolute",
                 bottom: 0,
@@ -1695,7 +1701,7 @@ export function MediaPlayer({
               data-testid="mediaPlayer-playOnce"
               aria-label={messages.mediaPlayVideo}
               tabIndex={0}
-              onMouseDown={preventFocusOnPress}
+              onMouseDown={keepFocusOnPress}
               onClick={() => {
                 setShowPlayOnce(false);
                 const v = videoRef.current;
@@ -1746,7 +1752,7 @@ export function MediaPlayer({
           aria-label={messages.mediaPlayAudio}
           dir={localeDir}
           tabIndex={0}
-          onMouseDown={preventFocusOnPress}
+          onMouseDown={keepFocusOnPress}
           onClick={() => {
             setShowPlayOnce(false);
             const v = videoRef.current;
@@ -1777,7 +1783,7 @@ export function MediaPlayer({
       {!playVideo && controlsVisible && !loadError && (
         <div
           data-testid="mediaPlayer-controls"
-          onMouseDown={preventFocusOnPress}
+          onMouseDown={keepFocusOnPress}
           style={{
             background: "rgba(28,28,30,0.96)",
             borderRadius: "0.5rem",
