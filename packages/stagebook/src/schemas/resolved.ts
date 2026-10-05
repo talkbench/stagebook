@@ -211,8 +211,10 @@ const resolvedElementBaseSchema = z.object({
   displayText: z.string().optional(),
   helperText: z.string().optional(),
   reference: z.string().optional(),
-  // Time fields mirror the authoring constraints in treatment.ts: a
-  // `${field}` placeholder skips those, so a filled value is checked here.
+  // Timer and mediaPlayer time fields mirror the authoring constraints in
+  // treatment.ts, so a resolved object a host builds directly gets the same
+  // checks. (The mediaPlayer fields also accept a `${field}` placeholder,
+  // which skips the authoring sign check — a filled value is caught here.)
   startTime: finiteSecondsSchema.gt(0).optional(),
   endTime: finiteSecondsSchema.gt(0).optional(),
   warnTimeRemaining: finiteSecondsSchema.gt(0).optional(),

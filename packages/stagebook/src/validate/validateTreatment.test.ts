@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { validateTreatmentSource } from "./validateTreatment.js";
 import { SURVEY_ELEMENT_REMOVED_MESSAGE } from "../schemas/index.js";
+import { NON_FINITE_SECONDS_MESSAGE } from "../schemas/treatment.js";
 
 describe("validateTreatmentSource — removed survey element and reference source (#669)", () => {
   const wrap = (
@@ -105,6 +106,37 @@ treatments:
     expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual(
       [],
     );
+  });
+});
+
+describe("validateTreatmentSource — non-finite time values (#681)", () => {
+  it("reports `startAt: .inf` with the finite-seconds message on its line", () => {
+    const src = `introSequences:
+  - name: intro1
+    introSteps:
+      - name: welcome
+        elements:
+          - type: submitButton
+treatments:
+  - name: study1
+    playerCount: 1
+    compatibleIntroSequences: [intro1]
+    gameStages:
+      - name: stage1
+        duration: 300
+        elements:
+          - type: mediaPlayer
+            file: clip.mp4
+            startAt: .inf
+          - type: submitButton`;
+    const result = validateTreatmentSource(src);
+    const hit = result.diagnostics.find((d) =>
+      d.message.includes(NON_FINITE_SECONDS_MESSAGE),
+    );
+    expect(hit).toBeDefined();
+    expect(hit!.severity).toBe("error");
+    const line = src.split("\n").findIndex((l) => l.includes("startAt: .inf"));
+    expect(hit!.range?.startLine).toBe(line);
   });
 });
 

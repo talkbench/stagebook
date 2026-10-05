@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  elementSchema,
   treatmentFileSchema,
   promptFilePathSchema,
   SURVEY_ELEMENT_REMOVED_MESSAGE,
@@ -13,6 +14,7 @@ import {
   resolvedTreatmentFileSchema,
   validateResolvedTreatmentFile,
 } from "./resolved.js";
+import { fillTemplates } from "../templates/fillTemplates.js";
 
 /**
  * `notes` is researcher-facing metadata. It's valid in authoring schemas so
@@ -978,9 +980,13 @@ describe("resolved schema rejects the removed survey element (#669)", () => {
 });
 
 describe("resolved time fields are finite and keep their authoring sign (#681)", () => {
-  // A `${field}` placeholder passes the authoring schema, so a value filled
-  // in at hydration (e.g. `.inf` from a YAML broadcast row) is only checked
-  // here. These must match the authoring constraints in treatment.ts.
+  // These must match the authoring constraints in treatment.ts. On the
+  // mediaPlayer fields a `${field}` placeholder skips the authoring sign
+  // check, so a filled negative or zero value is only caught here (see the
+  // fillTemplates case below). A filled `.inf` never arrives as Infinity on
+  // that path — fillTemplates substitutes through JSON, which turns it into
+  // `null` (a type error) — so the finiteness check guards resolved objects
+  // that hosts build without fillTemplates.
   const cases = [
     { type: "mediaPlayer", field: "startAt" },
     { type: "mediaPlayer", field: "stopAt" },
@@ -1027,6 +1033,25 @@ describe("resolved time fields are finite and keep their authoring sign (#681)",
     "$type $field: a finite positive value is accepted",
     ({ type, field }) => {
       expect(parse(type, field, 2.5).success).toBe(true);
+    },
+  );
+
+  // Only the mediaPlayer fields accept a `${field}` placeholder.
+  test.each(cases.filter((c) => c.type === "mediaPlayer"))(
+    "$type $field: a negative value filled into a placeholder is rejected",
+    ({ type, field }) => {
+      const element = { type, file: "a.mp4", [field]: "${t}" };
+      // The placeholder passes the authoring schema...
+      expect(elementSchema.safeParse(element).success).toBe(true);
+      const { result } = fillTemplates({
+        obj: { elements: [{ template: "el", fields: { t: -1 } }] },
+        templates: [{ name: "el", contentType: "element", content: element }],
+      }) as { result: { elements: Record<string, unknown>[] } };
+      expect(result.elements[0][field]).toBe(-1);
+      // ...so the filled value is only caught by the resolved schema.
+      expect(resolvedElementSchema.safeParse(result.elements[0]).success).toBe(
+        false,
+      );
     },
   );
 });

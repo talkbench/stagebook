@@ -1370,7 +1370,7 @@ export const SURVEY_ELEMENT_REMOVED_MESSAGE =
  * Exported so the resolved schema and tests share it.
  */
 export const NON_FINITE_SECONDS_MESSAGE =
-  "Must be a finite number of seconds — `.inf` (infinity) is not a valid time.";
+  "Must be a finite number of seconds — infinity (`.inf` / `-.inf`) is not a valid time.";
 
 /**
  * A time in seconds: any finite number. Callers add the sign constraint.
