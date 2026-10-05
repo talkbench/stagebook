@@ -92,6 +92,7 @@ const STAGE_PRODUCED_REF_TYPES = new Set([
   "prompt",
   "submitButton",
   "qualtrics",
+  "mediaPlayer",
   "timeline",
   "trackedLink",
 ]);
@@ -1041,6 +1042,7 @@ function collectProducedKeys(element: unknown, acc: Set<string>): void {
     (type === "prompt" ||
       type === "submitButton" ||
       type === "qualtrics" ||
+      type === "mediaPlayer" ||
       type === "timeline" ||
       type === "trackedLink")
   ) {

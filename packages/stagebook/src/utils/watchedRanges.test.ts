@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { computeWatchedRanges, endsMidPlayback } from "./watchedRanges.js";
+import {
+  computeWatchedRanges,
+  endsMidPlayback,
+  playbackMilestones,
+} from "./watchedRanges.js";
 import type { VideoEvent } from "../components/elements/MediaPlayer.js";
 
 function ev(type: VideoEvent["type"], videoTime: number): VideoEvent {
@@ -232,5 +236,37 @@ describe("endsMidPlayback (#677)", () => {
     for (const type of ["pause", "ended", "stopAt", "removed"] as const) {
       expect(endsMidPlayback([ev("play", 0), ev(type, 5)])).toBe(false);
     }
+  });
+});
+
+describe("playbackMilestones (#710)", () => {
+  it("has neither before playback", () => {
+    expect(playbackMilestones([])).toStrictEqual({});
+    expect(
+      playbackMilestones([ev("seek", 10), ev("speed", 10), ev("pause", 10)]),
+    ).toStrictEqual({});
+  });
+
+  it("keeps the first play when playback resumes", () => {
+    const first = ev("play", 4);
+    expect(
+      playbackMilestones([ev("seek", 4), first, ev("pause", 9), ev("play", 9)]),
+    ).toEqual({ firstPlay: first });
+  });
+
+  it("takes the first end, whether stopAt or the file's end", () => {
+    const stop = ev("stopAt", 60);
+    expect(
+      playbackMilestones([ev("play", 0), stop, ev("play", 0), ev("ended", 100)])
+        .firstEnd,
+    ).toBe(stop);
+    const ended = ev("ended", 100);
+    expect(playbackMilestones([ev("play", 0), ended]).firstEnd).toBe(ended);
+  });
+
+  it("does not count leaving the page as reaching the end", () => {
+    expect(
+      playbackMilestones([ev("play", 0), ev("removed", 30)]),
+    ).not.toHaveProperty("firstEnd");
   });
 });

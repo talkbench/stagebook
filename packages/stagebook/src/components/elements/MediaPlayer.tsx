@@ -19,6 +19,7 @@ import { createSeekCoalescer } from "./mediaPlayer/seekCoalescer.js";
 import {
   computeWatchedRanges,
   endsMidPlayback,
+  playbackMilestones,
 } from "../../utils/watchedRanges.js";
 import {
   computeBucketCount,
@@ -53,6 +54,10 @@ interface VideoRecord {
   lastVideoTime: number;
   /** Merged closed intervals [startSeconds, endSeconds] derived from the event log. */
   watchedRanges: [number, number][];
+  /** The first `play`; absent until playback starts (#710). */
+  firstPlay?: VideoEvent;
+  /** The first `ended` or `stopAt`; absent until playback reaches the end. */
+  firstEnd?: VideoEvent;
 }
 
 export interface MediaPlayerProps {
@@ -666,6 +671,7 @@ export function MediaPlayer({
         events: eventsRef.current,
         lastVideoTime: event.videoTime,
         watchedRanges: computeWatchedRanges(eventsRef.current),
+        ...playbackMilestones(eventsRef.current),
       };
       saveRef.current(saveKey, record);
     },

@@ -1201,3 +1201,81 @@ describe("treatmentFileSchema surfaces walker issues via superRefine (red-squigg
     }
   });
 });
+
+describe("mediaPlayer references (#710)", () => {
+  // An instruction step that shows Next once its video has started.
+  function playerStep(reference: string): StageConfig {
+    return {
+      name: "instructions",
+      elements: [
+        {
+          type: "mediaPlayer",
+          name: "example_nod",
+          file: "asset://nod.mp4",
+          controls: { playPause: true },
+        },
+        {
+          type: "submitButton",
+          name: "next",
+          conditions: [{ reference, comparator: "exists" }],
+        },
+      ],
+    };
+  }
+
+  test("gating Next on the step's own player → accepted", () => {
+    const file = baseFile({
+      introSteps: [playerStep("self.mediaPlayer.example_nod.firstPlay")],
+    });
+    expect(validateTreatmentFileReferences(file)).toEqual([]);
+  });
+
+  test("a misspelled player name → rejected as typo", () => {
+    const file = baseFile({
+      introSteps: [playerStep("self.mediaPlayer.example_nodd.firstPlay")],
+    });
+    const issues = validateTreatmentFileReferences(file);
+    expect(
+      issues.find((i) =>
+        /doesn't match any mediaPlayer element/i.test(i.message),
+      ),
+    ).toBeDefined();
+  });
+
+  test("a player in a later stage → rejected as a forward reference", () => {
+    const file = baseFile({
+      gameStages: [
+        {
+          name: "s1",
+          duration: 60,
+          elements: [
+            {
+              type: "submitButton",
+              conditions: [
+                {
+                  reference: "self.mediaPlayer.clip.firstEnd",
+                  comparator: "exists",
+                },
+              ],
+            },
+          ],
+        },
+        {
+          name: "s2",
+          duration: 60,
+          elements: [
+            { type: "mediaPlayer", name: "clip", file: "asset://clip.mp4" },
+            { type: "submitButton" },
+          ],
+        },
+      ],
+    });
+    const issues = validateTreatmentFileReferences(file);
+    expect(
+      pickForwardRefIssue(
+        issues,
+        "treatments.0.gameStages.0.elements.0.conditions.0.reference",
+      ),
+    ).toBeDefined();
+  });
+});

@@ -22,11 +22,12 @@ The platform needs two scopes of state:
 
 Stagebook components write state under predictable keys:
 
-| Key pattern           | Written by     | Value shape                                    |
-| --------------------- | -------------- | ---------------------------------------------- |
-| `prompt_<name>`       | Prompt element | `{ value, stageTimeElapsed, ...metadata }`     |
-| `submitButton_<name>` | Submit button  | `{ time: elapsedSeconds }`                     |
-| `trackedLink_<name>`  | Tracked link   | `{ events: [...], totalTimeAwaySeconds, ... }` |
+| Key pattern           | Written by     | Value shape                                                    |
+| --------------------- | -------------- | -------------------------------------------------------------- |
+| `prompt_<name>`       | Prompt element | `{ value, stageTimeElapsed, ...metadata }`                     |
+| `submitButton_<name>` | Submit button  | `{ time: elapsedSeconds }`                                     |
+| `trackedLink_<name>`  | Tracked link   | `{ events: [...], totalTimeAwaySeconds, ... }`                 |
+| `mediaPlayer_<name>`  | Media player   | `{ events: [...], watchedRanges, firstPlay?, firstEnd?, ... }` |
 
 ### Read Patterns
 

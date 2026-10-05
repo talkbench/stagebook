@@ -39,6 +39,14 @@ describe("getReferenceKeyAndPath", () => {
     expect(result.path).toEqual(["events"]);
   });
 
+  test("mediaPlayer reference reads the player's saved record (#710)", () => {
+    const result = getReferenceKeyAndPath(
+      "self.mediaPlayer.example_nod.firstPlay",
+    );
+    expect(result.referenceKey).toBe("mediaPlayer_example_nod");
+    expect(result.path).toEqual(["firstPlay"]);
+  });
+
   test("entryUrl.params reference (renamed from urlParams in #246)", () => {
     const result = getReferenceKeyAndPath("self.entryUrl.params.condition");
     expect(result.referenceKey).toBe("entryUrl");

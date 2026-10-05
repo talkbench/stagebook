@@ -82,3 +82,22 @@ export function computeWatchedRanges(events: VideoEvent[]): [number, number][] {
 
   return merged;
 }
+
+/**
+ * Playback milestones in a VideoEvent log (#710): the first `play`, and the
+ * first time playback reached the end of the clip — a `stopAt` or the file's
+ * `ended`, the events `submitOnComplete` advances on. Conditions can't search
+ * the log, so the saved record carries these for gating, e.g. a Next button
+ * that appears once the video has started. The log only grows, so neither
+ * changes once set. Each is absent until it happens.
+ */
+export function playbackMilestones(events: VideoEvent[]): {
+  firstPlay?: VideoEvent;
+  firstEnd?: VideoEvent;
+} {
+  const firstPlay = events.find((e) => e.type === "play");
+  const firstEnd = events.find(
+    (e) => e.type === "ended" || e.type === "stopAt",
+  );
+  return { ...(firstPlay && { firstPlay }), ...(firstEnd && { firstEnd }) };
+}

@@ -56,6 +56,7 @@ Un-prefixed references like `prompt.topicVote` are rejected at parse time. The e
 | `<position>.submitButton.<name>.<path>` | `self.submitButton.confirm.time`       |
 | `<position>.qualtrics.<name>.<path>`    | `self.qualtrics.exit.sessionId`        |
 | `<position>.trackedLink.<name>.<path>`  | `self.trackedLink.signup.events`       |
+| `<position>.mediaPlayer.<name>.<path>`  | `self.mediaPlayer.intro.firstPlay`     |
 | `<position>.timeline.<name>(.<path>)`   | `self.timeline.story.0.start`          |
 | `<position>.discussion.<name>(.<path>)` | `shared.discussion.lobby.messageCount` |
 | `<position>.entryUrl.params.<key>`      | `self.entryUrl.params.PROLIFIC_PID`    |
@@ -66,8 +67,8 @@ Un-prefixed references like `prompt.topicVote` are rejected at parse time. The e
 ```yaml
 reference:
   source:
-    prompt | submitButton | qualtrics | timeline | trackedLink | discussion |
-    entryUrl | attributes
+    prompt | submitButton | qualtrics | mediaPlayer | timeline | trackedLink |
+    discussion | entryUrl | attributes
   name: <element name> # required for named sources, forbidden for external sources
   path: [<segments>...] # optional for named sources, required for external sources
 ```

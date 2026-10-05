@@ -287,7 +287,9 @@ Each interaction is appended to an event list under the element's name:
   "watchedRanges": [
     [30.0, 37.9],
     [50.0, 90.0]
-  ]
+  ],
+  "firstPlay": { "type": "play", "videoTime": 30.0, "stageTimeElapsed": 4.1 },
+  "firstEnd": { "type": "stopAt", "videoTime": 90.0, "stageTimeElapsed": 42.3 }
 }
 ```
 
@@ -303,6 +305,8 @@ Event types:
 `lastVideoTime` is the position at the last event.
 
 `watchedRanges` is derived from the event log: closed `[start, end]` intervals (in video seconds) of the portions the participant actually watched, with overlapping or touching intervals merged. A range runs from a `play` to the next `pause`, `ended`, `stopAt` or `removed`. A seek during playback ends the range where the seek left and starts a new one where it landed, so skipped footage never counts as watched. Open intervals (a `play` with no closing event — e.g. a mid-playback disconnect) are excluded.
+
+`firstPlay` and `firstEnd` are playback milestones, copied from the event log: the first `play`, and the first `ended` or `stopAt`. Each is absent until it happens and doesn't change after, except that a remounted player replaces its record ([#728](https://github.com/talkbench/stagebook/issues/728)). They exist so [conditions](conditions.md#media-player-playback) can gate on them, e.g. showing **Next** once the video has started: `self.mediaPlayer.<name>.firstPlay` with `exists`.
 
 ## Timeline
 

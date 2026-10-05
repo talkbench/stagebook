@@ -34,6 +34,9 @@ export const namedSourceEnum = z.enum([
   "prompt",
   "submitButton",
   "qualtrics",
+  // The player's saved record: its event log and the playback milestones
+  // derived from it, `firstPlay` and `firstEnd` (#710).
+  "mediaPlayer",
   "timeline",
   "trackedLink",
   "discussion",
