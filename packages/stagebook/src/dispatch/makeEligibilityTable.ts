@@ -1,7 +1,5 @@
-import {
-  getNestedValueByPath,
-  getReferenceKeyAndPath,
-} from "../utils/reference.js";
+import { getNestedValueByPath } from "../utils/reference.js";
+import { eligibilityReference } from "./eligibilityReference.js";
 import {
   evaluateConditions,
   type Condition,
@@ -53,19 +51,14 @@ export function makeEligibilityTable({
 
   for (const pid of playerIds) {
     const dataForPlayer = playerData[pid] ?? {};
-    const resolveForPlayer = (reference: string): unknown[] => {
+    const resolveForPlayer = (reference: unknown): unknown[] => {
       // Eligibility resolves only `self.*` references. Anything else
       // collapses to "no values resolved" — the tri-state leaf
       // evaluator then returns false (positive comparators) or true
       // (`doesNotEqual` family) per `compare`'s undefined-lhs policy.
-      if (!reference.startsWith("self.")) return [];
-      let referenceKey: string;
-      let path: string[];
-      try {
-        ({ referenceKey, path } = getReferenceKeyAndPath(reference));
-      } catch {
-        return [];
-      }
+      const parsed = eligibilityReference(reference);
+      if (!parsed) return [];
+      const { referenceKey, path } = parsed;
       const record = dataForPlayer[referenceKey];
       if (record === undefined) return [];
       const value = getNestedValueByPath(record, path);
