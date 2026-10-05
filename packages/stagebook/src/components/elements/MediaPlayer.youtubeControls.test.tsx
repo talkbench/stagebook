@@ -25,12 +25,16 @@ beforeEach(() => {
   targetsAttached = [];
   const w = window as unknown as { YT?: unknown };
   w.YT = {
-    // Like the real API, replace the target element with an iframe, and
-    // remove that iframe on destroy.
+    // Like the real API (www-widgetapi.js): build an iframe that copies the
+    // target's attributes, swap it in for the target, and on destroy put the
+    // original target back.
     Player: function (el: HTMLElement, opts: { playerVars?: PlayerVars }) {
       created.push(opts.playerVars ?? {});
       targetsAttached.push(el.isConnected);
       const iframe = document.createElement("iframe");
+      for (const { name, value } of Array.from(el.attributes)) {
+        iframe.setAttribute(name, value);
+      }
       el.replaceWith(iframe);
       return {
         playVideo: () => {},
@@ -39,7 +43,7 @@ beforeEach(() => {
         getCurrentTime: () => 0,
         getDuration: () => 100,
         getPlayerState: () => 2,
-        destroy: () => iframe.remove(),
+        destroy: () => iframe.replaceWith(el),
       };
     },
   };
@@ -117,9 +121,18 @@ describe("YouTube native controls (#699)", () => {
       UNCHANGED,
       { ...UNCHANGED, controls: 0, disablekb: 1 },
     ]);
-    // The replacement player mounts in the page, not on the detached node
-    // the first player's iframe replaced.
+    // The replacement player mounts in the page: destroy() put the first
+    // player's target back.
     expect(targetsAttached).toEqual([true, true]);
     expect(container!.querySelectorAll("iframe")).toHaveLength(1);
+  });
+
+  it("sizes the iframe to fill the player width", () => {
+    // The API gives the iframe its target's attributes, so the target
+    // carries the sizing; without it the iframe falls back to 640x360.
+    mount({ playback: "manual", controls: { playPause: true } });
+    const iframe = container!.querySelector("iframe")!;
+    expect(iframe.style.width).toBe("100%");
+    expect(iframe.style.aspectRatio).toBe("16/9");
   });
 });

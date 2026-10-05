@@ -227,8 +227,8 @@ export interface YouTubePlayerProps {
 }
 
 /**
- * Renders a wrapper div; each player gets a fresh inner div, which the IFrame
- * API replaces with an iframe. Exposes playback events upward via callbacks.
+ * Renders a div the IFrame API replaces with an iframe.
+ * Exposes playback events upward via callbacks.
  */
 export function YouTubePlayer({
   videoId,
@@ -256,14 +256,9 @@ export function YouTubePlayer({
   onEndedRef.current = onEnded;
 
   useEffect(() => {
-    const wrapper = containerRef.current;
-    if (!wrapper) return;
-    // The IFrame API replaces its target with an iframe, so a re-created
-    // player needs a new target: the old one is no longer in the page.
-    const target = document.createElement("div");
-    wrapper.appendChild(target);
+    if (!containerRef.current) return;
     const { destroy } = createYouTubePlayer({
-      container: target,
+      container: containerRef.current,
       videoId,
       startAt,
       hideNativeControls,
@@ -274,8 +269,6 @@ export function YouTubePlayer({
     });
     return () => {
       destroy();
-      // Drop whatever is left: the target, or an iframe destroy() kept.
-      wrapper.replaceChildren();
       onHandleGoneRef.current?.();
     };
     // Re-create the player when any of its creation options change.
