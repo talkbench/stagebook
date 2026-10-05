@@ -574,6 +574,7 @@ Embeds an external Qualtrics survey in an iframe. When the participant reaches Q
 
 ```yaml
 - type: qualtrics
+  name: exit
   url: https://upenn.qualtrics.com/jfe/form/SV_xxx
   urlParams:
     - key: condition
@@ -583,6 +584,13 @@ Embeds an external Qualtrics survey in an iframe. When the participant reaches Q
 ```
 
 `url` must be an `http(s)://` URL (other schemes are rejected by validation).
+
+**Completion metadata.** On completion, the named element above writes
+`qualtrics_exit` with `surveyURL`, `surveyId`, and `sessionId`, plus the current
+`step` and `stageTimeElapsed`. For example, `self.qualtrics.exit.sessionId`
+resolves after the completion signal. If `name` is omitted, the progress label
+is used. Full survey responses and scores depend on the host's Qualtrics data
+integration; Stagebook's completion record does not supply them.
 
 **Linking responses back to the participant.** Stagebook automatically appends two query parameters to the survey URL:
 

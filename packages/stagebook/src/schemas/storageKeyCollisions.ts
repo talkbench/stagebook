@@ -37,9 +37,10 @@
  *                   only checked when `name` is set)
  *   mediaPlayer  → checked when `name:` is set. Unnamed mediaPlayers fall
  *                   back to a position-based key at runtime, like audio.
- *   qualtrics    → fixed key `qualtricsDataReady` (Qualtrics.tsx:50). Any
- *                   two qualtrics elements in the same scope collide
- *                   regardless of name/url, since the key is constant.
+ *   qualtrics    → named completion record plus fixed host trigger
+ *                   `qualtricsDataReady`. Any two qualtrics elements in the
+ *                   same scope still collide on that trigger regardless of
+ *                   name/url, so preserve the existing guard.
  *   timeline     → `timeline_${name}` (name is required by the schema)
  *   trackedLink  → `trackedLink_${name}` (name is required by the schema)
  *
@@ -87,9 +88,8 @@ function storageKeyFor(element: unknown): string | null {
     case "trackedLink":
       return name ? `${el.type}_${name}` : null;
     case "qualtrics":
-      // Qualtrics writes to a fixed key regardless of element identity, so
-      // any two qualtrics elements in the same scope collide. Return a
-      // synthetic key that's identical for every qualtrics element.
+      // Named completion records do not remove the shared host trigger.
+      // Return a synthetic key that's identical for every qualtrics element.
       return "qualtrics_qualtricsDataReady";
     default:
       return null;

@@ -6,6 +6,8 @@ export interface ResolvedParam {
 }
 
 export interface QualtricsProps {
+  /** Completion record name; Element supplies its name or progress label. */
+  name?: string;
   url: string;
   resolvedParams?: ResolvedParam[];
   /**
@@ -38,6 +40,7 @@ export interface QualtricsProps {
 }
 
 export function Qualtrics({
+  name,
   url,
   resolvedParams = [],
   stableParticipantId = "",
@@ -76,6 +79,8 @@ export function Qualtrics({
   onCompleteRef.current = onComplete;
   const urlRef = useRef(url);
   urlRef.current = url;
+  const nameRef = useRef(name);
+  nameRef.current = name;
 
   // Listen for Qualtrics end-of-survey message.
   // Validates origin to prevent spoofed messages from non-Qualtrics sources.
@@ -85,19 +90,30 @@ export function Qualtrics({
       // Validate origin — only accept messages from Qualtrics domains
       try {
         const originHost = new URL(event.origin).hostname;
-        if (!originHost.endsWith("qualtrics.com")) return;
+        if (
+          originHost !== "qualtrics.com" &&
+          !originHost.endsWith(".qualtrics.com")
+        ) {
+          return;
+        }
       } catch {
         return;
       }
 
       const data: unknown = event.data;
-      if (typeof data === "string" && data.startsWith("QualtricsEOS")) {
+      if (typeof data === "string" && data.startsWith("QualtricsEOS|")) {
         const [, surveyId, sessionId] = data.split("|");
-        saveRef.current("qualtricsDataReady", {
+        const record = {
           surveyURL: urlRef.current,
           surveyId,
           sessionId,
-        });
+        };
+        if (nameRef.current !== undefined) {
+          saveRef.current(`qualtrics_${nameRef.current}`, record);
+        }
+        // Hosts consume this existing trigger to fetch full survey responses.
+        // Keep it alongside the referenceable completion record.
+        saveRef.current("qualtricsDataReady", record);
         onCompleteRef.current();
       }
     };

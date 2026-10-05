@@ -26,8 +26,25 @@ Stagebook components write state under predictable keys:
 | --------------------- | -------------- | -------------------------------------------------------------- |
 | `prompt_<name>`       | Prompt element | `{ value, stageTimeElapsed, ...metadata }`                     |
 | `submitButton_<name>` | Submit button  | `{ time: elapsedSeconds }`                                     |
+| `qualtrics_<name>`    | Qualtrics      | `{ surveyURL, surveyId, sessionId }`                           |
 | `trackedLink_<name>`  | Tracked link   | `{ events: [...], totalTimeAwaySeconds, ... }`                 |
 | `mediaPlayer_<name>`  | Media player   | `{ events: [...], watchedRanges, firstPlay?, firstEnd?, ... }` |
+
+`Element` adds `step` and `stageTimeElapsed` to these completion records.
+Submit buttons and Qualtrics elements use the progress label when `name` is
+omitted. For a manually wired `SubmitButton`, supply `getElapsedTime` to record
+`time`; for a manually wired `Qualtrics`, supply `name` to write the named
+completion record.
+
+Qualtrics also writes the same completion metadata to `qualtricsDataReady`, the
+existing host trigger for fetching survey responses, before submitting. Keep
+handling that trigger if your platform fetches Qualtrics data. The named record
+contains completion metadata only: full responses, scores, and other derived
+fields still require host writes. Hosts that store fetched data under
+`qualtrics_<step>` enrich the unnamed element's record; they must explicitly
+write to `qualtrics_<name>` to enrich a researcher-named record. The existing
+collision guard for multiple Qualtrics elements remains in place because they
+still share the `qualtricsDataReady` trigger.
 
 ### Read Patterns
 
