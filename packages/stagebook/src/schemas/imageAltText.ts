@@ -39,9 +39,10 @@
  *     inline editor squiggle (that path doesn't go through
  *     `validateTreatmentSource`).
  *
- * The walk mirrors `collectStorageKeyCollisions`: every element-bearing
- * container a participant can traverse (treatment game stages + exit
- * sequences, intro-sequence steps, consent-arm steps). Like that walker it
+ * The walk (`forEachConcreteElement`, shared with the YouTube controls lint)
+ * mirrors `collectStorageKeyCollisions`: every element-bearing container a
+ * participant can traverse (treatment game stages + exit sequences,
+ * intro-sequence steps, consent-arm steps). Like that walker it
  * deliberately does NOT scan `templates:` bodies — only the concrete
  * containers above. An image authored inside a template body is still linted
  * once it lands in a real stage: `validateTreatmentSource` runs over the
@@ -53,6 +54,8 @@
  * `${placeholder}`-bearing partial elements.
  */
 
+import { forEachConcreteElement } from "./forEachConcreteElement.js";
+
 export interface MissingImageAltText {
   /** Path to the offending image element within the treatment file. */
   path: (string | number)[];
@@ -60,47 +63,9 @@ export interface MissingImageAltText {
   message: string;
 }
 
-type Path = (string | number)[];
-
 const MESSAGE =
   "Image element has no `altText`. Add `altText:` describing the image for " +
   'screen-reader users, or set `altText: ""` to mark it decorative.';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function scanElements(
-  elements: unknown,
-  basePath: Path,
-  into: MissingImageAltText[],
-): void {
-  if (!Array.isArray(elements)) return;
-  elements.forEach((el, idx) => {
-    if (!isRecord(el) || el.type !== "image") return;
-    // Warn ONLY when the key is absent. An explicit `altText: ""` is the
-    // decorative escape hatch and must never warn; a present-but-non-string
-    // value (e.g. `altText: null`) is a *schema* error reported elsewhere, so
-    // we don't double-report it here.
-    if ("altText" in el) return;
-    into.push({
-      path: [...basePath, idx],
-      message: MESSAGE,
-    });
-  });
-}
-
-function scanStageList(
-  stages: unknown,
-  basePath: Path,
-  into: MissingImageAltText[],
-): void {
-  if (!Array.isArray(stages)) return;
-  stages.forEach((stage, stageIdx) => {
-    if (!isRecord(stage)) return;
-    scanElements(stage.elements, [...basePath, stageIdx, "elements"], into);
-  });
-}
 
 /**
  * Collect every `image` element that is missing an `altText` field, across all
@@ -110,42 +75,15 @@ function scanStageList(
 export function collectMissingImageAltText(
   data: unknown,
 ): MissingImageAltText[] {
-  if (!isRecord(data)) return [];
   const out: MissingImageAltText[] = [];
-
-  if (Array.isArray(data.treatments)) {
-    data.treatments.forEach((treatment, tIdx) => {
-      if (!isRecord(treatment)) return;
-      scanStageList(
-        treatment.gameStages,
-        ["treatments", tIdx, "gameStages"],
-        out,
-      );
-      scanStageList(
-        treatment.exitSequence,
-        ["treatments", tIdx, "exitSequence"],
-        out,
-      );
-    });
-  }
-
-  if (Array.isArray(data.introSequences)) {
-    data.introSequences.forEach((seq, seqIdx) => {
-      if (!isRecord(seq)) return;
-      scanStageList(
-        seq.introSteps,
-        ["introSequences", seqIdx, "introSteps"],
-        out,
-      );
-    });
-  }
-
-  if (Array.isArray(data.consent)) {
-    data.consent.forEach((arm, armIdx) => {
-      if (!isRecord(arm)) return;
-      scanStageList(arm.steps, ["consent", armIdx, "steps"], out);
-    });
-  }
-
+  forEachConcreteElement(data, (el, path) => {
+    if (el.type !== "image") return;
+    // Warn ONLY when the key is absent. An explicit `altText: ""` is the
+    // decorative escape hatch and must never warn; a present-but-non-string
+    // value (e.g. `altText: null`) is a *schema* error reported elsewhere, so
+    // we don't double-report it here.
+    if ("altText" in el) return;
+    out.push({ path, message: MESSAGE });
+  });
   return out;
 }
