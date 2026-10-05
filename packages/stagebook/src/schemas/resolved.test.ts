@@ -1,16 +1,20 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  elementSchema,
   treatmentFileSchema,
   promptFilePathSchema,
   SURVEY_ELEMENT_REMOVED_MESSAGE,
+  NON_FINITE_SECONDS_MESSAGE,
 } from "./treatment.js";
 import {
+  resolvedElementSchema,
   resolvedStageSchema,
   resolvedTreatmentSchema,
   resolvedTreatmentFileSchema,
   validateResolvedTreatmentFile,
 } from "./resolved.js";
+import { fillTemplates } from "../templates/fillTemplates.js";
 
 /**
  * `notes` is researcher-facing metadata. It's valid in authoring schemas so
@@ -973,4 +977,109 @@ describe("resolved schema rejects the removed survey element (#669)", () => {
       "type",
     ]);
   });
+});
+
+describe("resolved time fields are finite (#681)", () => {
+  // Every time field rejects non-finite values. Only the mediaPlayer fields
+  // also mirror the authoring sign checks: they accept a `${field}`
+  // placeholder, which skips the authoring sign check, so a host that runs
+  // only the resolved schema still catches a filled negative or zero value
+  // (validateTreatmentDiff's hydrated authoring pass catches it too). The
+  // timer fields take no placeholder, so they get finiteness only. A filled
+  // `.inf` never arrives as Infinity on the fill path — fillTemplates
+  // substitutes through JSON, which turns it into `null` (a type error) — so
+  // the finiteness check guards resolved objects hosts build directly.
+  const mediaCases = [
+    { type: "mediaPlayer", field: "startAt" },
+    { type: "mediaPlayer", field: "stopAt" },
+    { type: "mediaPlayer", field: "stepDuration" },
+  ];
+  const timerCases = [
+    { type: "timer", field: "startTime" },
+    { type: "timer", field: "endTime" },
+    { type: "timer", field: "warnTimeRemaining" },
+  ];
+  const cases = [...mediaCases, ...timerCases];
+  const parse = (type: string, field: string, value: number) =>
+    resolvedElementSchema.safeParse({ type, [field]: value });
+
+  test.each(cases)("$type $field: Infinity is rejected", ({ type, field }) => {
+    const result = parse(type, field, Infinity);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.includes(field));
+      expect(issue?.message).toBe(NON_FINITE_SECONDS_MESSAGE);
+    }
+  });
+
+  test.each(cases)("$type $field: -Infinity is rejected", ({ type, field }) => {
+    expect(parse(type, field, -Infinity).success).toBe(false);
+  });
+
+  test.each(cases)(
+    "$type $field: a finite positive value is accepted",
+    ({ type, field }) => {
+      expect(parse(type, field, 2.5).success).toBe(true);
+    },
+  );
+
+  test.each(mediaCases)(
+    "$type $field: a negative value is rejected",
+    ({ type, field }) => {
+      expect(parse(type, field, -1).success).toBe(false);
+    },
+  );
+
+  test.each(mediaCases.filter((c) => c.field !== "startAt"))(
+    "$type $field: zero is rejected (must be positive)",
+    ({ type, field }) => {
+      expect(parse(type, field, 0).success).toBe(false);
+    },
+  );
+
+  test("mediaPlayer startAt: zero is accepted (nonnegative)", () => {
+    expect(parse("mediaPlayer", "startAt", 0).success).toBe(true);
+  });
+
+  // The resolved schema adds no sign check to the timer fields, so a
+  // host-built timer with the documented default `startTime: 0` (#726)
+  // still parses.
+  test.each(timerCases)(
+    "$type $field: zero is accepted (finiteness only)",
+    ({ type, field }) => {
+      expect(parse(type, field, 0).success).toBe(true);
+    },
+  );
+
+  // Only the mediaPlayer fields accept a `${field}` placeholder.
+  test.each(mediaCases)(
+    "$type $field: a negative value filled into a placeholder is rejected",
+    ({ type, field }) => {
+      const element = { type, file: "a.mp4", [field]: "${t}" };
+      // The placeholder passes the authoring schema...
+      expect(elementSchema.safeParse(element).success).toBe(true);
+      const { result } = fillTemplates({
+        obj: { elements: [{ template: "el", fields: { t: -1 } }] },
+        templates: [{ name: "el", contentType: "element", content: element }],
+      }) as { result: { elements: Record<string, unknown>[] } };
+      expect(result.elements[0][field]).toBe(-1);
+      // ...and the resolved schema rejects the filled value, on that field.
+      const parsed = resolvedElementSchema.safeParse(result.elements[0]);
+      expect(parsed.success).toBe(false);
+      if (!parsed.success) {
+        expect(parsed.error.issues.some((i) => i.path.includes(field))).toBe(
+          true,
+        );
+      }
+      // Positive control: the same element filled with a valid value parses,
+      // so the rejection above comes from the sign check, not the shape.
+      const { result: ok } = fillTemplates({
+        obj: { elements: [{ template: "el", fields: { t: 2.5 } }] },
+        templates: [{ name: "el", contentType: "element", content: element }],
+      }) as { result: { elements: Record<string, unknown>[] } };
+      expect(resolvedElementSchema.safeParse(ok.elements[0]).success).toBe(
+        true,
+      );
+    },
+  );
 });

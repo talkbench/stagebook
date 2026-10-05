@@ -28,6 +28,7 @@ import {
   type LayoutFeedType,
   type LayoutDefinitionType,
   SURVEY_ELEMENT_REMOVED_MESSAGE,
+  finiteSecondsSchema,
 } from "./treatment.js";
 
 // Detects `${field}` placeholders that survived `fillTemplates` —
@@ -210,9 +211,13 @@ const resolvedElementBaseSchema = z.object({
   displayText: z.string().optional(),
   helperText: z.string().optional(),
   reference: z.string().optional(),
-  startTime: z.number().optional(),
-  endTime: z.number().optional(),
-  warnTimeRemaining: z.number().optional(),
+  // Timer time fields are checked for finiteness only. The mediaPlayer time
+  // fields (below) also mirror the authoring sign checks, because a filled
+  // `${field}` placeholder skips them — so hosts that run only this schema
+  // still catch a filled negative value.
+  startTime: finiteSecondsSchema.optional(),
+  endTime: finiteSecondsSchema.optional(),
+  warnTimeRemaining: finiteSecondsSchema.optional(),
   style: z.enum(["thin", "regular", "thick", ""]).optional(),
   width: z.number().optional(),
   // image alt text (#536) — the resolved (post-fill) form the runtime reads.
@@ -232,10 +237,10 @@ const resolvedElementBaseSchema = z.object({
   playVideo: z.boolean().optional(),
   playAudio: z.boolean().optional(),
   captionsFile: z.string().optional(),
-  startAt: z.number().optional(),
-  stopAt: z.number().optional(),
+  startAt: finiteSecondsSchema.nonnegative().optional(),
+  stopAt: finiteSecondsSchema.positive().optional(),
   allowScrubOutsideBounds: z.boolean().optional(),
-  stepDuration: z.number().optional(),
+  stepDuration: finiteSecondsSchema.positive().optional(),
   controls: z
     .object({
       playPause: z.boolean().optional(),
