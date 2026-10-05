@@ -137,7 +137,7 @@ async function installYTMock(page: PWT) {
         CUED: 5,
       },
       Player: function (
-        _el: unknown,
+        el: HTMLElement,
         opts: {
           events?: {
             onReady?: () => void;
@@ -147,12 +147,33 @@ async function installYTMock(page: PWT) {
       ) {
         w.__ytOnReady = opts.events?.onReady ?? null;
         w.__ytOnStateChange = opts.events?.onStateChange ?? null;
+        // Opt-in: swap the target for an iframe that copies its attributes,
+        // as the real API does, and put the target back on destroy.
+        let iframe: HTMLIFrameElement | null = null;
+        if (w.__ytBuildsIframe) {
+          iframe = document.createElement("iframe");
+          for (const { name, value } of Array.from(el.attributes)) {
+            iframe.setAttribute(name, value);
+          }
+          el.replaceWith(iframe);
+        }
+        // Opt-in: report the state a play/pause call leads to, as the real
+        // API does once the frame has acted on it.
+        const report = (state: number) => {
+          if (!w.__ytReportsCalls) return;
+          setTimeout(() => {
+            w.__ytState = state;
+            opts.events?.onStateChange?.({ data: state });
+          }, 0);
+        };
         return {
           playVideo() {
             w.__ytPlayCalled++;
+            report(1);
           },
           pauseVideo() {
             w.__ytPauseCalled++;
+            report(2);
           },
           seekTo(t: number) {
             w.__ytLastSeek = t;
@@ -171,6 +192,7 @@ async function installYTMock(page: PWT) {
           },
           destroy() {
             w.__ytDestroyed = true;
+            iframe?.replaceWith(el);
           },
         };
       },
@@ -2958,6 +2980,181 @@ test("with focus in a YouTube player, clicking another player's control moves fo
   await yt.focus();
   await html5.getByTestId("mediaPlayer-seekForward").click();
   await expect(html5.getByTestId("mediaPlayer")).toBeFocused();
+});
+
+// -- #724: a click on a YouTube video goes through stagebook --
+// With stagebook's controls on, YouTube's keyboard is off (#699). A click on
+// the video used to put focus in YouTube's iframe, where keys do nothing, so
+// a layer over the frame takes the click and toggles playback itself.
+
+type Mounted = import("@playwright/test").Locator;
+
+/** Make the stub build its iframe and report the state play/pause lead to. */
+async function ytStubActsLikeTheFrame(page: PWT) {
+  await page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    w.__ytBuildsIframe = true;
+    w.__ytReportsCalls = true;
+  });
+}
+
+/** A point on the video, above the control bar. */
+async function pointOnVideo(component: Mounted) {
+  const box = await component.getByTestId("mediaPlayer-viewport").boundingBox();
+  if (!box) throw new Error("viewport not found");
+  return { x: box.x + box.width / 2, y: box.y + box.height / 4 };
+}
+
+async function loggedTypes(component: Mounted) {
+  const saves = JSON.parse(
+    (await component.getByTestId("save-log").textContent()) ?? "[]",
+  ) as SavedEvents;
+  return saves.at(-1)?.value.events.map((e) => e.type) ?? [];
+}
+
+async function ytPlayPauseCalls(page: PWT) {
+  return page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    return [w.__ytPlayCalled, w.__ytPauseCalled] as [number, number];
+  });
+}
+
+test("YouTube with stagebook controls: clicking the video plays and pauses, logged once each", async ({
+  mount,
+  page,
+}) => {
+  await installYTMock(page);
+  await ytStubActsLikeTheFrame(page);
+  const component = await mount(
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  await fireYTOnReady(page);
+  await expect(component.getByTestId("mediaPlayer-time")).toContainText("1:00");
+  const point = await pointOnVideo(component);
+  await page.mouse.click(point.x, point.y);
+  await expect.poll(() => loggedTypes(component)).toEqual(["play"]);
+  await page.mouse.click(point.x, point.y);
+  await expect.poll(() => loggedTypes(component)).toEqual(["play", "pause"]);
+  expect(await ytPlayPauseCalls(page)).toEqual([1, 1]);
+});
+
+test("YouTube with stagebook controls: clicking the video focuses the player, so Space works", async ({
+  mount,
+  page,
+}) => {
+  await installYTMock(page);
+  await ytStubActsLikeTheFrame(page);
+  const component = await mount(
+    <div>
+      <input data-testid="other-input" />
+      <MockMediaPlayer
+        url="https://youtu.be/QC8iQqtG0hg"
+        name="test"
+        controls={{ playPause: true, seek: true }}
+      />
+    </div>,
+  );
+  await fireYTOnReady(page);
+  await expect(component.getByTestId("mediaPlayer-time")).toContainText("1:00");
+  // Focus moves from wherever it was, as a click on an uploaded video's
+  // surface moves it.
+  await component.getByTestId("other-input").focus();
+  const point = await pointOnVideo(component);
+  await page.mouse.click(point.x, point.y);
+  await expect(component.getByTestId("mediaPlayer")).toBeFocused();
+  await expect.poll(() => loggedTypes(component)).toEqual(["play"]);
+  await page.keyboard.press("Space");
+  await expect.poll(() => loggedTypes(component)).toEqual(["play", "pause"]);
+});
+
+test("YouTube with stagebook controls: the iframe is not a tab stop", async ({
+  mount,
+  page,
+}) => {
+  await installYTMock(page);
+  await ytStubActsLikeTheFrame(page);
+  const component = await mount(
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  await fireYTOnReady(page);
+  await component.getByTestId("mediaPlayer").focus();
+  await page.keyboard.press("Tab");
+  await expect(component.locator("iframe")).not.toBeFocused();
+  await expect(component.getByTestId("mediaPlayer-seekBack")).toBeFocused();
+  // The layer only takes pointer input; keyboard users have the player's
+  // own shortcuts, so assistive technology doesn't see it.
+  await expect(component.getByTestId("mediaPlayer-clickLayer")).toHaveAttribute(
+    "aria-hidden",
+    "true",
+  );
+});
+
+test("YouTube with stagebook controls: the control bar and scrub bar work above the layer", async ({
+  mount,
+  page,
+}) => {
+  await installYTMock(page);
+  await ytStubActsLikeTheFrame(page);
+  const component = await mount(
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  await fireYTOnReady(page);
+  await expect(component.getByTestId("mediaPlayer-time")).toContainText("1:00");
+  // click() checks the button itself is the hit target, not the layer.
+  const playPause = component.getByTestId("mediaPlayer-playPause");
+  await playPause.click();
+  await expect.poll(() => loggedTypes(component)).toEqual(["play"]);
+  await playPause.click();
+  await expect.poll(() => loggedTypes(component)).toEqual(["play", "pause"]);
+  // A scrub dragged off the bar and released over the video is a seek,
+  // not a click on the video.
+  const box = await component.getByTestId("mediaPlayer-scrubBar").boundingBox();
+  if (!box) throw new Error("scrub bar not found");
+  await page.mouse.move(box.x + box.width / 4, box.y + box.height / 2);
+  await page.mouse.down();
+  const point = await pointOnVideo(component);
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      page.evaluate(() => (window as any).__ytLastSeek as number | null),
+    )
+    .not.toBeNull();
+  expect(await ytPlayPauseCalls(page)).toEqual([1, 1]);
+  expect(
+    (await loggedTypes(component)).filter((t) => t === "play" || t === "pause"),
+  ).toEqual(["play", "pause"]);
+});
+
+test("YouTube without stagebook controls: no layer, and the iframe keeps its tab stop", async ({
+  mount,
+  page,
+}) => {
+  // YouTube's own controls are the interface here.
+  await installYTMock(page);
+  await ytStubActsLikeTheFrame(page);
+  const component = await mount(
+    <MockMediaPlayer url="https://youtu.be/QC8iQqtG0hg" name="test" />,
+  );
+  await fireYTOnReady(page);
+  await expect(component.locator("iframe")).toBeAttached();
+  await expect(component.getByTestId("mediaPlayer-clickLayer")).toHaveCount(0);
+  await expect(component.locator("iframe")).not.toHaveAttribute("tabindex");
 });
 
 // -- Unsafe / invalid URL handling (#484) --
