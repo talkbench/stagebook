@@ -258,7 +258,8 @@ Numbers that people must agree on should be typed numbers
 ## Consequences
 
 - **Behavior changes from Stagebook 0.32,** which the upgrade lint must
-  cover (#690, decision 4):
+  cover. This list summarizes them; the lint's full specification belongs
+  with #690 (decision 4):
   - a cleared text box (`""`), whitespace-only text, and an unticked
     multi-select (`[]`) no longer count as answers. Today `exists` is true
     for all three, and an unguarded `hasLengthAtMost` passes them;
@@ -271,6 +272,10 @@ Numbers that people must agree on should be typed numbers
     forms `doesNotEqual`, `isNotOneOf`, `doesNotInclude`) ignore case and
     surrounding spaces (A5, D1). `matches` and `doesNotMatch` still use the
     raw text, unless the pattern sets its own `i` flag;
+  - two text values that both look like numbers are compared as text, not
+    as numbers. Today `equals` treats `"100.00"` and `"100"`, or `"007"` and
+    `"7"`, as equal; under the new rules they differ, and `doesNotEqual`
+    flips with them;
   - comparisons between types that are known to differ are validation
     errors, in both directions. That covers a text prompt compared with a
     number (A4), and a prompt that saves numbers (`numericResponse`, a
