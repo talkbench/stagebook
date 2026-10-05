@@ -67,7 +67,9 @@ const bodylessFields = {
     .string()
     .max(100)
     .regex(/^[^\r\n\u2028\u2029]*$/, "ariaLabel must be a single line")
-    .refine((label) => label.trim().length > 0, "ariaLabel can't be blank")
+    // Not just non-blank: zero-width and other invisible characters survive
+    // `trim()` and would leave the control effectively unnamed.
+    .regex(/[\p{L}\p{N}]/u, "ariaLabel must contain a letter or number")
     .optional(),
 };
 
@@ -75,8 +77,14 @@ const bodylessFields = {
 function explainUnsupportedKeys(reasons: Record<string, string>) {
   const errorMap: z.ZodErrorMap = (issue, ctx) => {
     if (issue.code === z.ZodIssueCode.unrecognized_keys) {
-      const key = issue.keys.find((k) => Object.hasOwn(reasons, k));
-      if (key !== undefined) return { message: reasons[key] };
+      // Zod reports every unknown key in one issue. Keep its message, which
+      // names them all, so an explained key can't hide a typo beside it.
+      const reasonsGiven = issue.keys
+        .filter((key) => Object.hasOwn(reasons, key))
+        .map((key) => reasons[key]);
+      if (reasonsGiven.length > 0) {
+        return { message: [ctx.defaultError, ...reasonsGiven].join(". ") };
+      }
     }
     return { message: ctx.defaultError };
   };

@@ -45,6 +45,7 @@ interface StagebookContext {
     padName: string;
     defaultText?: string;
     rows?: number;
+    ariaLabelledBy: string;
     onLocalEdit(text: string): void;
     onRemoteChange(text: string): void;
     onBlur(text: string): void;

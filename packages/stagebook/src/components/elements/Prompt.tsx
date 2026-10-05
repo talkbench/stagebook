@@ -259,9 +259,10 @@ function PromptContent({
       {bodyless ? (
         // Nothing visible above the control. The schema requires an
         // `ariaLabel` for every bodyless type except checkboxes, whose
-        // own labels name them.
+        // own labels name them. Inline `display: none` backs up `hidden`
+        // against host CSS that sets `display` on spans (#213).
         ariaLabel !== undefined && (
-          <span id={bodyId} hidden>
+          <span id={bodyId} hidden style={{ display: "none" }}>
             {ariaLabel}
           </span>
         )

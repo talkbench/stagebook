@@ -46,7 +46,7 @@ describe("body: none metadata", () => {
       body: "none",
     });
     expect(result.success).toBe(false);
-    expect(issueAt(result, "ariaLabel")?.message).toContain("ariaLabel");
+    expect(issueAt(result, "ariaLabel")?.message).toContain("radio");
     expect(
       promptMetadataSchema.safeParse({
         type: "multipleChoice",
@@ -61,7 +61,9 @@ describe("body: none metadata", () => {
     (type) => {
       const missing = promptMetadataSchema.safeParse({ type, body: "none" });
       expect(missing.success).toBe(false);
-      expect(issueAt(missing, "ariaLabel")?.message).toContain("ariaLabel");
+      const message = issueAt(missing, "ariaLabel")?.message ?? "";
+      expect(message).toContain(`${type} prompts`);
+      expect(message).toContain("ariaLabel");
       expect(
         promptMetadataSchema.safeParse({
           type,
@@ -103,13 +105,15 @@ describe("body: none metadata", () => {
   test.each(["hidden", "", true, null])(
     "body only accepts none (got %j)",
     (body) => {
-      expect(
-        promptMetadataSchema.safeParse({
-          type: "multipleChoice",
-          select: "multiple",
-          body,
-        }).success,
-      ).toBe(false);
+      const result = promptMetadataSchema.safeParse({
+        type: "multipleChoice",
+        select: "multiple",
+        body,
+      });
+      expect(result.success).toBe(false);
+      expect(issueAt(result, "body")?.message).toBe(
+        "`body` accepts only `none`",
+      );
     },
   );
 
@@ -124,7 +128,13 @@ describe("body: none metadata", () => {
     expect(parse("x".repeat(101))).toBe(false);
     expect(parse("")).toBe(false);
     expect(parse("   ")).toBe(false);
+    // Invisible characters that `trim()` keeps would leave the control
+    // effectively unnamed.
+    expect(parse("\u200B")).toBe(false);
+    expect(parse("\u0085")).toBe(false);
+    expect(parse("Age 18+")).toBe(true);
     expect(parse("Notes\non this recording")).toBe(false);
+    expect(parse("Notes\ron this recording")).toBe(false);
     expect(parse("Notes\u2028on this recording")).toBe(false);
   });
 
@@ -140,8 +150,25 @@ describe("body: none metadata", () => {
         [key]: key === "body" ? "none" : "Label",
       });
       expect(result.success).toBe(false);
-      expect(issues(result).some((i) => i.message.includes(hint))).toBe(true);
+      const message = issues(result)[0]?.message ?? "";
+      // The reason names the key it's about, beyond the default message.
+      expect(message).toContain("`" + key);
+      expect(message).toContain(hint);
     }
+  });
+
+  test("the explanation doesn't hide other unknown keys", () => {
+    const result = promptMetadataSchema.safeParse({
+      type: "slider",
+      min: 0,
+      max: 10,
+      interval: 1,
+      tytle: "x",
+      body: "none",
+    });
+    const message = issues(result)[0]?.message ?? "";
+    expect(message).toContain("tytle");
+    expect(message).toContain("#689");
   });
 
   test("an unknown key named like an Object.prototype member keeps the default error", () => {
@@ -289,15 +316,64 @@ select: multiple
     expect(message).toContain("body: none");
   });
 
-  test("an empty noResponse body does not suggest body: none", () => {
+  // Files with an empty body section, one per type.
+  const emptyBody = {
+    multipleChoice: "---\ntype: multipleChoice\n---\n\n---\n- A",
+    dropdown: "---\ntype: dropdown\n---\n\n---\n- A",
+    openResponse: "---\ntype: openResponse\n---\n\n---\n> Hint",
+    numericResponse: "---\ntype: numericResponse\n---\n",
+    slider:
+      "---\ntype: slider\nmin: 0\nmax: 10\ninterval: 1\n---\n\n---\n- 0: a\n- 10: b",
+    listSorter: "---\ntype: listSorter\n---\n\n---\n- A\n- B",
+    noResponse: "---\ntype: noResponse\n---\n",
+  };
+
+  test.each([
+    "multipleChoice",
+    "dropdown",
+    "openResponse",
+    "numericResponse",
+  ] as const)("an empty %s body suggests body: none", (type) => {
+    const message =
+      issueAt(promptFileSchema.safeParse(emptyBody[type]), "body")?.message ??
+      "";
+    expect(message).toMatch(/^Prompt body section is empty/);
+    expect(message).toContain("body: none");
+  });
+
+  test.each(["slider", "listSorter", "noResponse"] as const)(
+    "an empty %s body does not suggest body: none",
+    (type) => {
+      const message =
+        issueAt(promptFileSchema.safeParse(emptyBody[type]), "body")?.message ??
+        "";
+      expect(message).toMatch(/^Prompt body section is empty/);
+      expect(message).not.toContain("body: none");
+    },
+  );
+
+  test("a bodyless numericResponse with body text says to remove it", () => {
     const result = promptFileSchema.safeParse(`---
-type: noResponse
+type: numericResponse
+body: none
+ariaLabel: Age in years
 ---
-`);
+How old are you?`);
     expect(result.success).toBe(false);
     const message = issueAt(result, "body")?.message ?? "";
-    expect(message).toMatch(/^Prompt body section is empty/);
-    expect(message).not.toContain("body: none");
+    expect(message).toContain("notes:");
+    expect(message).not.toContain("empty body section");
+  });
+
+  test("CRLF line endings and a whitespace-only body section parse", () => {
+    const result = promptFileSchema.safeParse(
+      "---\r\ntype: multipleChoice\r\nselect: multiple\r\nbody: none\r\n---\r\n \t \r\n---\r\n- Briefing\r\n- Strategy\r\n",
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.body).toBe("");
+      expect(result.data.responseItems).toEqual(["Briefing", "Strategy"]);
+    }
   });
 
   test("an ordinary prompt is unchanged", () => {

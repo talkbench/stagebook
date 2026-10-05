@@ -5,6 +5,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { Prompt } from "./Prompt.js";
 import type { StagebookContext } from "../StagebookProvider.js";
+import type { MetadataType } from "../../schemas/promptFile.js";
 import {
   bodylessCheckboxes,
   bodylessDropdown,
@@ -79,17 +80,46 @@ describe("body: none", () => {
     const label = labelOf(dom.querySelector('[role="radiogroup"]'));
     expect(label?.textContent).toBe("Briefing materials");
     expect(label?.hidden).toBe(true);
+    // Inline, so a host stylesheet that sets `display` on spans can't
+    // reveal it (#213).
+    expect(label?.style.display).toBe("none");
     const wrapper = dom.querySelector<HTMLElement>(
       '[data-testid="radioGroup"]',
     )!;
     expect(wrapper.style.marginTop).toBe("");
   });
 
+  test("numeric-mode radios are named and flush too", () => {
+    const dom = render(
+      <Prompt
+        {...bodylessRadios}
+        responseItems={["Disagree", "Agree"]}
+        responsePoints={[1, 2]}
+        {...common}
+      />,
+    );
+    const group = dom.querySelector<HTMLElement>('[role="radiogroup"]')!;
+    expect(
+      dom.querySelector('input[type="radio"]')?.getAttribute("value"),
+    ).toBe("1");
+    expect(labelOf(group)?.textContent).toBe("Briefing materials");
+    expect(group.style.marginInlineStart).toBe("");
+    expect(
+      dom.querySelector<HTMLElement>('[data-testid="radioGroup"]')!.style
+        .marginTop,
+    ).toBe("");
+  });
+
   test("an ariaLabel names a checkbox group when given", () => {
     const dom = render(
       <Prompt
         {...bodylessCheckboxes}
-        metadata={{ ...bodylessCheckboxes.metadata, ariaLabel: "Materials" }}
+        metadata={
+          {
+            ...bodylessCheckboxes.metadata,
+            ariaLabel: "Materials",
+          } as MetadataType
+        }
         {...common}
       />,
     );

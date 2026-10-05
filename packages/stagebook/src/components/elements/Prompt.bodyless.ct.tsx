@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/experimental-ct-react";
-import type { Locator } from "@playwright/test";
+import type { Locator } from "playwright/test";
 import { Prompt } from "./Prompt";
 import { BodylessCheckboxHarness } from "../testing/BodylessCheckboxHarness";
 import {
@@ -15,6 +15,10 @@ import {
 
 const TECHNICAL_ERRORS =
   "This recording has technical errors that prevent analysis";
+
+// A new block formatting context, so a child's top margin stays inside the
+// root instead of collapsing through it and measuring as no gap.
+const contain = { display: "flow-root" } as const;
 
 /** Distance from the mounted root's top-left corner to the target's. */
 async function offset(root: Locator, target: Locator) {
@@ -53,7 +57,7 @@ test("bodyless checkboxes sit flush, in a row, in an unnamed group", async ({
   mount,
 }) => {
   const component = await mount(
-    <div>
+    <div style={contain}>
       <Prompt
         {...bodylessCheckboxes}
         name="materials"
@@ -80,7 +84,7 @@ test("an ariaLabel names bodyless radios without showing", async ({
   mount,
 }) => {
   const component = await mount(
-    <div>
+    <div style={contain}>
       <Prompt
         {...bodylessRadios}
         name="briefing"
@@ -104,7 +108,7 @@ test("an ariaLabel names bodyless radios without showing", async ({
 
 test("an ariaLabel names a bodyless textarea", async ({ mount }) => {
   const component = await mount(
-    <div>
+    <div style={contain}>
       <Prompt {...bodylessOpenResponse} name="notes" value="" save={() => {}} />
     </div>,
   );
@@ -113,14 +117,15 @@ test("an ariaLabel names a bodyless textarea", async ({ mount }) => {
   });
   await expect(textbox).toBeVisible();
   await expect(component.getByText("Notes on this recording")).toBeHidden();
-  expect((await offset(component, textbox)).top).toBeCloseTo(0, 0);
+  // Firefox sets the textarea 1px down within its line; a body gap is 16px.
+  expect((await offset(component, textbox)).top).toBeLessThan(2);
 });
 
 test("an ariaLabel names a bodyless dropdown, with no gap above it", async ({
   mount,
 }) => {
   const component = await mount(
-    <div>
+    <div style={contain}>
       <Prompt
         {...bodylessDropdown}
         name="house"
@@ -136,7 +141,7 @@ test("an ariaLabel names a bodyless dropdown, with no gap above it", async ({
 
 test("an ariaLabel names a bodyless numeric field", async ({ mount }) => {
   const component = await mount(
-    <div>
+    <div style={contain}>
       <Prompt
         {...bodylessNumeric}
         name="age"

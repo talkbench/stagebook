@@ -287,6 +287,45 @@ Pick one
   });
 });
 
+describe("body: none diagnostics (#718)", () => {
+  const at = (src: string) =>
+    validatePromptSource(src).diagnostics.map((d) => ({
+      line: d.range?.startLine,
+      message: d.message,
+    }));
+
+  it("an unflagged empty body points at the empty line and names the flag", () => {
+    expect(
+      at("---\ntype: multipleChoice\nselect: multiple\n---\n\n---\n- Briefing"),
+    ).toEqual([
+      { line: 4, message: expect.stringContaining("add `body: none`") },
+    ]);
+  });
+
+  it("body text under the flag points at the text", () => {
+    expect(
+      at(
+        "---\ntype: multipleChoice\nselect: multiple\nbody: none\n---\nWhich?\n---\n- Briefing",
+      ),
+    ).toEqual([{ line: 5, message: expect.stringContaining("notes:") }]);
+  });
+
+  it("a dropped body section points at the delimiter to add", () => {
+    // The options land in the body section, so the responses go missing too.
+    expect(
+      at(
+        "---\ntype: multipleChoice\nselect: multiple\nbody: none\n---\n- Briefing\n- Strategy",
+      ),
+    ).toEqual([
+      {
+        line: 4,
+        message: expect.stringContaining("keep an empty body section"),
+      },
+      { line: 5, message: expect.stringContaining("third section") },
+    ]);
+  });
+});
+
 describe("openResponse placeholder overflow warning (#590)", () => {
   function prompt(
     lines: string[],
