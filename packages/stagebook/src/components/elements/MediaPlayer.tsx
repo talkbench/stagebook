@@ -109,6 +109,16 @@ const HOLD_REPEAT_THRESHOLD = 10;
 // one seek (#682).
 const SEEK_SETTLE_MS = 500;
 
+// Marks each player's container, so a control press can tell focus held in a
+// different player from focus held anywhere else (#695).
+const PLAYER_SELECTOR = "[data-stagebook-media-player]";
+
+/** Whether `el` sits inside a media player other than `own`. */
+function isInOtherPlayer(el: Element | null, own: HTMLElement | null) {
+  const player = el?.closest(PLAYER_SELECTOR);
+  return !!player && player !== own;
+}
+
 export function MediaPlayer({
   name,
   url,
@@ -1252,6 +1262,37 @@ export function MediaPlayer({
   // In audio-only mode (playVideo:false) there's no video to obscure, so always show.
   const controlsVisible = hasControls && (isPaused || isHovered || !playVideo);
 
+  // onMouseDown for the control bar and the play-once button (#695). A pointer
+  // press never moves focus off something that holds it: a timeline handles
+  // Enter only while it holds focus, so clicking the speed button, the scrub
+  // bar or a gap between controls must not take focus from it, and a text
+  // field elsewhere keeps its caret. Focus moves as the default action of
+  // mousedown, so cancelling that leaves Tab and keyboard activation
+  // unchanged. When nothing holds focus, the press focuses the player
+  // container instead, so Space and the arrow keys then control this player;
+  // audio-only mode has no video surface, so this is its only mouse route to
+  // them. The same goes when this player's own YouTube iframe holds focus:
+  // keys pressed in that cross-origin frame never reach the shortcut handler,
+  // and focus stays in this player. And the same goes when focus sits inside
+  // a different player (its container or a control): otherwise the next
+  // Space after clicking this player's play would toggle the other one, and
+  // log the stray play/pause against it. The bar handles it once, since
+  // mousedown bubbles from every control in it. Clicking the video surface
+  // still focuses the player as before.
+  const keepFocusOnPress = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const active = document.activeElement;
+    const container = containerRef.current;
+    if (
+      active === null ||
+      active === document.body ||
+      (active instanceof HTMLIFrameElement && !!container?.contains(active)) ||
+      isInOtherPlayer(active, container)
+    ) {
+      container?.focus({ preventScroll: true });
+    }
+  }, []);
+
   // Focus rescue (#300): when the controls overlay hides (mouse leaves while
   // playing), any control that currently held focus — e.g. the play/pause
   // button the user just keyboard-toggled — unmounts. The browser drops focus
@@ -1259,6 +1300,10 @@ export function MediaPlayer({
   // pausing. We catch that exact transition and move focus to the container
   // (tabIndex=0), which is always mounted; :focus-within keeps the ring lit
   // and the keydown handler keeps Space wired to play/pause.
+  // A mouse press on the controls never focuses a control (#695): it focuses
+  // the container when nothing held focus, and otherwise leaves focus alone.
+  // So this fires after keyboard focus on a control. Focus held elsewhere,
+  // such as a timeline, is never moved.
   const prevControlsVisibleRef = useRef(controlsVisible);
   useEffect(() => {
     const prev = prevControlsVisibleRef.current;
@@ -1360,6 +1405,7 @@ export function MediaPlayer({
         ref={containerRef}
         className={containerClass}
         data-testid="mediaPlayer"
+        data-stagebook-media-player=""
         // Time-based controls never mirror (Material bidirectionality):
         // lock LTR so neither a host <html dir> nor an RTL study locale
         // flips the transport/scrub axis.
@@ -1398,7 +1444,7 @@ export function MediaPlayer({
                 from the shared focusRingCss(), so the rings no longer
                 differ between components.
              2. focus-within (not :focus). The container is
-                tabbable, but clicking interior controls (play /
+                tabbable, but tabbing to interior controls (play /
                 scrub / etc.) moves focus to those children, which
                 drops :focus on the parent. The user is still
                 "in" the MediaPlayer though — keyboard shortcuts
@@ -1473,6 +1519,7 @@ export function MediaPlayer({
           {ytControlsVisible && (
             <div
               data-testid="mediaPlayer-controls"
+              onMouseDown={keepFocusOnPress}
               style={{
                 position: "absolute",
                 bottom: 0,
@@ -1518,6 +1565,7 @@ export function MediaPlayer({
       ref={containerRef}
       className={containerClass}
       data-testid="mediaPlayer"
+      data-stagebook-media-player=""
       // Time-based controls never mirror — see the video variant's note.
       dir="ltr"
       role="region"
@@ -1656,6 +1704,7 @@ export function MediaPlayer({
           {controlsVisible && !loadError && (
             <div
               data-testid="mediaPlayer-controls"
+              onMouseDown={keepFocusOnPress}
               style={{
                 position: "absolute",
                 bottom: 0,
@@ -1679,6 +1728,7 @@ export function MediaPlayer({
               data-testid="mediaPlayer-playOnce"
               aria-label={messages.mediaPlayVideo}
               tabIndex={0}
+              onMouseDown={keepFocusOnPress}
               onClick={() => {
                 setShowPlayOnce(false);
                 const v = videoRef.current;
@@ -1729,6 +1779,7 @@ export function MediaPlayer({
           aria-label={messages.mediaPlayAudio}
           dir={localeDir}
           tabIndex={0}
+          onMouseDown={keepFocusOnPress}
           onClick={() => {
             setShowPlayOnce(false);
             const v = videoRef.current;
@@ -1759,6 +1810,7 @@ export function MediaPlayer({
       {!playVideo && controlsVisible && !loadError && (
         <div
           data-testid="mediaPlayer-controls"
+          onMouseDown={keepFocusOnPress}
           style={{
             background: "rgba(28,28,30,0.96)",
             borderRadius: "0.5rem",

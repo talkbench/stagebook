@@ -6,7 +6,7 @@
  * both elements land in one DOM log.
  */
 import React, { useState } from "react";
-import { MediaPlayer } from "../elements/MediaPlayer.js";
+import { MediaPlayer, type MediaPlayerProps } from "../elements/MediaPlayer.js";
 import { Timeline } from "../elements/Timeline.js";
 import { PlaybackProvider } from "../playback/PlaybackProvider.js";
 
@@ -18,6 +18,8 @@ export interface MockWindowedTimelineProps {
   selectionType: "range" | "point";
   multiSelect?: boolean;
   width?: number;
+  controls?: MediaPlayerProps["controls"];
+  playVideo?: boolean;
 }
 
 export function MockWindowedTimeline({
@@ -28,6 +30,8 @@ export function MockWindowedTimeline({
   selectionType,
   multiSelect = true,
   width = 800,
+  controls = { playPause: true, seek: true, step: true },
+  playVideo,
 }: MockWindowedTimelineProps) {
   const [saves, setSaves] = useState<Array<{ key: string; value: unknown }>>(
     [],
@@ -45,7 +49,8 @@ export function MockWindowedTimeline({
           stopAt={stopAt}
           allowScrubOutsideBounds={allowScrubOutsideBounds}
           playback="manual"
-          controls={{ playPause: true, seek: true, step: true }}
+          controls={controls}
+          playVideo={playVideo}
           save={save}
           getElapsedTime={() => 0}
         />

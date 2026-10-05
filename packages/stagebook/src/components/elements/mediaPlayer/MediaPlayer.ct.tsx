@@ -2845,6 +2845,121 @@ test("focus is left alone when activeElement is somewhere else entirely", async 
   await expect(other).toBeFocused();
 });
 
+// -- #695: a click on a control doesn't take focus --
+// The HTML5 controls are covered with a real Timeline in
+// Timeline.playerFocus.ct.tsx; the YouTube controls are a separate component.
+
+test("YouTube: clicking a control leaves focus where it was", async ({
+  mount,
+  page,
+}) => {
+  await installYTMock(page);
+  const component = await mount(
+    <div>
+      <input data-testid="other-input" />
+      <MockMediaPlayer
+        url="https://youtu.be/QC8iQqtG0hg"
+        name="test"
+        controls={{ playPause: true, seek: true }}
+      />
+    </div>,
+  );
+  await fireYTOnReady(page);
+  const other = component.locator('[data-testid="other-input"]');
+  for (const control of [
+    "seekBack",
+    "playPause",
+    "seekForward",
+    "scrubBar",
+    "time",
+  ]) {
+    await other.focus();
+    await component.locator(`[data-testid="mediaPlayer-${control}"]`).click();
+    await expect(other, control).toBeFocused();
+  }
+});
+
+test("YouTube: with nothing focused, clicking a control focuses the player", async ({
+  mount,
+  page,
+}) => {
+  await installYTMock(page);
+  const component = await mount(
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  await fireYTOnReady(page);
+  await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+  await component.locator('[data-testid="mediaPlayer-seekForward"]').click();
+  await expect(component.locator('[data-testid="mediaPlayer"]')).toBeFocused();
+});
+
+test("YouTube: with the player's own iframe focused, clicking a control focuses the player", async ({
+  mount,
+  page,
+}) => {
+  // Clicking the embedded video focuses YouTube's cross-origin iframe, and
+  // keys pressed there never reach the player's shortcut handler. A control
+  // press moves focus to the player container: focus stays in this player.
+  await installYTMock(page);
+  const component = await mount(
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  await fireYTOnReady(page);
+  // The mock doesn't build an iframe; stand one in where the API puts it.
+  await page.evaluate(() => {
+    const host = document.querySelector('[data-testid="mediaPlayer-youtube"]');
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("data-testid", "yt-iframe");
+    host?.appendChild(iframe);
+    iframe.focus();
+  });
+  await expect(component.locator('[data-testid="yt-iframe"]')).toBeFocused();
+  await component.locator('[data-testid="mediaPlayer-seekForward"]').click();
+  await expect(component.locator('[data-testid="mediaPlayer"]')).toBeFocused();
+});
+
+test("with focus in a YouTube player, clicking another player's control moves focus to that player", async ({
+  mount,
+  page,
+}) => {
+  // Focus held in a different player counts as nothing holding focus, so the
+  // next Space controls the player just clicked. The HTML5 side of this is
+  // covered in Timeline.playerFocus.ct.tsx.
+  await installYTMock(page);
+  const component = await mount(
+    <div>
+      <div data-testid="player-yt">
+        <MockMediaPlayer
+          url="https://youtu.be/QC8iQqtG0hg"
+          name="yt"
+          controls={{ playPause: true, seek: true }}
+        />
+      </div>
+      <div data-testid="player-html5">
+        <MockMediaPlayer
+          url="/sample-video.mp4"
+          name="html5"
+          controls={{ playPause: true, seek: true }}
+        />
+      </div>
+    </div>,
+  );
+  await fireYTOnReady(page);
+  const yt = component.getByTestId("player-yt").getByTestId("mediaPlayer");
+  const html5 = component.getByTestId("player-html5");
+  await yt.focus();
+  await html5.getByTestId("mediaPlayer-seekForward").click();
+  await expect(html5.getByTestId("mediaPlayer")).toBeFocused();
+});
+
 // -- Unsafe / invalid URL handling (#484) --
 
 test("renders an invalid-URL alert for a dangerous protocol", async ({
