@@ -206,7 +206,8 @@ participants who have answered; see Consequences.
 ## Text comparisons ignore case and surrounding spaces
 
 Equality and membership (`equals`, `isOneOf`, `includes`, `allEqual`,
-`allUnique`, `countUnique`) compare text after trimming it and lowercasing
+`allUnique`, `countUnique`, and the negative forms `doesNotEqual`,
+`isNotOneOf`, `doesNotInclude`) compare text after trimming it and lowercasing
 it. That means "Red car" and "red car " are the same label, as they were in
 the legacy platform's agreement check. Trimming removes the same whitespace
 as #668's blank test (`String.prototype.trim`), and lowercasing uses the
@@ -266,9 +267,10 @@ Numbers that people must agree on should be typed numbers
   - early termination written with `none:` no longer advances the stage at
     load, which is a fix;
   - equality and membership comparisons (`equals`, `isOneOf`,
-    `includes`, `allEqual`, `allUnique`, `countUnique`) ignore case and
-    surrounding spaces. `matches` and `doesNotMatch` still use the raw
-    text, unless the pattern sets its own `i` flag;
+    `includes`, `allEqual`, `allUnique`, `countUnique`, and the negative
+    forms `doesNotEqual`, `isNotOneOf`, `doesNotInclude`) ignore case and
+    surrounding spaces (A5, D1). `matches` and `doesNotMatch` still use the
+    raw text, unless the pattern sets its own `i` flag;
   - comparing a text prompt with a number is a validation error;
   - Stagebook 0.32's `all.x` leaves check only the participants who have
     answered, and there's no one-for-one rewrite. The upgrade lint suggests

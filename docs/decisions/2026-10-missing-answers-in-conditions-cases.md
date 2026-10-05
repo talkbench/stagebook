@@ -27,7 +27,7 @@ Summarized from the ADR. Cases cite them by number.
 
 5. **Waiting is explicit.** To hold something back until people have answered, say so with `exists` or `doesNotExist`, or state the condition positively.
 6. **Groups.** `everyone.<ref>` is a list with one entry per seat, in seat order. A leaf on `everyone.` gives one true/false per seat. `all`, `any`, `none` or `countTrue` must consume that list, for example `all: {reference: everyone.prompt.x.value, comparator: exists}` for "everyone answered". A bare `everyone.` leaf, or one inside an operand list, is a validation error, with a hint to wrap it.
-7. **Text.** Equality and membership (`equals`, `isOneOf`, `includes`, `allEqual`, `allUnique`, `countUnique`) compare text after trimming it (the same whitespace as #668's blank test) and lowercasing it. `matches`, `length` and `hasLength*` use the raw string. Internal whitespace isn't collapsed. Stored data is never changed.
+7. **Text.** Equality and membership (`equals`, `isOneOf`, `includes`, `allEqual`, `allUnique`, `countUnique`, and the negative forms `doesNotEqual`, `isNotOneOf`, `doesNotInclude`) compare text after trimming it (the same whitespace as #668's blank test) and lowercasing it. `matches`, `length` and `hasLength*` use the raw string. Internal whitespace isn't collapsed. Stored data is never changed.
 8. **Negation versus the opposite comparator.** The negative comparators (`doesNotEqual`, `doesNotInclude`, `doesNotMatch`, `isNotOneOf`), and `none` around a positive comparison, are true when there's no answer. The numeric pairs (`isAbove` / `isAtMost`, `isBelow` / `isAtLeast`) are both positive claims, and both need an answer. So `none: [isBelow 5]` differs from `isAtLeast 5` only for a missing answer.
 
 ## How to read a case
@@ -924,6 +924,6 @@ These are rejected when the study is validated, before anyone runs it.
   - Early termination with `none:` stops advancing the stage at load (B2; a fix).
   - `none` around a positive comparison is true before anyone answers (C6). Studies relying on the old waiting behavior need the wait stated.
   - A number compared with a text choice becomes a validation error (A4).
-  - Equality and membership comparisons ignore case and surrounding spaces (A5, D1). `matches` and `doesNotMatch` still use the raw text.
+  - Equality and membership comparisons, including their negative forms (`doesNotEqual`, `isNotOneOf`, `doesNotInclude`), ignore case and surrounding spaces (A5, D1). `matches` and `doesNotMatch` still use the raw text.
   - **0.32's `all.` leaves check only the participants who have answered; `everyone.` checks every seat (C2, C3).** There's no one-for-one rewrite. `all.x exists` ("someone has answered") becomes `any:`. `doesNotExist` and the negative comparators keep their meaning under `all:`, because a missing seat makes them true. The remaining positive comparators become `all:`, which is stricter: every seat must now answer.
 - **C2 is settled by `numericResponse`** (#687, 0.32.0). Numbers that people must agree on should be typed numbers, not text.
