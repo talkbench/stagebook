@@ -33,7 +33,8 @@ the replay jump) are logged at once, as before. Holding an arrow key or a
 seek button makes a stream too
 ([#698](https://github.com/talkbench/stagebook/issues/698)): a held key's
 first step is logged at once, and the steps after it are logged as one seek
-from where that first step landed.
+from where the held steps began (while paused, where that first step
+landed).
 
 A grab of the scrub bar during playback logs its pause at once, where
 playback stood, and ignores the pause report that follows: the browser, and

@@ -269,6 +269,29 @@ describe("HTML5", () => {
         seekButton().dispatchEvent(new MouseEvent(type, { bubbles: true }));
       });
     }
+    // React derives onMouseLeave from a mouseout to an element outside.
+    function leave() {
+      act(() => {
+        seekButton().dispatchEvent(
+          new MouseEvent("mouseout", {
+            bubbles: true,
+            relatedTarget: document.body,
+          }),
+        );
+      });
+    }
+
+    it("logs a seek button tap at once", () => {
+      const video = setup();
+      moveTo(video, 10);
+      mouse("mousedown");
+      settle(200); // released before the hold's 500ms delay
+      mouse("mouseup");
+      expect(video.currentTime).toBe(11);
+      expect(record()?.events).toEqual([
+        expect.objectContaining({ type: "seek", fromTime: 10, videoTime: 11 }),
+      ]);
+    });
 
     it("logs a held arrow key's first step at once and its repeats as one seek", () => {
       const video = setup();
@@ -330,6 +353,25 @@ describe("HTML5", () => {
       expect(video.currentTime).toBe(17.5);
       expect(saves).toHaveLength(0);
       settle();
+      expect(record()?.events).toEqual([
+        expect.objectContaining({
+          type: "seek",
+          fromTime: 10,
+          videoTime: 17.5,
+        }),
+      ]);
+    });
+
+    it("logs one seek for a seek button hold ended by leaving the button", () => {
+      const video = setup();
+      moveTo(video, 10);
+      mouse("mousedown");
+      settle(2000);
+      leave();
+      expect(video.currentTime).toBe(17.5);
+      expect(saves).toHaveLength(0);
+      settle();
+      expect(video.currentTime).toBe(17.5);
       expect(record()?.events).toEqual([
         expect.objectContaining({
           type: "seek",
@@ -503,24 +545,34 @@ describe("YouTube", () => {
     expect(record()?.events[1]).toMatchObject({ fromTime: 12, videoTime: 50 });
   });
 
-  it("logs a held arrow key's first step at once and its repeats as one seek", async () => {
-    await setup();
-    stub.time = 10;
-    press("ArrowRight");
-    expect(record()?.events).toEqual([
-      expect.objectContaining({ type: "seek", fromTime: 10, videoTime: 11 }),
-    ]);
-    for (let i = 0; i < 5; i++) press("ArrowRight", true);
-    expect(stub.time).toBe(16);
-    expect(saves).toHaveLength(1);
-    settle();
-    expect(saves).toHaveLength(2);
-    expect(record()?.events.at(-1)).toMatchObject({
-      type: "seek",
-      fromTime: 11,
-      videoTime: 16,
-    });
-  });
+  it.each([
+    ["ArrowRight", 11, 16],
+    ["ArrowLeft", 9, 4],
+  ] as const)(
+    "logs a held %s key's first step at once and its repeats as one seek",
+    async (key, step, held) => {
+      await setup();
+      stub.time = 10;
+      press(key);
+      expect(record()?.events).toEqual([
+        expect.objectContaining({
+          type: "seek",
+          fromTime: 10,
+          videoTime: step,
+        }),
+      ]);
+      for (let i = 0; i < 5; i++) press(key, true);
+      expect(stub.time).toBe(held);
+      expect(saves).toHaveLength(1);
+      settle();
+      expect(saves).toHaveLength(2);
+      expect(record()?.events.at(-1)).toMatchObject({
+        type: "seek",
+        fromTime: step,
+        videoTime: held,
+      });
+    },
+  );
 
   it("closes playback at unmount at the player's live position", async () => {
     await setup();
