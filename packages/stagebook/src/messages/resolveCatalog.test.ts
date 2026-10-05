@@ -227,8 +227,14 @@ describe("range-mode shortcut table describes the real gestures (#680)", () => {
     it(`${locale}: empty-space click creates a range; the ruler seeks`, () => {
       const rows = expected[locale];
       const range = defaultMessages[locale].timelineShortcutRowsRange();
-      expect(range).toContainEqual(rows.clickEmpty);
-      expect(range).toContainEqual(rows.ruler);
+      // Exactly one row each: a stale copy of the old "Click empty space →
+      // Seek playhead" row next to the new ones would contradict them.
+      expect(range.filter((r) => r.keys === rows.clickEmpty.keys)).toEqual([
+        rows.clickEmpty,
+      ]);
+      expect(
+        range.filter((r) => r.description === rows.ruler.description),
+      ).toEqual([rows.ruler]);
     });
   }
 });
