@@ -8,8 +8,12 @@ A `mediaPlayer`'s saved record is a measurement: researchers use its
 `watchedRanges` to check whether a participant watched the clip. It is only
 as good as the event log it is derived from, so every change of position,
 playing state or speed made through stagebook — the player's own controls or
-a sibling such as a Timeline — is logged. YouTube's own in-frame controls
-are not yet covered ([#699](https://github.com/talkbench/stagebook/issues/699)).
+a sibling such as a Timeline — is logged. When a study gives the participant
+stagebook's controls, YouTube's own in-frame controls and keyboard shortcuts
+are turned off, so they cannot move the position outside the log. Without
+stagebook's controls, YouTube's own controls stay on as the participant's
+only way to play, and seeks made with them are not logged
+([#699](https://github.com/talkbench/stagebook/issues/699)).
 
 **Seeks.** The player logs seeks made through its own controls, through the
 PlaybackHandle it registers for siblings (a Timeline's ruler, playhead drag,
