@@ -3099,6 +3099,78 @@ test("YouTube with stagebook controls: the iframe is not a tab stop", async ({
   );
 });
 
+test("YouTube with stagebook controls: the layer covers the whole frame, edges and corners too", async ({
+  mount,
+  page,
+}) => {
+  // YouTube's suggested videos (#725) sit across the frame, end screens
+  // included, so no visible point of the iframe may stick out from under
+  // the layer. Narrow enough that the whole player fits in the window.
+  await installYTMock(page);
+  await ytStubActsLikeTheFrame(page);
+  const component = await mount(
+    <div style={{ width: 480 }}>
+      <MockMediaPlayer
+        url="https://youtu.be/QC8iQqtG0hg"
+        name="test"
+        controls={{ playPause: true, seek: true }}
+      />
+    </div>,
+  );
+  await fireYTOnReady(page);
+  await expect(component.locator("iframe")).toHaveCount(1);
+  const hits = await page.evaluate(() => {
+    const iframe = document.querySelector("iframe");
+    const viewport = document.querySelector(
+      '[data-testid="mediaPlayer-viewport"]',
+    );
+    if (!iframe || !viewport) throw new Error("iframe or viewport not found");
+    // The viewport clips the frame, so its visible part is the overlap.
+    const f = iframe.getBoundingClientRect();
+    const v = viewport.getBoundingClientRect();
+    const r = {
+      left: Math.max(f.left, v.left),
+      top: Math.max(f.top, v.top),
+      right: Math.min(f.right, v.right),
+      bottom: Math.min(f.bottom, v.bottom),
+      width: 0,
+      height: 0,
+    };
+    r.width = r.right - r.left;
+    r.height = r.bottom - r.top;
+    // Just inside the visible edge, and inside the viewport's rounded
+    // corners, which clip the frame and the layer alike.
+    const e = 4;
+    const points: [string, number, number][] = [
+      ["top-left", r.left + e, r.top + e],
+      ["top", r.left + r.width / 2, r.top + e],
+      ["top-right", r.right - e, r.top + e],
+      ["right", r.right - e, r.top + r.height / 2],
+      ["bottom-right", r.right - e, r.bottom - e],
+      ["bottom", r.left + r.width / 2, r.bottom - e],
+      ["bottom-left", r.left + e, r.bottom - e],
+      ["left", r.left + e, r.top + r.height / 2],
+    ];
+    return points.map(([where, x, y]) => {
+      const hit = document.elementFromPoint(x, y);
+      const covered =
+        hit?.getAttribute("data-testid") === "mediaPlayer-clickLayer" ||
+        hit?.closest('[data-testid="mediaPlayer-controls"]') != null;
+      return `${where}: ${covered ? "covered" : (hit?.tagName ?? "nothing")}`;
+    });
+  });
+  expect(hits).toEqual([
+    "top-left: covered",
+    "top: covered",
+    "top-right: covered",
+    "right: covered",
+    "bottom-right: covered",
+    "bottom: covered",
+    "bottom-left: covered",
+    "left: covered",
+  ]);
+});
+
 test("YouTube with stagebook controls: the control bar and scrub bar work above the layer", async ({
   mount,
   page,
