@@ -1415,6 +1415,9 @@ export function MediaPlayer({
           <YouTubePlayer
             videoId={youtubeVideoId}
             startAt={startAt}
+            // YouTube's own controls and shortcuts would seek outside the
+            // event log; stagebook's controls replace them (#699).
+            hideNativeControls={hasControls}
             onHandleReady={(h) => {
               setYtHandle(h);
               setDuration(h.getDuration());
