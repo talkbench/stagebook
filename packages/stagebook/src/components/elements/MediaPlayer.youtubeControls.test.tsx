@@ -17,13 +17,21 @@ type PlayerVars = Record<string, unknown>;
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
 let created: PlayerVars[] = [];
+// Whether each player's target element was in the document when created.
+let targetsAttached: boolean[] = [];
 
 beforeEach(() => {
   created = [];
+  targetsAttached = [];
   const w = window as unknown as { YT?: unknown };
   w.YT = {
-    Player: function (_el: unknown, opts: { playerVars?: PlayerVars }) {
+    // Like the real API, replace the target element with an iframe, and
+    // remove that iframe on destroy.
+    Player: function (el: HTMLElement, opts: { playerVars?: PlayerVars }) {
       created.push(opts.playerVars ?? {});
+      targetsAttached.push(el.isConnected);
+      const iframe = document.createElement("iframe");
+      el.replaceWith(iframe);
       return {
         playVideo: () => {},
         pauseVideo: () => {},
@@ -31,7 +39,7 @@ beforeEach(() => {
         getCurrentTime: () => 0,
         getDuration: () => 100,
         getPlayerState: () => 2,
-        destroy: () => {},
+        destroy: () => iframe.remove(),
       };
     },
   };
@@ -109,5 +117,9 @@ describe("YouTube native controls (#699)", () => {
       UNCHANGED,
       { ...UNCHANGED, controls: 0, disablekb: 1 },
     ]);
+    // The replacement player mounts in the page, not on the detached node
+    // the first player's iframe replaced.
+    expect(targetsAttached).toEqual([true, true]);
+    expect(container!.querySelectorAll("iframe")).toHaveLength(1);
   });
 });
