@@ -27,6 +27,8 @@ interface YTPlayerOptions {
   playerVars?: {
     start?: number;
     autoplay?: 0 | 1;
+    controls?: 0 | 1;
+    disablekb?: 0 | 1;
     enablejsapi?: 1;
     modestbranding?: 1;
     rel?: 0 | 1;
@@ -136,6 +138,9 @@ export interface CreateYouTubePlayerOptions {
   container: HTMLElement;
   videoId: string;
   startAt?: number;
+  /** Stagebook's own controls are on: hide YouTube's and turn off its
+   *  keyboard shortcuts, so every seek goes through the event log. */
+  hideNativeControls?: boolean;
   onHandleReady: (handle: PlaybackHandle) => void;
   onPlay: (currentTime: number) => void;
   onPause: (currentTime: number) => void;
@@ -165,6 +170,7 @@ export function createYouTubePlayer(
         enablejsapi: 1,
         modestbranding: 1,
         rel: 0,
+        ...(opts.hideNativeControls && { controls: 0, disablekb: 1 }),
       },
       events: {
         onReady: () => {
@@ -208,9 +214,11 @@ export function createYouTubePlayer(
 export interface YouTubePlayerProps {
   videoId: string;
   startAt?: number;
+  /** See CreateYouTubePlayerOptions.hideNativeControls. */
+  hideNativeControls?: boolean;
   onHandleReady: (handle: PlaybackHandle) => void;
   /** The player behind the last handle was destroyed (unmount, or a new
-   *  videoId/startAt). Drop that handle: it must not be read again. */
+   *  videoId/startAt/hideNativeControls). Drop that handle: it must not be read again. */
   onHandleGone?: () => void;
   onPlay: (currentTime: number) => void;
   onPause: (currentTime: number) => void;
@@ -224,6 +232,7 @@ export interface YouTubePlayerProps {
 export function YouTubePlayer({
   videoId,
   startAt,
+  hideNativeControls,
   onHandleReady,
   onHandleGone,
   onPlay,
@@ -251,6 +260,7 @@ export function YouTubePlayer({
       container: containerRef.current,
       videoId,
       startAt,
+      hideNativeControls,
       onHandleReady: (h) => onHandleReadyRef.current(h),
       onPlay: (t) => onPlayRef.current(t),
       onPause: (t) => onPauseRef.current(t),
@@ -260,7 +270,8 @@ export function YouTubePlayer({
       destroy();
       onHandleGoneRef.current?.();
     };
-  }, [videoId, startAt]); // re-mount player when videoId or startAt changes
+    // Re-create the player when any of its creation options change.
+  }, [videoId, startAt, hideNativeControls]);
 
   return (
     <div
