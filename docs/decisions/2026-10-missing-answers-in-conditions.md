@@ -264,17 +264,23 @@ Numbers that people must agree on should be typed numbers
     studies that relied on it waiting must state the wait;
   - early termination written with `none:` no longer advances the stage at
     load, which is a fix;
-  - text comparisons (`equals`, `isOneOf`, `includes`, and the rest)
-    ignore case and surrounding spaces;
+  - equality and membership comparisons (`equals`, `isOneOf`,
+    `includes`, `allEqual`, `allUnique`, `countUnique`) ignore case and
+    surrounding spaces. `matches` and `doesNotMatch` still use the raw
+    text, unless the pattern sets its own `i` flag;
   - comparing a text prompt with a number is a validation error;
   - Stagebook 0.32's `all.x` leaves check only the participants who have
     answered, and there's no one-for-one rewrite. The upgrade lint suggests
     one per comparator and says what changes:
     - `all.x exists` ("someone has answered") becomes
       `any: {reference: everyone.x, comparator: exists}`;
-    - `doesNotExist` keeps its meaning under `all:`;
-    - the other comparators become `all:`, which now waits for every seat
-      (C2, C3).
+    - `doesNotExist` and the negative comparators (`doesNotEqual`,
+      `doesNotInclude`, `doesNotMatch`, `isNotOneOf`) keep their meaning
+      under `all:`. A missing seat makes them true, just as an unanswered
+      participant was ignored before, so they don't wait;
+    - the remaining positive comparators become `all:`, which is stricter:
+      every seat must now answer and satisfy the comparison, where before
+      only those who had answered had to (C2, C3).
 - **The evaluator has two states,** a value or missing, with no "unknown".
   Type mismatches become missing and are reported (#690, decision 1).
 - **The #299 dictionary changes:**
