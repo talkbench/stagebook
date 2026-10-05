@@ -271,7 +271,11 @@ Numbers that people must agree on should be typed numbers
     forms `doesNotEqual`, `isNotOneOf`, `doesNotInclude`) ignore case and
     surrounding spaces (A5, D1). `matches` and `doesNotMatch` still use the
     raw text, unless the pattern sets its own `i` flag;
-  - comparing a text prompt with a number is a validation error;
+  - comparisons between types that are known to differ are validation
+    errors, in both directions. That covers a text prompt compared with a
+    number (A4), and a prompt that saves numbers (`numericResponse`, a
+    slider, numeric-mode `multipleChoice`) compared with a quoted string
+    such as `value: "4"`. Today both are coerced and can match;
   - Stagebook 0.32's `all.x` leaves check only the participants who have
     answered, and there's no one-for-one rewrite. The upgrade lint suggests
     one per comparator and says what changes:

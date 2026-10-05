@@ -923,7 +923,7 @@ These are rejected when the study is validated, before anyone runs it.
   - **Blank answers stop counting as answers:** a cleared text box (`""`), whitespace-only text, and an unticked multi-select (`[]`) (A2, A3, A6). An unguarded `hasLengthAtMost` stops passing a cleared box.
   - Early termination with `none:` stops advancing the stage at load (B2; a fix).
   - `none` around a positive comparison is true before anyone answers (C6). Studies relying on the old waiting behavior need the wait stated.
-  - A number compared with a text choice becomes a validation error (A4).
+  - Comparisons between types that are known to differ become validation errors, in both directions: a number compared with a text choice (A4), or a prompt that saves numbers compared with a quoted string such as `value: "4"`.
   - Equality and membership comparisons, including their negative forms (`doesNotEqual`, `isNotOneOf`, `doesNotInclude`), ignore case and surrounding spaces (A5, D1). `matches` and `doesNotMatch` still use the raw text.
   - **0.32's `all.` leaves check only the participants who have answered; `everyone.` checks every seat (C2, C3).** There's no one-for-one rewrite. `all.x exists` ("someone has answered") becomes `any:`. `doesNotExist` and the negative comparators keep their meaning under `all:`, because a missing seat makes them true. The remaining positive comparators become `all:`, which is stricter: every seat must now answer.
 - **C2 is settled by `numericResponse`** (#687, 0.32.0). Numbers that people must agree on should be typed numbers, not text.
