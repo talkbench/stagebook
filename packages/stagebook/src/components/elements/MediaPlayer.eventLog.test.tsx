@@ -73,6 +73,15 @@ function handle(): PlaybackHandle {
 const record = () => saves.at(-1);
 const types = () => record()?.events.map((e) => e.type) ?? [];
 
+function press(key: string, repeat = false) {
+  const player = container!.querySelector('[data-testid="mediaPlayer"]')!;
+  act(() => {
+    player.dispatchEvent(
+      new KeyboardEvent("keydown", { key, repeat, bubbles: true }),
+    );
+  });
+}
+
 function settle(ms = 500) {
   act(() => {
     vi.advanceTimersByTime(ms);
@@ -248,6 +257,147 @@ describe("HTML5", () => {
     expect(record()?.watchedRanges).toEqual([[10, 14]]);
   });
 
+  // The player's own held keys and seek buttons are streams too (#698).
+  describe("held seeks", () => {
+    function seekButton() {
+      return container!.querySelector(
+        '[data-testid="mediaPlayer-seekForward"]',
+      )!;
+    }
+    function mouse(type: "mousedown" | "mouseup") {
+      act(() => {
+        seekButton().dispatchEvent(new MouseEvent(type, { bubbles: true }));
+      });
+    }
+
+    it("logs a held arrow key's first step at once and its repeats as one seek", () => {
+      const video = setup();
+      moveTo(video, 5);
+      act(() => handle().play());
+      moveTo(video, 10);
+      press("ArrowRight");
+      expect(record()?.events.at(-1)).toMatchObject({
+        type: "seek",
+        fromTime: 10,
+        videoTime: 11,
+      });
+      const before = saves.length;
+      // Fast-scrub starts at the 10th repeat: 5 half-second steps.
+      for (let i = 0; i < 14; i++) press("ArrowRight", true);
+      expect(video.currentTime).toBe(13.5);
+      settle(499);
+      expect(saves).toHaveLength(before);
+      settle(1);
+      expect(saves).toHaveLength(before + 1);
+      // The held stream starts where the first step landed.
+      expect(record()?.events.at(-1)).toMatchObject({
+        type: "seek",
+        fromTime: 11,
+        videoTime: 13.5,
+      });
+      moveTo(video, 15);
+      act(() => handle().pause());
+      expect(record()?.watchedRanges).toEqual([
+        [5, 10],
+        [13.5, 15],
+      ]);
+    });
+
+    it("logs a pending held seek before the next discrete one", () => {
+      const video = setup();
+      moveTo(video, 10);
+      press("ArrowLeft");
+      for (let i = 0; i < 12; i++) press("ArrowLeft", true);
+      press("ArrowLeft");
+      expect(record()?.events).toEqual([
+        expect.objectContaining({ type: "seek", fromTime: 10, videoTime: 9 }),
+        expect.objectContaining({ type: "seek", fromTime: 9, videoTime: 7.5 }),
+        expect.objectContaining({
+          type: "seek",
+          fromTime: 7.5,
+          videoTime: 6.5,
+        }),
+      ]);
+    });
+
+    it("logs one seek for a seek button held for 2s", () => {
+      const video = setup();
+      moveTo(video, 10);
+      mouse("mousedown");
+      settle(2000);
+      mouse("mouseup");
+      // 15 half-second steps: every 100ms from 500ms to 2s.
+      expect(video.currentTime).toBe(17.5);
+      expect(saves).toHaveLength(0);
+      settle();
+      expect(record()?.events).toEqual([
+        expect.objectContaining({
+          type: "seek",
+          fromTime: 10,
+          videoTime: 17.5,
+        }),
+      ]);
+    });
+
+    it("logs a held seek still settling when the player unmounts, then nothing", () => {
+      const video = setup();
+      moveTo(video, 10);
+      act(() => handle().play());
+      moveTo(video, 20);
+      // Hovered, so the controls stay up during playback.
+      act(() => {
+        container!
+          .querySelector('[data-testid="mediaPlayer"]')!
+          .dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      });
+      mouse("mousedown");
+      settle(1000);
+      mouse("mouseup");
+      moveTo(video, 25);
+      unmount(); // inside the seek's settle window
+      expect(record()?.events).toEqual([
+        expect.objectContaining({ type: "play", videoTime: 10 }),
+        expect.objectContaining({
+          type: "seek",
+          fromTime: 20,
+          videoTime: 22.5,
+        }),
+        expect.objectContaining({ type: "removed", videoTime: 25 }),
+      ]);
+      expect(record()?.watchedRanges).toEqual([
+        [10, 20],
+        [22.5, 25],
+      ]);
+      const after = saves.length;
+      settle(1000);
+      expect(saves).toHaveLength(after);
+    });
+
+    it("leaves no timers when the player unmounts during a button hold", () => {
+      setup();
+      mouse("mousedown");
+      settle(200); // before the hold's 500ms delay
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it("leaves no timers when the player unmounts mid-scrub of a button hold", () => {
+      const video = setup();
+      moveTo(video, 10);
+      mouse("mousedown");
+      settle(1000);
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+      expect(record()?.events).toEqual([
+        expect.objectContaining({
+          type: "seek",
+          fromTime: 10,
+          videoTime: 12.5,
+        }),
+      ]);
+    });
+  });
+
   it("logs nothing through a handle a sibling still holds after unmount", () => {
     setup();
     const stale = handle();
@@ -351,6 +501,25 @@ describe("YouTube", () => {
     settle();
     expect(types()).toEqual(["play", "seek"]);
     expect(record()?.events[1]).toMatchObject({ fromTime: 12, videoTime: 50 });
+  });
+
+  it("logs a held arrow key's first step at once and its repeats as one seek", async () => {
+    await setup();
+    stub.time = 10;
+    press("ArrowRight");
+    expect(record()?.events).toEqual([
+      expect.objectContaining({ type: "seek", fromTime: 10, videoTime: 11 }),
+    ]);
+    for (let i = 0; i < 5; i++) press("ArrowRight", true);
+    expect(stub.time).toBe(16);
+    expect(saves).toHaveLength(1);
+    settle();
+    expect(saves).toHaveLength(2);
+    expect(record()?.events.at(-1)).toMatchObject({
+      type: "seek",
+      fromTime: 11,
+      videoTime: 16,
+    });
   });
 
   it("closes playback at unmount at the player's live position", async () => {
