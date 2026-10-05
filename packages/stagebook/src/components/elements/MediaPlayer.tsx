@@ -874,10 +874,16 @@ export function MediaPlayer({
     [stopAt, cues, recordEvent, submitOnComplete],
   );
 
-  // Clamp seek target to allowed range — works for both HTML5 and YouTube
+  // Clamp seek target to allowed range — works for both HTML5 and YouTube.
+  // A held key or seek button seeks in a stream, logged once it settles
+  // (#698); a discrete seek is logged at once.
   const seek = useCallback(
-    (delta: number) => {
+    (delta: number, held = false) => {
       const bounds = { startAt, stopAt, allowScrubOutsideBounds };
+      const log = (fromTime: number, videoTime: number) => {
+        if (held) recordSeek(fromTime, videoTime);
+        else recordEvent("seek", videoTime, { fromTime });
+      };
       if (ytHandle) {
         const cur = ytHandle.getCurrentTime();
         const { start: min, end: max } = seekWindow(
@@ -886,7 +892,7 @@ export function MediaPlayer({
         );
         const newTime = Math.min(Math.max(cur + delta, min), max);
         ytHandle.seekTo(newTime);
-        recordEvent("seek", newTime, { fromTime: cur });
+        log(cur, newTime);
         return;
       }
       const v = videoRef.current;
@@ -894,9 +900,16 @@ export function MediaPlayer({
       const fromTime = v.currentTime;
       const { start: min, end: max } = seekWindow(bounds, v.duration);
       v.currentTime = Math.min(Math.max(v.currentTime + delta, min), max);
-      recordEvent("seek", v.currentTime, { fromTime });
+      log(fromTime, v.currentTime);
     },
-    [allowScrubOutsideBounds, startAt, stopAt, ytHandle, recordEvent],
+    [
+      allowScrubOutsideBounds,
+      startAt,
+      stopAt,
+      ytHandle,
+      recordEvent,
+      recordSeek,
+    ],
   );
 
   // Start playback. At the end of the clip — stopAt, or the end of the file —
@@ -970,11 +983,11 @@ export function MediaPlayer({
             break;
           case "ArrowRight":
             e.preventDefault();
-            seek(1);
+            seek(1, e.repeat);
             break;
           case "ArrowLeft":
             e.preventDefault();
-            seek(-1);
+            seek(-1, e.repeat);
             break;
           default:
             break;
@@ -996,7 +1009,7 @@ export function MediaPlayer({
           if (e.repeat) {
             arrowRepeatCountRef.current++;
             if (arrowRepeatCountRef.current >= HOLD_REPEAT_THRESHOLD) {
-              seek(0.5);
+              seek(0.5, true);
             }
           } else {
             arrowRepeatCountRef.current = 0;
@@ -1008,7 +1021,7 @@ export function MediaPlayer({
           if (e.repeat) {
             arrowRepeatCountRef.current++;
             if (arrowRepeatCountRef.current >= HOLD_REPEAT_THRESHOLD) {
-              seek(-0.5);
+              seek(-0.5, true);
             }
           } else {
             arrowRepeatCountRef.current = 0;
@@ -1074,7 +1087,7 @@ export function MediaPlayer({
     (direction: 1 | -1) => {
       holdTimeoutRef.current = setTimeout(() => {
         holdIntervalRef.current = setInterval(() => {
-          seek(direction * 0.5);
+          seek(direction * 0.5, true);
         }, 100);
       }, 500);
     },
@@ -1091,6 +1104,8 @@ export function MediaPlayer({
       holdIntervalRef.current = null;
     }
   }, []);
+  // A hold still running when the player unmounts would keep firing (#698).
+  useEffect(() => endButtonHold, [endButtonHold]);
 
   // Track whether a hold-to-scrub was active so a single click (no hold)
   // still does a one-step seek.
