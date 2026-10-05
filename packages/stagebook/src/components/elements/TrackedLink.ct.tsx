@@ -1,21 +1,20 @@
 import { test, expect } from "@playwright/experimental-ct-react";
 import { TrackedLink } from "./TrackedLink";
 import { MockTrackedLink } from "../testing/MockTrackedLink";
-
-interface LinkRecord {
-  events: { type: string; timeAwaySeconds?: number }[];
-  totalTimeAwaySeconds: number;
-}
+import {
+  trackedLinkRecordSchema,
+  type TrackedLinkRecord,
+} from "../../schemas/hostRecords.js";
 
 async function readLastRecord(
   component: import("@playwright/test").Locator,
-): Promise<LinkRecord | null> {
+): Promise<TrackedLinkRecord | null> {
   const text = await component
     .locator('[data-testid="save-log"]')
     .textContent();
   const saves = JSON.parse(text ?? "[]") as { value: unknown }[];
   if (saves.length === 0) return null;
-  return saves[saves.length - 1].value as LinkRecord;
+  return trackedLinkRecordSchema.parse(saves[saves.length - 1].value);
 }
 
 test("renders link with display text", async ({ mount }) => {

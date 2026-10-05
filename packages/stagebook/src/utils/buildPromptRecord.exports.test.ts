@@ -86,3 +86,32 @@ describe("buildPromptRecord published main entry (#697)", () => {
     ).toBe("ok");
   });
 });
+
+describe("host record contracts published main entry (#751)", () => {
+  test.each(["commonjs", "module"])(
+    "%s checks records without React",
+    (format) => {
+      const imports =
+        format === "commonjs"
+          ? "const assert = require('node:assert/strict'); const { checkHostRecord, hostRecordSchemas, timelineRecordSchema } = require('stagebook');"
+          : "import assert from 'node:assert/strict'; import { checkHostRecord, hostRecordSchemas, timelineRecordSchema } from 'stagebook';";
+      const script = `${imports}
+      assert.equal(hostRecordSchemas.timeline, timelineRecordSchema);
+      assert.equal(checkHostRecord('timeline', [{ time: 1 }]).success, true);
+      assert.equal(checkHostRecord('submitButton', { time: '1' }).success, false);
+      assert.equal(checkHostRecord('__proto__', {}).success, false);
+      process.stdout.write('ok');
+    `;
+      expect(
+        execFileSync(
+          process.execPath,
+          [`--input-type=${format}`, "-e", script],
+          {
+            cwd: fixture,
+            encoding: "utf8",
+          },
+        ),
+      ).toBe("ok");
+    },
+  );
+});
