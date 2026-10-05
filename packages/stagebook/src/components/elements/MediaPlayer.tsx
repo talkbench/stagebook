@@ -109,6 +109,16 @@ const HOLD_REPEAT_THRESHOLD = 10;
 // one seek (#682).
 const SEEK_SETTLE_MS = 500;
 
+// Marks each player's container, so a control press can tell focus held in a
+// different player from focus held anywhere else (#695).
+const PLAYER_SELECTOR = "[data-stagebook-media-player]";
+
+/** Whether `el` sits inside a media player other than `own`. */
+function isInOtherPlayer(el: Element | null, own: HTMLElement | null) {
+  const player = el?.closest(PLAYER_SELECTOR);
+  return !!player && player !== own;
+}
+
 export function MediaPlayer({
   name,
   url,
@@ -1263,9 +1273,12 @@ export function MediaPlayer({
   // audio-only mode has no video surface, so this is its only mouse route to
   // them. The same goes when this player's own YouTube iframe holds focus:
   // keys pressed in that cross-origin frame never reach the shortcut handler,
-  // and focus stays in this player. The bar handles it once, since mousedown
-  // bubbles from every control in it. Clicking the video surface still
-  // focuses the player as before.
+  // and focus stays in this player. And the same goes when focus sits inside
+  // a different player (its container or a control): otherwise the next
+  // Space after clicking this player's play would toggle the other one, and
+  // log the stray play/pause against it. The bar handles it once, since
+  // mousedown bubbles from every control in it. Clicking the video surface
+  // still focuses the player as before.
   const keepFocusOnPress = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const active = document.activeElement;
@@ -1273,7 +1286,8 @@ export function MediaPlayer({
     if (
       active === null ||
       active === document.body ||
-      (active instanceof HTMLIFrameElement && !!container?.contains(active))
+      (active instanceof HTMLIFrameElement && !!container?.contains(active)) ||
+      isInOtherPlayer(active, container)
     ) {
       container?.focus({ preventScroll: true });
     }
@@ -1391,6 +1405,7 @@ export function MediaPlayer({
         ref={containerRef}
         className={containerClass}
         data-testid="mediaPlayer"
+        data-stagebook-media-player=""
         // Time-based controls never mirror (Material bidirectionality):
         // lock LTR so neither a host <html dir> nor an RTL study locale
         // flips the transport/scrub axis.
@@ -1547,6 +1562,7 @@ export function MediaPlayer({
       ref={containerRef}
       className={containerClass}
       data-testid="mediaPlayer"
+      data-stagebook-media-player=""
       // Time-based controls never mirror — see the video variant's note.
       dir="ltr"
       role="region"

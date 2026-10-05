@@ -2926,6 +2926,40 @@ test("YouTube: with the player's own iframe focused, clicking a control focuses 
   await expect(component.locator('[data-testid="mediaPlayer"]')).toBeFocused();
 });
 
+test("with focus in a YouTube player, clicking another player's control moves focus to that player", async ({
+  mount,
+  page,
+}) => {
+  // Focus held in a different player counts as nothing holding focus, so the
+  // next Space controls the player just clicked. The HTML5 side of this is
+  // covered in Timeline.playerFocus.ct.tsx.
+  await installYTMock(page);
+  const component = await mount(
+    <div>
+      <div data-testid="player-yt">
+        <MockMediaPlayer
+          url="https://youtu.be/QC8iQqtG0hg"
+          name="yt"
+          controls={{ playPause: true, seek: true }}
+        />
+      </div>
+      <div data-testid="player-html5">
+        <MockMediaPlayer
+          url="/sample-video.mp4"
+          name="html5"
+          controls={{ playPause: true, seek: true }}
+        />
+      </div>
+    </div>,
+  );
+  await fireYTOnReady(page);
+  const yt = component.getByTestId("player-yt").getByTestId("mediaPlayer");
+  const html5 = component.getByTestId("player-html5");
+  await yt.focus();
+  await html5.getByTestId("mediaPlayer-seekForward").click();
+  await expect(html5.getByTestId("mediaPlayer")).toBeFocused();
+});
+
 // -- Unsafe / invalid URL handling (#484) --
 
 test("renders an invalid-URL alert for a dangerous protocol", async ({

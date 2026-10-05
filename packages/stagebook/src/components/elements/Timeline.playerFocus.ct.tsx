@@ -371,6 +371,61 @@ for (const playVideo of [true, false]) {
       await expect(other, control).toBeFocused();
     }
   });
+
+  // Focus held inside a different player counts as nothing holding focus:
+  // otherwise the next Space after clicking B's control would toggle A, and
+  // the stray play/pause would be logged against A.
+  test(`${mode}: with focus in another player, clicking play focuses this player, and Space then pauses it`, async ({
+    mount,
+  }) => {
+    const component = await mount(
+      <div>
+        <div data-testid="player-a">
+          <MockMediaPlayer
+            url={URL}
+            name="clipA"
+            playback="manual"
+            playVideo={playVideo}
+            controls={ALL_CONTROLS}
+          />
+        </div>
+        <div data-testid="player-b">
+          <MockMediaPlayer
+            url={URL}
+            name="clipB"
+            playback="manual"
+            playVideo={playVideo}
+            controls={ALL_CONTROLS}
+          />
+        </div>
+      </div>,
+    );
+    const a = component.getByTestId("player-a");
+    const b = component.getByTestId("player-b");
+    const videoA = a.getByTestId("mediaPlayer-video");
+    const videoB = b.getByTestId("mediaPlayer-video");
+    for (const video of [videoA, videoB]) {
+      await expect
+        .poll(() => video.evaluate((el: HTMLVideoElement) => el.readyState))
+        .toBeGreaterThanOrEqual(1);
+    }
+
+    await a.getByTestId("mediaPlayer-playPause").click();
+    await expect(a.getByTestId("mediaPlayer")).toBeFocused();
+    await b.getByTestId("mediaPlayer-playPause").click();
+    await expect(b.getByTestId("mediaPlayer")).toBeFocused();
+    await expect
+      .poll(() => videoB.evaluate((el: HTMLVideoElement) => el.paused))
+      .toBe(false);
+
+    await b.page().keyboard.press(" ");
+    await expect
+      .poll(() => videoB.evaluate((el: HTMLVideoElement) => el.paused))
+      .toBe(true);
+    expect(await videoA.evaluate((el: HTMLVideoElement) => el.paused)).toBe(
+      false,
+    );
+  });
 }
 
 // The press focuses the player without scrolling it into view: with the top of
