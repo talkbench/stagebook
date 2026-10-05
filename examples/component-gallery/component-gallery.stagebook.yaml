@@ -108,6 +108,20 @@ treatments:
         elements:
           - type: prompt
             file: prompts/checkbox_horizontal_demo.prompt.md
+          - type: separator
+            style: thin
+          - type: prompt
+            name: checkbox_bodyless_demo
+            file: prompts/checkbox_bodyless_demo.prompt.md
+            notes: |
+              `body: none` (#718): show/hide toggles with no question
+              text, flush against the content above.
+          - type: prompt
+            file: prompts/checkbox_bodyless_briefing.prompt.md
+            conditions:
+              - reference: self.prompt.checkbox_bodyless_demo
+                comparator: includes
+                value: Show briefing materials
           - type: submitButton
 
       - name: select

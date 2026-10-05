@@ -53,6 +53,8 @@ describe("Prompt shared mode (renderSharedNotepad slot)", () => {
       padName: "testShared",
       defaultText: "Please enter your response here.",
       rows: 3,
+      // What it names is pinned in Prompt.bodyless.test.tsx (#718).
+      ariaLabelledBy: expect.any(String) as unknown,
       onLocalEdit: expect.any(Function) as unknown,
       onRemoteChange: expect.any(Function) as unknown,
       onBlur: expect.any(Function) as unknown,
@@ -83,6 +85,7 @@ describe("Prompt shared mode (renderSharedNotepad slot)", () => {
       padName: "testShared",
       defaultText: "First line.\nSecond line.",
       rows: 3,
+      ariaLabelledBy: expect.any(String) as unknown,
       onLocalEdit: expect.any(Function) as unknown,
       onRemoteChange: expect.any(Function) as unknown,
       onBlur: expect.any(Function) as unknown,

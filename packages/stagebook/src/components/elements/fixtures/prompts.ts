@@ -109,3 +109,90 @@ export const listSorter = {
   responsePoints: [],
   sliderPoints: [],
 };
+
+// `body: none` (#718): the response options, or an `ariaLabel`, stand in
+// for the question. Empty `body`, as `promptFileSchema.parse()` returns it.
+export const bodylessCheckboxes = {
+  metadata: {
+    name: "projects/example/bodylessCheckboxes.md",
+    type: "multipleChoice",
+    select: "multiple",
+    layout: "horizontal",
+    body: "none",
+  } as MetadataType,
+  body: "",
+  responseItems: ["Show briefing materials", "Show strategy notes"],
+  responsePoints: [],
+  sliderPoints: [],
+};
+
+export const bodylessCheckbox = {
+  metadata: {
+    name: "projects/example/bodylessCheckbox.md",
+    type: "multipleChoice",
+    select: "multiple",
+    layout: "vertical",
+    body: "none",
+  } as MetadataType,
+  body: "",
+  responseItems: ["This recording has technical errors that prevent analysis"],
+  responsePoints: [],
+  sliderPoints: [],
+};
+
+export const bodylessRadios = {
+  metadata: {
+    name: "projects/example/bodylessRadios.md",
+    type: "multipleChoice",
+    select: "single",
+    layout: "horizontal",
+    body: "none",
+    ariaLabel: "Briefing materials",
+  } as MetadataType,
+  body: "",
+  responseItems: ["Show", "Hide"],
+  responsePoints: [],
+  sliderPoints: [],
+};
+
+export const bodylessOpenResponse = {
+  metadata: {
+    name: "projects/example/bodylessOpenResponse.md",
+    type: "openResponse",
+    rows: 3,
+    body: "none",
+    ariaLabel: "Notes on this recording",
+  } as MetadataType,
+  body: "",
+  responseItems: ["Anything else we should know?"],
+  responsePoints: [],
+  sliderPoints: [],
+};
+
+export const bodylessDropdown = {
+  metadata: {
+    name: "projects/example/bodylessDropdown.md",
+    type: "dropdown",
+    placeholder: "Choose a house",
+    body: "none",
+    ariaLabel: "Hogwarts house",
+  } as MetadataType,
+  body: "",
+  responseItems: ["Gryffindor", "Hufflepuff", "Ravenclaw", "Slytherin"],
+  responsePoints: [],
+  sliderPoints: [],
+};
+
+export const bodylessNumeric = {
+  metadata: {
+    name: "projects/example/bodylessNumeric.md",
+    type: "numericResponse",
+    suffix: "years",
+    body: "none",
+    ariaLabel: "Age in years",
+  } as MetadataType,
+  body: "",
+  responseItems: [],
+  responsePoints: [],
+  sliderPoints: [],
+};

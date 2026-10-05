@@ -72,6 +72,12 @@ import {
   openResponseWithLimits,
   slider as sliderPrompt,
   listSorter as listSorterPrompt,
+  bodylessCheckbox,
+  bodylessCheckboxes,
+  bodylessDropdown,
+  bodylessNumeric,
+  bodylessOpenResponse,
+  bodylessRadios,
 } from "./elements/fixtures/prompts";
 
 // WCAG 2.2 AA = 2.0/2.1/2.2 at levels A and AA.
@@ -1327,6 +1333,75 @@ const cases: Case[] = [
         {...dropdownPrompt}
         {...promptProps}
         name="dropdown"
+        value={undefined}
+      />
+    ),
+    marks: [selectTriggerText, selectChevron],
+  },
+  // `body: none` (#718): no visible question; option labels or a hidden
+  // `ariaLabel` name the controls.
+  {
+    name: "Prompt: body: none checkboxes",
+    node: (
+      <Prompt
+        {...bodylessCheckboxes}
+        {...promptProps}
+        name="bodylessCheckboxes"
+        value={[]}
+      />
+    ),
+  },
+  {
+    name: "Prompt: body: none single checkbox",
+    node: (
+      <Prompt
+        {...bodylessCheckbox}
+        {...promptProps}
+        name="bodylessCheckbox"
+        value={undefined}
+      />
+    ),
+  },
+  {
+    name: "Prompt: body: none radios",
+    node: (
+      <Prompt
+        {...bodylessRadios}
+        {...promptProps}
+        name="bodylessRadios"
+        value={undefined}
+      />
+    ),
+  },
+  {
+    name: "Prompt: body: none open response",
+    node: (
+      <Prompt
+        {...bodylessOpenResponse}
+        {...promptProps}
+        name="bodylessOpen"
+        value=""
+      />
+    ),
+  },
+  {
+    name: "Prompt: body: none numeric",
+    node: (
+      <Prompt
+        {...bodylessNumeric}
+        {...promptProps}
+        name="bodylessNumeric"
+        value={undefined}
+      />
+    ),
+  },
+  {
+    name: "Prompt: body: none dropdown",
+    node: (
+      <Prompt
+        {...bodylessDropdown}
+        {...promptProps}
+        name="bodylessDropdown"
         value={undefined}
       />
     ),

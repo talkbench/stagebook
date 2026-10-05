@@ -17,6 +17,12 @@ export interface CheckboxGroupProps {
   ariaLabelledBy?: string;
   ariaDescribedBy?: string;
   layout?: CheckboxLayout;
+  /**
+   * Drop the top margin and start indent that set the options under a
+   * question. For a group with nothing above it, such as a `body: none`
+   * prompt (#718).
+   */
+  flush?: boolean;
   id?: string;
   "data-testid"?: string;
 }
@@ -97,6 +103,7 @@ export function CheckboxGroup({
   ariaLabelledBy,
   ariaDescribedBy,
   layout = "vertical",
+  flush = false,
   id,
   "data-testid": dataTestId,
 }: CheckboxGroupProps) {
@@ -139,7 +146,7 @@ export function CheckboxGroup({
     <div
       data-testid={testId}
       dir={isRTL ? "rtl" : "ltr"}
-      style={{ marginTop: "1rem" }}
+      style={flush ? undefined : { marginTop: "1rem" }}
     >
       <style>{`
         .${rowClass} {
@@ -181,7 +188,7 @@ export function CheckboxGroup({
         aria-labelledby={ariaLabelledBy ?? (label ? labelId : undefined)}
         aria-describedby={ariaDescribedBy}
         style={{
-          marginInlineStart: "1.25rem",
+          marginInlineStart: flush ? undefined : "1.25rem",
           display: layout === "horizontal" ? "flex" : "grid",
           gap: layout === "horizontal" ? "1rem" : "0.125rem",
           flexWrap: layout === "horizontal" ? "wrap" : undefined,
