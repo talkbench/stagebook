@@ -57,6 +57,12 @@ const baseMetadataFields = {
 // displayed, so it restates what nearby content shows rather than adding to
 // it. Only types whose control can carry a name accept these fields; the
 // cross-field rules live in the union's `.superRefine`.
+
+// Text that names a control must render something. `trim()` isn't enough:
+// zero-width, control and format characters survive it, as does a lone
+// combining mark. Symbols such as 👍 count — they're visible and named.
+const VISIBLE_CHARACTER = /[^\p{White_Space}\p{Cc}\p{Cf}\p{M}]/u;
+
 const bodylessFields = {
   body: z
     .literal("none", {
@@ -67,9 +73,7 @@ const bodylessFields = {
     .string()
     .max(100)
     .regex(/^[^\r\n\u2028\u2029]*$/, "ariaLabel must be a single line")
-    // Not just non-blank: zero-width and other invisible characters survive
-    // `trim()` and would leave the control effectively unnamed.
-    .regex(/[\p{L}\p{N}]/u, "ariaLabel must contain a letter or number")
+    .regex(VISIBLE_CHARACTER, "ariaLabel must contain visible text")
     .optional(),
 };
 
@@ -821,7 +825,7 @@ export const promptFileSchema: z.ZodType<
           message:
             "A `body: none` prompt needs at least one option: the options are all it shows.",
         });
-      } else if (responseItems.some((item) => item.trim().length === 0)) {
+      } else if (responseItems.some((item) => !VISIBLE_CHARACTER.test(item))) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["responses"],

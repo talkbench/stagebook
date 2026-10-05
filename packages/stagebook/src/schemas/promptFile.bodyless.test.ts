@@ -133,6 +133,8 @@ describe("body: none metadata", () => {
     expect(parse("\u200B")).toBe(false);
     expect(parse("\u0085")).toBe(false);
     expect(parse("Age 18+")).toBe(true);
+    // The same visible-text rule as bodyless option labels.
+    expect(parse("👍")).toBe(true);
     expect(parse("Notes\non this recording")).toBe(false);
     expect(parse("Notes\ron this recording")).toBe(false);
     expect(parse("Notes\u2028on this recording")).toBe(false);
@@ -241,6 +243,12 @@ body: none
   test.each([
     ["a bare dash", "- Briefing\n-"],
     ["a dash and spaces", "- Briefing\n-   "],
+    // Invisible characters that `trim()` keeps.
+    [
+      "only a zero-width space",
+      "- Briefing\n- " + String.fromCodePoint(0x200b),
+    ],
+    ["only a control character", "- Briefing\n- " + String.fromCodePoint(5)],
   ])("a bodyless choice prompt rejects an option with %s", (_name, options) => {
     for (const frontmatter of [
       "select: multiple",
@@ -252,6 +260,14 @@ body: none
       expect(result.success).toBe(false);
       expect(issueAt(result, "responses")?.message).toContain("label");
     }
+  });
+
+  test("a bodyless choice prompt accepts symbol labels", () => {
+    // Visible, and named by assistive technology.
+    const result = promptFileSchema.safeParse(
+      "---\ntype: multipleChoice\nselect: multiple\nlayout: horizontal\nbody: none\n---\n\n---\n- 👍\n- 👎",
+    );
+    expect(result.success).toBe(true);
   });
 
   test("a numeric option without label text is labelled by its number", () => {
