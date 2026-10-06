@@ -20,8 +20,8 @@ git log --oneline "$LAST_TAG"..origin/main
 Ask the user which tier (patch / minor / major) unless it's obvious. Heuristics:
 
 - **Patch** (`0.10.3 → 0.10.4`) — bug fixes only, no API surface change. Most common.
-- **Minor** (`0.10.x → 0.11.0`) — additive features, new exports, new schema fields. Backward compatible.
-- **Major** (`0.x.y → 1.0.0`) — breaking changes (renamed/removed exports, schema rejections that previously passed, behavior changes that could silently break consumers).
+- **Minor** (`0.10.x → 0.11.0`) — additive features, new exports, new schema fields. **While Stagebook is in 0.x, breaking changes are minor releases too:** renamed or removed exports, schema rejections that previously passed, behavior changes that could silently break consumers. A release that changes what valid YAML means also ships its upgrade rules (`upgradeRules.ts`, #756).
+- **Major** — from 1.0 on, breaking changes go only in major releases (`1.x → 2.0.0`), and minor releases stay backward compatible. Cutting 1.0.0 itself is the user's call; don't pick it from these heuristics.
 
 Note: prior versions are not strictly sequential — `0.10.2` was skipped. Don't infer the next version by looking at the tags alone; check the actual `package.json`.
 

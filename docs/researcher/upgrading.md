@@ -2,6 +2,8 @@
 
 Most Stagebook releases only add things: a study that validated before still validates, and still runs the same way. Some releases change what valid YAML means. The same file runs differently after the upgrade, and nothing reports an error. The validator finds each construct a change affects and warns about it. These are **upgrade warnings**.
 
+Stagebook is still in 0.x, so a minor release (0.33 → 0.34) can make such a change. From 1.0 on, changes like these will come only in major releases (1.x → 2.0): a study written for 1.2 will keep its meaning on every later 1.x release.
+
 Upgrade warnings fire only on files written for an older release. A file says which release it was written for in its `stagebook:` field:
 
 ```yaml

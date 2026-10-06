@@ -13,6 +13,10 @@ import type { PromptFileType } from "../schemas/index.js";
  * runner (`collectUpgradeWarnings`) does the version filtering and finishes
  * each message; a rule only finds the construct.
  *
+ * While Stagebook is in 0.x, a minor release may change what valid YAML
+ * means. From 1.0 on, only a major release may, so a rule's `introducedIn` is
+ * then always a major release (`"2.0"`).
+ *
  * To add a rule:
  *   - set `introducedIn` to the release that ships the change, and raise
  *     `STAGEBOOK_VERSION` (`stagebookVersion.ts`) to match if it's behind;
