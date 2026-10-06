@@ -15,9 +15,11 @@
 // callers may carry extra fields (gameStages, exitSequence, …) and the
 // dispatcher passes them through untouched on each returned assignment.
 
+import type { ReferenceType } from "../schemas/reference.js";
+
 /** A single condition leaf as it appears on a `groupComposition[i].conditions` entry. */
 export interface DispatchCondition {
-  reference: string;
+  reference: string | ReferenceType;
   comparator: string;
   value?: unknown;
 }

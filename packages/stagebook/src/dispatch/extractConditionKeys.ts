@@ -1,4 +1,4 @@
-import { getReferenceKeyAndPath } from "../utils/reference.js";
+import { eligibilityReference } from "./eligibilityReference.js";
 import type { DispatchConditionNode, Treatment } from "./types.js";
 
 /**
@@ -52,19 +52,8 @@ function walk(
     for (const child of node.none) walk(child, keys);
     return;
   }
-  if ("reference" in node && typeof node.reference === "string") {
-    try {
-      // Eligibility is per-candidate, so only `self.X.Y` references
-      // contribute a key the host can populate. Anything else (numeric
-      // slot, `shared`, `all`) would need the future group composition
-      // to resolve; those reads would have to be plumbed in through a
-      // different channel.
-      if (!node.reference.startsWith("self.")) return;
-      const { referenceKey } = getReferenceKeyAndPath(node.reference);
-      keys.add(referenceKey);
-    } catch {
-      // Malformed reference — let the validator surface it; do not
-      // crash the dispatcher hot path.
-    }
+  if ("reference" in node) {
+    const parsed = eligibilityReference(node.reference);
+    if (parsed) keys.add(parsed.referenceKey);
   }
 }
