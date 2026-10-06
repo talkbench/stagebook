@@ -89,7 +89,7 @@ export interface UpgradeRule {
 export const upgradeRules: readonly UpgradeRule[] = grammarUpgradeDetectors.map(
   (rule) => ({
     id: rule.id,
-    introducedIn: "0.34",
+    introducedIn: "0.35",
     appliesTo: ["treatment"],
     detect: (input) =>
       input.kind === "treatment" ? rule.detect(input.file) : [],

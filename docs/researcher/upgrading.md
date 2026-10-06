@@ -34,7 +34,7 @@ A condition is judged by the version of the file that contains it. For a templat
 
 Each release that changes what valid YAML means gets a section here. Each section lists the release's upgrade rules by id, what changed, and how to review the affected constructs.
 
-## 0.34 — unified expressions (unreleased)
+## 0.35 — unified expressions (unreleased)
 
 This is the first versioned grammar migration. It adds calculations and explicit group quantifiers, removes implicit numeric coercion, and uses one Missing value for unanswered inputs. Read [Conditions](conditions.md) for the full grammar and examples. The package version is not bumped by the implementation PR; these rules describe the next release.
 
@@ -53,6 +53,6 @@ Validate all treatment files, imported modules, and prompt files before updating
 
 Warnings on template definitions can be conservative when a placeholder hides the eventual value. Review the definition and its uses together. Imported templates are judged by their defining file's version; raising the entry file's version does not certify the imported module.
 
-After reviewing each file, set `stagebook: "0.34"` in that file. This suppresses these upgrade warnings; it does not suppress syntax/type errors or unknown-reference-type warnings, and it does not select an older runtime behavior.
+After reviewing each file, set `stagebook: "0.35"` in that file. This suppresses these upgrade warnings; it does not suppress syntax/type errors or unknown-reference-type warnings, and it does not select an older runtime behavior.
 
 Host integrations must also replace `resolve` / `useResolve` with the new scalar-or-Missing `readReference` / `useReadReference` API and remove their `get(key, "all")` branch. See the [engineer migration guide](../engineer/platform-requirements.md#breaking-reference-read-migration-757).

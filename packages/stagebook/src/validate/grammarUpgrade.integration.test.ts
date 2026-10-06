@@ -49,7 +49,7 @@ const moduleSource = (
 `;
 const upgradeMessages = (diagnostics: { message: string }[]) =>
   diagnostics.filter((issue) =>
-    issue.message.includes("Changed in Stagebook 0.34"),
+    issue.message.includes("Changed in Stagebook 0.35"),
   );
 
 async function cli(source: string) {
@@ -85,7 +85,7 @@ describe("registered grammar upgrade warnings", () => {
       ),
     ).toBe(true);
   });
-  test.each([undefined, "0.33"])(
+  test.each([undefined, "0.33", "0.34"])(
     "warns for an older or unversioned study: %s",
     (stagebook) => {
       expect(
@@ -171,9 +171,9 @@ ${moduleSource(explicit)}`;
   test("CLI upgrade-only diagnostics preserve exit zero and version gating", async () => {
     const unreviewed = await cli(moduleSource());
     expect(unreviewed.code, unreviewed.output).toBe(0);
-    expect(unreviewed.output).toContain("Changed in Stagebook 0.34");
+    expect(unreviewed.output).toContain("Changed in Stagebook 0.35");
     const reviewed = await cli(moduleSource(STAGEBOOK_VERSION));
     expect(reviewed.code, reviewed.output).toBe(0);
-    expect(reviewed.output).not.toContain("Changed in Stagebook 0.34");
+    expect(reviewed.output).not.toContain("Changed in Stagebook 0.35");
   });
 });
