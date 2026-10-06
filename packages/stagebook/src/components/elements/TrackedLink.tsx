@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef } from "react";
 import { useMessages, useIsRTL } from "../StagebookProvider.js";
 import { focusRingCss } from "../focusRing.js";
+import type {
+  TrackedLinkEvent as LinkEvent,
+  TrackedLinkRecord as LinkRecord,
+} from "../../schemas/hostRecords.js";
 
 function ExternalLinkIcon() {
   return (
@@ -35,25 +39,6 @@ export interface TrackedLinkProps {
   setAllowIdle?: (allow: boolean) => void;
 }
 
-interface LinkEvent {
-  type: string;
-  timestamp: number;
-  stage: string;
-  stageTimeSeconds: number;
-  timeAwaySeconds?: number;
-}
-
-interface LinkRecord {
-  name: string;
-  url: string;
-  displayText: string;
-  events: LinkEvent[];
-  totalTimeAwaySeconds: number;
-  lastEventType?: string;
-  lastTimeAwaySeconds?: number;
-  lastUpdated?: number;
-}
-
 export function TrackedLink({
   name,
   url,
@@ -82,7 +67,10 @@ export function TrackedLink({
   const recordKey = `trackedLink_${name}`;
 
   const buildEvent = useCallback(
-    (type: string, extra: Record<string, unknown> = {}): LinkEvent => ({
+    (
+      type: LinkEvent["type"],
+      extra: Record<string, unknown> = {},
+    ): LinkEvent => ({
       type,
       timestamp: Date.now(),
       stage: progressLabel,
@@ -93,7 +81,7 @@ export function TrackedLink({
   );
 
   const logEvent = useCallback(
-    (type: string, extra?: Record<string, unknown>) => {
+    (type: LinkEvent["type"], extra?: Record<string, unknown>) => {
       const event = buildEvent(type, extra);
       const prev = recordRef.current;
       const updatedEvents = [...prev.events, event];

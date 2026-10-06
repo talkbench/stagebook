@@ -79,6 +79,58 @@ State changes must trigger React re-renders. When participant A writes a value, 
 
 State must survive page refreshes. If a participant disconnects and reconnects, their previous responses should still be present. For multiplayer experiments, other participants' state must also be available after reconnection.
 
+### Saved-record conformance in host CI
+
+Import `checkHostRecord` from `stagebook` to check the records your host returns
+after a fixture has gone through its real state adapter and persistence path.
+Pass the reference source (`"timeline"`), not a storage key
+(`"timeline_annotations"`). The result is Zod's standard `{ success, data }`
+or `{ success, error }`; `error.issues` includes the failing field paths.
+Use synthetic fixtures for these CI checks. Zod issues can include rejected
+values, so do not forward them as production contract-violation telemetry.
+
+For example, after setting up a fixture participant in a host integration test:
+
+```ts
+import { checkHostRecord } from "stagebook";
+
+const attributes = host.get("attributes", "player")[0];
+const result = checkHostRecord("attributes", attributes);
+if (!result.success) {
+  throw new Error(JSON.stringify(result.error.issues));
+}
+```
+
+The exported `hostRecordSchemas` map lists the supported sources. Individual
+schemas are also available from the same React-free entrypoint:
+
+| Source | Export | Stored shape |
+| --- | --- | --- |
+| `attributes` | `attributesSchema` | Existing participant-attributes contract, including required `stableParticipantId` |
+| `timeline` | `timelineRecordSchema` | A bare array of ranges (`start`, `end`) or points (`time`), with optional `track`; `[]` is valid |
+| `trackedLink` | `trackedLinkRecordSchema` | `name`, `url`, `displayText`, `events`, `totalTimeAwaySeconds`, and optional last-event fields |
+| `submitButton` | `submitButtonRecordSchema` | Required numeric `time`, in elapsed stage seconds |
+
+Tracked-link events use `type: "click"`, `"blur"`, or `"focus"`, with numeric
+`timestamp` (Unix milliseconds), `stageTimeSeconds`, and optional
+`timeAwaySeconds`, plus a string `stage`. `trackedLinkEventSchema`,
+`timelineRangeSchema`, and `timelinePointSchema` are exported for hosts that
+also need to check individual entries.
+
+Object records may include the `step` and `stageTimeElapsed` metadata added by
+`Element`. Those fields are optional for standalone components; when present,
+their types are checked. Extra host fields pass through. The new record schemas
+require finite numbers and do not coerce strings. They check record shape, not
+timeline bounds, selection ordering, or consistency of tracked-link totals.
+
+Unsupported sources (including `prompt`, `qualtrics`, `mediaPlayer`,
+`discussion`, and `entryUrl`) return a failure; this helper does not claim to
+validate their records. Checks run only when the host calls the helper and do
+not change participant behavior. `submitButtonRecordSchema` describes the
+click-time contract fixed in [#750](https://github.com/talkbench/stagebook/issues/750):
+older submit records without `time` fail it. The helper does not migrate stored
+data.
+
 ### Platform-Populated State
 
 Some reference namespaces require the platform to collect and store data that Stagebook components don't produce. If your treatment files use conditions or displays referencing these namespaces, the platform must populate them in player state during onboarding:

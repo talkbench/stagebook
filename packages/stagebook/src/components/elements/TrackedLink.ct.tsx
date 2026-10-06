@@ -1,21 +1,20 @@
 import { test, expect } from "@playwright/experimental-ct-react";
 import { TrackedLink } from "./TrackedLink";
 import { MockTrackedLink } from "../testing/MockTrackedLink";
-
-interface LinkRecord {
-  events: { type: string; timeAwaySeconds?: number }[];
-  totalTimeAwaySeconds: number;
-}
+import {
+  trackedLinkRecordSchema,
+  type TrackedLinkRecord,
+} from "../../schemas/hostRecords.js";
 
 async function readLastRecord(
   component: import("@playwright/test").Locator,
-): Promise<LinkRecord | null> {
+): Promise<TrackedLinkRecord | null> {
   const text = await component
     .locator('[data-testid="save-log"]')
     .textContent();
   const saves = JSON.parse(text ?? "[]") as { value: unknown }[];
   if (saves.length === 0) return null;
-  return saves[saves.length - 1].value as LinkRecord;
+  return trackedLinkRecordSchema.parse(saves[saves.length - 1].value);
 }
 
 test("renders link with display text", async ({ mount }) => {
@@ -159,7 +158,7 @@ test("clicking the link saves a record with a `click` event", async ({
       name="signup"
       url="https://example.org/form"
       displayText="Open form"
-      getElapsedTime={() => 12.5}
+      elapsedTime={12.5}
       progressLabel="game_0_intro"
     />,
   );
@@ -174,6 +173,7 @@ test("clicking the link saves a record with a `click` event", async ({
   const record = await readLastRecord(component);
   if (!record) throw new Error("no save was emitted");
   expect(record.events.map((e) => e.type)).toEqual(["click"]);
+  expect(record.events[0].stageTimeSeconds).toBe(12.5);
   // Pre-blur, no time-away accumulation yet.
   expect(record.totalTimeAwaySeconds).toBe(0);
 });
@@ -187,7 +187,7 @@ test("blur after click then focus accumulates totalTimeAwaySeconds", async ({
       name="signup"
       url="https://example.org/form"
       displayText="Open form"
-      getElapsedTime={() => 0}
+      elapsedTime={0}
       progressLabel="game_0_intro"
     />,
   );
@@ -218,6 +218,7 @@ test("blur after click then focus accumulates totalTimeAwaySeconds", async ({
   record = await readLastRecord(component);
   if (!record) throw new Error("no save");
   expect(record.events.map((e) => e.type)).toEqual(["click", "blur", "focus"]);
+  expect(record.events.map((e) => e.stageTimeSeconds)).toEqual([0, 0, 0]);
   // The focus event carries the per-trip timeAwaySeconds.
   const focusEvent = record.events.find((e) => e.type === "focus");
   expect(focusEvent?.timeAwaySeconds).toBeGreaterThan(0.05);

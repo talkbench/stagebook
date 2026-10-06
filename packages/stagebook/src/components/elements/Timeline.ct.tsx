@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/experimental-ct-react";
 import { MockTimeline } from "../testing/MockTimeline.js";
+import { timelineRecordSchema } from "../../schemas/hostRecords.js";
 
 // -- Rendering structure --
 
@@ -443,7 +444,12 @@ async function readSaveLog(component: import("@playwright/test").Locator) {
   const text = await component
     .locator('[data-testid="save-log"]')
     .textContent();
-  return JSON.parse(text ?? "[]") as Array<{ key: string; value: unknown }>;
+  const saves = JSON.parse(text ?? "[]") as Array<{
+    key: string;
+    value: unknown;
+  }>;
+  for (const save of saves) timelineRecordSchema.parse(save.value);
+  return saves;
 }
 
 test("range mode: click-and-drag creates a range", async ({ mount }) => {
