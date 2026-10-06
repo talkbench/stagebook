@@ -3,6 +3,7 @@ import {
   validElementTypes,
   validComparators,
   validReferenceTypes,
+  OPERATOR_KEYS,
 } from "stagebook";
 import { offsetToLineCol } from "stagebook/validate";
 
@@ -28,6 +29,7 @@ export interface SemanticToken {
 const elementTypeSet = new Set<string>(validElementTypes);
 const comparatorSet = new Set<string>(validComparators);
 const referenceTypeSet = new Set<string>(validReferenceTypes);
+const operatorSet = new Set<string>(OPERATOR_KEYS);
 const contentTypeSet = new Set([
   "introSequence",
   "introSequences",
@@ -230,7 +232,7 @@ export function computeSemanticTokens(source: string): SemanticToken[] {
     }
   }
 
-  function walkNode(node: unknown, keyName?: string): void {
+  function walkNode(node: unknown, inConditions = false): void {
     if (isMap(node)) {
       for (const pair of node.items) {
         if (!isPair(pair)) continue;
@@ -243,6 +245,9 @@ export function computeSemanticTokens(source: string): SemanticToken[] {
           const keyStr = key.value;
           if (sectionKeys.has(keyStr)) {
             addToken(key.range[0], keyStr, "property");
+          } else if (inConditions && operatorSet.has(keyStr)) {
+            const keySrc = getScalarSource(key.range);
+            if (keySrc) addToken(keySrc.offset, keySrc.text, "keyword");
           }
         }
 
@@ -343,14 +348,17 @@ export function computeSemanticTokens(source: string): SemanticToken[] {
             emitTemplateVarTokens(scalarSrc.offset, scalarSrc.text);
           }
 
-          walkNode(value, String(k));
+          walkNode(
+            value,
+            k === "conditions" || (inConditions && operatorSet.has(k)),
+          );
         } else {
           walkNode(value);
         }
       }
     } else if (isSeq(node)) {
       for (const item of node.items) {
-        walkNode(item, keyName);
+        walkNode(item, inConditions);
       }
     }
   }

@@ -66,12 +66,15 @@ const assertion = `
   assert.deepEqual(numeric, { type: 'numericResponse', max: 1, name: 'number', file: undefined, shared: true, prompt: 'Estimate', responses: [], debugMessages: [], entry: '1,5', numberFormat: format, value: 1.5, isValid: false });
   const numericPrompt = promptFileSchema.parse('---\\ntype: numericResponse\\n---\\nEstimate');
   assert.equal(promptValueType(numericPrompt), 'number');
+  const expression = { case: { rules: [{ when: { reference: 'self.prompt.gate.value', comparator: 'exists' }, value: { sum: [{ reference: 'self.prompt.score.value' }, 1] } }] } };
+  assert.deepEqual([...walkExpression(expression)].filter(v => v.kind === 'reference' || v.kind === 'leaf').map(v => v.path), [['case', 'rules', 0, 'when'], ['case', 'rules', 0, 'value', 'sum', 0]]);
+  assert.equal(EXPRESSION_OPERATOR_KEYS.length, 28);
   process.stdout.write('ok');
 `;
 
 describe("buildPromptRecord published main entry (#697)", () => {
   test("CJS loads and builds records in Node without React installed", () => {
-    const script = `const assert = require('node:assert/strict'); const { buildPromptRecord, resolveNumberFormat, parseNumericEntry, couldBecomeValidByAppending, checkResponse, formatNumericPlain, numericInputMode, filterNumericInsertion, promptFileSchema, promptValueType } = require('stagebook'); ${assertion}`;
+    const script = `const assert = require('node:assert/strict'); const { buildPromptRecord, resolveNumberFormat, parseNumericEntry, couldBecomeValidByAppending, checkResponse, formatNumericPlain, numericInputMode, filterNumericInsertion, promptFileSchema, promptValueType, walkExpression, EXPRESSION_OPERATOR_KEYS } = require('stagebook'); ${assertion}`;
     expect(
       execFileSync(process.execPath, ["--input-type=commonjs", "-e", script], {
         cwd: fixture,
@@ -80,7 +83,7 @@ describe("buildPromptRecord published main entry (#697)", () => {
     ).toBe("ok");
   });
   test("ESM loads and builds records in Node without React installed", () => {
-    const script = `import assert from 'node:assert/strict'; import { createRequire } from 'node:module'; import { buildPromptRecord, resolveNumberFormat, parseNumericEntry, couldBecomeValidByAppending, checkResponse, formatNumericPlain, numericInputMode, filterNumericInsertion, promptFileSchema, promptValueType } from 'stagebook'; const require = createRequire(import.meta.url); ${assertion}`;
+    const script = `import assert from 'node:assert/strict'; import { createRequire } from 'node:module'; import { buildPromptRecord, resolveNumberFormat, parseNumericEntry, couldBecomeValidByAppending, checkResponse, formatNumericPlain, numericInputMode, filterNumericInsertion, promptFileSchema, promptValueType, walkExpression, EXPRESSION_OPERATOR_KEYS } from 'stagebook'; const require = createRequire(import.meta.url); ${assertion}`;
     expect(
       execFileSync(process.execPath, ["--input-type=module", "-e", script], {
         cwd: fixture,

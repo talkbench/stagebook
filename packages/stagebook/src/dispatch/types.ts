@@ -16,6 +16,7 @@
 // dispatcher passes them through untouched on each returned assignment.
 
 import type { ReferenceType } from "../schemas/reference.js";
+import type { BooleanConditionNode } from "../expressions/index.js";
 
 /** A single condition leaf as it appears on a `groupComposition[i].conditions` entry. */
 export interface DispatchCondition {
@@ -27,11 +28,7 @@ export interface DispatchCondition {
 /** Mirror of stagebook's tree-of-conditions shape on a groupComposition slot.
  *  We don't re-export the schema-derived `ConditionNode` to keep this module
  *  importable without zod. */
-export type DispatchConditionNode =
-  | { all: DispatchConditionNode[] }
-  | { any: DispatchConditionNode[] }
-  | { none: DispatchConditionNode[] }
-  | DispatchCondition;
+export type DispatchConditionNode = BooleanConditionNode<DispatchCondition>;
 
 /** A single slot description inside a treatment's `groupComposition`. */
 export interface DispatchSlot {

@@ -50,6 +50,11 @@ describe("getValidKeysForElementType", () => {
   it("returns null for an unknown type", () => {
     expect(getValidKeysForElementType("notARealType")).toBeNull();
   });
+
+  test.each(["constructor", "toString", "__proto__"])(
+    "returns null for inherited object key %s",
+    (type) => expect(getValidKeysForElementType(type)).toBeNull(),
+  );
 });
 
 describe("getValidKeysForComparator", () => {
@@ -69,6 +74,11 @@ describe("getValidKeysForComparator", () => {
   it("returns null for an unknown comparator", () => {
     expect(getValidKeysForComparator("isExactly")).toBeNull();
   });
+
+  test.each(["constructor", "toString", "__proto__"])(
+    "returns null for inherited object key %s",
+    (comparator) => expect(getValidKeysForComparator(comparator)).toBeNull(),
+  );
 });
 
 describe("container key getters", () => {
@@ -233,6 +243,87 @@ describe("safeParseTreatmentFile — element unrecognized keys", () => {
 });
 
 describe("safeParseTreatmentFile — condition unrecognized keys", () => {
+  it("keeps condition inspection linear when many leaves have typos", () => {
+    const tf = makeBaseTreatmentFile();
+    const stages = (tf.treatments as Record<string, unknown>[])[0]
+      .gameStages as Record<string, unknown>[];
+    const count = 256;
+    let operatorReads = 0;
+    stages[0].conditions = Array.from({ length: count }, () => ({
+      reference: "shared.entryUrl.params.role",
+      comparator: "exists",
+      valu: 1,
+      // Count inspections, not elapsed time, so the bound is independent of
+      // the test machine. This malformed operator still leaves a diagnostic
+      // on each otherwise-valid comparator leaf.
+      get all() {
+        operatorReads++;
+        return undefined;
+      },
+    }));
+    const result = safeParseTreatmentFile(tf);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(
+      result.error.issues.filter((issue) => issue.path.at(-1) === "valu"),
+    ).toHaveLength(count);
+    expect(operatorReads).toBeLessThan(count * 40);
+  });
+
+  test.each([
+    { label: "bare leaf", wrap: (leaf: unknown) => leaf, path: [] },
+    {
+      label: "nested boolean leaf",
+      wrap: (leaf: unknown) => ({ all: [{ any: [{ none: [leaf] }] }] }),
+      path: ["all", 0, "any", 0, "none", 0],
+    },
+    {
+      label: "array containing a boolean leaf",
+      wrap: (leaf: unknown) => [{ any: [leaf] }],
+      path: [0, "any", 0],
+    },
+  ])("enriches a typo on a $label at its exact path", ({ wrap, path }) => {
+    const tf = makeBaseTreatmentFile();
+    const stages = (tf.treatments as Record<string, unknown>[])[0]
+      .gameStages as Record<string, unknown>[];
+    stages[0].elements = [
+      {
+        type: "submitButton",
+        conditions: wrap({
+          reference: "self.prompt.something",
+          comparator: "equals",
+          value: "ok",
+          val: 3,
+        }),
+      },
+    ];
+
+    const result = safeParseTreatmentFile(tf);
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    const issue = result.error.issues.find((i) => i.path.at(-1) === "val");
+    expect(issue).toMatchObject({
+      path: [
+        "treatments",
+        0,
+        "gameStages",
+        0,
+        "elements",
+        0,
+        "conditions",
+        ...path,
+        "val",
+      ],
+      message:
+        "Unrecognized key 'val' on condition with comparator 'equals'. Did you mean 'value'? Valid keys: reference, comparator, value",
+      params: {
+        badKey: "val",
+        suggestion: "value",
+        validKeys: ["reference", "comparator", "value"],
+      },
+    });
+  });
+
   it("identifies the comparator and suggests value for 'val'", () => {
     const tf = makeBaseTreatmentFile();
     const stage = (tf.treatments as Record<string, unknown>[])[0]

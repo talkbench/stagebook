@@ -49,7 +49,11 @@
 
 import { compare, type Comparator } from "../utils/compare.js";
 import { getReferenceKeyAndPath } from "../utils/reference.js";
-import { OPERATOR_KEYS } from "./conditionOperators.js";
+import {
+  walkConditionLeaves,
+  hasNonAllAncestor,
+  type ExpressionAncestor,
+} from "../expressions/index.js";
 import {
   parseDottedReference,
   formatReference,
@@ -120,58 +124,7 @@ interface ConditionLeafSite {
   leaf: Record<string, unknown>;
   /** Path to the leaf object itself. */
   path: (string | number)[];
-}
-
-/** Yield each leaf of a `conditions:` tree with its absolute path. Handles the
- *  flat-array sugar, the `all`/`any`/`none` operator objects, and bare leaves.
- *  Template invocations are skipped (content unknown until expansion). Leaves
- *  inside `any`/`none` are yielded (the path records the operators it passed
- *  through); the caller decides whether to act on them — see
- *  `pathTraversesNonAllOperator`.
- *
- *  Recursion depth is unbounded here but bounded upstream: js-yaml overflows on
- *  nested `conditions:` well before this walker would, so a maliciously deep
- *  tree is rejected at parse time in every wiring path (CLI, diff-validator)
- *  before it reaches this function. */
-function* walkConditionLeaves(
-  conditions: unknown,
-  pathPrefix: (string | number)[],
-): Generator<ConditionLeafSite> {
-  if (conditions === undefined || conditions === null) return;
-
-  if (Array.isArray(conditions)) {
-    for (let i = 0; i < conditions.length; i++) {
-      yield* walkConditionLeaves(conditions[i], [...pathPrefix, i]);
-    }
-    return;
-  }
-
-  if (!isRecord(conditions)) return;
-
-  for (const op of OPERATOR_KEYS) {
-    const children = conditions[op];
-    if (Array.isArray(children)) {
-      for (let i = 0; i < children.length; i++) {
-        yield* walkConditionLeaves(children[i], [...pathPrefix, op, i]);
-      }
-      return;
-    }
-  }
-
-  if ("template" in conditions) return;
-
-  yield { leaf: conditions, path: pathPrefix };
-}
-
-/** True if a leaf's path passes through an `any:` or `none:` operator (`all:`
- *  is equivalent to the flat-array sugar, so it doesn't count). Such a leaf's
- *  deadness does NOT make the enclosing gate dead — a false leaf under `any:`
- *  can be carried true by a sibling, and under `none:` a false leaf makes the
- *  gate *always fire*. Flagging it "can never be true" would be a false
- *  positive, so the caller skips these. Mirrors the identical restriction on
- *  the always-skip-at-load rule in `validateReferences.ts`. */
-function pathTraversesNonAllOperator(path: (string | number)[]): boolean {
-  return path.some((seg) => seg === "any" || seg === "none");
+  ancestors: readonly ExpressionAncestor[];
 }
 
 /** Yield every `conditions:` block in the treatment file (stage-level,
@@ -451,11 +404,11 @@ export function checkUnsatisfiableConditions(
 
   const nameToFiles = buildPromptNameToFiles(fileObj);
 
-  for (const { leaf, path } of walkAllConditionLeaves(fileObj)) {
+  for (const { leaf, path, ancestors } of walkAllConditionLeaves(fileObj)) {
     // A dead leaf under `any:`/`none:` doesn't doom its gate (see
-    // `pathTraversesNonAllOperator`), so flagging it would misreport a
+    // the shared ancestor metadata), so flagging it would misreport a
     // satisfiable gate as dead.
-    if (pathTraversesNonAllOperator(path)) continue;
+    if (hasNonAllAncestor(ancestors)) continue;
 
     const comparator = leaf.comparator;
     if (typeof comparator !== "string") continue;

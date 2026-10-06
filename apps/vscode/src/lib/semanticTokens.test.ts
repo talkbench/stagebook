@@ -39,6 +39,60 @@ describe("computeSemanticTokens", () => {
     });
   });
 
+  describe("boolean operators", () => {
+    it("highlights nested current operators and preserves quoted key ranges", () => {
+      const src = `conditions:
+  "all":
+    - 'any':
+        - none:
+            - reference: self.prompt.q1
+              comparator: exists`;
+      const tokens = computeSemanticTokens(src);
+      expect(tokens.filter((token) => token.tokenType === "keyword")).toEqual([
+        { line: 1, startCol: 3, length: 3, tokenType: "keyword", text: "all" },
+        { line: 2, startCol: 7, length: 3, tokenType: "keyword", text: "any" },
+        {
+          line: 3,
+          startCol: 10,
+          length: 4,
+          tokenType: "keyword",
+          text: "none",
+        },
+        {
+          line: 5,
+          startCol: 26,
+          length: 6,
+          tokenType: "keyword",
+          text: "exists",
+        },
+      ]);
+      const lines = src.split("\n");
+      for (const token of tokens) {
+        expect(
+          lines[token.line].slice(
+            token.startCol,
+            token.startCol + token.length,
+          ),
+        ).toBe(token.text);
+      }
+    });
+
+    it("does not highlight future expression operators or ordinary data keys", () => {
+      const src = `conditions:
+  not:
+    subtract: [1, 2]
+data:
+  all: [1, 2]
+  any: [3]
+  none: []`;
+      expect(
+        computeSemanticTokens(src).filter(
+          (token) => token.tokenType === "keyword",
+        ),
+      ).toEqual([]);
+    });
+  });
+
   describe("reference strings", () => {
     it("highlights reference values after 'reference:' key", () => {
       const src = `conditions:

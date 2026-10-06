@@ -10,6 +10,8 @@
  * by rendering components that only see hydrated data.
  */
 import { z } from "zod";
+import type { BooleanConditionNode } from "../expressions/index.js";
+import { OPERATOR_KEYS } from "./conditionOperators.js";
 import { localeSchema } from "./primitives.js";
 import {
   nameSchema,
@@ -23,6 +25,7 @@ import {
   referenceSchema,
   promptFilePathSchema,
   validateConditionRules,
+  validComparators,
   type DiscussionType,
   type DiscussionRoomType,
   type LayoutFeedType,
@@ -106,24 +109,7 @@ function collectPlaceholderLeaks(
 const resolvedLeafConditionSchema = z
   .object({
     reference: referenceSchema,
-    comparator: z.enum([
-      "exists",
-      "doesNotExist",
-      "equals",
-      "doesNotEqual",
-      "isAbove",
-      "isBelow",
-      "isAtLeast",
-      "isAtMost",
-      "hasLengthAtLeast",
-      "hasLengthAtMost",
-      "includes",
-      "doesNotInclude",
-      "matches",
-      "doesNotMatch",
-      "isOneOf",
-      "isNotOneOf",
-    ]),
+    comparator: z.enum(validComparators),
     value: z
       .union([
         z.string(),
@@ -148,16 +134,19 @@ const resolvedLeafConditionSchema = z
 // `ResolvedConditionNode` is exported separately for consumers that
 // want to type-narrow against the union; `ResolvedConditionType`
 // stays as a backward-compat alias.
-const resolvedConditionNodeSchema: z.ZodType = z.lazy(() =>
-  z.union([
-    z.object({ all: z.array(resolvedConditionNodeSchema).nonempty() }).strict(),
-    z.object({ any: z.array(resolvedConditionNodeSchema).nonempty() }).strict(),
+const resolvedConditionNodeSchema: z.ZodType = z.lazy(() => {
+  const [firstOperator, secondOperator, ...otherOperators] = OPERATOR_KEYS;
+  const operatorBranch = (operator: (typeof OPERATOR_KEYS)[number]) =>
     z
-      .object({ none: z.array(resolvedConditionNodeSchema).nonempty() })
-      .strict(),
+      .object({ [operator]: z.array(resolvedConditionNodeSchema).nonempty() })
+      .strict();
+  return z.union([
+    operatorBranch(firstOperator),
+    operatorBranch(secondOperator),
+    ...otherOperators.map(operatorBranch),
     resolvedLeafConditionSchema,
-  ]),
-);
+  ]);
+});
 
 // Backward-compat alias: `resolvedConditionSchema` previously meant a
 // single leaf; it now means any node in the tree (leaf or operator).
@@ -168,11 +157,7 @@ const resolvedConditionSchema = resolvedConditionNodeSchema;
 // `conditions` props as `ResolvedConditionNode | ResolvedConditionNode[]`
 // rather than falling through to `any` from the lazy schema.
 export type ResolvedConditionLeaf = z.infer<typeof resolvedLeafConditionSchema>;
-export type ResolvedConditionNode =
-  | { all: ResolvedConditionNode[] }
-  | { any: ResolvedConditionNode[] }
-  | { none: ResolvedConditionNode[] }
-  | ResolvedConditionLeaf;
+export type ResolvedConditionNode = BooleanConditionNode<ResolvedConditionLeaf>;
 
 // Field-level shape: array (implicit-`all` sugar) or a single node.
 // Mirrors `conditionsSchema` in treatment.ts.

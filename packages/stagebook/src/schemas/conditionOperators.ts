@@ -8,6 +8,8 @@
  * checks, so the dependency arrow has to point the other way for the
  * shared list.
  */
-export const OPERATOR_KEYS = ["all", "any", "none"] as const;
-
-export type OperatorKey = (typeof OPERATOR_KEYS)[number];
+export {
+  BOOLEAN_OPERATOR_KEYS as OPERATOR_KEYS,
+  type BooleanOperatorKey as OperatorKey,
+  type BooleanConditionNode,
+} from "../expressions/operators.js";
