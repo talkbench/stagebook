@@ -400,6 +400,43 @@ export interface ParsedPromptFile {
   sliderPoints: number[];
 }
 
+/** The non-missing answer types that prompt controls can save in `.value`. */
+export type PromptValueType = "string" | "number" | "string[]";
+
+/**
+ * The declared answer type of a parsed prompt, independent of whether anyone
+ * has answered it or its answer is valid. `noResponse` saves no answer, so its
+ * type is undefined. Blank or unfinished numeric entries still have a declared
+ * number type even though the saved record omits `value`.
+ *
+ * Numeric choice mode comes from the parser's responsePoints, not labels that
+ * happen to look like numbers. Checklists and sorted lists save text arrays.
+ */
+export function promptValueType(
+  promptFile: ParsedPromptFile,
+): PromptValueType | undefined {
+  const { metadata, responsePoints } = promptFile;
+  switch (metadata.type) {
+    case "noResponse":
+      return undefined;
+    case "openResponse":
+    case "dropdown":
+      return "string";
+    case "numericResponse":
+    case "slider":
+      return "number";
+    case "listSorter":
+      return "string[]";
+    case "multipleChoice":
+      if (metadata.select === "multiple") return "string[]";
+      return responsePoints.length > 0 ? "number" : "string";
+    default: {
+      const exhaustive: never = metadata;
+      throw new Error(`Unknown prompt metadata: ${String(exhaustive)}`);
+    }
+  }
+}
+
 /**
  * Split a prompt-file string on top-level `---` section delimiters,
  * skipping any `---` lines that appear inside a fenced code block.
