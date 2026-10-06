@@ -34,11 +34,19 @@ const EXPECTED_FUNCTIONS = [
   "mergeRequiredServices",
   "getTreatmentDurations",
   "mergeTreatmentDurations",
+  // The `stagebook:` version field (#756): hosts compare a study's declared
+  // version with the release they run (talkbench/manager#424).
+  "compareStagebookVersions",
+  "declaredStagebookVersion",
 ] as const;
 
 describe("stagebook/validate public API", () => {
   it.each(EXPECTED_FUNCTIONS)("exports %s as a function", (name) => {
     expect(typeof (validate as Record<string, unknown>)[name]).toBe("function");
+  });
+
+  it("exports STAGEBOOK_VERSION as a major.minor string", () => {
+    expect(validate.STAGEBOOK_VERSION).toMatch(/^\d+\.\d+$/);
   });
 
   it("exports UNRECOGNIZED_KEY_DID_YOU_MEAN_RE as a RegExp", () => {

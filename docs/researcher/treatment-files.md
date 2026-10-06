@@ -7,6 +7,7 @@ A treatment file is a YAML document (`.stagebook.yaml`) that defines the complet
 A Stagebook file may have any subset of these top-level sections:
 
 ```yaml
+stagebook: "0.33" # optional — the Stagebook release this file was written for
 imports: # optional — relative paths to other Stagebook files whose templates: should be merged in
 templates: # optional — reusable blocks of structure
 consent: # optional — named consent arms; the host shows one, selected by name
@@ -53,6 +54,27 @@ What about file paths inside imported templates: when an imported template refer
 Nested imports (an imported file that itself has `imports:`) are supported. The same file imported via two paths is loaded only once.
 
 Template names must be unique across the main file and every imported file. The convention for sharing the same name across modules is to prefix with the module's namespace (e.g., `tipi_q1` instead of `q1`).
+
+## Stagebook version
+
+The optional `stagebook:` field names the Stagebook release a file was written for:
+
+```yaml
+stagebook: "0.33"
+```
+
+It's a quoted `major.minor` string. The quotes matter: unquoted, YAML reads `0.30` as the number 0.3, so the validator rejects an unquoted value.
+
+Some releases change what valid YAML means: the same file runs differently after an upgrade, with no error. The validator warns about each construct such a change affects, but only in files written for an older release. These are upgrade warnings; [Upgrading a Study](upgrading.md) lists them by release.
+
+- **Without the field,** a file is treated as written before the first such change, so every upgrade warning applies.
+- **With the field,** only the changes after that release apply. Once you've reviewed a file's warnings, set its field to the current release and the warnings stop.
+- **A version newer than the validator** gets a warning: the file may rely on rules this validator doesn't know. Update the CLI package or the VS Code extension.
+- **The runtime never reads the field.** A study always runs with the behavior of the Stagebook release it's deployed on. The field only decides which upgrade warnings the validator shows.
+
+Every file declares its own version: the entry file, each imported file, and each prompt file (in its frontmatter). Nothing is inherited through `imports:`. A condition is judged by the version of the file that contains it; for a template, that's the file that defines it, and its warnings point at the definition.
+
+A study's files should all be on one version. When the entry file declares a version, an imported file (direct or through another import) or a prompt file that declares an older version, or none, gets a warning at the reference that brings it in. Review that file and raise its field. A file on a newer version isn't flagged, so a prompt file shared between studies can be raised for one study without affecting the other. When the entry file declares no version, this check doesn't run.
 
 ## Experiment Lifecycle
 

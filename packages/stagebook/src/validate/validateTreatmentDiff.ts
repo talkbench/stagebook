@@ -13,7 +13,14 @@ import { loadAndMergeImports } from "./loadAndMergeImports.js";
 import { checkPromptLocaleConsistencyWithLoader } from "./localeConsistency.js";
 import { checkSharedPromptValidationWithLoader } from "./sharedPromptValidation.js";
 import { checkUnsatisfiableConditionsWithLoader } from "./unsatisfiableConditions.js";
-import { createPositionMapper, extractYamlErrors } from "./yamlPositionMap.js";
+import {
+  createPositionMapper,
+  extractYamlErrors,
+  resolvePathOrAncestor,
+} from "./yamlPositionMap.js";
+import { newerThanValidatorWarning } from "./stagebookVersion.js";
+import { treatmentUpgradeDiagnostics } from "./upgradeWarnings.js";
+import { versionConsistencyDiagnostics } from "./versionConsistency.js";
 import type { Diagnostic } from "./types.js";
 
 /**
@@ -63,12 +70,24 @@ export interface ValidateTreatmentDiffResult {
 
 export async function validateTreatmentWithDiff({
   source,
-  loadImport,
+  loadImport: loadUncached,
 }: {
   source: string;
   loadImport: (importPath: string) => Promise<string>;
 }): Promise<ValidateTreatmentDiffResult> {
   const diagnostics: Diagnostic[] = [];
+
+  // Read each file at most once per validation: the import loader and the
+  // cross-file checks below load the same imports and prompt files.
+  const reads = new Map<string, Promise<string>>();
+  const loadImport = (importPath: string): Promise<string> => {
+    let read = reads.get(importPath);
+    if (!read) {
+      read = loadUncached(importPath);
+      reads.set(importPath, read);
+    }
+    return read;
+  };
 
   // YAML syntax + duplicate-key warnings (existing behavior, preserved
   // so we don't regress on noise-level diagnostics the orchestrator
@@ -123,6 +142,24 @@ export async function validateTreatmentWithDiff({
       range: resolveOrWalkUp(mapper, issue.path),
     });
   }
+
+  // A `stagebook:` version newer than this validator (#756): the same
+  // per-file warning `validateTreatmentSource` emits.
+  const newer = newerThanValidatorWarning(parsedObj);
+  if (newer) {
+    diagnostics.push({
+      message: newer,
+      severity: "warning",
+      range: resolveOrWalkUp(mapper, ["stagebook"]),
+    });
+  }
+
+  // Upgrade warnings (#756), judged by this file's own `stagebook:` version.
+  // They run on the source as written, so a template's conditions are judged
+  // and reported in the file that defines it; an imported template's warnings
+  // belong to its own file, which the version-consistency check below flags
+  // when it's behind.
+  diagnostics.push(...treatmentUpgradeDiagnostics(mapper));
 
   // Load imports asynchronously.
   const loadResult = await loadAndMergeImports({ source, loadImport });
@@ -293,6 +330,19 @@ export async function validateTreatmentWithDiff({
       });
     }
 
+    // Version consistency (#756): when this file declares `stagebook:`, an
+    // import (direct or transitive) or a prompt file it uses that declares an
+    // older version, or none, gets one warning at the reference that brings
+    // it in.
+    diagnostics.push(
+      ...(await versionConsistencyDiagnostics({
+        mapper,
+        hydrated: diff.hydrated,
+        loadImport,
+        loadPrompt: loadImport,
+      })),
+    );
+
     // Post-hydration consent i18n-completeness rule (#529): a treatment locale
     // with no matching consent arm is a WARNING, not an error — consent is
     // deliberately not paired to treatments (ADR 2026-07-consent-debrief #4),
@@ -373,13 +423,14 @@ function resolveOrWalkUp(
   mapper: ReturnType<typeof createPositionMapper>,
   path: (string | number)[],
 ): Diagnostic["range"] {
-  let p = path;
-  let range = mapper.resolve(p);
-  while (!range && p.length > 0) {
-    p = p.slice(0, -1);
-    range = mapper.resolve(p);
-  }
-  return range ?? { startLine: 0, startCol: 0, endLine: 0, endCol: 1 };
+  return (
+    resolvePathOrAncestor(mapper, path) ?? {
+      startLine: 0,
+      startCol: 0,
+      endLine: 0,
+      endCol: 1,
+    }
+  );
 }
 
 /**

@@ -1,4 +1,7 @@
 import { promptFileSchema } from "../index.js";
+import { readPromptFrontmatter } from "./promptFrontmatter.js";
+import { newerThanValidatorWarning } from "./stagebookVersion.js";
+import { collectUpgradeWarnings } from "./upgradeWarnings.js";
 import type { SourceRange } from "./yamlPositionMap.js";
 import type { Diagnostic } from "./types.js";
 
@@ -133,6 +136,22 @@ export function validatePromptSource(source: string): PromptValidationResult {
     }
   }
 
+  // A `stagebook:` version newer than this validator (#756). Read from the raw
+  // frontmatter, not the schema result: a prompt that relies on a newer
+  // release often fails this validator's schema, and the warning explains why.
+  const newer = newerThanValidatorWarning(readPromptFrontmatter(source));
+  if (newer) {
+    diagnostics.push({
+      message: newer,
+      severity: "warning",
+      range: mapPromptErrorToRange(
+        source,
+        ["metadata", "stagebook"],
+        delimiters,
+      ),
+    });
+  }
+
   // Validate with stagebook's promptFileSchema
   const result = promptFileSchema.safeParse(source);
 
@@ -155,6 +174,21 @@ export function validatePromptSource(source: string): PromptValidationResult {
         message: issue.message,
         severity: "error",
         range,
+      });
+    }
+  }
+
+  // Upgrade warnings (#756) that target prompt files, judged by this file's
+  // own `stagebook:` version.
+  if (result.success) {
+    for (const warning of collectUpgradeWarnings({
+      kind: "prompt",
+      prompt: result.data,
+    })) {
+      diagnostics.push({
+        message: warning.message,
+        severity: "warning",
+        range: mapPromptErrorToRange(source, warning.path ?? [], delimiters),
       });
     }
   }

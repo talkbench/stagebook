@@ -4,6 +4,7 @@ import {
   collectYouTubeUnsupportedControls,
 } from "../index.js";
 import { createPositionMapper, extractYamlErrors } from "./yamlPositionMap.js";
+import { newerThanValidatorWarning } from "./stagebookVersion.js";
 import type { Diagnostic } from "./types.js";
 
 export type { Diagnostic };
@@ -129,6 +130,21 @@ export function validateTreatmentSource(source: string): ValidationResult {
       message: `${issue.message} (${formatPath(issue.path)})`,
       severity: "warning",
       range,
+    });
+  }
+
+  // Step 5: a `stagebook:` version newer than this validator (#756). Also a
+  // warning outside the schema, and per-file, so it rides the same channel.
+  // Upgrade warnings do NOT run here: on the CLI's expanded YAML, a condition
+  // from an imported template would be judged by the importing file's version
+  // instead of its own. They run on the raw source in `cli/validate.ts` and
+  // `validateTreatmentDiff.ts`.
+  const newer = newerThanValidatorWarning(parsedObj);
+  if (newer) {
+    diagnostics.push({
+      message: newer,
+      severity: "warning",
+      range: mapper.resolve(["stagebook"]),
     });
   }
 

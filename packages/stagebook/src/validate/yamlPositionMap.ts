@@ -146,6 +146,21 @@ export interface PositionMapper {
 }
 
 /**
+ * Resolve a path, or failing that its nearest ancestor that the source
+ * contains: e.g. a path into a hydrated tree whose template-expanded tail
+ * isn't in the source. Returns null when nothing resolves.
+ */
+export function resolvePathOrAncestor(
+  mapper: PositionMapper,
+  path: (string | number)[],
+): SourceRange | null {
+  for (let p = path; ; p = p.slice(0, -1)) {
+    const range = mapper.resolve(p);
+    if (range || p.length === 0) return range;
+  }
+}
+
+/**
  * Parse a YAML source string once and return a mapper that can
  * resolve many paths to source ranges without re-parsing.
  *

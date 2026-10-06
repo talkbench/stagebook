@@ -121,6 +121,8 @@ export {
   getValidKeysForPlayer,
 } from "./treatment.js";
 
+export { stagebookVersionSchema } from "./primitives.js";
+
 export {
   attributesSchema,
   hasStableParticipantId,

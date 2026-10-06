@@ -3,7 +3,12 @@ import { z } from "zod";
 import { walkConditionLeaves } from "../expressions/index.js";
 import { collectStorageKeyCollisions } from "./storageKeyCollisions.js";
 import { validateTreatmentFileReferences } from "./validateReferences.js";
-import { nameSchema, localeSchema, type NameType } from "./primitives.js";
+import {
+  nameSchema,
+  localeSchema,
+  stagebookVersionSchema,
+  type NameType,
+} from "./primitives.js";
 import {
   namedSourceEnum,
   externalSourceEnum,
@@ -2542,6 +2547,13 @@ export type TemplateType = z.infer<typeof templateSchema>;
 // load time, not at the schema level.
 export const treatmentFileSchema = z
   .object({
+    /**
+     * The Stagebook release this file was written for, e.g. `"0.34"`
+     * (#756). Only the validator reads it, to decide which upgrade
+     * warnings apply; the runtime never does. Every file declares its
+     * own; nothing is inherited through `imports:`.
+     */
+    stagebook: stagebookVersionSchema.optional(),
     /**
      * Relative paths to other Stagebook files whose `templates:`
      * should be merged in before expansion. Resolved by

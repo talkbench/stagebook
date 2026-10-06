@@ -12,6 +12,11 @@ import {
   checkPromptLocaleConsistencyWithLoader,
   checkSharedPromptValidationWithLoader,
   checkUnsatisfiableConditionsWithLoader,
+  treatmentUpgradeDiagnostics,
+  versionConsistencyDiagnostics,
+  newerThanValidatorWarning,
+  createPositionMapper,
+  type PositionMapper,
 } from "../validate/index.js";
 import { checkConsentLocaleCoverage } from "../schemas/index.js";
 import { load as loadYaml } from "js-yaml";
@@ -210,13 +215,19 @@ export async function run({
     }
 
     // Treatment file
+    // Upgrade warnings (#756) run on the raw source in every mode. A
+    // condition is judged by the version of the file that contains it, so
+    // the expanded YAML, where an imported template's conditions sit under
+    // this file's `stagebook:`, is the wrong input.
+    const mapper = createPositionMapper(source);
+    const upgradeDiagnostics = treatmentUpgradeDiagnostics(mapper);
     const noExpand = values["no-expand"] === true;
     if (noExpand || displayPath === "<stdin>") {
       const result = validateTreatmentSource(source);
       results.push({
         path: displayPath,
         type: "treatment",
-        diagnostics: result.diagnostics,
+        diagnostics: [...result.diagnostics, ...upgradeDiagnostics],
       });
       continue;
     }
@@ -225,25 +236,30 @@ export async function run({
     // own directory) and validate the expansion. Catches errors that only
     // surface after template substitution and import merging.
     const dir = dirname(resolvePath(cwd, displayPath));
-    const result = await expandAndValidateWithImports({
-      source,
-      loadImport: async (importPath: string) => {
-        const target = isAbsolute(importPath)
-          ? importPath
-          : resolvePath(dir, importPath);
-        return await readFile(target, "utf8");
-      },
-    });
-    const diagnostics: Diagnostic[] = result.expandError
-      ? [
-          {
-            severity: "error",
-            message: `Template expansion failed: ${result.expandError}`,
-            range: null,
-          },
-          ...result.diagnostics,
-        ]
-      : result.diagnostics;
+    const loadImport = async (importPath: string) => {
+      const target = isAbsolute(importPath)
+        ? importPath
+        : resolvePath(dir, importPath);
+      return await readFile(target, "utf8");
+    };
+    const result = await expandAndValidateWithImports({ source, loadImport });
+    const diagnostics: Diagnostic[] = [
+      ...(result.expandError
+        ? [
+            {
+              severity: "error" as const,
+              message: `Template expansion failed: ${result.expandError}`,
+              range: null,
+            },
+          ]
+        : []),
+      ...result.diagnostics,
+      // The newer-than-validator warning comes from validating the expanded
+      // YAML, so a failed expansion would lose it. Keep it: a file written for
+      // a newer release is a likely reason the expansion failed.
+      ...(result.expandError ? newerThanValidatorDiagnostics(mapper) : []),
+      ...upgradeDiagnostics,
+    ];
 
     // Post-hydration locale-consistency rule (ADR 2026-06-localization #6):
     // each referenced prompt's frontmatter `locale` must match its
@@ -259,6 +275,12 @@ export async function run({
         ...(await checkSharedPromptValidationDiagnostics(result.fullYaml, dir)),
         ...(await checkUnsatisfiableConditionDiagnostics(result.fullYaml, dir)),
         ...checkConsentLocaleCoverageDiagnostics(result.fullYaml),
+        ...(await checkVersionConsistencyDiagnostics(
+          mapper,
+          result.fullYaml,
+          dir,
+          loadImport,
+        )),
       );
     }
     results.push({ path: displayPath, type: "treatment", diagnostics });
@@ -383,6 +405,55 @@ function checkConsentLocaleCoverageDiagnostics(fullYaml: string): Diagnostic[] {
     message: gap.message,
     range: null,
   }));
+}
+
+/**
+ * Run the version-consistency check (#756): when the entry file declares
+ * `stagebook:`, each import (direct or transitive) and each prompt file the
+ * expanded treatment uses should declare the same version or newer. Positioned
+ * in the raw source, like the editor: an import at its `imports:` entry, a
+ * prompt file at the first `file:` in this file that names it (top of file
+ * when only an imported template does).
+ */
+async function checkVersionConsistencyDiagnostics(
+  mapper: PositionMapper,
+  fullYaml: string,
+  dir: string,
+  loadImport: (importPath: string) => Promise<string>,
+): Promise<Diagnostic[]> {
+  let hydrated: unknown = null;
+  try {
+    hydrated = loadYaml(fullYaml);
+  } catch {
+    // YAML errors are already reported by the schema pass; imports still get
+    // checked.
+  }
+  return versionConsistencyDiagnostics({
+    mapper,
+    hydrated,
+    loadImport,
+    loadPrompt: async (relPath) => {
+      try {
+        return await readFile(resolvePath(dir, relPath), "utf8");
+      } catch {
+        return null;
+      }
+    },
+  });
+}
+
+/** The newer-than-validator warning (#756), read from the raw source. */
+function newerThanValidatorDiagnostics(mapper: PositionMapper): Diagnostic[] {
+  let file: unknown;
+  try {
+    file = mapper.toJSON();
+  } catch {
+    return [];
+  }
+  const message = newerThanValidatorWarning(file);
+  return message
+    ? [{ severity: "warning", message, range: mapper.resolve(["stagebook"]) }]
+    : [];
 }
 
 function hasGlobChars(s: string): boolean {

@@ -34,6 +34,7 @@ Each per-type schema is `.strict()` (#243) — unknown frontmatter keys (typos l
 | `notes` | string | no | Internal notes (not displayed) |
 | `body` | `none` | no | The prompt deliberately has no body. See [Prompts without a body](#prompts-without-a-body). |
 | `ariaLabel` | string | with `body: none` | A name for assistive technology, never displayed. See [Prompts without a body](#prompts-without-a-body). |
+| `stagebook` | string | no | The Stagebook release this file was written for, as a quoted `major.minor` string (`stagebook: "0.33"`). Only the validator reads it, to decide which upgrade warnings apply. See [Stagebook version](treatment-files.md#stagebook-version). |
 
 ### Type-specific fields
 

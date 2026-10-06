@@ -1,6 +1,10 @@
 import { z, ZodIssue } from "zod";
 import { load as loadYaml } from "js-yaml";
-import { nameSchema, localeSchema } from "./primitives.js";
+import {
+  nameSchema,
+  localeSchema,
+  stagebookVersionSchema,
+} from "./primitives.js";
 import {
   formatNumericPlain,
   parseNumericEntry,
@@ -48,6 +52,9 @@ const baseMetadataFields = {
   // not enforced against the shipped-catalog set here — it's a declaration of
   // what the file contains, checked against the treatment's locale downstream.
   locale: localeSchema.optional(),
+  // The Stagebook release this file was written for (#756). Only the
+  // validator reads it, to decide which upgrade warnings apply.
+  stagebook: stagebookVersionSchema.optional(),
 };
 
 // `body: none` (#718) declares that a prompt deliberately has no body: its
