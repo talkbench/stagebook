@@ -36,6 +36,9 @@ git checkout -b release/X.Y.Z
 # Mirror the version onto the VS Code extension so the installed extension
 # reports which stagebook it bundles (#562). This is derived, not typed:
 node scripts/sync-vscode-version.mjs   # sets apps/vscode/package.json to X.Y.Z
+# On a minor or major release, raise STAGEBOOK_VERSION in
+# packages/stagebook/src/validate/stagebookVersion.ts to X.Y if it's behind
+# (#756). stagebookVersion.test.ts fails until you do.
 npm install --package-lock-only        # reflect both bumps in the lockfile
 git commit -am "chore(release): bump stagebook to X.Y.Z
 
@@ -92,7 +95,7 @@ gh pr merge <PR#> --squash
 
 Run the `until` loop via Bash's `run_in_background: true` so the user isn't blocked.
 
-Auto-merge (when available) is safe **only** for release PRs (version bumps on a `release/X.Y.Z` branch — `packages/stagebook/package.json`, the derived `apps/vscode/package.json` from `sync-vscode-version.mjs`, and the lockfile — with no other changes). If the PR diff touches anything beyond those version fields, do not auto-merge — wait for the user. The merge style is `--squash` to match the project convention (recent main has the squash-style `<message> (#N)` commits).
+Auto-merge (when available) is safe **only** for release PRs (version bumps on a `release/X.Y.Z` branch — `packages/stagebook/package.json`, the derived `apps/vscode/package.json` from `sync-vscode-version.mjs`, `STAGEBOOK_VERSION` in `stagebookVersion.ts`, and the lockfile — with no other changes). If the PR diff touches anything beyond those version fields, do not auto-merge — wait for the user. The merge style is `--squash` to match the project convention (recent main has the squash-style `<message> (#N)` commits).
 
 If the user is around, you can either merge automatically (auto or poll-then-merge) and notify them, or wait for them to merge manually — their call. If they're away, proceed automatically.
 

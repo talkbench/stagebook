@@ -5,6 +5,7 @@ A concise, precise reference for the Stagebook experiment description language. 
 ## 1. Top-Level Structure
 
 ```yaml
+stagebook: "0.33" # optional: quoted major.minor release the file was written for; selects upgrade warnings, never read at runtime
 templates: # optional: array of template definitions
 consent: # optional: array of consent arms — the host shows one, selected by name
 introSequences: # required: array of intro sequence objects
@@ -205,6 +206,8 @@ Position indices in `showToPositions`, `hideFromPositions`, `groupComposition`, 
 `compatibleIntroSequences` (#499) names the intro sequences the treatment may follow; names resolve against the top-level `introSequences:` collection. Dangling names error; duplicates warn; every game/exit/`groupComposition` reference to intro-provided data must resolve in **every** listed sequence. `${field}` placeholders allowed, whole-field or per-item (like `groupComposition`).
 
 ## 11. Prompt Files
+
+`stagebook?: "major.minor"` (quoted) is accepted on every prompt type, as in treatment files: it selects which upgrade warnings apply, and the runtime never reads it.
 
 `required?: boolean` (default `false`) is accepted on `multipleChoice`,
 `dropdown`, `openResponse`, and `numericResponse`. Required dropdowns must set `placeholder`.

@@ -1,4 +1,8 @@
+import { load as loadYaml } from "js-yaml";
 import { promptFileSchema } from "../index.js";
+import { splitOnTopLevelHrules } from "../schemas/promptFile.js";
+import { newerThanValidatorWarning } from "./stagebookVersion.js";
+import { collectUpgradeWarnings } from "./upgradeWarnings.js";
 import type { SourceRange } from "./yamlPositionMap.js";
 import type { Diagnostic } from "./types.js";
 
@@ -106,6 +110,17 @@ function mapPromptErrorToRange(
   return null;
 }
 
+/** The parsed frontmatter, or undefined when it can't be read. */
+function readFrontmatter(source: string): unknown {
+  const sections = splitOnTopLevelHrules(source.trim());
+  if (sections.length < 3) return undefined;
+  try {
+    return loadYaml(sections[1]);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Validate a prompt markdown source string.
  *
@@ -133,6 +148,22 @@ export function validatePromptSource(source: string): PromptValidationResult {
     }
   }
 
+  // A `stagebook:` version newer than this validator (#756). Read from the raw
+  // frontmatter, not the schema result: a prompt that relies on a newer
+  // release often fails this validator's schema, and the warning explains why.
+  const newer = newerThanValidatorWarning(readFrontmatter(source));
+  if (newer) {
+    diagnostics.push({
+      message: newer,
+      severity: "warning",
+      range: mapPromptErrorToRange(
+        source,
+        ["metadata", "stagebook"],
+        delimiters,
+      ),
+    });
+  }
+
   // Validate with stagebook's promptFileSchema
   const result = promptFileSchema.safeParse(source);
 
@@ -155,6 +186,21 @@ export function validatePromptSource(source: string): PromptValidationResult {
         message: issue.message,
         severity: "error",
         range,
+      });
+    }
+  }
+
+  // Upgrade warnings (#756) that target prompt files, judged by this file's
+  // own `stagebook:` version.
+  if (result.success) {
+    for (const warning of collectUpgradeWarnings({
+      kind: "prompt",
+      prompt: result.data,
+    })) {
+      diagnostics.push({
+        message: warning.message,
+        severity: "warning",
+        range: mapPromptErrorToRange(source, warning.path, delimiters),
       });
     }
   }

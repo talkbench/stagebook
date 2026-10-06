@@ -47,6 +47,17 @@ export const referenceNameSchema = z
 // declare a locale a host supplies via `messages` overrides, and the runtime
 // resolves any unshipped locale to `en` (with a warning). The syntactic check
 // still catches gross typos like `hebrew`.
+// The Stagebook release a treatment or prompt file was written for (#756),
+// e.g. `stagebook: "0.34"`. Validators use it to decide which upgrade warnings
+// apply; the runtime never reads it. It must be quoted: unquoted, YAML reads
+// `0.30` as the number 0.3.
+export const STAGEBOOK_VERSION_REGEX = /^(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const STAGEBOOK_VERSION_MESSAGE =
+  '`stagebook` must be a quoted "major.minor" string, e.g. `stagebook: "0.34"`. Unquoted, YAML reads `0.30` as the number 0.3.';
+export const stagebookVersionSchema = z
+  .string({ invalid_type_error: STAGEBOOK_VERSION_MESSAGE })
+  .regex(STAGEBOOK_VERSION_REGEX, { message: STAGEBOOK_VERSION_MESSAGE });
+
 const LOCALE_REGEX = /^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]+)*$/;
 export const localeSchema = z
   .string()

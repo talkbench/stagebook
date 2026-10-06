@@ -12,6 +12,8 @@ import {
   checkPromptLocaleConsistencyWithLoader,
   checkSharedPromptValidationWithLoader,
   checkUnsatisfiableConditionsWithLoader,
+  treatmentUpgradeDiagnostics,
+  versionConsistencyDiagnostics,
 } from "../validate/index.js";
 import { checkConsentLocaleCoverage } from "../schemas/index.js";
 import { load as loadYaml } from "js-yaml";
@@ -210,13 +212,18 @@ export async function run({
     }
 
     // Treatment file
+    // Upgrade warnings (#756) run on the raw source in every mode. A
+    // condition is judged by the version of the file that contains it, so
+    // the expanded YAML, where an imported template's conditions sit under
+    // this file's `stagebook:`, is the wrong input.
+    const upgradeDiagnostics = treatmentUpgradeDiagnostics(source);
     const noExpand = values["no-expand"] === true;
     if (noExpand || displayPath === "<stdin>") {
       const result = validateTreatmentSource(source);
       results.push({
         path: displayPath,
         type: "treatment",
-        diagnostics: result.diagnostics,
+        diagnostics: [...result.diagnostics, ...upgradeDiagnostics],
       });
       continue;
     }
@@ -225,25 +232,26 @@ export async function run({
     // own directory) and validate the expansion. Catches errors that only
     // surface after template substitution and import merging.
     const dir = dirname(resolvePath(cwd, displayPath));
-    const result = await expandAndValidateWithImports({
-      source,
-      loadImport: async (importPath: string) => {
-        const target = isAbsolute(importPath)
-          ? importPath
-          : resolvePath(dir, importPath);
-        return await readFile(target, "utf8");
-      },
-    });
-    const diagnostics: Diagnostic[] = result.expandError
-      ? [
-          {
-            severity: "error",
-            message: `Template expansion failed: ${result.expandError}`,
-            range: null,
-          },
-          ...result.diagnostics,
-        ]
-      : result.diagnostics;
+    const loadImport = async (importPath: string) => {
+      const target = isAbsolute(importPath)
+        ? importPath
+        : resolvePath(dir, importPath);
+      return await readFile(target, "utf8");
+    };
+    const result = await expandAndValidateWithImports({ source, loadImport });
+    const diagnostics: Diagnostic[] = [
+      ...(result.expandError
+        ? [
+            {
+              severity: "error" as const,
+              message: `Template expansion failed: ${result.expandError}`,
+              range: null,
+            },
+          ]
+        : []),
+      ...result.diagnostics,
+      ...upgradeDiagnostics,
+    ];
 
     // Post-hydration locale-consistency rule (ADR 2026-06-localization #6):
     // each referenced prompt's frontmatter `locale` must match its
@@ -259,6 +267,12 @@ export async function run({
         ...(await checkSharedPromptValidationDiagnostics(result.fullYaml, dir)),
         ...(await checkUnsatisfiableConditionDiagnostics(result.fullYaml, dir)),
         ...checkConsentLocaleCoverageDiagnostics(result.fullYaml),
+        ...(await checkVersionConsistencyDiagnostics(
+          source,
+          result.fullYaml,
+          dir,
+          loadImport,
+        )),
       );
     }
     results.push({ path: displayPath, type: "treatment", diagnostics });
@@ -383,6 +397,40 @@ function checkConsentLocaleCoverageDiagnostics(fullYaml: string): Diagnostic[] {
     message: gap.message,
     range: null,
   }));
+}
+
+/**
+ * Run the version-consistency check (#756): when the entry file declares
+ * `stagebook:`, each import (direct or transitive) and each prompt file the
+ * expanded treatment uses should declare the same version or newer. Positioned
+ * in the raw source, like the editor: an import at its `imports:` entry, a
+ * prompt file at its first reference's nearest source ancestor.
+ */
+async function checkVersionConsistencyDiagnostics(
+  source: string,
+  fullYaml: string,
+  dir: string,
+  loadImport: (importPath: string) => Promise<string>,
+): Promise<Diagnostic[]> {
+  let hydrated: unknown = null;
+  try {
+    hydrated = loadYaml(fullYaml);
+  } catch {
+    // YAML errors are already reported by the schema pass; imports still get
+    // checked.
+  }
+  return versionConsistencyDiagnostics({
+    source,
+    hydrated,
+    loadImport,
+    loadPrompt: async (relPath) => {
+      try {
+        return await readFile(resolvePath(dir, relPath), "utf8");
+      } catch {
+        return null;
+      }
+    },
+  });
 }
 
 function hasGlobChars(s: string): boolean {

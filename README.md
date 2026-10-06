@@ -204,6 +204,7 @@ All schemas export corresponding TypeScript types (e.g., `TreatmentType`, `Stage
 - [Discussions](docs/researcher/discussions.md) — text chat, video calls, breakout rooms, custom layouts
 - [Templates](docs/researcher/templates.md) — reusable structures with field substitution and broadcast
 - [Syntax Reference](docs/researcher/syntax-reference.md) — compact cheat sheet for the full language
+- [Upgrading a Study](docs/researcher/upgrading.md) — the `stagebook:` version field, upgrade warnings, and what each release changed
 
 ### For Engineers (integrating Stagebook)
 
