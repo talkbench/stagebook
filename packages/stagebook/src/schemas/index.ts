@@ -109,6 +109,8 @@ export {
   validElementTypes,
   SURVEY_ELEMENT_REMOVED_MESSAGE,
   validComparators,
+  OPERATOR_KEYS,
+  type OperatorKey,
   validReferenceTypes,
   getValidKeysForElementType,
   getValidKeysForComparator,

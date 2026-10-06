@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { walkConditionLeaves } from "../expressions/index.js";
 import type { SafeParseReturnType, ZodIssue } from "zod";
 import {
   getValidKeysForComparator,
@@ -44,6 +45,11 @@ type ContainerLabel =
   | { kind: "discussion" }
   | { kind: "player" }
   | { kind: "unknown" };
+
+// Scoped to one parse: each conditions tree is indexed at most once, even
+// when many leaves have misspelled keys. Paths are encoded without ambiguity
+// between string keys and numeric indices.
+type ConditionLabels = Map<string, Map<string, string>>;
 
 const DEFAULT_MAX_DISTANCE = 5;
 
@@ -117,17 +123,16 @@ function getAtPath(root: unknown, path: (string | number)[]): unknown {
 
 /**
  * Inspect the path/parent to figure out which named-export valid-keys
- * helper applies. The treatmentFileSchema tree is shallow enough that
- * we can identify the container kind from the path's structure (which
- * keys appear at each depth), occasionally consulting the parsed value
- * to read a `type` or `comparator` discriminator.
+ * helper applies. Container paths identify most kinds; condition leaves
+ * are found through the shared walker because boolean trees can nest
+ * to arbitrary depth. Discriminators come from the parsed input.
  *
  * Returns `{ kind: "unknown" }` when the path doesn't land on one of
  * the named containers — caller falls back to a no-key-list message.
  *
  * Path shapes recognized:
  * - element     : … "elements" <number>             (any depth)
- * - condition   : … "conditions" <number>           (any depth)
+ * - condition   : a leaf under … "conditions"      (any boolean-tree depth)
  * - stage       : "treatments" <n> "gameStages" <n>
  * - introExitStep: "introSequences" <n> "introSteps" <n>
  *               | … "exitSequence" <n>
@@ -135,8 +140,8 @@ function getAtPath(root: unknown, path: (string | number)[]): unknown {
  * - discussion  : … "discussion"
  * - player      : … "groupComposition" <n>
  *
- * NOT recognized today: template `content` paths. Unrecognized keys
- * inside a template body fall through to the `unknown` bucket and
+ * NOT recognized today: template `content` containers. Unrecognized keys
+ * directly on a template body fall through to the `unknown` bucket and
  * surface with a bare "Unrecognized key 'X'." (no key list, no
  * suggestion). Resolving these would require walking back up the path
  * to the enclosing `templates[n]`, reading its `contentType`, and
@@ -150,6 +155,7 @@ function getAtPath(root: unknown, path: (string | number)[]): unknown {
 function classifyContainer(
   path: (string | number)[],
   root: unknown,
+  conditionLabels: ConditionLabels,
 ): ContainerLabel {
   const last = path[path.length - 1];
   const secondLast = path[path.length - 2];
@@ -167,17 +173,31 @@ function classifyContainer(
     };
   }
 
-  // condition: parent path ends with `…conditions <index>`.
-  if (typeof last === "number" && secondLast === "conditions") {
-    const value = getAtPath(root, path);
-    const comparator =
-      value && typeof value === "object" && "comparator" in value
-        ? (value as { comparator?: unknown }).comparator
-        : undefined;
-    return {
-      kind: "condition",
-      comparator: typeof comparator === "string" ? comparator : "",
-    };
+  // Conditions can be bare leaves, implicit-all arrays, or nested operator
+  // trees. Match the actual leaf path so operator objects and fields inside
+  // a reference/value are not mistaken for comparator containers.
+  const conditionsIndex = path.lastIndexOf("conditions");
+  if (conditionsIndex !== -1) {
+    const conditionsPath = path.slice(0, conditionsIndex + 1);
+    const blockKey = JSON.stringify(conditionsPath);
+    let labels = conditionLabels.get(blockKey);
+    if (!labels) {
+      labels = new Map();
+      for (const { leaf, path: leafPath } of walkConditionLeaves(
+        getAtPath(root, conditionsPath),
+        conditionsPath,
+      )) {
+        labels.set(
+          JSON.stringify(leafPath),
+          typeof leaf.comparator === "string" ? leaf.comparator : "",
+        );
+      }
+      conditionLabels.set(blockKey, labels);
+    }
+    const comparator = labels.get(JSON.stringify(path));
+    if (comparator !== undefined) {
+      return { kind: "condition", comparator };
+    }
   }
 
   // stage: `treatments[n].gameStages[m]`.
@@ -286,10 +306,15 @@ function buildMessage(
 function rewriteUnrecognizedKeysIssue(
   issue: ZodIssue,
   parsedInput: unknown,
+  conditionLabels: ConditionLabels,
 ): ZodIssue[] {
   if (issue.code !== z.ZodIssueCode.unrecognized_keys) return [issue];
 
-  const containerLabel = classifyContainer(issue.path, parsedInput);
+  const containerLabel = classifyContainer(
+    issue.path,
+    parsedInput,
+    conditionLabels,
+  );
   const validKeys = validKeysFor(containerLabel);
   const description = describeContainer(containerLabel);
 
@@ -341,8 +366,11 @@ export function safeParseTreatmentFile(
   if (result.success) return result;
 
   const rewrittenIssues: ZodIssue[] = [];
+  const conditionLabels: ConditionLabels = new Map();
   for (const issue of result.error.issues) {
-    rewrittenIssues.push(...rewriteUnrecognizedKeysIssue(issue, input));
+    rewrittenIssues.push(
+      ...rewriteUnrecognizedKeysIssue(issue, input, conditionLabels),
+    );
   }
 
   return {

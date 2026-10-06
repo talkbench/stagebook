@@ -21,10 +21,11 @@
 
 import { getReferenceKeyAndPath } from "../utils/reference.js";
 import { compare, type Comparator } from "../utils/compare.js";
-// `OPERATOR_KEYS` is in its own module to avoid a `treatment.ts ↔
-// validateReferences.ts` import cycle. The reference helpers below come
-// from `./reference.ts` for the same reason.
-import { OPERATOR_KEYS } from "./conditionOperators.js";
+import {
+  walkConditionLeaves,
+  hasNonAllAncestor,
+  type ExpressionAncestor,
+} from "../expressions/index.js";
 import {
   parseDottedReference,
   formatReference,
@@ -96,54 +97,6 @@ const STAGE_PRODUCED_REF_TYPES = new Set([
   "timeline",
   "trackedLink",
 ]);
-
-/**
- * Walk a `conditions:` value (#235) and yield each leaf condition with
- * its absolute path. Handles all three shapes the boolean tree accepts:
- *
- *   - Array (sugar for implicit `all`): yields each child's leaves with
- *     the array index in the path.
- *   - Operator object (`{all|any|none: [...]}`): recurses into the
- *     children, scoping the path with the operator key + child index.
- *   - Leaf (anything with `comparator`, or a non-operator/template
- *     object): yields itself.
- *
- * Template invocations (`{template: ...}`) are skipped — content
- * unknown until expansion. The walker is "best-effort" because it
- * runs pre-validation (`superRefine` input is partially-valid), so
- * malformed shapes are silently dropped rather than throwing.
- */
-function* walkConditionLeaves(
-  conditions: unknown,
-  pathPrefix: (string | number)[],
-): Generator<{ leaf: Record<string, unknown>; path: (string | number)[] }> {
-  if (conditions === undefined || conditions === null) return;
-
-  if (Array.isArray(conditions)) {
-    for (let i = 0; i < conditions.length; i++) {
-      yield* walkConditionLeaves(conditions[i], [...pathPrefix, i]);
-    }
-    return;
-  }
-
-  if (!isRecord(conditions)) return;
-  const node = conditions;
-
-  for (const op of OPERATOR_KEYS) {
-    const children = node[op];
-    if (Array.isArray(children)) {
-      for (let i = 0; i < children.length; i++) {
-        yield* walkConditionLeaves(children[i], [...pathPrefix, op, i]);
-      }
-      return;
-    }
-  }
-
-  // Template invocation — skip until expansion.
-  if ("template" in node) return;
-
-  yield { leaf: node, path: pathPrefix };
-}
 
 /**
  * Main entrypoint — given a parsed treatment-file tree, walks every reference
@@ -622,6 +575,7 @@ interface RefSite {
   /** Stage-level conditions only: needed for Rule 2 simulation. */
   comparator?: string;
   value?: unknown;
+  ancestors?: readonly ExpressionAncestor[];
 }
 
 /** Enumerate every reference site inside a single step/stage:
@@ -642,7 +596,7 @@ export function enumerateStepSites(
   if (!isRecord(step)) return sites;
 
   // Stage-level conditions
-  for (const { leaf, path } of walkConditionLeaves(step.conditions, [
+  for (const { leaf, path, ancestors } of walkConditionLeaves(step.conditions, [
     ...stepPath,
     "conditions",
   ])) {
@@ -655,6 +609,7 @@ export function enumerateStepSites(
       comparator:
         typeof leaf.comparator === "string" ? leaf.comparator : undefined,
       value: leaf.value,
+      ancestors,
     });
   }
 
@@ -982,14 +937,14 @@ function applyRules({
   // A future improvement: full tree simulation that replaces every
   // current-stage leaf with `compare(undefined, …)` and evaluates the
   // whole tri-state tree, flagging only when the result is strictly
-  // not-true. For now the conservative path-check below avoids
+  // not-true. For now the conservative ancestor check below avoids
   // false-positives at the cost of missing some legitimate
   // always-skip-at-load patterns inside `any:`/`none:`.
   if (
     site.kind === "stageCondition" &&
     producerRank === enclosingRank &&
     site.comparator !== undefined &&
-    !pathTraversesNonAllOperator(site.path)
+    !hasNonAllAncestor(site.ancestors ?? [])
   ) {
     const result = compare(
       undefined,
@@ -1003,15 +958,6 @@ function applyRules({
       });
     }
   }
-}
-
-/** True if the path passes through an `any:` or `none:` operator key
- *  (not `all:`, since `all:` is semantically equivalent to the flat
- *  array sugar). Used to gate Rule 2 (always-skip-at-load) so leaves
- *  nested inside `any`/`none` operators don't false-positive — a
- *  single non-true leaf there can be carried to true by siblings. */
-function pathTraversesNonAllOperator(path: (string | number)[]): boolean {
-  return path.some((seg) => seg === "any" || seg === "none");
 }
 
 // ---------------------------------------------------------------------------

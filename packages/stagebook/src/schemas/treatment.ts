@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 import { z } from "zod";
+import { walkConditionLeaves } from "../expressions/index.js";
 import { collectStorageKeyCollisions } from "./storageKeyCollisions.js";
 import { validateTreatmentFileReferences } from "./validateReferences.js";
 import { nameSchema, localeSchema, type NameType } from "./primitives.js";
@@ -862,53 +863,36 @@ const leafConditionSchema = z.discriminatedUnion("comparator", [
 // `conditionNodeSchema` recursively; the outer `altTemplateContext`
 // wrapper preserves `template:` invocation support at any tree level.
 //
-// `OPERATOR_KEYS` is the source-of-truth list of boolean-tree
-// operator names, used by the typo-detection superRefine in
-// `conditionsSchema` (below) and by the walker in
-// `validateReferences.ts`. Defined in `conditionOperators.ts` to
-// avoid an import cycle: `treatment.ts` imports
-// `validateReferences.ts` for the cross-stage reference walker, so
-// the shared list has to live in a third module both can import
-// from. Re-exported here as part of the schemas package's public
-// surface.
+// `OPERATOR_KEYS` is the current boolean vocabulary shared with the
+// condition walker and the typo-detection refinement below. Its legacy
+// module remains a re-export so existing imports keep working.
 export { OPERATOR_KEYS, type OperatorKey } from "./conditionOperators.js";
 import { OPERATOR_KEYS } from "./conditionOperators.js";
 
-export const conditionNodeSchema: z.ZodType = z.lazy(() =>
-  altTemplateContext(
+export const conditionNodeSchema: z.ZodType = z.lazy(() => {
+  // Keep the accepted grammar at the current boolean operators. The wider
+  // expression dictionary does not enable new treatment syntax by itself.
+  const [firstOperator, secondOperator, ...otherOperators] = OPERATOR_KEYS;
+  const operatorBranch = (operator: (typeof OPERATOR_KEYS)[number]) =>
+    z
+      .object({
+        [operator]: z
+          .array(conditionNodeSchema)
+          .nonempty()
+          .or(fieldPlaceholderSchema),
+      })
+      .strict();
+  return altTemplateContext(
     z.union([
-      // `all`/`any`/`none` arrays accept a `${field}` placeholder (#284) —
-      // substituted with a literal array at fillTemplates time. The
-      // validateReferences walker already type-guards via `Array.isArray`
-      // before iterating, so unsubstituted placeholders are skipped.
-      z
-        .object({
-          all: z
-            .array(conditionNodeSchema)
-            .nonempty()
-            .or(fieldPlaceholderSchema),
-        })
-        .strict(),
-      z
-        .object({
-          any: z
-            .array(conditionNodeSchema)
-            .nonempty()
-            .or(fieldPlaceholderSchema),
-        })
-        .strict(),
-      z
-        .object({
-          none: z
-            .array(conditionNodeSchema)
-            .nonempty()
-            .or(fieldPlaceholderSchema),
-        })
-        .strict(),
+      // Operator arrays also accept a field placeholder, resolved to an
+      // array by fillTemplates. Unfilled placeholders are skipped by walkers.
+      operatorBranch(firstOperator),
+      operatorBranch(secondOperator),
+      ...otherOperators.map(operatorBranch),
       leafConditionSchema,
     ]),
-  ),
-);
+  );
+});
 
 // Backward-compat alias: `conditionSchema` previously meant "a single
 // condition object." It now means "any node in the boolean tree" (leaf
@@ -1016,78 +1000,43 @@ export function validateConditionRules(
     requireSelfPosition?: boolean;
   },
 ): void {
-  if (conditions === undefined || conditions === null) return;
-
-  // Implicit-all sugar: a top-level array iterates each child as a
-  // sibling node (no `all` index in the path).
-  if (Array.isArray(conditions)) {
-    conditions.forEach((child, idx) => {
-      validateConditionRules(child, [...pathPrefix, idx], ctx, options);
-    });
-    return;
-  }
-
-  if (typeof conditions !== "object") return;
-  const node = conditions as Record<string, unknown>;
-
-  // Operator nodes: recurse into their children, scoping the path
-  // prefix with the operator key + child index.
-  for (const op of OPERATOR_KEYS) {
-    const children = node[op];
-    if (Array.isArray(children)) {
-      children.forEach((child, idx) => {
-        validateConditionRules(child, [...pathPrefix, op, idx], ctx, options);
-      });
-      return;
+  for (const { leaf: c, path } of walkConditionLeaves(conditions, pathPrefix)) {
+    // Game-stage conditions must evaluate identically on every client or
+    // they'll desync (one player skips, the other renders). After #298
+    // the position lives inside the reference itself; we extract it and
+    // reject `self` (per-participant). Numeric slot indices, `shared`,
+    // and `all` are cross-client safe.
+    if (options.forbidSelfPosition) {
+      const refPosition = extractReferencePosition(c.reference);
+      if (
+        typeof refPosition === "string" &&
+        GAME_STAGE_FORBIDDEN_POSITIONS.has(refPosition)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [...path, "reference"],
+          message: `${options.contextLabel} conditions must use a cross-client position prefix on the reference (\`shared\`, a numeric slot index, or \`all\`) — got \`self\`. Per-participant references would let one participant skip the stage while the other renders it. For per-participant aggregation, wrap leaves in an \`all:\` or \`any:\` operator with explicit slot-index references.`,
+        });
+      }
     }
-  }
 
-  // Skip template invocations — content unknown until expansion.
-  if ("template" in node) return;
-
-  // Leaf condition: apply the per-leaf rules. The path prefix already
-  // points at the condition's location.
-  const c = node as {
-    reference?: unknown;
-    comparator?: unknown;
-    value?: unknown;
-  };
-
-  // Game-stage conditions must evaluate identically on every client or
-  // they'll desync (one player skips, the other renders). After #298
-  // the position lives inside the reference itself; we extract it and
-  // reject `self` (per-participant). Numeric slot indices, `shared`,
-  // and `all` are cross-client safe.
-  if (options.forbidSelfPosition) {
-    const refPosition = extractReferencePosition(c.reference);
-    if (
-      typeof refPosition === "string" &&
-      GAME_STAGE_FORBIDDEN_POSITIONS.has(refPosition)
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [...pathPrefix, "reference"],
-        message: `${options.contextLabel} conditions must use a cross-client position prefix on the reference (\`shared\`, a numeric slot index, or \`all\`) — got \`self\`. Per-participant references would let one participant skip the stage while the other renders it. For per-participant aggregation, wrap leaves in an \`all:\` or \`any:\` operator with explicit slot-index references.`,
-      });
-    }
-  }
-
-  // Group-composition (player-block) eligibility is decided per candidate
-  // *before* any group exists, so only the candidate's own responses can
-  // resolve. A cross-participant selector (`shared`, a numeric slot index,
-  // or `all`) has nothing to resolve against and silently misbehaves at
-  // dispatch — the slot becomes either never-eligible or vacuously eligible
-  // with no error at authoring or launch (#526). Require `self`. An
-  // undetermined position (invalid reference or template placeholder) is
-  // left to the reference/expansion validators, same as the forbid path.
-  if (options.requireSelfPosition) {
-    const refPosition = extractReferencePosition(c.reference);
-    if (refPosition !== undefined && refPosition !== "self") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [...pathPrefix, "reference"],
-        message: `${options.contextLabel} conditions must use the \`self\` position selector — eligibility is decided per candidate before any group exists, so cross-participant selectors (\`shared\`, a numeric slot index, or \`all\`) have nothing to resolve against. Got \`${refPosition}\`.`,
-      });
+    // Group-composition (player-block) eligibility is decided per candidate
+    // *before* any group exists, so only the candidate's own responses can
+    // resolve. A cross-participant selector (`shared`, a numeric slot index,
+    // or `all`) has nothing to resolve against and silently misbehaves at
+    // dispatch — the slot becomes either never-eligible or vacuously eligible
+    // with no error at authoring or launch (#526). Require `self`. An
+    // undetermined position (invalid reference or template placeholder) is
+    // left to the reference/expansion validators, same as the forbid path.
+    if (options.requireSelfPosition) {
+      const refPosition = extractReferencePosition(c.reference);
+      if (refPosition !== undefined && refPosition !== "self") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [...path, "reference"],
+          message: `${options.contextLabel} conditions must use the \`self\` position selector — eligibility is decided per candidate before any group exists, so cross-participant selectors (\`shared\`, a numeric slot index, or \`all\`) have nothing to resolve against. Got \`${refPosition}\`.`,
+        });
+      }
     }
   }
 }
@@ -1643,6 +1592,9 @@ const conditionSchemasByComparator = {
  * returned in declaration order (base keys first, then per-type keys).
  */
 export function getValidKeysForElementType(type: string): string[] | null {
+  if (!Object.prototype.hasOwnProperty.call(elementSchemasByType, type)) {
+    return null;
+  }
   const schema = (
     elementSchemasByType as Record<string, { shape: Record<string, unknown> }>
   )[type];
@@ -1657,6 +1609,14 @@ export function getValidKeysForElementType(type: string): string[] | null {
  * `reference` / `position` keys.
  */
 export function getValidKeysForComparator(comparator: string): string[] | null {
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      conditionSchemasByComparator,
+      comparator,
+    )
+  ) {
+    return null;
+  }
   const schema = (
     conditionSchemasByComparator as Record<
       string,

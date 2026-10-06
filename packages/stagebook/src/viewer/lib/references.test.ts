@@ -2,6 +2,50 @@ import { describe, it, expect } from "vitest";
 import { extractStageReferences } from "./references.js";
 
 describe("extractStageReferences", () => {
+  it.each([
+    { reference: "self.prompt.q1", comparator: "exists" },
+    {
+      all: [
+        { reference: "self.prompt.q1", comparator: "exists" },
+        {
+          any: [
+            {
+              reference: "shared.prompt.q2",
+              comparator: "equals",
+              value: "yes",
+            },
+          ],
+        },
+      ],
+    },
+  ])("extracts references from a single conditions node: %j", (conditions) => {
+    const refs = extractStageReferences([{ type: "prompt", conditions }]);
+    expect(refs).toEqual(
+      "reference" in conditions
+        ? ["self.prompt.q1"]
+        : ["self.prompt.q1", "shared.prompt.q2"],
+    );
+  });
+
+  it("ignores references in unexpanded template fields and comparison data", () => {
+    const refs = extractStageReferences([
+      {
+        conditions: [
+          {
+            template: "gate",
+            fields: { reference: "self.prompt.templateData" },
+          },
+          {
+            reference: "self.prompt.real",
+            comparator: "equals",
+            value: { reference: "self.prompt.literalData" },
+          },
+        ],
+      },
+    ]);
+    expect(refs).toEqual(["self.prompt.real"]);
+  });
+
   it("extracts condition references from elements", () => {
     const elements = [
       {
