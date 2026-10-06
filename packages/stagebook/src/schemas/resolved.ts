@@ -10,8 +10,10 @@
  * by rendering components that only see hydrated data.
  */
 import { z } from "zod";
-import type { BooleanConditionNode } from "../expressions/index.js";
-import { OPERATOR_KEYS } from "./conditionOperators.js";
+import { checkExpressionTypes } from "./expressionTypes.js";
+import type { PromptFileType } from "./promptFile.js";
+import { createExpressionSchemas, type ExpressionNode } from "./expression.js";
+import type { ExpressionReference } from "../expressions/evaluateExpression.js";
 import { localeSchema } from "./primitives.js";
 import {
   nameSchema,
@@ -22,9 +24,9 @@ import {
   showToPositionsSchema,
   hideFromPositionsSchema,
   discussionSchema,
-  referenceSchema,
   promptFilePathSchema,
   validateConditionRules,
+  validateIntroReferencePositions,
   validComparators,
   type DiscussionType,
   type DiscussionRoomType,
@@ -101,72 +103,19 @@ function collectPlaceholderLeaks(
 // Resolved condition — no template placeholders in values
 // ----------------------------------------------------------------
 
-// Leaf shape of a resolved condition: reference + comparator + optional
-// value, no template placeholders. Boolean-tree operators (#235) are
-// described separately below. After #298 the position lives inside the
-// reference; the sibling `position:` field is removed (mirrors
-// `baseConditionSchema` in treatment.ts).
-const resolvedLeafConditionSchema = z
-  .object({
-    reference: referenceSchema,
-    comparator: z.enum(validComparators),
-    value: z
-      .union([
-        z.string(),
-        z.number(),
-        z.boolean(),
-        z.array(z.string().or(z.number())),
-      ])
-      .optional(),
-  })
-  .strict();
+const resolvedExpressions = createExpressionSchemas({ mode: "resolved" });
+const resolvedConditionSchema = resolvedExpressions.expressionSchema;
+const resolvedConditionsSchema =
+  resolvedExpressions.conditionsSchema.optional();
 
-// Recursive resolved-condition node: an `all`/`any`/`none` operator,
-// or a leaf. After template fill, the same boolean tree is what
-// runtime/component code sees — no template placeholders, no string
-// shorthand quirks, just the structured form.
-//
-// The schema itself is untyped (`z.ZodType`) because the leaf's
-// `reference` field uses `referenceSchema`, which transforms a dotted
-// string into a string[] path — input and output types differ, and
-// `z.ZodType<T>` parameterized on a single type would force them
-// equal and break the dts build. The structural TS type
-// `ResolvedConditionNode` is exported separately for consumers that
-// want to type-narrow against the union; `ResolvedConditionType`
-// stays as a backward-compat alias.
-const resolvedConditionNodeSchema: z.ZodType = z.lazy(() => {
-  const [firstOperator, secondOperator, ...otherOperators] = OPERATOR_KEYS;
-  const operatorBranch = (operator: (typeof OPERATOR_KEYS)[number]) =>
-    z
-      .object({ [operator]: z.array(resolvedConditionNodeSchema).nonempty() })
-      .strict();
-  return z.union([
-    operatorBranch(firstOperator),
-    operatorBranch(secondOperator),
-    ...otherOperators.map(operatorBranch),
-    resolvedLeafConditionSchema,
-  ]);
-});
-
-// Backward-compat alias: `resolvedConditionSchema` previously meant a
-// single leaf; it now means any node in the tree (leaf or operator).
-const resolvedConditionSchema = resolvedConditionNodeSchema;
-
-// Structural TS type for the resolved boolean tree. Exposed so
-// consumers (host components, custom evaluators) can type their
-// `conditions` props as `ResolvedConditionNode | ResolvedConditionNode[]`
-// rather than falling through to `any` from the lazy schema.
-export type ResolvedConditionLeaf = z.infer<typeof resolvedLeafConditionSchema>;
-export type ResolvedConditionNode = BooleanConditionNode<ResolvedConditionLeaf>;
-
-// Field-level shape: array (implicit-`all` sugar) or a single node.
-// Mirrors `conditionsSchema` in treatment.ts.
-const resolvedConditionsSchema = z
-  .union([
-    z.array(resolvedConditionNodeSchema).nonempty(),
-    resolvedConditionNodeSchema,
-  ])
-  .optional();
+/** The schema validates each operator's roles. This structural AST type keeps
+ * every validated expression form available without a second operator grammar. */
+export type ResolvedConditionNode = ExpressionNode;
+export type ResolvedConditionLeaf = {
+  reference: ExpressionReference;
+  comparator: (typeof validComparators)[number];
+  value?: unknown;
+};
 
 // ----------------------------------------------------------------
 // Resolved element — concrete type union, no placeholders
@@ -419,6 +368,7 @@ export type ResolvedStageType = z.infer<typeof resolvedStageSchema>;
 
 export const resolvedIntroExitStepSchema = z.object({
   name: nameSchema,
+  conditions: resolvedConditionsSchema,
   elements: z.array(resolvedElementSchema).nonempty(),
 });
 export type ResolvedIntroExitStepType = z.infer<
@@ -528,6 +478,15 @@ export type ResolvedTreatmentType = z.infer<typeof resolvedTreatmentSchema>;
 // strictly to catch what fillTemplates could have introduced or
 // failed to clear.
 
+const resolvedPreAssignmentStepsSchema = z
+  .array(resolvedIntroExitStepSchema)
+  .nonempty()
+  .superRefine((steps, ctx) => {
+    steps.forEach((step, index) =>
+      validateIntroReferencePositions(step, [index], ctx),
+    );
+  });
+
 // Consent arm (#481) — post-fill: concrete name, concrete locale (a
 // leaked `${...}` fails the syntactic check, like intro sequences).
 const resolvedConsentArmSchema = z.object({
@@ -546,7 +505,7 @@ const resolvedConsentArmSchema = z.object({
     }
   }),
   locale: localeSchema.optional(),
-  steps: z.array(resolvedIntroExitStepSchema).nonempty(),
+  steps: resolvedPreAssignmentStepsSchema,
 });
 
 const resolvedIntroSequenceSchema = z.object({
@@ -554,7 +513,7 @@ const resolvedIntroSequenceSchema = z.object({
   // Post-fill: a concrete BCP-47 tag (a leaked `${field}` placeholder fails
   // the syntactic check). Optional; absent means English.
   locale: localeSchema.optional(),
-  introSteps: z.array(resolvedIntroExitStepSchema).nonempty(),
+  introSteps: resolvedPreAssignmentStepsSchema,
 });
 
 const resolvedTreatmentFileBaseSchema = z.object({
@@ -612,6 +571,8 @@ export type ResolvedTreatmentFileType = z.infer<
 >;
 
 export interface ValidateResolvedOptions {
+  /** Parsed prompt metadata enables declared-value type checks after hydration. */
+  promptFiles?: ReadonlyMap<string, PromptFileType>;
   /**
    * When `true`, drop any issue marked
    * `params.reason === "unresolved-placeholder"`. Use in authoring
@@ -690,6 +651,27 @@ export function validateResolvedTreatmentFile(
     });
   }
 
+  {
+    const known = new Set(
+      issues.map((issue) => JSON.stringify([issue.path, issue.message])),
+    );
+    // Host-record fields have known types even before any prompt file loads.
+    for (const issue of checkExpressionTypes(
+      filled,
+      options.promptFiles ?? new Map(),
+    )) {
+      if (issue.severity !== "error") continue;
+      const key = JSON.stringify([issue.path, issue.message]);
+      if (!known.has(key))
+        issues.push({
+          path: issue.path,
+          message: issue.message,
+          reason: "expression-type",
+        });
+      known.add(key);
+    }
+  }
+
   if (options.skipUnresolved) {
     issues = issues.filter((i) => i.reason !== "unresolved-placeholder");
   }
@@ -701,8 +683,5 @@ export function validateResolvedTreatmentFile(
 // ----------------------------------------------------------------
 
 export { resolvedConditionSchema, resolvedConditionsSchema };
-// `ResolvedConditionType` previously inferred from the leaf-only
-// schema; now aliases the structural tree type so consumers keep type
-// safety. (`z.infer` on the recursive `z.ZodType` lazy widens to
-// `any` — see the comment above `resolvedConditionNodeSchema`.)
+// Historical name retained for hosts; all expression forms share this AST type.
 export type ResolvedConditionType = ResolvedConditionNode;

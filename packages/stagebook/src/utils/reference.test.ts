@@ -134,6 +134,7 @@ describe("getReferenceKeyAndPath", () => {
 
   test("structured named reference: prompt with no path defaults to ['value']", () => {
     const result = getReferenceKeyAndPath({
+      position: "self",
       source: "prompt",
       name: "myQuestion",
     });
@@ -145,6 +146,7 @@ describe("getReferenceKeyAndPath", () => {
     // The new capability — write `path: [debugMessages]` to address other
     // fields on the prompt record beyond the implicit `value`.
     const result = getReferenceKeyAndPath({
+      position: "self",
       source: "prompt",
       name: "myQuestion",
       path: ["debugMessages"],
@@ -155,6 +157,7 @@ describe("getReferenceKeyAndPath", () => {
 
   test("structured named reference: discussion uses the discussion_<name> namespace", () => {
     const result = getReferenceKeyAndPath({
+      position: "self",
       source: "discussion",
       name: "lobby",
     });
@@ -164,6 +167,7 @@ describe("getReferenceKeyAndPath", () => {
 
   test("structured external reference: entryUrl.params.<key>", () => {
     const result = getReferenceKeyAndPath({
+      position: "self",
       source: "entryUrl",
       path: ["params", "condition"],
     });
@@ -174,6 +178,7 @@ describe("getReferenceKeyAndPath", () => {
   test("string and structured forms produce equivalent output", () => {
     expect(getReferenceKeyAndPath("self.qualtrics.exit.responses.q1")).toEqual(
       getReferenceKeyAndPath({
+        position: "self",
         source: "qualtrics",
         name: "exit",
         path: ["responses", "q1"],
@@ -181,6 +186,7 @@ describe("getReferenceKeyAndPath", () => {
     );
     expect(getReferenceKeyAndPath("self.entryUrl.params.PROLIFIC_PID")).toEqual(
       getReferenceKeyAndPath({
+        position: "self",
         source: "entryUrl",
         path: ["params", "PROLIFIC_PID"],
       }),
@@ -199,6 +205,16 @@ describe("getNestedValueByPath", () => {
   test("returns undefined for missing path", () => {
     const obj = { a: { b: 1 } };
     expect(getNestedValueByPath(obj, ["a", "x", "y"])).toBeUndefined();
+  });
+  test("does not read inherited properties", () => {
+    expect(getNestedValueByPath({}, ["toString"])).toBeUndefined();
+    expect(
+      getNestedValueByPath(Object.create({ answer: "inherited" }), ["answer"]),
+    ).toBeUndefined();
+  });
+  test("still reads own array positions and UTF-16 string length", () => {
+    expect(getNestedValueByPath(["red"], ["0"])).toBe("red");
+    expect(getNestedValueByPath("🙂", ["length"])).toBe(2);
   });
 
   test("empty path returns the object itself", () => {

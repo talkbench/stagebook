@@ -4,6 +4,8 @@ import {
   validComparators,
   validReferenceTypes,
   OPERATOR_KEYS,
+  EXPRESSION_OPERATORS,
+  type ExpressionOperandLayout,
 } from "stagebook";
 import { offsetToLineCol } from "stagebook/validate";
 
@@ -42,7 +44,6 @@ const contentTypeSet = new Set([
   "reference",
   "condition",
   "conditions",
-  "player",
   "groupComposition",
   "introExitStep",
   "introSteps",
@@ -53,16 +54,11 @@ const contentTypeSet = new Set([
 
 const separatorStyles = new Set(["thin", "thick", "regular"]);
 
-// Position keyword values that should be highlighted as enum tokens.
-// `all` and `any` remain valid on `display.position` (the
-// `positionSelectorSchema` still accepts them; that's a render concern,
-// not a condition aggregator). `percentAgreement` was removed entirely
-// in #238 — it's no longer accepted on any field.
+// Canonical reference selectors and media/chat enum values.
 const enumValues = new Set([
+  "self",
+  "everyone",
   "shared",
-  "player",
-  "all",
-  "any",
   "text",
   "audio",
   "video",
@@ -232,6 +228,57 @@ export function computeSemanticTokens(source: string): SemanticToken[] {
     }
   }
 
+  function markExpression(node: unknown): void {
+    if (!isMap(node)) return;
+    if (["template", "literal", "reference"].some((key) => node.has(key)))
+      return;
+    for (const pair of node.items) {
+      if (
+        !isPair(pair) ||
+        !isScalar(pair.key) ||
+        typeof pair.key.value !== "string"
+      )
+        continue;
+      const key = pair.key.value;
+      if (!operatorSet.has(key)) continue;
+      const source = getScalarSource(pair.key.range);
+      if (source) addToken(source.offset, source.text, "keyword");
+      markOperands(
+        pair.value,
+        EXPRESSION_OPERATORS[key as keyof typeof EXPRESSION_OPERATORS].operands,
+      );
+    }
+  }
+
+  function markOperands(node: unknown, layout: ExpressionOperandLayout): void {
+    switch (layout.kind) {
+      case "expression":
+        markExpression(node);
+        return;
+      case "expressionList":
+      case "expressionOrList":
+        if (isSeq(node)) node.items.forEach(markExpression);
+        else if (layout.kind === "expressionOrList") markExpression(node);
+        return;
+      case "fields":
+        if (isMap(node))
+          for (const [key, field] of Object.entries(layout.fields))
+            markOperands(node.get(key, true), field);
+        return;
+      case "items":
+        if (isSeq(node))
+          node.items.forEach((item) => markOperands(item, layout.item));
+        return;
+      case "withOptions":
+        markOperands(
+          isMap(node) && node.has(layout.inputField)
+            ? node.get(layout.inputField, true)
+            : node,
+          layout.input,
+        );
+    }
+  }
+
   function walkNode(node: unknown, inConditions = false): void {
     if (isMap(node)) {
       for (const pair of node.items) {
@@ -245,9 +292,6 @@ export function computeSemanticTokens(source: string): SemanticToken[] {
           const keyStr = key.value;
           if (sectionKeys.has(keyStr)) {
             addToken(key.range[0], keyStr, "property");
-          } else if (inConditions && operatorSet.has(keyStr)) {
-            const keySrc = getScalarSource(key.range);
-            if (keySrc) addToken(keySrc.offset, keySrc.text, "keyword");
           }
         }
 
@@ -266,6 +310,10 @@ export function computeSemanticTokens(source: string): SemanticToken[] {
         // Highlight the value based on the key name
         if (isScalar(key) && typeof key.value === "string") {
           const k = key.value;
+          if (k === "conditions" && !inConditions) {
+            if (isSeq(value)) value.items.forEach(markExpression);
+            else markExpression(value);
+          }
 
           const scalarSrc =
             isScalar(value) && typeof value.value === "string"
@@ -348,10 +396,7 @@ export function computeSemanticTokens(source: string): SemanticToken[] {
             emitTemplateVarTokens(scalarSrc.offset, scalarSrc.text);
           }
 
-          walkNode(
-            value,
-            k === "conditions" || (inConditions && operatorSet.has(k)),
-          );
+          walkNode(value, k === "conditions" || inConditions);
         } else {
           walkNode(value);
         }

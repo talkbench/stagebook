@@ -13,6 +13,7 @@ import { loadAndMergeImports } from "./loadAndMergeImports.js";
 import { checkPromptLocaleConsistencyWithLoader } from "./localeConsistency.js";
 import { checkSharedPromptValidationWithLoader } from "./sharedPromptValidation.js";
 import { checkUnsatisfiableConditionsWithLoader } from "./unsatisfiableConditions.js";
+import { checkExpressionTypesWithLoader } from "./expressionTypes.js";
 import {
   createPositionMapper,
   extractYamlErrors,
@@ -275,6 +276,18 @@ export async function validateTreatmentWithDiff({
   // those surface at runtime via the viewer's strict check or the
   // production host's own call.
   if (diff.hydrated) {
+    const expressionTypes = await checkExpressionTypesWithLoader({
+      fileObj: diff.hydrated,
+      loadPrompt: loadImport,
+    });
+    for (const issue of expressionTypes) {
+      diagnostics.push({
+        code: "expression-type",
+        message: `${issue.message} (${formatPath(issue.path)})`,
+        severity: issue.severity,
+        range: resolveOrWalkUp(mapper, issue.path),
+      });
+    }
     const resolved = validateResolvedTreatmentFile(diff.hydrated, {
       skipUnresolved: true,
     });

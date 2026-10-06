@@ -20,6 +20,7 @@ export function getNestedValueByPath(
   return path.reduce((acc: unknown, key: string) => {
     if (acc === null || acc === undefined) return undefined;
     if (DISALLOWED_PATH_SEGMENTS.has(key)) return undefined;
+    if (!Object.prototype.hasOwnProperty.call(acc, key)) return undefined;
     return (acc as Record<string, unknown>)[key];
   }, obj);
 }

@@ -1,8 +1,16 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 import { z } from "zod";
-import { walkConditionLeaves } from "../expressions/index.js";
+import { walkExpression } from "../expressions/index.js";
+import {
+  createExpressionSchemas,
+  type ExpressionNode,
+  type ExpressionConditions,
+} from "./expression.js";
 import { collectStorageKeyCollisions } from "./storageKeyCollisions.js";
-import { validateTreatmentFileReferences } from "./validateReferences.js";
+import {
+  validateTreatmentFileReferences,
+  enumerateStepSites,
+} from "./validateReferences.js";
 import {
   nameSchema,
   localeSchema,
@@ -703,207 +711,17 @@ function altTemplateContext<T extends z.ZodTypeAny>(baseSchema: T) {
 
 // --------------- Conditions --------------- //
 
-const baseConditionSchema = z
-  .object({
-    // After #298 the position selector is part of the reference itself
-    // (e.g. `0.prompt.X.value`, `self.entryUrl.params.condition`).
-    // The pre-#298 sibling `position:` field is removed; the
-    // game-stage rule that forbade `player`/`self` references at the
-    // stage level reads the position from the parsed reference now.
-    reference: referenceSchema,
-  })
-  .strict();
-
-const conditionExistsSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("exists"),
-    value: z.undefined(),
-  })
-  .strict();
-
-const conditionDoesNotExistSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("doesNotExist"),
-    value: z.undefined(),
-  })
-  .strict();
-
-const conditionEqualsSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("equals"),
-    value: z.string().or(z.number()).or(z.boolean()).or(fieldPlaceholderSchema),
-  })
-  .strict();
-
-const conditionDoesNotEqualSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("doesNotEqual"),
-    value: z.string().or(z.number()).or(z.boolean()).or(fieldPlaceholderSchema),
-  })
-  .strict();
-
-const conditionIsAboveSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("isAbove"),
-    value: z.number().or(fieldPlaceholderSchema),
-  })
-  .strict();
-
-const conditionIsBelowSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("isBelow"),
-    value: z.number().or(fieldPlaceholderSchema),
-  })
-  .strict();
-
-const conditionIsAtLeastSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("isAtLeast"),
-    value: z.number().or(fieldPlaceholderSchema),
-  })
-  .strict();
-
-const conditionIsAtMostSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("isAtMost"),
-    value: z.number().or(fieldPlaceholderSchema),
-  })
-  .strict();
-
-const conditionHasLengthAtLeastSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("hasLengthAtLeast"),
-    value: z.number().nonnegative().int().or(fieldPlaceholderSchema),
-  })
-  .strict();
-
-const conditionHasLengthAtMostSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("hasLengthAtMost"),
-    value: z.number().nonnegative().int().or(fieldPlaceholderSchema),
-  })
-  .strict();
-
-const conditionIncludesSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("includes"),
-    value: z.string().or(fieldPlaceholderSchema),
-  })
-  .strict();
-
-const conditionDoesNotIncludeSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("doesNotInclude"),
-    value: z.string().or(fieldPlaceholderSchema),
-  })
-  .strict();
-
-// todo: extend this to include regex validation
-const conditionMatchesSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("matches"),
-    value: z.string().or(fieldPlaceholderSchema),
-  })
-  .strict();
-
-const conditionDoesNotMatchSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("doesNotMatch"),
-    value: z.string().or(fieldPlaceholderSchema),
-  })
-  .strict();
-
-const conditionIsOneOfSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("isOneOf"),
-    value: z
-      .array(z.string().or(z.number()))
-      .nonempty()
-      .or(fieldPlaceholderSchema),
-  })
-  .strict();
-
-const conditionIsNotOneOfSchema = baseConditionSchema
-  .extend({
-    comparator: z.literal("isNotOneOf"),
-    value: z
-      .array(z.string().or(z.number()))
-      .nonempty()
-      .or(fieldPlaceholderSchema),
-  })
-  .strict();
-
-// Leaf form of a condition: an object with a `comparator` plus the
-// reference/position/value triple. This is what the boolean tree's
-// `all`/`any`/`none` operator branches eventually bottom out at.
-const leafConditionSchema = z.discriminatedUnion("comparator", [
-  conditionExistsSchema,
-  conditionDoesNotExistSchema,
-  conditionEqualsSchema,
-  conditionDoesNotEqualSchema,
-  conditionIsAboveSchema,
-  conditionIsBelowSchema,
-  conditionIsAtLeastSchema,
-  conditionIsAtMostSchema,
-  conditionHasLengthAtLeastSchema,
-  conditionHasLengthAtMostSchema,
-  conditionIncludesSchema,
-  conditionDoesNotIncludeSchema,
-  conditionMatchesSchema,
-  conditionDoesNotMatchSchema,
-  conditionIsOneOfSchema,
-  conditionIsNotOneOfSchema,
-]);
-
-// Recursive boolean-tree node (#235). A condition is either:
-//   - an `all: [...]`, `any: [...]`, or `none: [...]` operator node
-//     whose children are themselves nodes (recurses), or
-//   - a leaf (`comparator`-typed condition object).
-// The operator branches are `.strict()` so combinations like
-// `{all: [...], reference: ...}` fail loudly. `.nonempty()` rejects
-// `all: []` etc. — vacuous truth on an empty operator is an
-// author-error shape worth catching at preflight.
-//
-// `z.lazy` is required because the operator schemas reference
-// `conditionNodeSchema` recursively; the outer `altTemplateContext`
-// wrapper preserves `template:` invocation support at any tree level.
-//
-// `OPERATOR_KEYS` is the current boolean vocabulary shared with the
-// condition walker and the typo-detection refinement below. Its legacy
-// module remains a re-export so existing imports keep working.
-export { OPERATOR_KEYS, type OperatorKey } from "./conditionOperators.js";
-import { OPERATOR_KEYS } from "./conditionOperators.js";
-
-export const conditionNodeSchema: z.ZodType = z.lazy(() => {
-  // Keep the accepted grammar at the current boolean operators. The wider
-  // expression dictionary does not enable new treatment syntax by itself.
-  const [firstOperator, secondOperator, ...otherOperators] = OPERATOR_KEYS;
-  const operatorBranch = (operator: (typeof OPERATOR_KEYS)[number]) =>
-    z
-      .object({
-        [operator]: z
-          .array(conditionNodeSchema)
-          .nonempty()
-          .or(fieldPlaceholderSchema),
-      })
-      .strict();
-  return altTemplateContext(
-    z.union([
-      // Operator arrays also accept a field placeholder, resolved to an
-      // array by fillTemplates. Unfilled placeholders are skipped by walkers.
-      operatorBranch(firstOperator),
-      operatorBranch(secondOperator),
-      ...otherOperators.map(operatorBranch),
-      leafConditionSchema,
-    ]),
-  );
+const authoringExpressions = createExpressionSchemas({
+  mode: "authoring",
+  templateSchema: templateContextSchema,
 });
 
-// Backward-compat alias: `conditionSchema` previously meant "a single
-// condition object." It now means "any node in the boolean tree" (leaf
-// or operator). Existing callers that expect a leaf still work for
-// leaf inputs; new callers can pass operator nodes too.
+// A condition node and an expression share the same grammar. The field-level
+// conditions schema below additionally requires a Boolean result.
+export const conditionNodeSchema = authoringExpressions.expressionSchema;
 export const conditionSchema = conditionNodeSchema;
+export { OPERATOR_KEYS, type OperatorKey } from "./conditionOperators.js";
+import { OPERATOR_KEYS } from "./conditionOperators.js";
 
 // Positions that are forbidden on game-stage-level conditions because
 // they would evaluate to a different result on each participant's client
@@ -913,7 +731,7 @@ export const conditionSchema = conditionNodeSchema;
 // After #298 the position lives inside the reference itself, so this
 // check inspects the parsed reference's `position` field. The forbidden
 // selector is `self` (formerly `player`); numeric indices and `shared`
-// are cross-client safe; `all` returns a list and is also safe.
+// are cross-client safe; `everyone` returns a list and is also safe.
 const GAME_STAGE_FORBIDDEN_POSITIONS = new Set(["self"]);
 
 /**
@@ -985,12 +803,9 @@ function validateTimelineSources(
  * from stage/intro-exit superRefines so we can point issue paths at
  * the condition's actual location in the parent object.
  *
- * Walks the boolean tree (#235): if `conditions` is an array, treats
- * it as the implicit-`all` sugar; if it's an `{all|any|none: [...]}`
- * operator object, recurses through the children; if it's a leaf, the
- * per-leaf rules apply directly. Templates (`{template: ...}` nodes)
- * are skipped — they're checked after expansion against the resolved
- * shape, not pre-expansion.
+ * Visits every registered expression operand, including lazy case branches.
+ * Literal data, comparison values, and template invocation fields are opaque;
+ * templates are checked after expansion against the resolved shape.
  */
 export function validateConditionRules(
   conditions: unknown,
@@ -1005,12 +820,23 @@ export function validateConditionRules(
     requireSelfPosition?: boolean;
   },
 ): void {
-  for (const { leaf: c, path } of walkConditionLeaves(conditions, pathPrefix)) {
+  for (const { node, kind, path } of walkExpression(conditions, {
+    path: pathPrefix,
+    allowImplicitArray: true,
+  })) {
+    if (
+      (kind !== "reference" && kind !== "leaf") ||
+      !node ||
+      typeof node !== "object" ||
+      !("reference" in node)
+    )
+      continue;
+    const c = node as { reference: unknown };
     // Game-stage conditions must evaluate identically on every client or
     // they'll desync (one player skips, the other renders). After #298
     // the position lives inside the reference itself; we extract it and
     // reject `self` (per-participant). Numeric slot indices, `shared`,
-    // and `all` are cross-client safe.
+    // and `everyone` are cross-client safe.
     if (options.forbidSelfPosition) {
       const refPosition = extractReferencePosition(c.reference);
       if (
@@ -1020,7 +846,7 @@ export function validateConditionRules(
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: [...path, "reference"],
-          message: `${options.contextLabel} conditions must use a cross-client position prefix on the reference (\`shared\`, a numeric slot index, or \`all\`) — got \`self\`. Per-participant references would let one participant skip the stage while the other renders it. For per-participant aggregation, wrap leaves in an \`all:\` or \`any:\` operator with explicit slot-index references.`,
+          message: `${options.contextLabel} conditions must use a cross-client position prefix on the reference (\`shared\`, a numeric slot index, or \`everyone\`) — got \`self\`. Per-participant references would let one participant skip the stage while the other renders it. For per-participant aggregation, wrap leaves in an \`all:\` or \`any:\` operator with explicit slot-index references.`,
         });
       }
     }
@@ -1028,7 +854,7 @@ export function validateConditionRules(
     // Group-composition (player-block) eligibility is decided per candidate
     // *before* any group exists, so only the candidate's own responses can
     // resolve. A cross-participant selector (`shared`, a numeric slot index,
-    // or `all`) has nothing to resolve against and silently misbehaves at
+    // or `everyone`) has nothing to resolve against and silently misbehaves at
     // dispatch — the slot becomes either never-eligible or vacuously eligible
     // with no error at authoring or launch (#526). Require `self`. An
     // undetermined position (invalid reference or template placeholder) is
@@ -1039,9 +865,31 @@ export function validateConditionRules(
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: [...path, "reference"],
-          message: `${options.contextLabel} conditions must use the \`self\` position selector — eligibility is decided per candidate before any group exists, so cross-participant selectors (\`shared\`, a numeric slot index, or \`all\`) have nothing to resolve against. Got \`${refPosition}\`.`,
+          message: `${options.contextLabel} conditions must use the \`self\` position selector — eligibility is decided per candidate before any group exists, so cross-participant selectors (\`shared\`, a numeric slot index, or \`everyone\`) have nothing to resolve against. Got \`${refPosition}\`.`,
         });
       }
+    }
+  }
+}
+
+/** References in intro/consent have no roster yet, including reads nested in
+ * calculations or unselected case branches and display/outgoing references. */
+export function validateIntroReferencePositions(
+  step: unknown,
+  path: (string | number)[],
+  ctx: z.RefinementCtx,
+): void {
+  for (const site of enumerateStepSites(step, path)) {
+    if (
+      typeof site.reference.position === "number" ||
+      site.reference.position === "everyone"
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: site.path,
+        message:
+          "Numeric and everyone references are unavailable before group assignment; use self or shared in intro/consent steps.",
+      });
     }
   }
 }
@@ -1089,23 +937,12 @@ function extractReferencePosition(
 // union dispatch turns them into a confusing "didn't match any branch"
 // error. Without this, writing `al: [...]` or `ANY: [...]` produces a
 // pile of schema-mismatch errors instead of "did you mean `all`?".
-const conditionsRawSchema = z
-  .union(
-    [
-      z.array(conditionNodeSchema).nonempty(),
-      conditionNodeSchema,
-      // `${field}` placeholder accepted (#284) — substituted with a literal
-      // array (or operator object) at fillTemplates time.
-      fieldPlaceholderSchema,
-    ],
-    {
-      required_error:
-        "Expected an array of conditions, or an `all`/`any`/`none` operator object, or a single condition.",
-      invalid_type_error:
-        "Expected an array of conditions, or an `all`/`any`/`none` operator object, or a single condition.",
-    },
-  )
+export const conditionsSchema = z
+  .unknown()
   .superRefine((data, ctx) => {
+    const parsed = authoringExpressions.conditionsSchema.safeParse(data);
+    if (!parsed.success)
+      parsed.error.issues.forEach((issue) => ctx.addIssue(issue));
     // Pre-scan for operator-key typos on object inputs only. If the
     // user wrote a single object (not an array) and its keys look like
     // a near-miss for `all`/`any`/`none`, emit a hint *before* the
@@ -1135,13 +972,11 @@ const conditionsRawSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: [],
-        message: `Unrecognized condition operator "${key}". Did you mean "${suggestion}"? Boolean operators are "all", "any", and "none".`,
+        message: `Unrecognized condition operator "${key}". Did you mean "${suggestion}"? Use one of the documented expression operators.`,
       });
     }
-  });
-
-export const conditionsSchema = altTemplateContext(conditionsRawSchema);
-
+  })
+  .transform((value): ExpressionConditions => value as ExpressionConditions);
 // One-edit Levenshtein distance — small enough to inline rather than
 // pull in a dependency. Used by the typo heuristic above.
 function levenshtein(a: string, b: string): number {
@@ -1165,7 +1000,7 @@ function levenshtein(a: string, b: string): number {
   return dp[a.length][b.length];
 }
 
-export type ConditionType = z.infer<typeof conditionSchema>;
+export type ConditionType = ExpressionNode;
 
 // ------------------ Players ------------------ //
 
@@ -1186,7 +1021,7 @@ export const playerSchema = playerBaseSchema.superRefine((data, ctx) => {
   // Group-composition (player-block) conditions gate who is eligible for
   // this slot. Eligibility is evaluated per candidate before any group is
   // formed, so a cross-participant selector (`shared`, a numeric slot
-  // index, or `all`) resolves to nothing and silently misbehaves at
+  // index, or `everyone`) resolves to nothing and silently misbehaves at
   // dispatch. Enforce the documented `self`-only rule at validation time
   // (#526) — the docs already describe it; this makes the validator match.
   validateConditionRules(data.conditions, ["conditions"], ctx, {
@@ -1275,7 +1110,7 @@ const displaySchema = elementBaseSchema
   .extend({
     type: z.literal("display"),
     // Per #298 the position is part of the reference itself
-    // (e.g. `all.prompt.recall.value` to render every participant's
+    // (e.g. `everyone.prompt.recall.value` to render every participant's
     // value, `0.prompt.notes.value` to render position 0's). The
     // pre-#298 sibling `position:` field is removed.
     reference: referenceSchema,
@@ -1547,16 +1382,14 @@ export const validReferenceTypes = [
 
 // ------------------ Schema introspection ------------------ //
 //
-// These maps and getValidKeysFor* helpers expose the set of valid keys
+// The element map and getValidKeysFor* helpers expose the set of valid keys
 // for each container kind, so authoring tools (VS Code diagnostics, the
 // viewer's load error path, future autocomplete) can report rich
 // "Unrecognized key 'X' on element of type 'mediaPlayer'. Did you mean
 // 'captionsFile'? Valid keys: …" messages instead of the bare Zod default.
 //
-// Each per-element/per-condition schema in this file is a `ZodObject`
-// (built via `elementBaseSchema.extend({...}).strict()` /
-// `baseConditionSchema.extend({...}).strict()`), so `.shape` resolves
-// directly to the merged key set without us having to re-list anything.
+// Element schemas expose their keys through .shape. Comparator shapes use the
+// shared expression grammar; the small key helper mirrors its presence slots.
 
 const elementSchemasByType = {
   audio: audioSchema,
@@ -1570,25 +1403,6 @@ const elementSchemasByType = {
   mediaPlayer: mediaPlayerSchema,
   timeline: timelineSchema,
   trackedLink: trackedLinkSchema,
-} as const;
-
-const conditionSchemasByComparator = {
-  exists: conditionExistsSchema,
-  doesNotExist: conditionDoesNotExistSchema,
-  equals: conditionEqualsSchema,
-  doesNotEqual: conditionDoesNotEqualSchema,
-  isAbove: conditionIsAboveSchema,
-  isBelow: conditionIsBelowSchema,
-  isAtLeast: conditionIsAtLeastSchema,
-  isAtMost: conditionIsAtMostSchema,
-  hasLengthAtLeast: conditionHasLengthAtLeastSchema,
-  hasLengthAtMost: conditionHasLengthAtMostSchema,
-  includes: conditionIncludesSchema,
-  doesNotInclude: conditionDoesNotIncludeSchema,
-  matches: conditionMatchesSchema,
-  doesNotMatch: conditionDoesNotMatchSchema,
-  isOneOf: conditionIsOneOfSchema,
-  isNotOneOf: conditionIsNotOneOfSchema,
 } as const;
 
 /**
@@ -1614,22 +1428,11 @@ export function getValidKeysForElementType(type: string): string[] | null {
  * `reference` / `position` keys.
  */
 export function getValidKeysForComparator(comparator: string): string[] | null {
-  if (
-    !Object.prototype.hasOwnProperty.call(
-      conditionSchemasByComparator,
-      comparator,
-    )
-  ) {
+  if (!(validComparators as readonly string[]).includes(comparator))
     return null;
-  }
-  const schema = (
-    conditionSchemasByComparator as Record<
-      string,
-      { shape: Record<string, unknown> }
-    >
-  )[comparator];
-  if (!schema) return null;
-  return Object.keys(schema.shape);
+  return comparator === "exists" || comparator === "doesNotExist"
+    ? ["reference", "comparator"]
+    : ["reference", "comparator", "value"];
 }
 
 /**
@@ -1978,6 +1781,8 @@ function refinePerParticipantSteps(
   // or `.forEach` throws out of safeParse instead of diagnosing.
   if (!Array.isArray(data)) return;
   data.forEach((step: IntroExitStepType, stepIdx: number) => {
+    if (opts.banPositionFields)
+      validateIntroReferencePositions(step, [stepIdx], ctx);
     if (Array.isArray(step.elements)) {
       step.elements.forEach((element: ElementType, elementIdx: number) => {
         if (

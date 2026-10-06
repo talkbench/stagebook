@@ -1,6 +1,5 @@
-/** Structural metadata for the settled #299 vocabulary. This does not enable
- * these operators in treatment files; schemas still accept only the current
- * boolean condition grammar until the evaluator and validation land together. */
+/** Traversal and semantic metadata shared by validation and evaluation.
+ * Zod schemas in schemas/expression.ts own accepted structure and options. */
 export type ExpressionValueType =
   | "boolean"
   | "number"
@@ -9,10 +8,6 @@ export type ExpressionValueType =
   | "scalarOrList"
   | "stringOrList"
   | "value";
-
-type LiteralOptions = Readonly<
-  Record<string, "string" | "stringList" | "number" | "boolean">
->;
 
 export type ExpressionOperandLayout =
   | {
@@ -23,8 +18,6 @@ export type ExpressionOperandLayout =
   | {
       kind: "fields";
       fields: Readonly<Record<string, ExpressionOperandLayout>>;
-      /** Literal-only siblings of these expression fields. */
-      options?: LiteralOptions;
     }
   | { kind: "items"; item: ExpressionOperandLayout }
   | {
@@ -36,8 +29,6 @@ export type ExpressionOperandLayout =
 export interface ExpressionOperatorDefinition {
   resultType: "boolean" | "number" | "operand";
   operands: ExpressionOperandLayout;
-  /** Options are author-supplied data, never child expressions. */
-  options?: LiteralOptions;
 }
 
 const input = (
@@ -84,7 +75,6 @@ const existingNumberInputs = {
     inputField: "inputs",
     input: numberInputs,
   },
-  options: { atLeast: "number" },
 } as const satisfies ExpressionOperatorDefinition;
 
 export const EXPRESSION_OPERATORS = {
@@ -114,7 +104,6 @@ export const EXPRESSION_OPERATORS = {
       kind: "fields",
       fields: { string: input("expression", "string", "string") },
     },
-    options: { patterns: "stringList", flags: "string" },
   },
   sum: { resultType: "number", operands: numberInputs },
   average: { resultType: "number", operands: numberInputs },
@@ -158,7 +147,6 @@ export const EXPRESSION_OPERATORS = {
               when: input("expression", "when", "boolean"),
               value: input("expression", "value", "value"),
             },
-            options: { default: "boolean" },
           },
         },
       },

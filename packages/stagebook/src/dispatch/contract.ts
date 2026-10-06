@@ -26,10 +26,9 @@ import { describe, test, expect } from "vitest";
 import type { DispatchResult, Treatment } from "./types.js";
 import { makeEligibilityTable } from "./makeEligibilityTable.js";
 import { evaluateConditions } from "../utils/evaluateConditions.js";
-import {
-  getNestedValueByPath,
-  getReferenceKeyAndPath,
-} from "../utils/reference.js";
+import { Missing } from "../expressions/missing.js";
+import { referenceSchema } from "../schemas/reference.js";
+import { readReference } from "../utils/readReference.js";
 
 /** Mulberry32 — small, fast, fully deterministic PRNG. The bit ops are
  *  intentional (PRNG); we don't need cryptographic quality, we need
@@ -108,7 +107,7 @@ function maybeRoleCondition(rng: () => number) {
   // on a random role. Only `equals` here on purpose — broader
   // comparators would require valid value-shape per type, and we'd
   // be testing the comparator surface, not the dispatcher.
-  if (rng() < 0.5) return [];
+  if (rng() < 0.5) return undefined;
   return [
     {
       reference: "self.prompt.role",
@@ -163,7 +162,7 @@ export function buildEligibilityForScenario(scenario: ContractScenario) {
   });
 }
 
-/** Self-resolve a single condition against a single player's data —
+/** Read a condition against one candidate's snapshot —
  *  used by invariant #4 to verify the dispatcher's eligibility checks
  *  match what the conditions say. Mirrors what `makeEligibilityTable`
  *  does internally; kept as a separate path so the invariant test is
@@ -173,24 +172,13 @@ function playerSatisfies(
   player: ContractScenario["players"][number],
   conditions: unknown,
 ): boolean {
-  const resolve = (reference: string): unknown[] => {
-    if (!reference.startsWith("self.")) return [];
-    try {
-      const { referenceKey, path } = getReferenceKeyAndPath(reference);
-      const record = player.data[referenceKey];
-      if (record === undefined) return [];
-      const value = getNestedValueByPath(record, path);
-      if (value === undefined) return [];
-      return [value];
-    } catch {
-      return [];
-    }
-  };
-  // evaluateConditions accepts arrays / operator nodes / single leaves.
-  return evaluateConditions(
-    conditions as Parameters<typeof evaluateConditions>[0],
-    resolve,
-  );
+  return evaluateConditions(conditions, {
+    readReference(reference) {
+      const parsed = referenceSchema.safeParse(reference);
+      if (!parsed.success || parsed.data.position !== "self") return Missing;
+      return readReference(parsed.data, (key) => [player.data[key]]);
+    },
+  });
 }
 
 function slotConditionsForAssignment(
@@ -200,9 +188,9 @@ function slotConditionsForAssignment(
   const gc = treatment.groupComposition;
   if (Array.isArray(gc)) {
     const slot = gc.find((s) => s?.position === position);
-    return slot?.conditions ?? [];
+    return slot?.conditions;
   }
-  return [];
+  return undefined;
 }
 
 function formatContext(

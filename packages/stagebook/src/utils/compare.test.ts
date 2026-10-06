@@ -24,11 +24,7 @@ describe("exists / doesNotExist", () => {
 // ----------- Undefined LHS behavior ------------
 
 describe("undefined lhs", () => {
-  // Per #348: the four "negative" comparators are satisfied by
-  // absence — author's mental model is "the value is not X, because
-  // it's nothing". Positive comparators remain undefined so authors
-  // can gate fallbacks without prematurely satisfying positive
-  // checks. The asymmetry with positive twins is intentional.
+  // Missing satisfies no positive comparison; the exact negative is true.
   test("doesNotEqual returns true when lhs is undefined", () => {
     expect(compare(undefined, "doesNotEqual", "anything")).toBe(true);
   });
@@ -45,28 +41,28 @@ describe("undefined lhs", () => {
     expect(compare(undefined, "isNotOneOf", ["a", "b"])).toBe(true);
   });
 
-  test("equals returns undefined when lhs is undefined", () => {
-    expect(compare(undefined, "equals", "anything")).toBeUndefined();
+  test("equals returns false when lhs is undefined", () => {
+    expect(compare(undefined, "equals", "anything")).toBe(false);
   });
 
-  test("includes returns undefined when lhs is undefined", () => {
-    expect(compare(undefined, "includes", "x")).toBeUndefined();
+  test("includes returns false when lhs is undefined", () => {
+    expect(compare(undefined, "includes", "x")).toBe(false);
   });
 
-  test("matches returns undefined when lhs is undefined", () => {
-    expect(compare(undefined, "matches", "/x/")).toBeUndefined();
+  test("matches returns false when lhs is undefined", () => {
+    expect(compare(undefined, "matches", "/x/")).toBe(false);
   });
 
-  test("isOneOf returns undefined when lhs is undefined", () => {
-    expect(compare(undefined, "isOneOf", ["a", "b"])).toBeUndefined();
+  test("isOneOf returns false when lhs is undefined", () => {
+    expect(compare(undefined, "isOneOf", ["a", "b"])).toBe(false);
   });
 
-  test("isAbove returns undefined when lhs is undefined", () => {
-    expect(compare(undefined, "isAbove", 5)).toBeUndefined();
+  test("isAbove returns false when lhs is undefined", () => {
+    expect(compare(undefined, "isAbove", 5)).toBe(false);
   });
 
-  test("isAtLeast returns undefined when lhs is undefined", () => {
-    expect(compare(undefined, "isAtLeast", 0)).toBeUndefined();
+  test("isAtLeast returns false when lhs is undefined", () => {
+    expect(compare(undefined, "isAtLeast", 0)).toBe(false);
   });
 });
 
@@ -106,9 +102,9 @@ describe("numeric comparisons", () => {
     expect(compare(5, "isAtMost", 3)).toBe(false);
   });
 
-  test("parseable string numbers are compared numerically", () => {
-    expect(compare("5", "equals", 5)).toBe(true);
-    expect(compare("5", "isAbove", "3")).toBe(true);
+  test("numeric-looking strings are not coerced to numbers", () => {
+    expect(compare("5", "equals", 5)).toBe(false);
+    expect(compare("5", "isAbove", "3")).toBe(false);
     expect(compare("10", "isBelow", "9")).toBe(false);
   });
 });
@@ -249,14 +245,14 @@ describe("multi-select (array LHS) membership", () => {
     expect(compare(["5", "7"], "includes", 5)).toBe(false);
   });
 
-  test("comparators with no array semantics are undecidable on an array", () => {
+  test("scalar comparators treat an array as Missing before negation", () => {
     // No accidental array-vs-array equality or numeric coercion: these
-    // return undefined so the leaf collapses to false / propagates unknown.
-    expect(compare(["a"], "equals", "a")).toBeUndefined();
-    expect(compare(["a"], "doesNotEqual", "a")).toBeUndefined();
-    expect(compare(["1"], "isAbove", 0)).toBeUndefined();
-    expect(compare(["a"], "isOneOf", ["a", "b"])).toBeUndefined();
-    expect(compare(["a"], "matches", "a")).toBeUndefined();
+    // reject the positive claim; exact negations remain true.
+    expect(compare(["a"], "equals", "a")).toBe(false);
+    expect(compare(["a"], "doesNotEqual", "a")).toBe(true);
+    expect(compare(["1"], "isAbove", 0)).toBe(false);
+    expect(compare(["a"], "isOneOf", ["a", "b"])).toBe(false);
+    expect(compare(["a"], "matches", "a")).toBe(false);
   });
 
   test("exists/doesNotExist still answer presence for arrays", () => {
@@ -271,8 +267,8 @@ describe("multi-select (array LHS) membership", () => {
 // ----------- Invalid comparator ------------
 
 describe("invalid comparator", () => {
-  test("returns undefined for unknown comparator", () => {
-    expect(compare("a", "bogus" as never, "b")).toBeUndefined();
+  test("returns false for unknown comparator", () => {
+    expect(compare("a", "bogus" as never, "b")).toBe(false);
   });
 });
 
@@ -283,6 +279,6 @@ describe("prompt validity condition idioms (#668)", () => {
     expect(compare(undefined, "doesNotExist")).toBe(true);
   });
   test("equals true never permits an untouched prompt with absent isValid", () => {
-    expect(compare(undefined, "equals", true)).toBeUndefined();
+    expect(compare(undefined, "equals", true)).toBe(false);
   });
 });

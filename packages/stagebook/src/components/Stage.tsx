@@ -12,7 +12,7 @@ import { useScrollAwareness } from "./scroll/useScrollAwareness.js";
 import { PlaybackProvider } from "./playback/PlaybackProvider.js";
 import { ElementErrorBoundary } from "./ElementErrorBoundary.js";
 import type { ResolvedDiscussionType } from "../schemas/resolved.js";
-import type { Condition } from "./conditions/ConditionsConditionalRender.js";
+import type { ConditionNode } from "./conditions/ConditionsConditionalRender.js";
 
 // Max-width per element type — wider for qualtrics/video
 const DEFAULT_LANE = "42rem"; // ~672px
@@ -80,7 +80,7 @@ export interface StageConfig {
    * to advance via `StagebookContext.advanceStage` (falling back to
    * `submit`).
    */
-  conditions?: Condition[];
+  conditions?: ConditionNode[] | ConditionNode;
 }
 
 export interface StageProps {
@@ -115,7 +115,13 @@ function WrappedElement({
   onSubmit: () => void;
   stageDuration?: number;
 }) {
-  const { getElapsedTime, position, resolve } = useStagebookContext();
+  const {
+    getElapsedTime,
+    position,
+    readReference,
+    onContractViolation,
+    violationKeys,
+  } = useStagebookContext();
 
   return (
     <TimeConditionalRender
@@ -129,8 +135,12 @@ function WrappedElement({
         position={position}
       >
         <ConditionsConditionalRender
-          conditions={(element.conditions as Condition[]) ?? []}
-          resolve={resolve}
+          conditions={
+            element.conditions as ConditionNode[] | ConditionNode | undefined
+          }
+          readReference={readReference}
+          onViolation={onContractViolation}
+          violationKeys={violationKeys}
         >
           <div
             data-testid={`element-${element.type}${element.name ? `-${element.name}` : ""}`}
@@ -220,7 +230,15 @@ export function Stage({
   // Element-column direction follows the study locale (host <html dir>
   // independent); time-axis components inside lock their own LTR.
   const stageDir = useIsRTL() ? "rtl" : "ltr";
-  const { isSubmitted, playerCount, position, resolve, renderDiscussion } = ctx;
+  const {
+    isSubmitted,
+    playerCount,
+    position,
+    readReference,
+    onContractViolation,
+    violationKeys,
+    renderDiscussion,
+  } = ctx;
 
   const showDiscussion = positionAllowsDiscussion(stage.discussion, position);
 
@@ -249,7 +267,8 @@ export function Stage({
   // Two-column layout: discussion on left, elements on right
   if (showDiscussion && renderDiscussion && stage.discussion) {
     const discussionConditions = stage.discussion.conditions as
-      | Condition[]
+      | ConditionNode[]
+      | ConditionNode
       | undefined;
 
     const discussionPage = (
@@ -360,10 +379,12 @@ export function Stage({
             isSubmitted={isSubmitted}
             playerCount={playerCount}
           >
-            {discussionConditions && discussionConditions.length > 0 ? (
+            {discussionConditions !== undefined ? (
               <ConditionsConditionalRender
                 conditions={discussionConditions}
-                resolve={resolve}
+                readReference={readReference}
+                onViolation={onContractViolation}
+                violationKeys={violationKeys}
                 fallback={
                   <div
                     data-testid="stageContent"

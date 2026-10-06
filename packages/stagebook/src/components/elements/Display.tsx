@@ -1,4 +1,5 @@
 import React from "react";
+import { Missing } from "../../expressions/missing.js";
 import { useIsRTL } from "../StagebookProvider.js";
 
 export interface DisplayProps {
@@ -34,6 +35,7 @@ export interface DisplayProps {
 // reads against the page.
 const blockquoteStyle: React.CSSProperties = {
   wordBreak: "break-word",
+  whiteSpace: "pre-wrap",
   padding: "0.75rem 1rem",
   margin: "1rem 0",
   borderInlineStartWidth: "0.25rem",
@@ -52,7 +54,13 @@ export function Display({ reference, values }: DisplayProps) {
       data-reference={reference}
     >
       {values
-        .map((v) => (typeof v === "string" ? v : JSON.stringify(v)))
+        .map((v) =>
+          v === Missing || v == null
+            ? ""
+            : typeof v === "string"
+              ? v
+              : JSON.stringify(v),
+        )
         .join("\n")}
     </blockquote>
   );

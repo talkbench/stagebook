@@ -47,19 +47,8 @@ export function createViewerContext(
   return {
     get(key: string, scope?: string): unknown[] {
       const mapped = mapPosition(scope, position);
-      // Stagebook may pass `"player"` (default) → current position,
-      // `"shared"`, a numeric slot index, or `"all"`. After #238, the
-      // condition leaves use only the first three; `"all"` still
-      // arrives via `display.position: "all"` (and similarly for
-      // trackedLink/qualtrics urlParams), and stagebook normalizes
-      // `display.position: "any"` to `"all"` before reaching this
-      // callback so we only need to handle one aggregator scope.
-      const raw =
-        typeof mapped === "number" || mapped === "shared"
-          ? store.lookup(key, mapped)
-          : // `"all"` (or any unrecognized scope, defensively) reads
-            // every participant's value for this key.
-            store.lookup(key);
+      // Group reads are assembled from numeric seats by readReference.
+      const raw = store.lookup(key, mapped);
       // Synthesize a per-position default `stableParticipantId` (#473) so
       // previews work out of the box and a qualtrics element doesn't report a
       // (preview-only) contract violation; any value seeded via the
@@ -143,15 +132,12 @@ function withDefaultAttributes(
 function mapPosition(
   positionArg: string | undefined,
   currentPosition: number,
-): number | "shared" | "all" {
+): number | "shared" {
   if (positionArg === undefined || positionArg === "player") {
     return currentPosition;
   }
   if (positionArg === "shared") {
     return "shared";
-  }
-  if (positionArg === "all") {
-    return "all";
   }
   const num = Number(positionArg);
   if (Number.isFinite(num) && Number.isInteger(num) && num >= 0) {

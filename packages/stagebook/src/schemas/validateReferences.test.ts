@@ -1,6 +1,109 @@
 import { describe, expect, test } from "vitest";
 import { treatmentFileSchema } from "./treatment.js";
-import { validateTreatmentFileReferences } from "./validateReferences.js";
+import {
+  validateTreatmentFileReferences,
+  enumerateConditionReferenceSites,
+} from "./validateReferences.js";
+
+test("expression discovery visits named roles and unselected branches without entering literal data", () => {
+  const sites = enumerateConditionReferenceSites(
+    {
+      case: {
+        rules: [
+          {
+            when: true,
+            value: {
+              nonIncreasing: [
+                { sum: [{ reference: "0.prompt.earlier.value" }] },
+                1,
+              ],
+            },
+          },
+          {
+            default: true,
+            value: {
+              allEqual: [
+                {
+                  reference: {
+                    position: "self",
+                    source: "prompt",
+                    name: "later",
+                    path: ["value"],
+                  },
+                },
+                { literal: { reference: "self.prompt.not_a_site" } },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    ["conditions"],
+  );
+  expect(sites.map((site) => site.path.join("."))).toEqual([
+    "conditions.case.rules.0.value.nonIncreasing.0.sum.0.reference",
+    "conditions.case.rules.1.value.allEqual.0.reference",
+  ]);
+  expect(
+    sites.map((site) =>
+      "name" in site.reference ? site.reference.name : undefined,
+    ),
+  ).toEqual(["earlier", "later"]);
+});
+
+test("forward references inside arithmetic and lazy branches are rejected", () => {
+  const issues = validateTreatmentFileReferences({
+    treatments: [
+      {
+        name: "t",
+        playerCount: 1,
+        compatibleIntroSequences: [],
+        gameStages: [
+          {
+            name: "first",
+            duration: 10,
+            elements: [
+              {
+                type: "submitButton",
+                conditions: {
+                  case: {
+                    rules: [
+                      { when: true, value: true },
+                      {
+                        default: true,
+                        value: {
+                          nonIncreasing: [
+                            { sum: [{ reference: "self.prompt.later.value" }] },
+                            3,
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+          {
+            name: "second",
+            duration: 10,
+            elements: [
+              { type: "prompt", name: "later", file: "later.prompt.md" },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  expect(
+    issues.some(
+      (issue) =>
+        issue.path.join(".") ===
+          "treatments.0.gameStages.0.elements.0.conditions.case.rules.1.value.nonIncreasing.0.sum.0.reference" &&
+        issue.message.includes("later"),
+    ),
+  ).toBe(true);
+});
 
 // Helpers — build minimal-valid treatment files with targeted modifications.
 // We use the full treatmentFileSchema in some tests to confirm that issues
@@ -11,11 +114,12 @@ import { validateTreatmentFileReferences } from "./validateReferences.js";
 interface StageConfig {
   name: string;
   duration?: number;
-  conditions?: Record<string, unknown>[];
+  conditions?: unknown;
   elements: Record<string, unknown>[];
 }
 
 function baseFile(opts: {
+  playerCount?: unknown;
   introSteps?: StageConfig[];
   gameStages?: StageConfig[];
   exitSequence?: StageConfig[];
@@ -33,7 +137,7 @@ function baseFile(opts: {
     treatments: [
       {
         name: "t",
-        playerCount: 2,
+        playerCount: opts.playerCount ?? 2,
         gameStages: opts.gameStages ?? [
           {
             name: "s1",
@@ -872,10 +976,7 @@ describe("Rule 2 — stage-level always-skip-at-load (current-stage refs only)",
     });
     const issues = validateTreatmentFileReferences(file);
     expect(
-      pickAlwaysSkipIssue(
-        issues,
-        "treatments.0.gameStages.0.conditions.0.reference",
-      ),
+      pickAlwaysSkipIssue(issues, "treatments.0.gameStages.0.conditions"),
     ).toBeDefined();
   });
 
@@ -905,10 +1006,7 @@ describe("Rule 2 — stage-level always-skip-at-load (current-stage refs only)",
     });
     const issues = validateTreatmentFileReferences(file);
     expect(
-      pickAlwaysSkipIssue(
-        issues,
-        "treatments.0.gameStages.0.conditions.0.reference",
-      ),
+      pickAlwaysSkipIssue(issues, "treatments.0.gameStages.0.conditions"),
     ).toBeDefined();
   });
 
@@ -994,11 +1092,104 @@ describe("Rule 2 — stage-level always-skip-at-load (current-stage refs only)",
   });
 });
 
-describe("Rule 2 with boolean-tree operators (#235)", () => {
-  // Rule 2's per-leaf simulation is sound only when the leaf is reached
-  // without traversing `any:` or `none:`. Inside those operators a
-  // single non-true leaf doesn't doom the tree (a sibling can carry
-  // it). The implementation gates Rule 2 on a path-traversal check.
+describe("Rule 2 with full expression trees", () => {
+  // The full tree is simulated with every current-stage answer Missing.
+  // Boolean composition distinguishes a real unknown sibling from a second
+  // unanswered current-stage value.
+
+  const prompt = { type: "prompt", name: "q", file: "q.prompt.md" };
+  const currentExists = {
+    reference: "shared.prompt.q.value",
+    comparator: "exists",
+  };
+  const external = { reference: "shared.attributes.isKnownVpn" };
+
+  test.each([
+    ["all with an external sibling", { all: [external, currentExists] }, 1],
+    ["any with an external sibling", { any: [external, currentExists] }, 0],
+    ["multiple false leaves", { all: [currentExists, currentExists] }, 1],
+  ])(
+    "%s yields only a root diagnostic when proven",
+    (_label, conditions, expectedCount) => {
+      const file = baseFile({
+        gameStages: [
+          { name: "s", duration: 60, conditions, elements: [prompt] },
+        ],
+      });
+      const hits = validateTreatmentFileReferences(file).filter((issue) =>
+        /always skip the stage at load/i.test(issue.message),
+      );
+      expect(hits).toHaveLength(expectedCount);
+      for (const hit of hits) {
+        expect(hit.path).toEqual([
+          "treatments",
+          0,
+          "gameStages",
+          0,
+          "conditions",
+        ]);
+      }
+    },
+  );
+
+  test("a key produced before this stage remains unknown when the stage reuses it", () => {
+    const file = baseFile({
+      gameStages: [
+        { name: "earlier", duration: 60, elements: [prompt] },
+        {
+          name: "current",
+          duration: 60,
+          conditions: currentExists,
+          elements: [prompt],
+        },
+      ],
+    });
+    expect(validateTreatmentFileReferences(file)).toEqual([]);
+  });
+
+  test.each([
+    [2, 1],
+    ["${players}", 0],
+  ])(
+    "everyone simulation respects playerCount %s",
+    (playerCount, expectedCount) => {
+      const file = baseFile({
+        playerCount,
+        gameStages: [
+          {
+            name: "s",
+            duration: 60,
+            conditions: {
+              allEqual: [
+                { length: { reference: "everyone.prompt.q.value" } },
+                3,
+              ],
+            },
+            elements: [prompt],
+          },
+        ],
+      });
+      const hits = validateTreatmentFileReferences(file).filter((issue) =>
+        /always skip the stage at load/i.test(issue.message),
+      );
+      expect(hits).toHaveLength(expectedCount);
+    },
+  );
+
+  test("intro validation does not invent an empty roster before group assignment", () => {
+    const file = baseFile({
+      introSteps: [
+        {
+          name: "intro",
+          conditions: {
+            any: { reference: "everyone.prompt.q.value", comparator: "exists" },
+          },
+          elements: [prompt],
+        },
+      ],
+    });
+    expect(validateTreatmentFileReferences(file)).toEqual([]);
+  });
 
   test("flat-array (implicit-all) leaf still triggers Rule 2 — backward compat", () => {
     const file = baseFile({
@@ -1056,12 +1247,8 @@ describe("Rule 2 with boolean-tree operators (#235)", () => {
     expect(hit).toBeDefined();
   });
 
-  test("leaf inside `any:` does NOT trigger Rule 2 (sibling can carry the operator)", () => {
-    // `any: [{equals: yes}, {equals: yes}]` evaluates to undefined at
-    // load (both children unknown), but a sibling becoming true would
-    // flip the operator true. Rule 2's per-leaf simulation can't see
-    // the sibling, so it conservatively skips this case rather than
-    // false-positiving.
+  test("any of only current-stage comparisons triggers Rule 2", () => {
+    // Both answers are absent at load; neither branch can admit the stage.
     const file = baseFile({
       gameStages: [
         {
@@ -1093,7 +1280,7 @@ describe("Rule 2 with boolean-tree operators (#235)", () => {
     const hit = issues.find((i) =>
       /always skip the stage at load/i.test(i.message),
     );
-    expect(hit).toBeUndefined();
+    expect(hit).toBeDefined();
   });
 
   test("leaf inside `none:` does NOT trigger Rule 2", () => {
@@ -1128,7 +1315,7 @@ describe("Rule 2 with boolean-tree operators (#235)", () => {
     expect(hit).toBeUndefined();
   });
 
-  test("leaf inside nested `all > any` does NOT trigger Rule 2 (path traverses non-all operator)", () => {
+  test("nested all > any of only current-stage comparisons triggers Rule 2", () => {
     const file = baseFile({
       gameStages: [
         {
@@ -1158,7 +1345,7 @@ describe("Rule 2 with boolean-tree operators (#235)", () => {
     const hit = issues.find((i) =>
       /always skip the stage at load/i.test(i.message),
     );
-    expect(hit).toBeUndefined();
+    expect(hit).toBeDefined();
   });
 });
 

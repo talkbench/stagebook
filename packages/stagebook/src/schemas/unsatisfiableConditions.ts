@@ -1,246 +1,153 @@
-/**
- * Post-hydration "unsatisfiable condition" rule (#480).
+/** Conservative, post-hydration reachability checks over full condition trees.
+ * Finite choice answers (including the unanswered state) run through the same
+ * readReference/evaluator boundary as runtime. Unknown inputs never stand in
+ * for Missing: they leave a proof open. Slider and text-length bounds can also
+ * prove a Boolean branch impossible without enumerating an unbounded domain.
  *
- * A condition `{reference, comparator, value}` that reads a prompt's answer
- * (`self.prompt.<name>.value`) is a *dead gate* when NO value the prompt can
- * ever produce satisfies the comparator — e.g. `includes "joint solution"`
- * against a multipleChoice whose options contain that substring in none of
- * them, usually after the option wording was edited but the condition wasn't
- * (or vice versa). The reference resolves and the YAML is well-formed, so the
- * reference validator passes it; at runtime the gate simply never resolves and
- * the participant gets stuck (submit button never enables, element never
- * shows). This static check catches that whole class before launch.
- *
- * Design (kept deliberately conservative — only flag *provably* dead gates):
- *
- *   - For enumerable-domain prompts (single-select multipleChoice, dropdown)
- *     resolve the condition's referenced prompt to the exact set of `.value`s
- *     it stores — text options for a text-mode choice, numeric points for a
- *     numeric-mode one (the label is stored separately, so it is NOT a possible
- *     `.value`). Flag only when EVERY domain member makes `compare()` return
- *     strictly `false`. `compare()` returning `undefined` (a type it can't
- *     decide — text option vs numeric comparator, …) is "can't prove dead" and
- *     stays silent. Reusing the exact runtime comparator over the exact stored
- *     values means the rule can't drift from runtime coercion ("6" vs 6).
- *   - `slider` isn't enumerated (it reaches every snap point `min + k*interval`
- *     in `[min, max]`, not just the labeled ticks); it's reasoned about
- *     analytically against the range endpoints, and `equals`/`isOneOf` are only
- *     flagged when the target is fully outside `[min, max]`.
- *   - `openResponse` is free text, so value comparators can't be disproven —
- *     but `TextArea` blocks input past `maxLength`, so `hasLengthAtLeast N` with
- *     `maxLength < N` IS provably dead. (`minLength` is not a storage bound —
- *     shorter values still save — so the `hasLengthAtMost` mirror is not used.)
- *   - Negative comparators (`doesNotEqual` / `doesNotInclude` / `doesNotMatch`
- *     / `isNotOneOf`) and `exists` / `doesNotExist` are satisfiable via the
- *     undefined initial state (the answer is absent at mount, #348) — skipped.
- *   - Multi-select multipleChoice stores an array, not a scalar, which changes
- *     what several comparators mean; skipped in v1 (documented non-goal).
- *   - Anything the rule can't pin down exactly (unknown prompt name, a name
- *     that maps to two different files, a prompt the host couldn't load, a
- *     reference that reads a subpath other than the answer, an unresolved
- *     `${...}` placeholder in the value) is skipped — false positives stay at
- *     zero, at the cost of missing some dead gates.
- *
- * Pure over already-loaded data, mirroring the locale-consistency rule
- * ([[localeConsistency]]): the host (CLI, extension, viewer) owns file I/O and
- * supplies each referenced prompt's parsed value-domain via a map. The
- * host-side wiring lives in `validate/unsatisfiableConditions.ts`.
- */
-
-import { compare, type Comparator } from "../utils/compare.js";
+ * Enumeration is capped, and everyone references are deliberately unmodeled:
+ * a roster/domain Cartesian product is not a safe editor-time workload. Regex
+ * roots are skipped so validation never executes researcher-authored regexes. */
+import { evaluateExpression } from "../expressions/evaluateExpression.js";
+import { Missing } from "../expressions/missing.js";
+import {
+  walkExpression,
+  type ExpressionPath,
+} from "../expressions/walkExpression.js";
+import { readReference } from "../utils/readReference.js";
 import { getReferenceKeyAndPath } from "../utils/reference.js";
-import {
-  walkConditionLeaves,
-  hasNonAllAncestor,
-  type ExpressionAncestor,
-} from "../expressions/index.js";
-import {
-  parseDottedReference,
-  formatReference,
-  type ReferenceType,
-} from "./reference.js";
+import { resolvedExpressionConditionsSchema } from "./expression.js";
+import { referenceSchema, formatReference } from "./reference.js";
 import type { PromptFileType } from "./promptFile.js";
 
 export interface UnsatisfiableConditionIssue {
-  /** Absolute path into the treatment-file tree, ending at the condition's
-   *  `value` (the token the author most likely needs to fix). */
-  path: (string | number)[];
-  /** Dotted form of the offending reference, e.g. `self.prompt.goal`. */
+  /** Absolute path to the entire conditions root that can never be true. */
+  path: ExpressionPath;
+  /** First reference in the root, retained for consumers; empty for constants. */
   reference: string;
   message: string;
 }
 
-/** Comparators whose truth depends on the value matching (or relating to) a
- *  concrete stored value. Their negatives, plus `exists`/`doesNotExist`, are
- *  omitted: they're satisfiable via the undefined-at-mount initial state and
- *  so are never provably dead against a bounded domain.
- *
- *  `matches` is deliberately omitted too. It would make `compare()` build a
- *  RegExp from the author's `value` and run it against every option label —
- *  both author-controlled — at validation time, in the editor/CLI/viewer
- *  process. A crafted catastrophic-backtracking pattern (`(a+)+$`) against a
- *  long label would freeze that process (the `try/catch` below only catches a
- *  *throwing* regex, not a slow one). A regex domain-check is the weakest
- *  detection anyway, so dropping it costs little and removes the ReDoS vector
- *  entirely. */
-const CHECKABLE_COMPARATORS: ReadonlySet<string> = new Set<Comparator>([
-  "equals",
-  "includes",
-  "isOneOf",
-  "isAbove",
-  "isBelow",
-  "isAtLeast",
-  "isAtMost",
-  "hasLengthAtLeast",
-  "hasLengthAtMost",
-]);
+const MAX_NODES = 512;
+const MAX_ASSIGNMENTS = 2048;
+const MAX_EVALUATIONS = 8192;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+const toArray = (value: unknown): unknown[] =>
+  Array.isArray(value) ? value : [];
+const own = (value: object, key: string) =>
+  Object.prototype.hasOwnProperty.call(value, key);
+const producerKey = (name: string, shared: boolean) =>
+  JSON.stringify([shared, name]);
+const storageKey = (scope: string, key: string) => JSON.stringify([scope, key]);
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
+interface ConditionSite {
+  conditions: unknown;
+  path: ExpressionPath;
 }
-
-function toArray(v: unknown): unknown[] {
-  return Array.isArray(v) ? v : [];
-}
-
-function normalizeReference(input: unknown): ReferenceType | null {
-  if (typeof input === "string") {
-    const parsed = parseDottedReference(input);
-    return parsed.ok ? parsed.value : null;
+function* stageConditions(
+  stages: unknown,
+  base: ExpressionPath,
+): Generator<ConditionSite> {
+  for (const [index, stage] of toArray(stages).entries()) {
+    if (!isRecord(stage)) continue;
+    const path = [...base, index];
+    if (own(stage, "conditions"))
+      yield { conditions: stage.conditions, path: [...path, "conditions"] };
+    if (isRecord(stage.discussion) && own(stage.discussion, "conditions"))
+      yield {
+        conditions: stage.discussion.conditions,
+        path: [...path, "discussion", "conditions"],
+      };
+    for (const [elementIndex, element] of toArray(stage.elements).entries()) {
+      if (isRecord(element) && own(element, "conditions"))
+        yield {
+          conditions: element.conditions,
+          path: [...path, "elements", elementIndex, "conditions"],
+        };
+    }
   }
-  if (isRecord(input) && "source" in input) return input as ReferenceType;
-  return null;
 }
-
-/** True if a string (or any string element of an array) still carries an
- *  unresolved `${...}` template placeholder — can't be evaluated statically. */
-function containsPlaceholder(value: unknown): boolean {
-  if (typeof value === "string") return value.includes("${");
-  if (Array.isArray(value)) return value.some(containsPlaceholder);
-  return false;
-}
-
-interface ConditionLeafSite {
-  leaf: Record<string, unknown>;
-  /** Path to the leaf object itself. */
-  path: (string | number)[];
-  ancestors: readonly ExpressionAncestor[];
-}
-
-/** Yield every `conditions:` block in the treatment file (stage-level,
- *  discussion, and element-level) across game stages, exit steps, and intro
- *  steps, flattened to leaves with absolute paths. */
-function* walkAllConditionLeaves(
-  fileObj: Record<string, unknown>,
-): Generator<ConditionLeafSite> {
-  const stageLists: { stages: unknown; base: (string | number)[] }[] = [];
-
-  toArray(fileObj.treatments).forEach((t, ti) => {
-    if (!isRecord(t)) return;
-    stageLists.push({
-      stages: t.gameStages,
-      base: ["treatments", ti, "gameStages"],
-    });
-    stageLists.push({
-      stages: t.exitSequence,
-      base: ["treatments", ti, "exitSequence"],
-    });
-  });
-  toArray(fileObj.introSequences).forEach((seq, si) => {
-    if (!isRecord(seq)) return;
-    stageLists.push({
-      stages: seq.introSteps,
-      base: ["introSequences", si, "introSteps"],
-    });
-  });
-  // Consent steps (#481): the gated "I consent" submit button is exactly
-  // the dead-gate shape this rule exists for — a comparator that can
-  // never match the acknowledgement prompt's options strands the
-  // participant before the study even starts.
-  toArray(fileObj.consent).forEach((arm, ci) => {
-    if (!isRecord(arm)) return;
-    stageLists.push({
-      stages: arm.steps,
-      base: ["consent", ci, "steps"],
-    });
-  });
-
-  for (const { stages, base } of stageLists) {
-    const stageArr = toArray(stages);
-    for (let gi = 0; gi < stageArr.length; gi++) {
-      const stage = stageArr[gi];
-      if (!isRecord(stage)) continue;
-      const stagePath = [...base, gi];
-      yield* walkConditionLeaves(stage.conditions, [
-        ...stagePath,
-        "conditions",
-      ]);
-      if (isRecord(stage.discussion)) {
-        yield* walkConditionLeaves(stage.discussion.conditions, [
-          ...stagePath,
-          "discussion",
-          "conditions",
-        ]);
-      }
-      const elements = toArray(stage.elements);
-      for (let ei = 0; ei < elements.length; ei++) {
-        const el = elements[ei];
-        if (!isRecord(el)) continue;
-        yield* walkConditionLeaves(el.conditions, [
-          ...stagePath,
-          "elements",
-          ei,
-          "conditions",
-        ]);
-      }
+function addProducers(
+  stages: unknown,
+  producers: Map<string, Set<string>>,
+): void {
+  for (const stage of toArray(stages)) {
+    if (!isRecord(stage)) continue;
+    for (const element of toArray(stage.elements)) {
+      if (
+        !isRecord(element) ||
+        element.type !== "prompt" ||
+        typeof element.name !== "string" ||
+        typeof element.file !== "string"
+      )
+        continue;
+      const key = producerKey(element.name, element.shared === true);
+      const files = producers.get(key) ?? new Set<string>();
+      files.add(element.file);
+      producers.set(key, files);
     }
   }
 }
 
-/** Map each prompt element's `name` to the set of `file:` paths it points at,
- *  across every stage/step. A name that maps to more than one distinct file is
- *  ambiguous (the condition could resolve to either domain) and is skipped by
- *  the caller. */
-function buildPromptNameToFiles(
-  fileObj: Record<string, unknown>,
-): Map<string, Set<string>> {
-  const map = new Map<string, Set<string>>();
-  const add = (name: unknown, file: unknown) => {
-    if (typeof name !== "string" || typeof file !== "string") return;
-    const set = map.get(name) ?? new Set<string>();
-    set.add(file);
-    map.set(name, set);
-  };
-  const scanStages = (stages: unknown) => {
-    for (const stage of toArray(stages)) {
-      if (!isRecord(stage)) continue;
-      for (const el of toArray(stage.elements)) {
-        if (isRecord(el) && el.type === "prompt") add(el.name, el.file);
-      }
+/** Reject unresolved syntax and bound traversal before schema/walker recursion.
+ * Aliases are counted per authored occurrence, so shared DAGs cannot expand
+ * into an unbounded validation workload. Unresolved placeholders anywhere in
+ * the authored data leave the root unproven. */
+function boundedResolvedTree(value: unknown): boolean {
+  let nodes = 0;
+  const active = new Set<object>();
+  function visit(input: unknown, depth: number): boolean {
+    if (++nodes > MAX_NODES || depth > 64) return false;
+    if (typeof input === "string") return !input.includes("${");
+    if (input === null || typeof input !== "object") return true;
+    if (active.has(input)) return false;
+    active.add(input);
+    try {
+      if (Array.isArray(input))
+        return input.every((item: unknown) => visit(item, depth + 1));
+      if (!isRecord(input) || own(input, "template")) return false;
+      return Object.values(input).every((item) => visit(item, depth + 1));
+    } finally {
+      active.delete(input);
     }
-  };
-  for (const t of toArray(fileObj.treatments)) {
-    if (!isRecord(t)) continue;
-    scanStages(t.gameStages);
-    scanStages(t.exitSequence);
   }
-  for (const seq of toArray(fileObj.introSequences)) {
-    if (isRecord(seq)) scanStages(seq.introSteps);
-  }
-  for (const arm of toArray(fileObj.consent)) {
-    if (isRecord(arm)) scanStages(arm.steps);
-  }
-  return map;
+  return visit(value, 0);
 }
 
-/** The bounded set of scalar values a single-valued choice prompt stores in
- *  `.value`, or `null` when the prompt has no statically-checkable scalar
- *  domain (openResponse and slider are handled separately; multi-select,
- *  listSorter, noResponse are skipped). Mirrors runtime storage exactly
- *  (`Prompt.tsx`): a numeric-mode multipleChoice stores the numeric point (the
- *  label lives in a separate field), while a text-mode choice stores the label.
- *  Feeding the wrong one would let a `.value` condition be judged against
- *  values the runtime never stores there. */
+interface PromptDomain {
+  key: string;
+  prompt: PromptFileType;
+  values: unknown[] | null;
+}
+function promptDomain(
+  input: unknown,
+  producers: ReadonlyMap<string, Set<string>>,
+  prompts: ReadonlyMap<string, PromptFileType>,
+): PromptDomain | undefined {
+  const parsed = referenceSchema.safeParse(input);
+  if (!parsed.success) return;
+  const reference = parsed.data;
+  if (reference.source !== "prompt" || reference.position === "everyone")
+    return;
+  const { referenceKey, path } = getReferenceKeyAndPath(reference);
+  if (path.length !== 1 || path[0] !== "value") return;
+  const files = producers.get(
+    producerKey(reference.name, reference.position === "shared"),
+  );
+  // Conflicting producers are conservative unknowns even when all files load.
+  if (!files || files.size !== 1) return;
+  const prompt = prompts.get([...files][0]);
+  if (!prompt) return;
+  const scope =
+    reference.position === "self" ? "player" : String(reference.position);
+  const domain = scalarDomain(prompt);
+  return {
+    key: storageKey(scope, referenceKey),
+    prompt,
+    values: domain === null ? null : [Missing, ...domain],
+  };
+}
+
 function scalarDomain(parsed: PromptFileType): unknown[] | null {
   switch (parsed.metadata.type) {
     case "multipleChoice":
@@ -270,7 +177,7 @@ function sliderDeadReason(
   if (parsed.metadata.type !== "slider") return null;
   const { min, max } = parsed.metadata;
   const range = `[${min}, ${max}]`;
-  const toNum = (v: unknown): number => (typeof v === "number" ? v : Number(v));
+  const toNum = (v: unknown): number => (typeof v === "number" ? v : NaN);
 
   if (comparator === "equals" || comparator === "isOneOf") {
     const targets = comparator === "isOneOf" ? value : [value];
@@ -328,7 +235,7 @@ function openResponseLengthDeadReason(
 ): string | null {
   if (parsed.metadata.type !== "openResponse") return null;
   if (comparator !== "hasLengthAtLeast") return null;
-  const n = typeof value === "number" ? value : Number(value);
+  const n = typeof value === "number" ? value : NaN;
   if (!Number.isFinite(n)) return null;
   const { maxLength } = parsed.metadata;
   if (maxLength !== undefined && maxLength < n) {
@@ -337,150 +244,237 @@ function openResponseLengthDeadReason(
   return null;
 }
 
-/** True when no member of `domain` makes `compare(member, comparator, value)`
- *  return `true`, AND at least one member returns strictly `false` (i.e. the
- *  comparator was decidable and rejected every value). If any member is
- *  `undefined` (undecidable — a type `compare()` can't relate, or a regex that
- *  throws), we can't prove deadness and return false. */
-function isProvablyDead(
-  domain: unknown[],
-  comparator: Comparator,
-  value: unknown,
-): boolean {
-  if (domain.length === 0) return false;
-  let sawDecidableFalse = false;
-  for (const member of domain) {
-    let result: boolean | undefined;
-    try {
-      result = compare(member, comparator, value);
-    } catch {
-      // Defensive: any comparator that throws is treated as undecidable
-      // rather than allowed to abort the whole validation pass.
-      result = undefined;
-    }
-    if (result === true) return false;
-    if (result === false) sawDecidableFalse = true;
-  }
-  return sawDecidableFalse;
-}
-
 function describeValue(value: unknown): string {
-  if (typeof value === "string") return `"${value}"`;
   return JSON.stringify(value);
 }
 
-function describeDomain(parsed: PromptFileType): string {
-  // Numeric-mode multipleChoice and sliders store the point, not the label, so
-  // list the points (with their labels for readability) — otherwise an author
-  // debugging `equals 99` sees only text labels, none of which look like 99.
-  if (parsed.responsePoints.length > 0) {
-    return parsed.responsePoints
-      .map((p, i) => {
-        const label = parsed.responseItems[i];
-        return label !== undefined && String(p) !== label
-          ? `${p} ("${label}")`
-          : String(p);
-      })
-      .join(", ");
+interface Truths {
+  canBeTrue: boolean;
+  canBeFalse: boolean;
+}
+const unknownTruth: Truths = { canBeTrue: true, canBeFalse: true };
+const falseTruth: Truths = { canBeTrue: false, canBeFalse: true };
+
+function proveDead(
+  expression: unknown,
+  producers: ReadonlyMap<string, Set<string>>,
+  prompts: ReadonlyMap<string, PromptFileType>,
+): { reference: string; reasons: string[] } | undefined {
+  const root = Array.isArray(expression) ? { all: expression } : expression;
+  const visits = [...walkExpression(root)];
+  if (
+    visits.some(
+      ({ operator, kind, node }) =>
+        operator === "matches" ||
+        (kind === "leaf" &&
+          isRecord(node) &&
+          (node.comparator === "matches" ||
+            node.comparator === "doesNotMatch")),
+    )
+  )
+    return;
+  const domainCache = new Map<unknown, PromptDomain | undefined>();
+  function lookup(reference: unknown): PromptDomain | undefined {
+    if (!domainCache.has(reference))
+      domainCache.set(reference, promptDomain(reference, producers, prompts));
+    return domainCache.get(reference);
   }
-  return parsed.responseItems.map((i) => `"${i}"`).join(", ");
+  let evaluations = 0;
+  const reasons = new Set<string>();
+  const cache = new Map<unknown, Truths>();
+
+  function enumerate(
+    node: unknown,
+    booleanOperand: boolean,
+  ): Truths | undefined {
+    const inputs = new Map<string, PromptDomain>();
+    let assignments = 1;
+    for (const visit of walkExpression(node)) {
+      if (
+        (visit.kind !== "reference" && visit.kind !== "leaf") ||
+        !isRecord(visit.node)
+      )
+        continue;
+      const domain = lookup(visit.node.reference);
+      if (!domain?.values) return;
+      if (inputs.has(domain.key)) continue;
+      inputs.set(domain.key, domain);
+      assignments *= domain.values.length;
+      if (assignments > MAX_ASSIGNMENTS) return;
+    }
+    if (evaluations + assignments > MAX_EVALUATIONS) return;
+    const domains = [...inputs.values()];
+    const assignment = new Map<string, unknown>();
+    const truths: Truths = { canBeTrue: false, canBeFalse: false };
+    function evaluateAssignment(index: number): void {
+      if (truths.canBeTrue && truths.canBeFalse) return;
+      if (index < domains.length) {
+        const domain = domains[index];
+        for (const value of domain.values ?? []) {
+          assignment.set(domain.key, value);
+          evaluateAssignment(index + 1);
+          if (truths.canBeTrue && truths.canBeFalse) return;
+        }
+        return;
+      }
+      evaluations++;
+      // Boolean parent context can affect typed firstExisting/case selection.
+      // Preserve that context when proving a child independently.
+      const value = evaluateExpression(
+        booleanOperand ? { all: [node] } : node,
+        {
+          readReference: (reference) =>
+            readReference(reference, (key, scope) => [
+              { value: assignment.get(storageKey(scope, key)) },
+            ]),
+        },
+      );
+      if (value === true) truths.canBeTrue = true;
+      else truths.canBeFalse = true;
+    }
+    evaluateAssignment(0);
+    return truths;
+  }
+
+  function possible(node: unknown, booleanOperand = false): Truths {
+    const cached = cache.get(node);
+    if (cached) return cached;
+    const exact = enumerate(node, booleanOperand);
+    if (exact) {
+      cache.set(node, exact);
+      return exact;
+    }
+    let result = unknownTruth;
+    if (
+      isRecord(node) &&
+      own(node, "reference") &&
+      typeof node.comparator === "string"
+    ) {
+      const domain = lookup(node.reference);
+      if (domain) {
+        const reason =
+          sliderDeadReason(domain.prompt, node.comparator, node.value) ??
+          openResponseLengthDeadReason(
+            domain.prompt,
+            node.comparator,
+            node.value,
+          );
+        if (reason) {
+          reasons.add(reason);
+          result = falseTruth;
+        }
+      }
+    } else if (isRecord(node)) {
+      for (const key of ["all", "any", "none"] as const) {
+        const children = node[key];
+        // Scalar collection inputs may expand at runtime; only an explicit
+        // expression array has the scalar Boolean slots modeled here.
+        if (!Array.isArray(children) || children.length === 0) continue;
+        const truths = children.map((child: unknown) => possible(child, true));
+        if (key === "all")
+          result = {
+            canBeTrue: truths.every((truth) => truth.canBeTrue),
+            canBeFalse: truths.some((truth) => truth.canBeFalse),
+          };
+        else
+          result = {
+            canBeTrue:
+              key === "any"
+                ? truths.some((truth) => truth.canBeTrue)
+                : truths.every((truth) => truth.canBeFalse),
+            canBeFalse:
+              key === "any"
+                ? truths.every((truth) => truth.canBeFalse)
+                : truths.some((truth) => truth.canBeTrue),
+          };
+        break;
+      }
+    }
+    cache.set(node, result);
+    return result;
+  }
+
+  if (possible(root).canBeTrue) return;
+  const first = visits.find(
+    (visit) =>
+      (visit.kind === "reference" || visit.kind === "leaf") &&
+      isRecord(visit.node),
+  );
+  const parsed =
+    first && isRecord(first.node)
+      ? referenceSchema.safeParse(first.node.reference)
+      : undefined;
+  return {
+    reference: parsed?.success ? formatReference(parsed.data) : "",
+    reasons: [...reasons],
+  };
 }
 
-/**
- * Run the unsatisfiable-condition rule.
- *
- * @param fileObj hydrated (post-fillTemplates) treatment file object.
- * @param promptDomains map from a prompt element's `file:` path (exactly as it
- *   appears in the treatment) to that prompt's parsed value-domain. Paths
- *   absent from the map are skipped (the host couldn't load/parse them —
- *   missing-file and invalid-prompt problems have their own reporting).
- */
+/** Pure over already-loaded prompt data. Producers are scoped per treatment
+ * plus compatible intros, per standalone intro, and per consent arm. */
 export function checkUnsatisfiableConditions(
   fileObj: unknown,
   promptDomains: ReadonlyMap<string, PromptFileType>,
 ): UnsatisfiableConditionIssue[] {
+  if (!isRecord(fileObj)) return [];
   const issues: UnsatisfiableConditionIssue[] = [];
-  if (!isRecord(fileObj)) return issues;
-
-  const nameToFiles = buildPromptNameToFiles(fileObj);
-
-  for (const { leaf, path, ancestors } of walkAllConditionLeaves(fileObj)) {
-    // A dead leaf under `any:`/`none:` doesn't doom its gate (see
-    // the shared ancestor metadata), so flagging it would misreport a
-    // satisfiable gate as dead.
-    if (hasNonAllAncestor(ancestors)) continue;
-
-    const comparator = leaf.comparator;
-    if (typeof comparator !== "string") continue;
-    if (!CHECKABLE_COMPARATORS.has(comparator)) continue;
-
-    const ref = normalizeReference(leaf.reference);
-    if (ref === null || ref.source !== "prompt") continue;
-    if (!("name" in ref) || typeof ref.name !== "string") continue;
-    if (ref.name.includes("${")) continue;
-
-    // Only the answer value (`prompt.<name>` / `prompt.<name>.value`) has a
-    // domain we can reason about; other subpaths address host-specific
-    // structure we don't model.
-    let refPath: string[];
-    try {
-      ({ path: refPath } = getReferenceKeyAndPath(ref));
-    } catch {
-      continue;
-    }
-    if (!(refPath.length === 1 && refPath[0] === "value")) continue;
-
-    const value = leaf.value;
-    if (value === undefined || containsPlaceholder(value)) continue;
-
-    const files = nameToFiles.get(ref.name);
-    if (!files || files.size !== 1) continue;
-    const file = [...files][0];
-    const parsed = promptDomains.get(file);
-    if (parsed === undefined) continue;
-
-    const reference = formatReference(ref);
-    const valuePath = [...path, "value"];
-    const prefix = `Unsatisfiable condition: \`${reference} ${comparator} ${describeValue(value)}\``;
-
-    // openResponse (length bounds) and slider (numeric range) are reasoned
-    // about analytically rather than by enumerating a value domain.
-    if (parsed.metadata.type === "openResponse") {
-      const reason = openResponseLengthDeadReason(parsed, comparator, value);
-      if (reason !== null) {
-        issues.push({
-          path: valuePath,
-          reference,
-          message: `${prefix} can never be true — ${reason}.`,
+  const collections = [
+    { key: "treatments", lists: ["gameStages", "exitSequence"] },
+    { key: "introSequences", lists: ["introSteps"] },
+    { key: "consent", lists: ["steps"] },
+  ];
+  for (const { key, lists } of collections) {
+    toArray(fileObj[key]).forEach((container, index) => {
+      if (!isRecord(container)) return;
+      const producers = new Map<string, Set<string>>();
+      for (const list of lists) addProducers(container[list], producers);
+      if (key === "treatments") {
+        const pairing = container.compatibleIntroSequences;
+        const concrete =
+          Array.isArray(pairing) &&
+          pairing.every(
+            (name: unknown) => typeof name === "string" && !name.includes("${"),
+          );
+        for (const sequence of toArray(fileObj.introSequences)) {
+          if (
+            !isRecord(sequence) ||
+            (concrete && !pairing.includes(sequence.name))
+          )
+            continue;
+          addProducers(sequence.introSteps, producers);
+        }
+      }
+      const sites = lists.flatMap((list) => [
+        ...stageConditions(container[list], [key, index, list]),
+      ]);
+      if (key === "treatments") {
+        toArray(container.groupComposition).forEach((player, playerIndex) => {
+          if (isRecord(player) && own(player, "conditions"))
+            sites.push({
+              conditions: player.conditions,
+              path: [key, index, "groupComposition", playerIndex, "conditions"],
+            });
         });
       }
-      continue;
-    }
-    if (parsed.metadata.type === "slider") {
-      const reason = sliderDeadReason(parsed, comparator, value);
-      if (reason !== null) {
+      for (const site of sites) {
+        if (
+          site.conditions === undefined ||
+          !boundedResolvedTree(site.conditions) ||
+          !resolvedExpressionConditionsSchema.safeParse(site.conditions).success
+        )
+          continue;
+        const proof = proveDead(site.conditions, producers, promptDomains);
+        if (!proof) continue;
         issues.push({
-          path: valuePath,
-          reference,
-          message: `${prefix} can never be true — ${reason}.`,
+          path: site.path,
+          reference: proof.reference,
+          message:
+            "Unsatisfiable condition: this condition tree can never be true for any reachable prompt answers, including unanswered prompts. " +
+            `Expression: ${describeValue(site.conditions)}. ` +
+            proof.reasons.join("; "),
         });
       }
-      continue;
-    }
-
-    const domain = scalarDomain(parsed);
-    if (domain === null) continue;
-    if (!isProvablyDead(domain, comparator as Comparator, value)) continue;
-
-    issues.push({
-      path: valuePath,
-      reference,
-      message:
-        `${prefix} can never be true. ` +
-        `The referenced ${parsed.metadata.type} can only produce: ${describeDomain(parsed)}. ` +
-        `No value satisfies the comparator — did the option wording change since the condition was written?`,
     });
   }
-
   return issues;
 }

@@ -14,11 +14,13 @@ const getTextContent = () => Promise.resolve(source);
 
 function NumericReferenceGates() {
   const context = useStagebookContext();
-  const resolve = (reference: string) => context.resolve(reference);
+  const { readReference, onContractViolation, violationKeys } = context;
   return (
     <>
       <ConditionsConditionalRender
-        resolve={resolve}
+        readReference={readReference}
+        onViolation={onContractViolation}
+        violationKeys={violationKeys}
         conditions={{
           reference: "self.prompt.estimate",
           comparator: "isAtLeast",
@@ -35,7 +37,9 @@ function NumericReferenceGates() {
         />
       </ConditionsConditionalRender>
       <ConditionsConditionalRender
-        resolve={resolve}
+        readReference={readReference}
+        onViolation={onContractViolation}
+        violationKeys={violationKeys}
         conditions={{
           reference: "self.prompt.estimate.isValid",
           comparator: "equals",

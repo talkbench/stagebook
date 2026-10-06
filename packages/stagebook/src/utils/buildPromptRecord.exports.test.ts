@@ -168,3 +168,30 @@ describe("stagebook/audio-probe published subpath (#663)", () => {
     ]);
   });
 });
+
+describe("expressions published root entry (#690, #757)", () => {
+  test("CJS and ESM consumers share Missing and need no React", () => {
+    const script = `
+      import assert from 'node:assert/strict';
+      import { createRequire } from 'node:module';
+      import { Missing, readReference, evaluateExpression, evaluateConditions } from 'stagebook';
+      const require = createRequire(import.meta.url);
+      const cjs = require('stagebook');
+      assert.throws(() => require.resolve('react'), { code: 'MODULE_NOT_FOUND' });
+      assert.equal(cjs.Missing, Missing);
+      const get = (_key, scope) => scope === '0' ? [{ value: 2 }] : [];
+      const read = reference => readReference(reference, get, { playerCount: 2 });
+      assert.deepEqual(read('everyone.prompt.answer'), [2, Missing]);
+      assert.equal(cjs.readReference('self.prompt.answer', () => []), Missing);
+      assert.equal(evaluateExpression({ sumExisting: { reference: 'everyone.prompt.answer' } }, { readReference: read }), 2);
+      assert.equal(evaluateConditions({ all: { reference: 'everyone.prompt.answer', comparator: 'exists' } }, { readReference: read }), false);
+      process.stdout.write('ok');
+    `;
+    expect(
+      execFileSync(process.execPath, ["--input-type=module", "-e", script], {
+        cwd: fixture,
+        encoding: "utf8",
+      }),
+    ).toBe("ok");
+  });
+});

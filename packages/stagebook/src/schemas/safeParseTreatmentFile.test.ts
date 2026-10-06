@@ -67,7 +67,9 @@ describe("getValidKeysForComparator", () => {
       // comparator extensions add comparator + value.
       expect(keys).toContain("reference");
       expect(keys).toContain("comparator");
-      expect(keys).toContain("value");
+      if (comparator === "exists" || comparator === "doesNotExist")
+        expect(keys).not.toContain("value");
+      else expect(keys).toContain("value");
     },
   );
 

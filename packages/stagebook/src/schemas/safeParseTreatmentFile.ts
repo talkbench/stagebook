@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { walkConditionLeaves } from "../expressions/index.js";
+import { walkExpression } from "../expressions/index.js";
 import type { SafeParseReturnType, ZodIssue } from "zod";
 import {
   getValidKeysForComparator,
@@ -183,10 +183,18 @@ function classifyContainer(
     let labels = conditionLabels.get(blockKey);
     if (!labels) {
       labels = new Map();
-      for (const { leaf, path: leafPath } of walkConditionLeaves(
+      for (const { node, kind, path: leafPath } of walkExpression(
         getAtPath(root, conditionsPath),
-        conditionsPath,
+        { path: conditionsPath, allowImplicitArray: true },
       )) {
+        if (
+          kind !== "leaf" ||
+          !node ||
+          typeof node !== "object" ||
+          !("comparator" in node)
+        )
+          continue;
+        const leaf = node as { comparator: unknown };
         labels.set(
           JSON.stringify(leafPath),
           typeof leaf.comparator === "string" ? leaf.comparator : "",

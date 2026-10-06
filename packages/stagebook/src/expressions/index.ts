@@ -19,3 +19,12 @@ export {
   type WalkExpressionOptions,
   type ConditionLeafSite,
 } from "./walkExpression.js";
+export {
+  evaluateExpression,
+  Missing,
+  type EvaluateExpressionOptions,
+  type ExpressionReference,
+  type ExpressionScalar,
+  type ExpressionValue,
+  type ExpressionTypeViolation,
+} from "./evaluateExpression.js";

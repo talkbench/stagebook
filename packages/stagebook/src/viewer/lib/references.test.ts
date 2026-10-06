@@ -243,3 +243,100 @@ describe("extractStageReferences", () => {
     expect(refs).toEqual(["self.prompt.q1", "0.prompt.q2"]);
   });
 });
+
+describe("full expression reference discovery", () => {
+  it("walks calculations and every case branch, preserving structured references", () => {
+    expect(
+      extractStageReferences([
+        {
+          conditions: {
+            allEqual: [
+              2,
+              {
+                case: {
+                  rules: [
+                    {
+                      when: {
+                        reference: "self.prompt.gate",
+                        comparator: "exists",
+                      },
+                      value: {
+                        sum: [
+                          {
+                            reference: {
+                              position: 0,
+                              source: "prompt",
+                              name: "score",
+                            },
+                          },
+                          1,
+                        ],
+                      },
+                    },
+                    {
+                      default: true,
+                      value: { reference: "shared.prompt.fallback" },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ]),
+    ).toEqual(["self.prompt.gate", "0.prompt.score", "shared.prompt.fallback"]);
+  });
+  it("includes stage/discussion and outgoing URL references", () => {
+    expect(
+      extractStageReferences(
+        [
+          {
+            type: "trackedLink",
+            urlParams: [
+              {
+                key: "answer",
+                reference: {
+                  position: "self",
+                  source: "prompt",
+                  name: "answer",
+                },
+              },
+            ],
+          },
+        ],
+        {
+          conditions: {
+            none: {
+              reference: "everyone.submitButton.finish",
+              comparator: "exists",
+            },
+          },
+          discussion: {
+            conditions: {
+              reference: "shared.prompt.ready",
+              comparator: "exists",
+            },
+          },
+        },
+      ),
+    ).toEqual([
+      "everyone.submitButton.finish",
+      "shared.prompt.ready",
+      "self.prompt.answer",
+    ]);
+  });
+  it("keeps literal lists opaque", () => {
+    expect(
+      extractStageReferences([
+        {
+          conditions: {
+            allEqual: [
+              { literal: ["self.prompt.fake", "reference"] },
+              { literal: ["self.prompt.fake", "reference"] },
+            ],
+          },
+        },
+      ]),
+    ).toEqual([]);
+  });
+});

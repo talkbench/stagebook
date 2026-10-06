@@ -7,13 +7,13 @@
  * `attributes`) supplied by the host as a singleton.
  *
  * Per #298, every reference begins with an explicit **position selector** —
- * `<integer>`, `self`, `shared`, or `all`. The position selector is part of
+ * `<integer>`, `self`, `shared`, or `everyone`. The position selector is part of
  * the reference (where to find the value), not a separate field.
  *
  * References can be written two ways:
  *   - **String shorthand** (the original syntax) — `0.prompt.familiarity`,
  *     `self.entryUrl.params.condition`, `1.qualtrics.exit.sessionId`,
- *     `all.prompt.recall.value`.
+ *     `everyone.prompt.recall.value`.
  *   - **Structured object** — `{ position: 0, source: "prompt", name: "familiarity" }`,
  *     `{ position: "self", source: "entryUrl", path: ["params", "condition"] }`.
  *     Same expressivity plus the ability to override defaults that the dotted
@@ -72,7 +72,7 @@ const referencePathSchema = z.array(z.string().min(1));
  * slot index, or one of the named selectors:
  *   - `self` — the current participant's value
  *   - `shared` — group-shared state
- *   - `all` — multi-participant list (one entry per participant)
+ *   - `everyone` — multi-participant list (one entry per participant)
  *
  * The pre-#298 `any` selector is removed; existential quantification
  * across participants belongs in the boolean-tree `any:` operator.
@@ -80,16 +80,32 @@ const referencePathSchema = z.array(z.string().min(1));
  * The pre-#298 `player` selector is removed; `self` replaces it (same
  * semantic, clearer name, single canonical spelling).
  */
-export const positionSelectorSchema = z.union([
-  z.number().int().nonnegative(),
-  // YAML may quote stringified integers (`position: '1'`); coerce to
-  // canonical number form so consumers see one type.
-  z
-    .string()
-    .regex(/^\d+$/, "numeric position selector must be a non-negative integer")
-    .transform((s) => Number(s)),
-  z.enum(["self", "shared", "all"]),
-]);
+function legacyAllPositionMessage(): string {
+  return "The `all` reference position was renamed to `everyone`. Use `everyone.<source>.<name>` or `position: everyone`; a group comparator leaf also needs an explicit `all`, `any`, `none`, or `countTrue` operator. Review its missing-seat behavior when upgrading.";
+}
+
+export const positionSelectorSchema = z.union(
+  [
+    z.number().int().nonnegative().safe(),
+    // YAML may quote stringified integers (`position: '1'`); coerce to
+    // canonical number form so consumers see one type.
+    z
+      .string()
+      .regex(
+        /^\d+$/,
+        "numeric position selector must be a non-negative integer",
+      )
+      .transform((s) => Number(s))
+      .pipe(z.number().int().nonnegative().safe()),
+    z.enum(["self", "shared", "everyone"]),
+  ],
+  {
+    errorMap: (_issue, ctx) => ({
+      message:
+        ctx.data === "all" ? legacyAllPositionMessage() : ctx.defaultError,
+    }),
+  },
+);
 export type PositionSelectorType = z.infer<typeof positionSelectorSchema>;
 
 // `name` uses the relaxed `referenceNameSchema` (256-char cap) rather
@@ -156,7 +172,7 @@ const ALL_SOURCES = [
 const POSITION_SELECTOR_NAMES: ReadonlySet<string> = new Set([
   "self",
   "shared",
-  "all",
+  "everyone",
 ]);
 
 // The `survey` reference source went with the host-rendered `type: survey`
@@ -199,7 +215,7 @@ function parsePositionToken(
  * caller passes a string instead of the structured form.
  *
  * Per #298, the first segment is a required position selector
- * (`<integer>`, `self`, `shared`, `all`). The second segment is the source
+ * (`<integer>`, `self`, `shared`, `everyone`). The second segment is the source
  * enum.
  *
  * The result is then re-validated against the structured schemas
@@ -219,6 +235,10 @@ export function parseDottedReference(
     };
   }
   const [positionToken, source, ...rest] = segments;
+
+  if (positionToken === "all") {
+    return { ok: false, message: legacyAllPositionMessage() };
+  }
 
   const positionResult = parsePositionToken(positionToken);
   if (!positionResult.ok) {
@@ -244,12 +264,12 @@ export function parseDottedReference(
     ) {
       return {
         ok: false,
-        message: `Reference "${str}" is missing a position prefix. After #298, every reference starts with a position selector — \`self\`, \`shared\`, \`all\`, or a non-negative integer slot index. Try \`self.${str}\` for the current participant's value.`,
+        message: `Reference "${str}" is missing a position prefix. After #298, every reference starts with a position selector — \`self\`, \`shared\`, \`everyone\`, or a non-negative integer slot index. Try \`self.${str}\` for the current participant's value.`,
       };
     }
     return {
       ok: false,
-      message: `Reference "${str}" must start with a position selector (\`self\`, \`shared\`, \`all\`, or a non-negative integer). Got "${positionToken}".`,
+      message: `Reference "${str}" must start with a position selector (\`self\`, \`shared\`, \`everyone\`, or a non-negative integer). Got "${positionToken}".`,
     };
   }
   const position = positionResult.position;
@@ -371,6 +391,14 @@ export const referenceSchema = z.union(
     // form gets its migration hint from `parseDottedReference`; this gives
     // the structured form the same hint (#669).
     errorMap: (issue, ctx) => {
+      if (
+        issue.code === z.ZodIssueCode.invalid_union &&
+        ctx.data !== null &&
+        typeof ctx.data === "object" &&
+        (ctx.data as { position?: unknown }).position === "all"
+      ) {
+        return { message: legacyAllPositionMessage() };
+      }
       if (
         issue.code === z.ZodIssueCode.invalid_union &&
         isRemovedSurveyReference(ctx.data)

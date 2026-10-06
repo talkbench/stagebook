@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { Missing } from "../expressions/missing.js";
 import { describe, test, expect, vi } from "vitest";
 import React, { type ReactNode } from "react";
 import { act } from "react";
@@ -6,7 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import {
   type StagebookContext,
   StagebookProvider,
-  useResolve,
+  useReadReference,
   useMessages,
   useIsRTL,
   useTextContent,
@@ -59,13 +60,13 @@ describe("StagebookContext interface", () => {
     expect(ctx.isSubmitted).toBe(false);
   });
 
-  test("get returns array", () => {
-    const get = vi.fn(() => ["value1", "value2"]);
+  test("get returns a singleton transport array for one seat", () => {
+    const get = vi.fn(() => ["value1"]);
     const ctx = createMockContext({ get });
 
-    const result = ctx.get("prompt_myPrompt", "all");
-    expect(get).toHaveBeenCalledWith("prompt_myPrompt", "all");
-    expect(result).toEqual(["value1", "value2"]);
+    const result = ctx.get("prompt_myPrompt", "1");
+    expect(get).toHaveBeenCalledWith("prompt_myPrompt", "1");
+    expect(result).toEqual(["value1"]);
   });
 
   test("save calls through with scope", () => {
@@ -134,20 +135,20 @@ describe("StagebookProvider + useStagebookContext", () => {
   });
 });
 
-// Helper to render useResolve inside a StagebookProvider
-function renderUseResolve(
+// Helper to render useReadReference inside a StagebookProvider
+function renderUseReadReference(
   reference: string,
   ctx: StagebookContext,
 ): {
-  result: { current: unknown[] };
+  result: { current: unknown };
   unmount: () => void;
 } {
-  const result = { current: [] as unknown[] };
+  const result = { current: undefined as unknown };
   const container = document.createElement("div");
   let root: Root;
 
   function Harness(): ReactNode {
-    result.current = useResolve(reference);
+    result.current = useReadReference(reference);
     return null;
   }
 
@@ -166,7 +167,7 @@ function renderUseResolve(
   };
 }
 
-describe("Provider-level resolve (get → resolve pipeline)", () => {
+describe("Provider-level readReference (one canonical read boundary)", () => {
   test("extracts .value path for prompt references", () => {
     const get = vi.fn(() => [
       { type: "multipleChoice", value: "yes", step: "s0" },
@@ -174,11 +175,11 @@ describe("Provider-level resolve (get → resolve pipeline)", () => {
     const ctx = createMockContext({ get });
 
     // Per #298 the position is part of the reference itself. `self.X`
-    // maps to the host's "player" scope at the get() boundary.
-    const { result, unmount } = renderUseResolve("self.prompt.q1", ctx);
+    // maps to the assigned numeric seat at the get() boundary.
+    const { result, unmount } = renderUseReadReference("self.prompt.q1", ctx);
 
-    expect(get).toHaveBeenCalledWith("prompt_q1", "player");
-    expect(result.current).toEqual(["yes"]);
+    expect(get).toHaveBeenCalledWith("prompt_q1", "0");
+    expect(result.current).toBe("yes");
     unmount();
   });
 
@@ -186,13 +187,13 @@ describe("Provider-level resolve (get → resolve pipeline)", () => {
     const get = vi.fn(() => [{ result: { score: 4.5 } }]);
     const ctx = createMockContext({ get });
 
-    const { result, unmount } = renderUseResolve(
+    const { result, unmount } = renderUseReadReference(
       "self.qualtrics.exit.result.score",
       ctx,
     );
 
-    expect(get).toHaveBeenCalledWith("qualtrics_exit", "player");
-    expect(result.current).toEqual([4.5]);
+    expect(get).toHaveBeenCalledWith("qualtrics_exit", "0");
+    expect(result.current).toBe(4.5);
     unmount();
   });
 
@@ -200,7 +201,7 @@ describe("Provider-level resolve (get → resolve pipeline)", () => {
     const get = vi.fn(() => []);
     const ctx = createMockContext({ get });
 
-    const { unmount } = renderUseResolve("shared.prompt.q1", ctx);
+    const { unmount } = renderUseReadReference("shared.prompt.q1", ctx);
 
     expect(get).toHaveBeenCalledWith("prompt_q1", "shared");
     unmount();
@@ -212,48 +213,62 @@ describe("Provider-level resolve (get → resolve pipeline)", () => {
     const get = vi.fn(() => []);
     const ctx = createMockContext({ get });
 
-    const { unmount } = renderUseResolve("0.prompt.q1", ctx);
+    const { unmount } = renderUseReadReference("0.prompt.q1", ctx);
 
     expect(get).toHaveBeenCalledWith("prompt_q1", "0");
     unmount();
   });
 
-  test("forwards `all` prefix to get (multi-participant list)", () => {
-    // `all.X` returns one value per participant; the runtime forwards
-    // `"all"` verbatim to the host's get().
-    const get = vi.fn(() => []);
-    const ctx = createMockContext({ get });
-
-    const { unmount } = renderUseResolve("all.prompt.q1", ctx);
-
-    expect(get).toHaveBeenCalledWith("prompt_q1", "all");
+  test("reads everyone in seat order and retains a missing middle seat", () => {
+    const bySeat = new Map([
+      ["2", [{ value: "last" }]],
+      ["0", [{ value: "first" }]],
+    ]);
+    const get = vi.fn(
+      (_key: string, scope?: string) => bySeat.get(scope ?? "") ?? [],
+    );
+    const { result, unmount } = renderUseReadReference(
+      "everyone.prompt.q1",
+      createMockContext({ get, playerCount: 3 }),
+    );
+    expect(result.current).toEqual(["first", Missing, "last"]);
+    expect(get.mock.calls).toEqual([
+      ["prompt_q1", "0"],
+      ["prompt_q1", "1"],
+      ["prompt_q1", "2"],
+    ]);
     unmount();
   });
 
-  test("filters out undefined path results", () => {
+  test.each(["", "  ", []])(
+    "normalizes a blank prompt answer to Missing: %j",
+    (value) => {
+      const { result, unmount } = renderUseReadReference(
+        "self.prompt.q1",
+        createMockContext({ get: () => [{ value }] }),
+      );
+      expect(result.current).toBe(Missing);
+      unmount();
+    },
+  );
+
+  test("returns Missing for absent paths", () => {
     // Record exists but doesn't have the nested .value path
     const get = vi.fn(() => [{ name: "q1" }]);
     const ctx = createMockContext({ get });
 
-    const { result, unmount } = renderUseResolve("self.prompt.q1", ctx);
+    const { result, unmount } = renderUseReadReference("self.prompt.q1", ctx);
 
-    expect(result.current).toEqual([]);
+    expect(result.current).toBe(Missing);
     unmount();
   });
 
-  test("resolves across multiple raw values", () => {
-    // Hosts can return multiple values for any scope (e.g. an
-    // append-only store); the resolve hook unwraps each via the
-    // declared path. Using a numeric slot index here as a
-    // representative read selector.
-    const get = vi.fn(() => [
-      { value: "a", step: "s0" },
-      { value: "b", step: "s1" },
-    ]);
-    const ctx = createMockContext({ get });
-
-    const { result, unmount } = renderUseResolve("0.prompt.q1", ctx);
-
+  test("preserves an array-valued answer as one value", () => {
+    const get = vi.fn(() => [{ value: ["a", "b"] }]);
+    const { result, unmount } = renderUseReadReference(
+      "0.prompt.q1",
+      createMockContext({ get }),
+    );
     expect(result.current).toEqual(["a", "b"]);
     unmount();
   });

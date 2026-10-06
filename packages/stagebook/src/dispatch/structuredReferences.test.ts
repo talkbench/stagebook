@@ -64,7 +64,9 @@ describe("structured dispatch references (#690)", () => {
               conditions: {
                 reference,
                 comparator,
-                value: comparator === "isNotOneOf" ? ["a"] : "a",
+                ...(comparator === "doesNotExist"
+                  ? {}
+                  : { value: comparator === "isNotOneOf" ? ["a"] : "a" }),
               },
             },
             {
@@ -82,8 +84,8 @@ describe("structured dispatch references (#690)", () => {
         playerData: {},
       });
       expect(table.isEligible("p", 0, 0)).toBe(true);
-      // This groundwork preserves the existing three-valued none behavior.
-      expect(table.isEligible("p", 0, 1)).toBe(false);
+      // Negation now decides on Missing: no unanswered value equals a.
+      expect(table.isEligible("p", 0, 1)).toBe(true);
     }
   });
 
@@ -195,7 +197,7 @@ describe("structured dispatch references (#690)", () => {
     expect(table.isEligible("wrong-role", 0, 0)).toBe(false);
   });
 
-  test.each([0, "shared", "all"] as const)(
+  test.each([0, "shared", "everyone"] as const)(
     "ignores structured %s positions",
     (position) => {
       const treatments = [

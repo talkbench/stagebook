@@ -78,7 +78,7 @@ Parse a DSL reference string into a storage key and nested path. The `StagebookP
 import { getReferenceKeyAndPath } from "stagebook";
 
 // Every reference string starts with a position selector — `self`,
-// `shared`, `all`, or a non-negative integer slot index (#298).
+// `shared`, `everyone`, or a non-negative integer seat.
 // getReferenceKeyAndPath strips the position to return just the
 // storage key and path; un-prefixed strings throw at parse time.
 
@@ -173,14 +173,14 @@ parsed value. Passing a number instead of raw entry is a malformed response.
 
 These functions and their types are exported from `stagebook` without React:
 
-| Function | Result / behavior |
-| --- | --- |
-| `parseNumericEntry(entry, numberFormat)` | `{ status: "parsed", value: number }`, or `{ status: "blank" \| "unfinished" \| "malformed" \| "tooLong" \| "tooManyDigits" }`; normalizes `-0` to `0` |
-| `couldBecomeValidByAppending(entry, constraints, numberFormat)` | Whether the entry already passes or appending allowed characters could make it pass; respects the entry and precision limits |
-| `formatNumericPlain(value, numberFormat)` | Finite number as plain decimal text, without grouping or an exponent |
-| `filterNumericInsertion({ entry, start, end, inserted }, numberFormat)` | `{ entry, selectionStart, selectionEnd, accepted, refused }`; filters a local insertion using UTF-16 selection offsets |
-| `numericInputMode(constraints)` | `"numeric"` only with `integer: true` and `min >= 0`; otherwise `undefined` (omit the attribute) |
-| `resolveNumberFormat(locale, overrides?)` | `{ decimal, grouping }`, with the same locale normalization, fallback, and message overrides as `resolveCatalog` |
+| Function                                                                | Result / behavior                                                                                                                                      |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `parseNumericEntry(entry, numberFormat)`                                | `{ status: "parsed", value: number }`, or `{ status: "blank" \| "unfinished" \| "malformed" \| "tooLong" \| "tooManyDigits" }`; normalizes `-0` to `0` |
+| `couldBecomeValidByAppending(entry, constraints, numberFormat)`         | Whether the entry already passes or appending allowed characters could make it pass; respects the entry and precision limits                           |
+| `formatNumericPlain(value, numberFormat)`                               | Finite number as plain decimal text, without grouping or an exponent                                                                                   |
+| `filterNumericInsertion({ entry, start, end, inserted }, numberFormat)` | `{ entry, selectionStart, selectionEnd, accepted, refused }`; filters a local insertion using UTF-16 selection offsets                                 |
+| `numericInputMode(constraints)`                                         | `"numeric"` only with `integer: true` and `min >= 0`; otherwise `undefined` (omit the attribute)                                                       |
+| `resolveNumberFormat(locale, overrides?)`                               | `{ decimal, grouping }`, with the same locale normalization, fallback, and message overrides as `resolveCatalog`                                       |
 
 `NumberFormat` has `decimal: string` and `grouping: string`. `NumericConstraints`
 has optional `required`, `min`, `max`, and `integer`. The parser accepts a trimmed
@@ -343,12 +343,12 @@ if (needs.externalSurvey) requireQualtricsCreds();
 
 **Returns:** `Promise<RequiredServicesReport>` — `{ overall, byTreatment, byIntroSequence, byConsent }`, where each value is a `RequiredServices` = `{ coedit, video, textChat, externalSurvey }` of booleans. `overall` is the whole-file union; `byTreatment` / `byIntroSequence` / `byConsent` are keyed by arm `name` (built with a null prototype, so a schema-valid but hostile arm name like `__proto__` stays an ordinary, enumerable key). Trigger → service mapping (walk of the expanded tree):
 
-| Service          | Trigger                                                                               |
-| ---------------- | ------------------------------------------------------------------------------------- |
-| `coedit`         | `prompt` element, `shared: true`, referenced prompt file `type: openResponse` or `numericResponse`         |
-| `video`          | stage `discussion` block, `chatType: video` or `audio` (→ Daily / WebRTC)             |
-| `textChat`       | stage `discussion` block, `chatType: text`                                            |
-| `externalSurvey` | `type: qualtrics` element (prompt-module survey instruments need no external service) |
+| Service          | Trigger                                                                                            |
+| ---------------- | -------------------------------------------------------------------------------------------------- |
+| `coedit`         | `prompt` element, `shared: true`, referenced prompt file `type: openResponse` or `numericResponse` |
+| `video`          | stage `discussion` block, `chatType: video` or `audio` (→ Daily / WebRTC)                          |
+| `textChat`       | stage `discussion` block, `chatType: text`                                                         |
+| `externalSurvey` | `type: qualtrics` element (prompt-module survey instruments need no external service)              |
 
 Async because the coedit signal is **split across files**: `shared: true` lives in the treatment YAML but the `openResponse` / `numericResponse` type lives in the separate `.prompt.md`, so shared prompts' frontmatter is resolved via `loadPrompt` — the same loader-injection shape `loadAndMergeImports` uses (the host owns path resolution and I/O). `loadPrompt` is only called for prompts flagged `shared: true` (its `file:` path skipped if it still holds a `${...}` placeholder), and every referenced shared prompt is loaded at most once across all arms; loader errors propagate rather than silently under-provisioning.
 
@@ -451,15 +451,31 @@ import { StagebookProvider, type StagebookContext } from "stagebook/components";
 <StagebookProvider value={context}>{children}</StagebookProvider>;
 ```
 
+### Pure reference reads
+
+```ts
+import { readReference, Missing } from "stagebook";
+
+const answer = readReference("self.prompt.answer", get, {
+  position,
+  playerCount,
+});
+if (answer !== Missing) {
+  // Use the present value after checking the type required by your consumer.
+}
+```
+
+`readReference` is React-free. It accepts a dotted or structured reference, a host getter returning `[record]` or `[]`, and the snapshot's current position/roster size. A single-position read returns one value or Missing; `everyone.` returns one entry per seat, retaining Missing entries. An unknown roster cannot be supplied as an empty list. See the [host contract and breaking migration](platform-requirements.md#breaking-reference-read-migration-757).
+
 ### Hooks
 
-| Hook                               | Returns                        | Requires Provider |
-| ---------------------------------- | ------------------------------ | ----------------- |
-| `useStagebookContext()`            | Full `StagebookContext` object | yes               |
-| `useResolve(reference, position?)` | `unknown[]`                    | yes               |
-| `useSave()`                        | `save` function                | yes               |
-| `useElapsedTime()`                 | `number` (seconds)             | yes               |
-| `useTextContent(path)`             | `{ data, isLoading, error }`   | yes               |
+| Hook                          | Returns                                   | Requires Provider |
+| ----------------------------- | ----------------------------------------- | ----------------- |
+| `useStagebookContext()`       | Full `StagebookContext` object            | yes               |
+| `useReadReference(reference)` | `unknown` (scalar, Missing, or seat list) | yes               |
+| `useSave()`                   | `save` function                           | yes               |
+| `useElapsedTime()`            | `number` (seconds)                        | yes               |
+| `useTextContent(path)`        | `{ data, isLoading, error }`              | yes               |
 
 ### Stage
 
@@ -594,17 +610,17 @@ Peaks helpers exported alongside it: `createPeaksArrays(channelCount, bucketCoun
 
 ### Element Components (pure props)
 
-| Component       | Key Props                                                                                                   |
-| --------------- | ----------------------------------------------------------------------------------------------------------- |
-| `Prompt`        | `metadata`, `body`, `responseItems`, `name`, `save`, `value`, `entry?`, `numberFormat?`, `step?`, `getElapsedTime?`, `stageId?`        |
-| `Display`       | `reference`, `values`, `position?`                                                                          |
-| `SubmitButton`  | `onSubmit`, `name`, `save`, `getElapsedTime`, `buttonText?`                                                 |
-| `AudioElement`  | `src`                                                                                                       |
-| `ImageElement`  | `src`, `width?`                                                                                             |
-| `KitchenTimer`  | `startTime`, `endTime`, `getElapsedTime`, `warnTimeRemaining?`                                              |
-| `TrackedLink`   | `name`, `url`, `displayText`, `save`, `getElapsedTime`, `progressLabel`, `resolvedParams?`                  |
-| `TrainingVideo` | `url`, `getElapsedTime`, `onComplete`                                                                       |
-| `Qualtrics`     | `url`, `resolvedParams?`, `stableParticipantId?`, `sampleId?`, `onContractViolation?`, `save`, `onComplete` |
+| Component       | Key Props                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `Prompt`        | `metadata`, `body`, `responseItems`, `name`, `save`, `value`, `entry?`, `numberFormat?`, `step?`, `getElapsedTime?`, `stageId?` |
+| `Display`       | `reference`, `values`, `position?`                                                                                              |
+| `SubmitButton`  | `onSubmit`, `name`, `save`, `getElapsedTime`, `buttonText?`                                                                     |
+| `AudioElement`  | `src`                                                                                                                           |
+| `ImageElement`  | `src`, `width?`                                                                                                                 |
+| `KitchenTimer`  | `startTime`, `endTime`, `getElapsedTime`, `warnTimeRemaining?`                                                                  |
+| `TrackedLink`   | `name`, `url`, `displayText`, `save`, `getElapsedTime`, `progressLabel`, `resolvedParams?`                                      |
+| `TrainingVideo` | `url`, `getElapsedTime`, `onComplete`                                                                                           |
+| `Qualtrics`     | `url`, `resolvedParams?`, `stableParticipantId?`, `sampleId?`, `onContractViolation?`, `save`, `onComplete`                     |
 
 For a directly rendered `Prompt`, pass `step` and `getElapsedTime` to include
 commit-time context in its records. When reusing it across stages, pass the

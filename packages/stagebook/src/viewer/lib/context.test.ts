@@ -56,12 +56,13 @@ describe("createViewerContext", () => {
       expect(values).toEqual([{ value: "from-pos-1" }]);
     });
 
-    it("get with 'all' returns raw values from all positions", () => {
+    it("get reads each assigned seat without a host aggregate scope", () => {
       const { store, ctx } = makeContext();
       store.save("prompt_q1", { value: "a" }, "player", 0, 0);
       store.save("prompt_q1", { value: "b" }, "player", 1, 0);
-      const values = ctx.get("prompt_q1", "all");
-      expect(values).toEqual([{ value: "a" }, { value: "b" }]);
+      const values = ctx.get("prompt_q1", "0");
+      expect(values).toEqual([{ value: "a" }]);
+      expect(ctx.get("prompt_q1", "1")).toEqual([{ value: "b" }]);
     });
 
     it("get with non-finite numeric scope falls back to current position", () => {

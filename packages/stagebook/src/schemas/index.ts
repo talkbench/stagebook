@@ -197,3 +197,19 @@ export {
   type SharedPromptConstraintMetadata,
   type SharedPromptValidationIssue,
 } from "./sharedPromptValidation.js";
+export {
+  createExpressionSchemas,
+  expressionSchema,
+  expressionConditionsSchema,
+  resolvedExpressionSchema,
+  resolvedExpressionConditionsSchema,
+  type ExpressionNode,
+  type ExpressionConditions,
+  type ExpressionStaticType,
+  type ExpressionSchemaOptions,
+} from "./expression.js";
+export {
+  checkExpressionTypes,
+  type ExpressionTypeIssue,
+  type UnknownExpressionTypeReason,
+} from "./expressionTypes.js";

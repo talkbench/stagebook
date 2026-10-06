@@ -1,7 +1,7 @@
+import type { ConditionNode } from "../../utils/evaluateConditions.js";
 import type {
   ElementType,
   ResolvedDiscussionType,
-  ConditionType,
 } from "../../schemas/index.js";
 
 export type Phase = "consent" | "intro" | "game" | "exit";
@@ -16,7 +16,7 @@ export interface ViewerStep {
   /** Researcher-facing notes on the stage (never shown to participants). */
   notes?: string;
   /** Stage-level conditions (#183). Evaluated by StageConditionGate. */
-  conditions?: ConditionType[];
+  conditions?: ConditionNode | ConditionNode[];
   /** When true, this is a synthetic end-of-unit interstitial (not a real
    *  stage): the viewer renders `transitionCopy` instead of a `<Stage>`. It
    *  narrates the platform behavior between phases (assignment, lobby, etc.)
@@ -51,7 +51,7 @@ export interface ViewerUnit {
 interface StepShape {
   name: string;
   notes?: string;
-  conditions?: ConditionType[];
+  conditions?: ConditionNode | ConditionNode[];
   elements: ElementType[];
 }
 
@@ -74,7 +74,7 @@ interface Treatment {
   gameStages: {
     name: string;
     notes?: string;
-    conditions?: ConditionType[];
+    conditions?: ConditionNode | ConditionNode[];
     duration?: number;
     elements: ElementType[];
     discussion?: ResolvedDiscussionType;

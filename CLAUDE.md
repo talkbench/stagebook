@@ -130,7 +130,7 @@ stagebook/                          # workspace root
 │       │   │   ├── reference.ts          # getReferenceKeyAndPath(), getNestedValueByPath()
 │       │   │   └── parsePromptFile.ts    # parsePromptFile() → { metadata, body, responseItems }
 │       │   ├── components/
-│       │   │   ├── StagebookProvider.tsx  # context definition + useStagebookContext, useResolve, useSave, useElapsedTime hooks
+│       │   │   ├── StagebookProvider.tsx  # context definition + useStagebookContext, useReadReference, useSave, useElapsedTime hooks
 │       │   │   ├── Element.tsx           # element type router
 │       │   │   ├── elements/             # Prompt, Display, Separator, SubmitButton, AudioElement, TrainingVideo, KitchenTimer, TrackedLink, Image
 │       │   │   ├── conditions/           # TimeConditionalRender, PositionConditionalRender, ConditionsConditionalRender

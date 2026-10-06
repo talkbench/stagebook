@@ -8,11 +8,13 @@ import React, {
 } from "react";
 import type { ReferenceType } from "../schemas/treatment.js";
 import type { ResolvedDiscussionType } from "../schemas/resolved.js";
-import { parseDottedReference } from "../schemas/reference.js";
-import {
-  getReferenceKeyAndPath,
-  getNestedValueByPath,
-} from "../utils/reference.js";
+import { referenceSchema } from "../schemas/reference.js";
+import { readReference as readSnapshotReference } from "../utils/readReference.js";
+import { Missing } from "../expressions/missing.js";
+import type {
+  ExpressionReference,
+  ExpressionTypeViolation,
+} from "../expressions/evaluateExpression.js";
 import {
   resolveCatalog,
   isRTLLocale,
@@ -26,19 +28,6 @@ import type {
 import type { NumericFeedback } from "../utils/numericFeedback.js";
 import type { NumberFormat } from "../messages/types.js";
 import type { StagebookMessages, DeepPartial } from "../messages/index.js";
-
-/**
- * Normalise a reference to its structured form so callers can branch on
- * `.position` without re-parsing. Throws if the string is invalid.
- */
-function parseToStructuredRef(
-  reference: string | ReferenceType,
-): ReferenceType {
-  if (typeof reference !== "string") return reference;
-  const parsed = parseDottedReference(reference);
-  if (!parsed.ok) throw new Error(parsed.message);
-  return parsed.value;
-}
 
 // --------------- StagebookContext Interface ---------------
 
@@ -63,13 +52,9 @@ export interface SharedNumericResponseConfig {
 }
 
 export interface StagebookContext {
-  // Look up raw stored values by storage key.
-  // scope: "player" (default), "shared", a numeric string for a
-  // specific slot index, or "all" (return one value per participant).
-  // Stagebook's resolver normalizes `display.position: "any"` to
-  // `"all"` before reaching here, so hosts only need to handle the
-  // four scopes above. The pre-#238 aggregator value
-  // `"percentAgreement"` was removed entirely and is unreachable.
+  // Look up one raw stored value in a singleton transport array, or [].
+  // scope: "player" (current participant before assignment), "shared", or
+  // a numeric seat string. Group reads are assembled by readReference.
   get(key: string, scope?: string): unknown[];
 
   // Write state under a DSL-derived key
@@ -243,20 +228,23 @@ export interface StagebookContext {
    * to surface a slipped-through violation to telemetry (e.g. Sentry). The
    * payload never includes participant values.
    */
-  onContractViolation?: (info: {
-    kind: "missingStableParticipantId" | "missingSharedNumericResponse";
-    message: string;
-  }) => void;
+  onContractViolation?: (
+    info:
+      | {
+          kind: "missingStableParticipantId" | "missingSharedNumericResponse";
+          message: string;
+        }
+      | ExpressionTypeViolation,
+  ) => void;
 }
 
 // --------------- Internal context ---------------
 
 interface InternalStagebookContext extends StagebookContext {
-  // After #240, callers can pass either the dotted-string sugar
-  // (`0.prompt.foo`, `self.entryUrl.params.x`) or the structured form
-  // (`{ position: 0, source: "prompt", name: "foo" }`). After #298 the
-  // position is part of the reference — the resolver extracts it.
-  resolve(reference: string | ReferenceType): unknown[];
+  /** The same scalar/Missing or seat-preserving group read used by evaluation. */
+  readReference: (reference: ExpressionReference) => unknown;
+  /** Shared across expression consumers and rerenders for this provider. */
+  violationKeys: Set<string>;
   // Fully-resolved chrome catalog (locale + host overrides applied), and the
   // derived text direction. Computed once by the provider; components read
   // them via `useMessages()` / `useIsRTL()`.
@@ -277,38 +265,28 @@ export function StagebookProvider({
   value: StagebookContext;
   children: React.ReactNode;
 }) {
-  const resolve = React.useCallback(
-    (reference: string | ReferenceType): unknown[] => {
-      let referenceKey: string;
-      let path: string[];
-      let position: number | string;
-      try {
-        const parsed = parseToStructuredRef(reference);
-        position = parsed.position;
-        ({ referenceKey, path } = getReferenceKeyAndPath(parsed));
-      } catch (err) {
-        // Surface the underlying parser/migration message so authors
-        // can act on it (e.g. the "missing position prefix" hint from
-        // #298 or the `urlParams` → `entryUrl.params` migration hint
-        // from #246).
-        const refStr =
-          typeof reference === "string"
-            ? `"${reference}"`
-            : JSON.stringify(reference);
-        const why = err instanceof Error ? err.message : String(err);
-        console.error(`Invalid reference: ${refStr} — ${why}`);
-        return [];
+  const violationKeys = useRef(new Set<string>()).current;
+  const readReference = React.useCallback(
+    (reference: ExpressionReference): unknown => {
+      const parsed = referenceSchema.safeParse(reference);
+      if (!parsed.success) {
+        const refString =
+          typeof reference === "string" ? reference : JSON.stringify(reference);
+        console.error(
+          `Invalid reference: ${refString} — ${parsed.error.issues[0]?.message ?? "Malformed reference"}`,
+        );
+        return Missing;
       }
-      // The position selector is now part of the reference (#298). The
-      // host's `get(key, scope)` accepts `"shared"`, `"all"`, or a
-      // numeric-slot index as a string. `"self"` maps to the current
-      // participant's storage — passed as `"player"` to the host for
-      // backward compatibility with the existing get() contract.
-      const storageScope = position === "self" ? "player" : String(position);
-      const rawValues = value.get(referenceKey, storageScope);
-      return rawValues
-        .map((v) => getNestedValueByPath(v, path))
-        .filter((v) => v !== undefined);
+      // Readiness and host failures propagate: unloaded state must not be
+      // mistaken for a participant's missing answer.
+      return readSnapshotReference(
+        parsed.data,
+        (key, scope) => value.get(key, scope),
+        {
+          position: value.position,
+          playerCount: value.playerCount,
+        },
+      );
     },
     [value],
   );
@@ -322,8 +300,8 @@ export function StagebookProvider({
   const isRTL = isRTLLocale(value.locale);
 
   const internal: InternalStagebookContext = React.useMemo(
-    () => ({ ...value, resolve, resolvedMessages, isRTL }),
-    [value, resolve, resolvedMessages, isRTL],
+    () => ({ ...value, readReference, violationKeys, resolvedMessages, isRTL }),
+    [value, readReference, violationKeys, resolvedMessages, isRTL],
   );
 
   // Note (#473): the required `attributes.stableParticipantId` is NOT checked
@@ -356,9 +334,9 @@ export function useStagebookContext(): InternalStagebookContext {
   return ctx;
 }
 
-export function useResolve(reference: string | ReferenceType): unknown[] {
-  const { resolve } = useStagebookContext();
-  return resolve(reference);
+export function useReadReference(reference: string | ReferenceType): unknown {
+  const { readReference } = useStagebookContext();
+  return readReference(reference);
 }
 
 /**

@@ -293,8 +293,9 @@ import type { StagebookContext } from "stagebook/components";
 const context: StagebookContext = {
   // Look up raw stored values by storage key.
   // Returns an array of values — exactly what was passed to save().
-  // "scope" controls whose data to return: "player", "shared", "all", "any", or index.
-  // Stagebook handles DSL reference parsing internally — platforms don't need to.
+  // "scope" is "player" (before assignment), "shared", or a numeric seat string.
+  // Return [latestRecord] or []; Stagebook assembles group reads per seat.
+  // Stagebook handles DSL reference parsing internally.
   get(key: string, scope?: string): unknown[] {
     // Look up `key` in your state store for the given scope.
   },
@@ -488,7 +489,9 @@ Stagebook's `save` / `get` are the host's mailbox — Stagebook writes participa
 
 - **What's local-only vs. server-synced.** Single-player tools may keep everything in React state; multiplayer platforms persist to a server-authoritative store and broadcast mutations to all connected clients.
 - **What survives a reload.** State should survive page refreshes — if a participant disconnects and reconnects, their previous responses should still be present. For multiplayer experiments, other participants' state must also be available after reconnection.
-- **What's player-scoped vs. shared.** For writes, `save(key, value, scope)` is limited to `"player"` or `"shared"`, and the host routes the write to the appropriate store. For reads, `get(key, scope)` accepts the same two plus `"all"` and a participant index as a string. See [platform-requirements.md §1 State Management](./platform-requirements.md#1-state-management-required) for the full scope semantics and storage-key patterns.
+- **What's player-scoped vs. shared.** For writes, `save(key, value, scope)` is limited to `"player"` or `"shared"`, and the host routes the write to the appropriate store. For reads, `get(key, scope)` accepts the same two plus a numeric participant seat as a string. `everyone.` reads are assembled by Stagebook from those seats, retaining Missing entries; the host no longer provides an `"all"` scope. See [platform-requirements.md §1 State Management](./platform-requirements.md#1-state-management-required) for the full scope semantics and storage-key patterns.
+
+See the [breaking reference-read migration](./platform-requirements.md#breaking-reference-read-migration-757) for replacing `resolve` / `useResolve`, handling scalar versus group results, and the expanded contract-violation callback. Gate rendering on a ready snapshot and known roster before evaluating `everyone.` references.
 
 Stagebook handles DSL reference parsing internally — the host's `get(key, scope)` is a flat key-value lookup. The host doesn't need to understand reference syntax or nested-path traversal; it only needs to return whatever was last `save()`d under that key.
 
@@ -791,7 +794,8 @@ import {
   resolveNumberFormat,
 } from "stagebook";
 
-const { metadata, body, responseItems } = promptFileSchema.parse(promptMarkdown);
+const { metadata, body, responseItems } =
+  promptFileSchema.parse(promptMarkdown);
 if (metadata.type !== "numericResponse") {
   throw new TypeError("Expected a numeric prompt");
 }

@@ -247,11 +247,9 @@ describe("walkExpression", () => {
     ]);
   });
 
-  it("terminates on cycles while preserving distinct paths to shared nodes", () => {
+  it("preserves distinct authored paths to shared acyclic nodes", () => {
     const shared = ref("a");
-    const cyclic: { all: unknown[] } = { all: [shared, shared] };
-    cyclic.all.push(cyclic);
-    expect(references(cyclic)).toEqual([
+    expect(references({ all: [shared, shared] })).toEqual([
       { node: shared, path: ["all", 0] },
       { node: shared, path: ["all", 1] },
     ]);
@@ -263,14 +261,19 @@ describe("walkExpression", () => {
   });
 });
 
-describe("current condition grammar boundary", () => {
+describe("condition grammar boundary", () => {
   it.each([
-    { sum: [1, 2] },
     { literal: true },
     { all: leaf("a") },
-    { reference: "everyone.prompt.a.value", comparator: "exists" },
     { case: { rules: [{ when: true, value: true }] } },
-  ])("still rejects future expression syntax: %j", (expression) => {
+  ])("accepts scalar Boolean expressions: %j", (expression) => {
+    expect(conditionsSchema.safeParse(expression).success).toBe(true);
+    expect(resolvedConditionsSchema.safeParse(expression).success).toBe(true);
+  });
+  it.each([
+    { sum: [1, 2] },
+    { reference: "everyone.prompt.a.value", comparator: "exists" },
+  ])("rejects a non-Boolean condition root: %j", (expression) => {
     expect(conditionsSchema.safeParse(expression).success).toBe(false);
     expect(resolvedConditionsSchema.safeParse(expression).success).toBe(false);
   });
@@ -346,8 +349,72 @@ describe("walkConditionLeaves compatibility", () => {
   it("handles cycles in arrays and operators", () => {
     const root: unknown[] = [leaf("a")];
     root.push(root, { all: root });
-    expect(
-      [...walkConditionLeaves(root)].map(({ leaf: node }) => node),
-    ).toEqual([leaf("a")]);
+    expect([...walkConditionLeaves(root)]).toEqual([]);
+  });
+});
+
+describe("expression traversal resource bounds", () => {
+  const walkers = [
+    ["full", (input: unknown) => [...walkExpression(input)]],
+    ["legacy", (input: unknown) => [...walkConditionLeaves(input)]],
+  ] as const;
+
+  it.each(walkers)(
+    "%s skips excessive depth before recursive walking",
+    (_, walk) => {
+      let expression: unknown = leaf("a");
+      for (let depth = 0; depth < 3000; depth++)
+        expression = { all: [expression] };
+      expect(walk(expression).length).toBe(0);
+    },
+  );
+
+  it.each(walkers)(
+    "%s counts repeated aliases against its work budget",
+    (_, walk) => {
+      let expression: unknown = leaf("a");
+      for (let depth = 0; depth < 15; depth++)
+        expression = { all: [expression, expression] };
+      expect(walk(expression).length).toBe(0);
+    },
+  );
+
+  it.each(walkers)(
+    "%s rejects cycles before returning partial visits",
+    (_, walk) => {
+      const expression: { all: unknown[] } = { all: [leaf("a")] };
+      expression.all.push(expression);
+      expect(walk(expression).length).toBe(0);
+    },
+  );
+
+  it("bounds work in oversized case rule containers before reading every item", () => {
+    let reads = 0;
+    const rule = { when: true, value: ref("a") };
+    const rules = Array.from({ length: 20_000 }, () => rule);
+    for (let index = 0; index < rules.length; index++)
+      Object.defineProperty(rules, index, {
+        get: () => {
+          reads++;
+          return rule;
+        },
+      });
+    expect([...walkExpression({ case: { rules } })].length).toBe(0);
+    expect(reads).toBeLessThan(10_001);
+  });
+
+  it("retains valid wide inputs near the work budget", () => {
+    const values = Array.from({ length: 9000 }, () => true);
+    const visits = [...walkExpression({ all: values })];
+    expect(visits).toHaveLength(9001);
+    expect(visits.at(-1)?.path).toEqual(["all", 8999]);
+  });
+
+  it("counts input depth independently of the supplied source path", () => {
+    let expression: unknown = true;
+    for (let depth = 0; depth < 64; depth++) expression = { all: [expression] };
+    const prefix = Array.from({ length: 150 }, () => "source");
+    expect([...walkExpression(expression, { path: prefix })]).toHaveLength(65);
+    expect([...walkExpression({ all: [expression] })].length).toBe(0);
   });
 });

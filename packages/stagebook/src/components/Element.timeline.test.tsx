@@ -12,14 +12,14 @@ import { Element } from "./Element.js";
 // `timeline` element resolves previously-saved selections so a participant
 // who reloads the stage sees their existing marks. After #298 every
 // reference must carry a position prefix, but the read was left as the bare
-// `timeline.<name>` — so `resolve()` rejected it, logged "Invalid reference",
+// `timeline.<name>` — so `readReference()` rejected it, logged "Invalid reference",
 // returned [], and the marks silently vanished on reload. This test renders a
-// timeline element through the real provider `resolve` and asserts the saved
+// timeline element through the real provider `readReference` and asserts the saved
 // selections reach the Timeline's `initialSelections`.
 //
 // Timeline itself is heavy (canvas waveform, ResizeObserver, rAF) and is
 // covered by Timeline.ct.tsx; here we stub it to capture just the prop the
-// resolve path feeds it, keeping the test in jsdom.
+// readReference path feeds it, keeping the test in jsdom.
 vi.mock("./elements/Timeline.js", () => ({
   Timeline: (props: { initialSelections?: unknown }) => (
     <div
@@ -81,7 +81,7 @@ describe("Element → Timeline saved-selection read-back (#298 prefix)", () => {
 
   test("reads previously-saved selections back into initialSelections", () => {
     // Store holds the timeline's saved selections under its storage key
-    // (`timeline_<name>`, self scope → host scope "player").
+    // (`timeline_<name>`, self scope → host scope "0").
     const get = vi.fn((key: string) =>
       key === "timeline_gallery_clip_ranges" ? [SAVED_SELECTIONS] : [],
     );
@@ -89,7 +89,7 @@ describe("Element → Timeline saved-selection read-back (#298 prefix)", () => {
     const container = renderTimelineElement(ctx);
 
     // The read must go through the resolver to the right storage key.
-    expect(get).toHaveBeenCalledWith("timeline_gallery_clip_ranges", "player");
+    expect(get).toHaveBeenCalledWith("timeline_gallery_clip_ranges", "0");
 
     // The saved marks must reach the Timeline, not get dropped.
     const stub = container.querySelector('[data-testid="timeline-stub"]');
@@ -99,7 +99,7 @@ describe("Element → Timeline saved-selection read-back (#298 prefix)", () => {
   });
 
   test("first load (no saved value) passes no marks and logs no error", () => {
-    // Default context: get() → [], so resolve() → [] and savedSelections is
+    // Default context: get() → [], so readReference() → Missing and savedSelections is
     // undefined. The read must stay silent (no invalid-reference error) and
     // hand the Timeline nothing rather than garbage.
     const container = renderTimelineElement(makeContext());

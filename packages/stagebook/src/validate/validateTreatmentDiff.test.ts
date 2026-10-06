@@ -665,7 +665,7 @@ ${controls}
     const goalPrompt =
       "---\ntype: multipleChoice\n---\nGoal?\n---\n- Understand your partner\n- Find common ground\n";
 
-    it("flags a dead gate at the precise `value:` token, as an error", async () => {
+    it("flags a dead gate at the whole conditions range, as an error", async () => {
       const source = withGate("includes", "joint solution");
       const result = await validateTreatmentWithDiff({
         source,
@@ -676,15 +676,21 @@ ${controls}
       );
       expect(deadGate).toBeDefined();
       expect(deadGate!.severity).toBe("error");
-      // The whole point of the diff path (vs. the CLI's range: null) is a
-      // precise source position: the range must bracket the exact offending
-      // token, `"joint solution"`, not merely fall somewhere after line 0.
+      // Reachability belongs to the complete Boolean root. Its range must
+      // cover the condition tree even when no single leaf is independently dead.
       const { range } = deadGate!;
       expect(range).not.toBeNull();
-      const line = source.split("\n")[range!.startLine];
-      expect(line.slice(range!.startCol, range!.endCol)).toContain(
-        "joint solution",
+      const lines = source.split("\n");
+      expect(range!.startLine).toBe(
+        lines.findIndex((line) => line.includes("- reference:")),
       );
+      const selected = lines.slice(range!.startLine, range!.endLine + 1);
+      selected[selected.length - 1] = selected.at(-1)!.slice(0, range!.endCol);
+      selected[0] = selected[0].slice(range!.startCol);
+      const text = selected.join("\n");
+      expect(text).toContain("reference: self.prompt.goal");
+      expect(text).toContain("comparator: includes");
+      expect(text).toContain('value: "joint solution"');
     });
 
     it("stays silent when the condition is satisfiable", async () => {

@@ -6,11 +6,10 @@
  *    whose target storage key is produced by a *later* stage in the flow is
  *    rejected. External references (entryUrl, attributes, …) are
  *    always valid.
- * 2. **No always-skip-at-load** — stage-level conditions only. A stage-level
- *    condition whose reference points at the *current* stage's data and
- *    whose `compare(undefined, comparator, value)` is not strictly `true`
- *    will always skip the stage at mount. Rejected with a suggestion to
- *    rethink the comparator (usually a forgotten `doesNotExist`).
+ * 2. **No always-skip-at-load** — simulate the entire stage condition with
+ *    data first produced in that stage set to Missing. Prior/external values
+ *    stay unknown. Report one root issue only when the gate cannot be true
+ *    under any prior/external outcome.
  *
  * Only stage-level conditions get Rule 2 because element-level, display,
  * urlParam, discussion, and groupComposition references all have a
@@ -20,17 +19,37 @@
  */
 
 import { getReferenceKeyAndPath } from "../utils/reference.js";
-import { compare, type Comparator } from "../utils/compare.js";
+import { conditionIsAlwaysFalseAtLoad } from "./conditionLoadSimulation.js";
+import { walkExpression } from "../expressions/index.js";
 import {
-  walkConditionLeaves,
-  hasNonAllAncestor,
-  type ExpressionAncestor,
-} from "../expressions/index.js";
-import {
-  parseDottedReference,
+  referenceSchema,
   formatReference,
   type ReferenceType,
 } from "./reference.js";
+
+/** Full-tree discovery visits references in every operand and case branch;
+ * literal data, comparison values and template fields are opaque. */
+function* walkReferenceNodes(
+  conditions: unknown,
+  pathPrefix: (string | number)[],
+) {
+  for (const visit of walkExpression(conditions, {
+    path: pathPrefix,
+    allowImplicitArray: true,
+  })) {
+    if (
+      (visit.kind === "reference" || visit.kind === "leaf") &&
+      visit.node &&
+      typeof visit.node === "object" &&
+      !Array.isArray(visit.node)
+    ) {
+      yield {
+        leaf: visit.node as Record<string, unknown>,
+        path: visit.path,
+      };
+    }
+  }
+}
 
 /** Normalize a raw reference value (string or structured) into the
  *  structured form. Returns null if the input is malformed — callers skip
@@ -38,14 +57,11 @@ import {
  *  schema validation, not the walker).
  */
 function normalizeReference(input: unknown): ReferenceType | null {
-  if (typeof input === "string") {
-    const parsed = parseDottedReference(input);
-    return parsed.ok ? parsed.value : null;
-  }
-  if (input && typeof input === "object" && "source" in input) {
-    return input as ReferenceType;
-  }
-  return null;
+  // Expressions preserve authored descriptors, so canonicalize structured
+  // positions too (for example quoted "0" becomes seat 0) before applying
+  // roster and producer-scope rules.
+  const parsed = referenceSchema.safeParse(input);
+  return parsed.success ? parsed.data : null;
 }
 
 /** Structured issue emitted by the walker. Translated to zod issues by the
@@ -379,6 +395,7 @@ function validateStepSequence({
 
   steps.forEach((step, stepIdx) => {
     if (!isRecord(step)) return;
+    addLoadIssue(step, [...sequencePath, stepIdx], stepIdx, producedAt, issues);
     const sites = enumerateStepSites(step, [...sequencePath, stepIdx]);
     for (const site of sites) {
       applyRules({
@@ -479,7 +496,7 @@ function validateTreatment({
       playerIdx,
       "conditions",
     ];
-    for (const { leaf, path } of walkConditionLeaves(
+    for (const { leaf, path } of walkReferenceNodes(
       player.conditions,
       conditionsBase,
     )) {
@@ -506,6 +523,14 @@ function validateTreatment({
     if (!isRecord(stage)) return;
     const rank = RANK_GAME_BASE + stageIdx;
     const stagePath = [...treatmentPath, "gameStages", stageIdx];
+    addLoadIssue(
+      stage,
+      stagePath,
+      rank,
+      producedAt,
+      issues,
+      treatment.playerCount,
+    );
     for (const site of enumerateStepSites(stage, stagePath)) {
       applyRules({
         site,
@@ -520,7 +545,7 @@ function validateTreatment({
     // Discussion conditions nested under the stage
     const discussion = stage.discussion;
     if (isRecord(discussion)) {
-      for (const { leaf, path } of walkConditionLeaves(discussion.conditions, [
+      for (const { leaf, path } of walkReferenceNodes(discussion.conditions, [
         ...stagePath,
         "discussion",
         "conditions",
@@ -549,6 +574,14 @@ function validateTreatment({
     if (!isRecord(step)) return;
     const rank = RANK_GAME_BASE + gameStages.length + stepIdx;
     const stepPath = [...treatmentPath, "exitSequence", stepIdx];
+    addLoadIssue(
+      step,
+      stepPath,
+      rank,
+      producedAt,
+      issues,
+      treatment.playerCount,
+    );
     for (const site of enumerateStepSites(step, stepPath)) {
       applyRules({
         site,
@@ -563,6 +596,33 @@ function validateTreatment({
   });
 }
 
+/** One proof and one diagnostic per stage gate, after the flow establishes
+ * which keys are genuinely new at that stage. No roster is invented for intro
+ * steps or an unresolved treatment playerCount. */
+function addLoadIssue(
+  step: Record<string, unknown>,
+  path: (string | number)[],
+  rank: number,
+  producedAt: ReadonlyMap<string, number>,
+  issues: ReferenceValidationIssue[],
+  playerCount?: unknown,
+): void {
+  const currentKeys = new Set(
+    [...collectStepKeys(step)].filter((key) => producedAt.get(key) === rank),
+  );
+  if (
+    conditionIsAlwaysFalseAtLoad(step.conditions, {
+      currentKeys,
+      playerCount: typeof playerCount === "number" ? playerCount : undefined,
+    })
+  )
+    issues.push({
+      path: [...path, "conditions"],
+      message:
+        "Stage-level conditions will always skip the stage at load. With this stage's new data Missing, the whole condition cannot be true, regardless of prior or external answers. Use an absence check such as doesNotExist to remain until data arrives, or move the gate to an element.",
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Reference-site enumeration
 // ---------------------------------------------------------------------------
@@ -572,10 +632,6 @@ interface RefSite {
   reference: ReferenceType;
   kind: ReferenceKind;
   path: (string | number)[];
-  /** Stage-level conditions only: needed for Rule 2 simulation. */
-  comparator?: string;
-  value?: unknown;
-  ancestors?: readonly ExpressionAncestor[];
 }
 
 /** Enumerate every reference site inside a single step/stage:
@@ -584,9 +640,8 @@ interface RefSite {
  *  stage walker (they live on `stage.discussion.conditions`, not on an
  *  element).
  *
- *  Conditions can be a flat array (implicit `all`), an `all`/`any`/`none`
- *  operator object, or a single leaf — `walkConditionLeaves` flattens
- *  the tree and yields each leaf with its absolute path.
+ *  The shared expression walker visits every registered operand, including
+ *  calculations and lazy branches, while keeping literal payloads opaque.
  */
 export function enumerateStepSites(
   step: unknown,
@@ -596,7 +651,7 @@ export function enumerateStepSites(
   if (!isRecord(step)) return sites;
 
   // Stage-level conditions
-  for (const { leaf, path, ancestors } of walkConditionLeaves(step.conditions, [
+  for (const { leaf, path } of walkReferenceNodes(step.conditions, [
     ...stepPath,
     "conditions",
   ])) {
@@ -606,10 +661,6 @@ export function enumerateStepSites(
       reference: ref,
       kind: "stageCondition",
       path: [...path, "reference"],
-      comparator:
-        typeof leaf.comparator === "string" ? leaf.comparator : undefined,
-      value: leaf.value,
-      ancestors,
     });
   }
 
@@ -621,7 +672,7 @@ export function enumerateStepSites(
     const elemType = element.type;
 
     // conditions on any element
-    for (const { leaf, path } of walkConditionLeaves(element.conditions, [
+    for (const { leaf, path } of walkReferenceNodes(element.conditions, [
       ...elemPath,
       "conditions",
     ])) {
@@ -666,17 +717,14 @@ export function enumerateStepSites(
 }
 
 /** Registered condition references for metadata-aware post-hydration rules.
- * Keep boolean-tree and dotted/structured normalization shared with the
+ * Keep full-tree and dotted/structured normalization shared with the
  * reachability walker; arbitrary properties named `reference` aren't sites. */
 export function enumerateConditionReferenceSites(
   conditions: unknown,
   path: (string | number)[],
 ): { reference: ReferenceType; path: (string | number)[] }[] {
   const sites: { reference: ReferenceType; path: (string | number)[] }[] = [];
-  for (const { leaf, path: leafPath } of walkConditionLeaves(
-    conditions,
-    path,
-  )) {
+  for (const { leaf, path: leafPath } of walkReferenceNodes(conditions, path)) {
     const reference = normalizeReference(leaf.reference);
     if (reference !== null)
       sites.push({ reference, path: [...leafPath, "reference"] });
@@ -921,42 +969,6 @@ function applyRules({
       message: `Reference "${refStr}" points at data produced by a later ${phase} (rank ${String(producerRank)}) than the one this condition/reference belongs to (rank ${String(enclosingRank)}). Forward references are always falsy at runtime — reorder the stages or move the reference.`,
     });
     return;
-  }
-
-  // Rule 2 — stage-level "always-skip at load". Only applies to
-  // stageCondition sites whose reference points at the *current* stage.
-  //
-  // Restriction (#235): the per-leaf simulation is only sound when the
-  // leaf is reached without traversing an `any:` or `none:` operator.
-  // Inside those operators a single non-true leaf doesn't doom the
-  // tree (a sibling can carry the operator to true), so flagging it
-  // would false-positive on perfectly valid authoring patterns. `all:`
-  // is equivalent to the flat-array sugar, so leaves inside `all:` are
-  // fair game.
-  //
-  // A future improvement: full tree simulation that replaces every
-  // current-stage leaf with `compare(undefined, …)` and evaluates the
-  // whole tri-state tree, flagging only when the result is strictly
-  // not-true. For now the conservative ancestor check below avoids
-  // false-positives at the cost of missing some legitimate
-  // always-skip-at-load patterns inside `any:`/`none:`.
-  if (
-    site.kind === "stageCondition" &&
-    producerRank === enclosingRank &&
-    site.comparator !== undefined &&
-    !hasNonAllAncestor(site.ancestors ?? [])
-  ) {
-    const result = compare(
-      undefined,
-      site.comparator as Comparator,
-      site.value,
-    );
-    if (result !== true) {
-      issues.push({
-        path: site.path,
-        message: `Stage-level condition on "${refStr}" will always skip the stage at load. This references the current stage's data, which is undefined at mount, and compare(undefined, "${site.comparator}", …) is not true. Did you mean \`comparator: doesNotExist\` (the usual pattern for ending a stage once a value arrives)?`,
-      });
-    }
   }
 }
 

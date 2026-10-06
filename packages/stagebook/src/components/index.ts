@@ -5,7 +5,7 @@
 export {
   StagebookProvider,
   useStagebookContext,
-  useResolve,
+  useReadReference,
   useSave,
   useElapsedTime,
   useMessages,

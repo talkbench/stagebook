@@ -12,6 +12,7 @@ import {
   checkPromptLocaleConsistencyWithLoader,
   checkSharedPromptValidationWithLoader,
   checkUnsatisfiableConditionsWithLoader,
+  checkExpressionTypesWithLoader,
   treatmentUpgradeDiagnostics,
   versionConsistencyDiagnostics,
   newerThanValidatorWarning,
@@ -266,6 +267,12 @@ export async function run({
     // treatment's `locale` (both default `en`). Cross-file by nature, so it
     // runs here where the referenced prompt files are readable from disk.
     if (!result.expandError) {
+      // Replace the source pass's unknown types with the evidence from loaded
+      // prompt files. Keep this rule's warnings separate from schema success.
+      const preliminary = diagnostics.filter(
+        (issue) => issue.code !== "expression-type",
+      );
+      diagnostics.splice(0, diagnostics.length, ...preliminary);
       // NOTE: the missing-`altText` image lint (#536) is NOT run here — it's
       // emitted by `validateTreatmentSource`, which `expandAndValidateWithImports`
       // runs over the expanded YAML (and which the `--no-expand`/stdin branch
@@ -274,6 +281,7 @@ export async function run({
         ...(await checkLocaleConsistencyDiagnostics(result.fullYaml, dir)),
         ...(await checkSharedPromptValidationDiagnostics(result.fullYaml, dir)),
         ...(await checkUnsatisfiableConditionDiagnostics(result.fullYaml, dir)),
+        ...(await checkExpressionTypeDiagnostics(result.fullYaml, dir)),
         ...checkConsentLocaleCoverageDiagnostics(result.fullYaml),
         ...(await checkVersionConsistencyDiagnostics(
           mapper,
@@ -564,6 +572,35 @@ async function checkSharedPromptValidationDiagnostics(
   return issues.map((issue) => ({
     severity: "error" as const,
     message: issue.message,
+    range: null,
+  }));
+}
+
+/** Cross-file expression types share the source/editor warning policy. */
+async function checkExpressionTypeDiagnostics(
+  fullYaml: string,
+  dir: string,
+): Promise<Diagnostic[]> {
+  let fileObj: unknown;
+  try {
+    fileObj = loadYaml(fullYaml);
+  } catch {
+    return [];
+  }
+  const issues = await checkExpressionTypesWithLoader({
+    fileObj,
+    loadPrompt: async (file) => {
+      try {
+        return await readFile(resolvePath(dir, file), "utf8");
+      } catch {
+        return null;
+      }
+    },
+  });
+  return issues.map((issue) => ({
+    code: "expression-type",
+    message: `${issue.message} (${issue.path.join(".")})`,
+    severity: issue.severity,
     range: null,
   }));
 }
