@@ -10,7 +10,7 @@ import { STAGEBOOK_VERSION_REGEX } from "../schemas/primitives.js";
  * may run ahead of the package: a change for the next release lands with its
  * upgrade rules (`upgradeRules.ts`) and raises this to that release.
  */
-export const STAGEBOOK_VERSION = "0.33";
+export const STAGEBOOK_VERSION = "0.34";
 
 function parseVersion(version: string): [number, number] | undefined {
   const match = STAGEBOOK_VERSION_REGEX.exec(version);
