@@ -14,6 +14,9 @@ import {
   checkUnsatisfiableConditionsWithLoader,
   treatmentUpgradeDiagnostics,
   versionConsistencyDiagnostics,
+  newerThanValidatorWarning,
+  createPositionMapper,
+  type PositionMapper,
 } from "../validate/index.js";
 import { checkConsentLocaleCoverage } from "../schemas/index.js";
 import { load as loadYaml } from "js-yaml";
@@ -216,7 +219,8 @@ export async function run({
     // condition is judged by the version of the file that contains it, so
     // the expanded YAML, where an imported template's conditions sit under
     // this file's `stagebook:`, is the wrong input.
-    const upgradeDiagnostics = treatmentUpgradeDiagnostics(source);
+    const mapper = createPositionMapper(source);
+    const upgradeDiagnostics = treatmentUpgradeDiagnostics(mapper);
     const noExpand = values["no-expand"] === true;
     if (noExpand || displayPath === "<stdin>") {
       const result = validateTreatmentSource(source);
@@ -250,6 +254,10 @@ export async function run({
           ]
         : []),
       ...result.diagnostics,
+      // The newer-than-validator warning comes from validating the expanded
+      // YAML, so a failed expansion would lose it. Keep it: a file written for
+      // a newer release is a likely reason the expansion failed.
+      ...(result.expandError ? newerThanValidatorDiagnostics(mapper) : []),
       ...upgradeDiagnostics,
     ];
 
@@ -268,7 +276,7 @@ export async function run({
         ...(await checkUnsatisfiableConditionDiagnostics(result.fullYaml, dir)),
         ...checkConsentLocaleCoverageDiagnostics(result.fullYaml),
         ...(await checkVersionConsistencyDiagnostics(
-          source,
+          mapper,
           result.fullYaml,
           dir,
           loadImport,
@@ -404,10 +412,11 @@ function checkConsentLocaleCoverageDiagnostics(fullYaml: string): Diagnostic[] {
  * `stagebook:`, each import (direct or transitive) and each prompt file the
  * expanded treatment uses should declare the same version or newer. Positioned
  * in the raw source, like the editor: an import at its `imports:` entry, a
- * prompt file at its first reference's nearest source ancestor.
+ * prompt file at the first `file:` in this file that names it (top of file
+ * when only an imported template does).
  */
 async function checkVersionConsistencyDiagnostics(
-  source: string,
+  mapper: PositionMapper,
   fullYaml: string,
   dir: string,
   loadImport: (importPath: string) => Promise<string>,
@@ -420,7 +429,7 @@ async function checkVersionConsistencyDiagnostics(
     // checked.
   }
   return versionConsistencyDiagnostics({
-    source,
+    mapper,
     hydrated,
     loadImport,
     loadPrompt: async (relPath) => {
@@ -431,6 +440,20 @@ async function checkVersionConsistencyDiagnostics(
       }
     },
   });
+}
+
+/** The newer-than-validator warning (#756), read from the raw source. */
+function newerThanValidatorDiagnostics(mapper: PositionMapper): Diagnostic[] {
+  let file: unknown;
+  try {
+    file = mapper.toJSON();
+  } catch {
+    return [];
+  }
+  const message = newerThanValidatorWarning(file);
+  return message
+    ? [{ severity: "warning", message, range: mapper.resolve(["stagebook"]) }]
+    : [];
 }
 
 function hasGlobChars(s: string): boolean {

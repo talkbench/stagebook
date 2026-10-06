@@ -33,6 +33,16 @@ export type UpgradeRuleInput =
        * `templates:` as definitions, and nothing imported or expanded. A
        * condition is judged by the version of the file that contains it, so a
        * template's conditions are checked in the file that defines it.
+       *
+       * A template definition may hold `${field}` placeholders where a value
+       * goes (`value: ${answer}`); its real value is only known at each
+       * invocation. When a placeholder could hide an affected construct,
+       * flag it: an extra warning is reviewed once, a missed one is a silent
+       * change.
+       *
+       * Parsed with the `yaml` package (so paths map to source positions),
+       * not js-yaml as at runtime. The two agree on plain YAML; they differ
+       * on merge keys (`<<`) and timestamps.
        */
       file: unknown;
     }

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -10,6 +10,13 @@ import {
 import { validateTreatmentSource } from "./validateTreatment.js";
 import { validatePromptSource } from "./validatePrompt.js";
 import { validateTreatmentWithDiff } from "./validateTreatmentDiff.js";
+
+// Some fixtures are unversioned or on an old release, so every real upgrade
+// rule would apply to them. Keep the table out of these tests.
+vi.mock("./upgradeRules.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./upgradeRules.js")>()),
+  upgradeRules: [],
+}));
 
 const [major] = STAGEBOOK_VERSION.split(".").map(Number);
 /** A version this validator can't know about, whatever release it is. */

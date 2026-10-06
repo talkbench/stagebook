@@ -70,12 +70,24 @@ export interface ValidateTreatmentDiffResult {
 
 export async function validateTreatmentWithDiff({
   source,
-  loadImport,
+  loadImport: loadUncached,
 }: {
   source: string;
   loadImport: (importPath: string) => Promise<string>;
 }): Promise<ValidateTreatmentDiffResult> {
   const diagnostics: Diagnostic[] = [];
+
+  // Read each file at most once per validation: the import loader and the
+  // cross-file checks below load the same imports and prompt files.
+  const reads = new Map<string, Promise<string>>();
+  const loadImport = (importPath: string): Promise<string> => {
+    let read = reads.get(importPath);
+    if (!read) {
+      read = loadUncached(importPath);
+      reads.set(importPath, read);
+    }
+    return read;
+  };
 
   // YAML syntax + duplicate-key warnings (existing behavior, preserved
   // so we don't regress on noise-level diagnostics the orchestrator
@@ -147,7 +159,7 @@ export async function validateTreatmentWithDiff({
   // and reported in the file that defines it; an imported template's warnings
   // belong to its own file, which the version-consistency check below flags
   // when it's behind.
-  diagnostics.push(...treatmentUpgradeDiagnostics(source));
+  diagnostics.push(...treatmentUpgradeDiagnostics(mapper));
 
   // Load imports asynchronously.
   const loadResult = await loadAndMergeImports({ source, loadImport });
@@ -324,7 +336,7 @@ export async function validateTreatmentWithDiff({
     // it in.
     diagnostics.push(
       ...(await versionConsistencyDiagnostics({
-        source,
+        mapper,
         hydrated: diff.hydrated,
         loadImport,
         loadPrompt: loadImport,

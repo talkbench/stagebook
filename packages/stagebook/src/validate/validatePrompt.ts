@@ -1,6 +1,5 @@
-import { load as loadYaml } from "js-yaml";
 import { promptFileSchema } from "../index.js";
-import { splitOnTopLevelHrules } from "../schemas/promptFile.js";
+import { readPromptFrontmatter } from "./promptFrontmatter.js";
 import { newerThanValidatorWarning } from "./stagebookVersion.js";
 import { collectUpgradeWarnings } from "./upgradeWarnings.js";
 import type { SourceRange } from "./yamlPositionMap.js";
@@ -110,17 +109,6 @@ function mapPromptErrorToRange(
   return null;
 }
 
-/** The parsed frontmatter, or undefined when it can't be read. */
-function readFrontmatter(source: string): unknown {
-  const sections = splitOnTopLevelHrules(source.trim());
-  if (sections.length < 3) return undefined;
-  try {
-    return loadYaml(sections[1]);
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Validate a prompt markdown source string.
  *
@@ -151,7 +139,7 @@ export function validatePromptSource(source: string): PromptValidationResult {
   // A `stagebook:` version newer than this validator (#756). Read from the raw
   // frontmatter, not the schema result: a prompt that relies on a newer
   // release often fails this validator's schema, and the warning explains why.
-  const newer = newerThanValidatorWarning(readFrontmatter(source));
+  const newer = newerThanValidatorWarning(readPromptFrontmatter(source));
   if (newer) {
     diagnostics.push({
       message: newer,
@@ -200,7 +188,7 @@ export function validatePromptSource(source: string): PromptValidationResult {
       diagnostics.push({
         message: warning.message,
         severity: "warning",
-        range: mapPromptErrorToRange(source, warning.path, delimiters),
+        range: mapPromptErrorToRange(source, warning.path ?? [], delimiters),
       });
     }
   }

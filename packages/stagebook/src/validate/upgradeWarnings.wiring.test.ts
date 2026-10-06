@@ -7,9 +7,10 @@ import { FIXTURE_VALUE } from "./fixtures/upgradeRuleFixtures.js";
 
 // Upgrade warnings (#756) through the validators that surface them. The
 // production table ships empty, so the fixture rules stand in for it.
-vi.mock("./upgradeRules.js", async () => {
+vi.mock("./upgradeRules.js", async (importOriginal) => {
   const fixtures = await import("./fixtures/upgradeRuleFixtures.js");
   return {
+    ...(await importOriginal<typeof import("./upgradeRules.js")>()),
     upgradeRules: [
       fixtures.conditionFixtureRule("fixture-old", "0.1"),
       fixtures.conditionFixtureRule("fixture-new", "0.2"),
@@ -189,6 +190,13 @@ describe("upgrade warnings on prompt files (validatePromptSource)", () => {
     expect(diagnostics[0].message).toContain("fixture-prompt");
     expect(diagnostics[0].message).toMatch(/in this file's frontmatter/);
     expect(diagnostics[0].range?.startLine).toBe(2);
+  });
+
+  it("fires a change made after an older declared version", () => {
+    const { diagnostics } = validatePromptSource(prompt("0.1"));
+    expect(diagnostics.map((d) => d.message)).toEqual([
+      expect.stringContaining("fixture-prompt"),
+    ]);
   });
 
   it("fires none on a prompt set to the current version", () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { Readable, Writable } from "node:stream";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "./validate.js";
@@ -9,9 +9,10 @@ import { FIXTURE_VALUE } from "../validate/fixtures/upgradeRuleFixtures.js";
 
 // The `stagebook:` version field (#756) through the CLI. The production
 // upgrade-rule table ships empty, so fixture rules stand in for it.
-vi.mock("../validate/upgradeRules.js", async () => {
+vi.mock("../validate/upgradeRules.js", async (importOriginal) => {
   const fixtures = await import("../validate/fixtures/upgradeRuleFixtures.js");
   return {
+    ...(await importOriginal<typeof import("../validate/upgradeRules.js")>()),
     upgradeRules: [
       fixtures.conditionFixtureRule("fixture-old", "0.1"),
       fixtures.conditionFixtureRule("fixture-new", "0.2"),
@@ -164,6 +165,8 @@ describe("upgrade warnings", () => {
     expect(fromModule.stdout).toContain(
       `module.stagebook.yaml:${lineOf(module(null), "- reference: self.prompt.q")}:11: warning: Fixture change fixture-old`,
     );
+    expect(fromModule.stdout).not.toContain("Imported file");
+    expect(fromModule.stdout).toContain("2 warnings in 1 file.");
   });
 
   it("don't judge an up-to-date module's template by an unversioned study", async () => {
@@ -221,6 +224,100 @@ describe("version consistency", () => {
     ]);
   });
 
+  const plainStudy = (version: string | null, imports: string[] = []) =>
+    `${header(version)}${
+      imports.length
+        ? `imports:\n${imports.map((p) => `  - ${p}\n`).join("")}`
+        : ""
+    }treatments:
+  - name: t
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - type: prompt
+            file: q.prompt.md
+          - type: prompt
+            name: again
+            file: ./q.prompt.md
+          - type: submitButton
+`;
+  const plainModule = (version: string | null, imports: string[] = []) =>
+    `${header(version)}${
+      imports.length
+        ? `imports:\n${imports.map((p) => `  - ${p}\n`).join("")}`
+        : ""
+    }templates:
+  - name: m_${Math.random().toString(36).slice(2)}
+    contentType: element
+    content:
+      type: submitButton
+`;
+  const prompt = (version: string | null) =>
+    `---\ntype: noResponse\n${header(version)}---\n# Hi\n`;
+
+  it.each<{
+    name: string;
+    entry: string;
+    files: Record<string, string>;
+    expected: string[];
+  }>([
+    {
+      name: "flags a transitive import, resolved from its importer's directory",
+      entry: plainStudy(STAGEBOOK_VERSION, ["lib/a.stagebook.yaml"]),
+      files: {
+        "lib/a.stagebook.yaml": plainModule(STAGEBOOK_VERSION, [
+          "b.stagebook.yaml",
+        ]),
+        "lib/b.stagebook.yaml": plainModule("0.1"),
+        "q.prompt.md": prompt(STAGEBOOK_VERSION),
+      },
+      expected: [
+        '"lib/b.stagebook.yaml" (imported through "lib/a.stagebook.yaml") declares `stagebook: "0.1"`',
+      ],
+    },
+    {
+      name: "flags a prompt file with no version once, however it's spelled",
+      entry: plainStudy(STAGEBOOK_VERSION),
+      files: { "q.prompt.md": prompt(null) },
+      expected: ['Prompt file "q.prompt.md" doesn\'t declare a valid'],
+    },
+    {
+      name: "is silent for files on the same version or a newer one",
+      entry: plainStudy("0.1", ["a.stagebook.yaml"]),
+      files: {
+        "a.stagebook.yaml": plainModule(STAGEBOOK_VERSION),
+        "q.prompt.md": prompt("0.1"),
+      },
+      expected: [],
+    },
+    {
+      name: "doesn't run when the entry file declares no version",
+      entry: plainStudy(null, ["a.stagebook.yaml"]),
+      files: {
+        "a.stagebook.yaml": plainModule(null),
+        "q.prompt.md": prompt(null),
+      },
+      expected: [],
+    },
+  ])("$name", async ({ entry, files, expected }) => {
+    const sub = await mkdtemp(join(dir, "consistency-"));
+    await mkdir(join(sub, "lib"));
+    for (const [name, content] of Object.entries(files)) {
+      await writeFile(join(sub, name), content);
+    }
+    await writeFile(join(sub, "study.stagebook.yaml"), entry);
+    const r = await runCli([join(sub, "study.stagebook.yaml")]);
+    expect(r.code).toBe(0);
+    const warnings = r.stdout
+      .split("\n")
+      .filter((line) => line.includes(": warning: "));
+    expect(warnings).toHaveLength(expected.length);
+    expected.forEach((text, i) => expect(warnings[i]).toContain(text));
+  });
+
   it("doesn't run under --no-expand, like the other cross-file checks", async () => {
     await write("module.stagebook.yaml", module(null));
     await write("study.stagebook.yaml", templatedStudy(STAGEBOOK_VERSION));
@@ -236,6 +333,27 @@ describe("the stagebook: field itself", () => {
     expect(r.code).toBe(0);
     expect(r.stdout).toContain(
       `warning: This file declares \`stagebook: "${NEWER}"\`, newer than this validator (Stagebook ${STAGEBOOK_VERSION}).`,
+    );
+  });
+
+  it("keeps the newer-than-validator warning when expansion fails", async () => {
+    // A file written for a newer release is a likely reason expansion fails.
+    const source = `# written for a newer release\n${header(NEWER)}treatments:
+  - name: t
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: g
+        duration: 10
+        elements:
+          - template: from_the_future
+`;
+    await write("study.stagebook.yaml", source);
+    const r = await runCli([join(dir, "study.stagebook.yaml")]);
+    expect(r.code).toBe(1);
+    expect(r.stdout).toContain("Template expansion failed");
+    expect(r.stdout).toContain(
+      `study.stagebook.yaml:2:12: warning: This file declares \`stagebook: "${NEWER}"\``,
     );
   });
 
@@ -270,5 +388,36 @@ describe("the stagebook: field itself", () => {
     expect(r.stdout).toContain(
       'bad.prompt.md:3:1: error: `stagebook` must be a quoted "major.minor" string',
     );
+  });
+});
+
+describe("robustness", () => {
+  it("reports a YAML alias bomb as an error and still reports the other files", async () => {
+    // Each level multiplies the previous one tenfold; the YAML parser refuses
+    // to expand it. That must stay a per-file error, not end the run.
+    const bomb = `stagebook: "0.1"
+a: &a [x, x, x, x, x, x, x, x, x, x]
+b: &b [*a, *a, *a, *a, *a, *a, *a, *a, *a, *a]
+c: &c [*b, *b, *b, *b, *b, *b, *b, *b, *b, *b]
+d: &d [*c, *c, *c, *c, *c, *c, *c, *c, *c, *c]
+e: [*d, *d, *d, *d, *d, *d, *d, *d, *d, *d]
+`;
+    await write("bomb.stagebook.yaml", bomb);
+    await write("study.stagebook.yaml", study(null));
+    const r = await runCli([
+      join(dir, "bomb.stagebook.yaml"),
+      join(dir, "study.stagebook.yaml"),
+    ]);
+    expect(r.code).toBe(1);
+    expect(r.stdout).toContain("bomb.stagebook.yaml:1:1: error:");
+    expect(r.stdout).toContain("study.stagebook.yaml");
+    expect(r.stdout).toContain("Fixture change fixture-old");
+  });
+
+  it("doesn't run upgrade rules into a crash on a YAML syntax error", async () => {
+    await write("broken.stagebook.yaml", `${study(null)}  - name: [unclosed\n`);
+    const r = await runCli([join(dir, "broken.stagebook.yaml")]);
+    expect(r.code).toBe(1);
+    expect(r.stdout).toContain("error:");
   });
 });

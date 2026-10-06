@@ -1,6 +1,7 @@
 import {
   upgradeRules,
   type UpgradeRule,
+  type UpgradeRuleHit,
   type UpgradeRuleInput,
 } from "./upgradeRules.js";
 import {
@@ -9,14 +10,15 @@ import {
   declaredStagebookVersion,
 } from "./stagebookVersion.js";
 import {
-  createPositionMapper,
   resolvePathOrAncestor,
+  type PositionMapper,
 } from "./yamlPositionMap.js";
 import type { Diagnostic } from "./types.js";
 
 export interface UpgradeWarning {
   ruleId: string;
-  path: (string | number)[];
+  /** Where the affected construct is; null when the rule itself failed. */
+  path: (string | number)[] | null;
   message: string;
 }
 
@@ -27,6 +29,9 @@ export interface UpgradeWarning {
  * declares no valid `stagebook:` version or one older than the rule's
  * `introducedIn`. Each warning names the change and the construct (the rule's
  * message), then the release, then how to silence it.
+ *
+ * A rule that throws becomes a warning saying so, rather than taking down
+ * every other diagnostic for the file: report, never throw.
  */
 export function collectUpgradeWarnings(
   input: UpgradeRuleInput,
@@ -48,7 +53,18 @@ export function collectUpgradeWarnings(
     ) {
       continue;
     }
-    for (const hit of rule.detect(input)) {
+    let hits: UpgradeRuleHit[];
+    try {
+      hits = rule.detect(input);
+    } catch (error) {
+      warnings.push({
+        ruleId: rule.id,
+        path: null,
+        message: `Stagebook couldn't run its upgrade check "${rule.id}" on this file (${error instanceof Error ? error.message : String(error)}). This is a bug in Stagebook; please report it.`,
+      });
+      continue;
+    }
+    for (const hit of hits) {
       warnings.push({
         ruleId: rule.id,
         path: hit.path,
@@ -60,8 +76,8 @@ export function collectUpgradeWarnings(
 }
 
 /**
- * Upgrade warnings for one treatment file's raw source, positioned in that
- * source.
+ * Upgrade warnings for one treatment file, positioned in its raw source.
+ * Pass the source's position mapper (`createPositionMapper(source)`).
  *
  * Runs on the file as written, never on expanded YAML: a condition is judged
  * by the version of the file that contains it, so a template's conditions are
@@ -69,14 +85,20 @@ export function collectUpgradeWarnings(
  * `validateTreatmentWithDiff` call this on the raw source, and
  * `validateTreatmentSource` (which also sees expanded YAML) doesn't.
  */
-export function treatmentUpgradeDiagnostics(source: string): Diagnostic[] {
-  const mapper = createPositionMapper(source);
-  return collectUpgradeWarnings({
-    kind: "treatment",
-    file: mapper.toJSON(),
-  }).map((warning) => ({
+export function treatmentUpgradeDiagnostics(
+  mapper: PositionMapper,
+): Diagnostic[] {
+  let file: unknown;
+  try {
+    file = mapper.toJSON();
+  } catch {
+    // E.g. too many YAML aliases. The YAML and schema passes report the
+    // problem; there's nothing for the rules to read.
+    return [];
+  }
+  return collectUpgradeWarnings({ kind: "treatment", file }).map((warning) => ({
     message: warning.message,
     severity: "warning",
-    range: resolvePathOrAncestor(mapper, warning.path),
+    range: warning.path ? resolvePathOrAncestor(mapper, warning.path) : null,
   }));
 }

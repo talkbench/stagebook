@@ -1,9 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { promptFileSchema } from "../schemas/index.js";
-import { upgradeRules, type UpgradeRuleInput } from "./upgradeRules.js";
+import {
+  upgradeRules,
+  type UpgradeRule,
+  type UpgradeRuleInput,
+} from "./upgradeRules.js";
 import { collectUpgradeWarnings } from "./upgradeWarnings.js";
 import {
   STAGEBOOK_VERSION,
@@ -84,6 +88,39 @@ describe("collectUpgradeWarnings", () => {
     expect(ids(promptFile())).toEqual(["fixture-prompt"]);
     expect(ids(promptFile("0.1"))).toEqual(["fixture-prompt"]);
     expect(ids(promptFile(STAGEBOOK_VERSION))).toEqual([]);
+  });
+
+  it("never shows a rule a file kind outside its appliesTo", () => {
+    // The fixtures check the kind themselves, so spy on a rule that doesn't.
+    const detect = vi.fn(() => [{ path: [], message: "hit" }]);
+    const treatmentOnly: UpgradeRule = {
+      id: "treatment-only",
+      introducedIn: "0.1",
+      appliesTo: ["treatment"],
+      detect,
+    };
+    expect(collectUpgradeWarnings(promptFile(), [treatmentOnly])).toEqual([]);
+    expect(detect).not.toHaveBeenCalled();
+    expect(
+      collectUpgradeWarnings(treatmentFile(), [treatmentOnly]),
+    ).toHaveLength(1);
+  });
+
+  it("reports a rule that throws as a warning and runs the others", () => {
+    const broken: UpgradeRule = {
+      id: "broken",
+      introducedIn: "0.1",
+      appliesTo: ["treatment"],
+      detect: () => {
+        throw new Error("boom");
+      },
+    };
+    const warnings = collectUpgradeWarnings(treatmentFile(), [broken, NEW]);
+    expect(warnings.map((w) => w.ruleId)).toEqual(["broken", "fixture-new"]);
+    expect(warnings[0].path).toBeNull();
+    expect(warnings[0].message).toBe(
+      'Stagebook couldn\'t run its upgrade check "broken" on this file (boom). This is a bug in Stagebook; please report it.',
+    );
   });
 
   it("returns one warning per affected construct, at its path", () => {
