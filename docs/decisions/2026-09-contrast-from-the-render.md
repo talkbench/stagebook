@@ -75,8 +75,8 @@ background image. A gate case can therefore also declare:
   value is refused rather than composited, and a fully transparent one has to
   name what shows through it.
 - **`pixels`** — two screenshot pixels, for a colour only the paint knows.
-  The Slider's snap ticks are drawn at `opacity: 0.4` over a translucent
-  tint; no token, and no computed style, expresses that.
+  The Slider's ticks sit on a translucent tint when the track is hovered;
+  no token, and no computed style, expresses that.
 
 The only colour maths that survives is the WCAG relative-luminance formula on
 two rgb triples.
@@ -169,6 +169,10 @@ Not covered, by design:
   corrected one row: the labelled ticks [#616] listed with
   the snap ticks measure 3.12:1 on the hovered track and pass. Each failure
   is a separate design decision, left to [#616].
+  _Updated 2026-10:_ #616 is settled in `2026-09-contrast-hierarchy.md`.
+  Text-entry field boundaries are a deliberate exception, still pinned at
+  their ratio, and the minor snap ticks are supplementary and no longer
+  measured.
 
 ## Consequences
 

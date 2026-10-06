@@ -220,7 +220,9 @@ export function Slider({
   // signal that's missing without this). Above MAX_SNAP_TICKS we
   // degrade by stepping — show every Nth tick — rather than dropping
   // ticks entirely, so a 0..100 slider still carries the "discrete
-  // positions exist here" signal across its full range.
+  // positions exist here" signal across its full range. They are a
+  // supplementary cue, kept quieter than the labelled ticks, so they carry
+  // no contrast floor (#616, docs/decisions/2026-09-contrast-hierarchy.md).
   const snapTicks = useMemo<number[]>(() => {
     if (!Number.isFinite(min) || !Number.isFinite(max) || interval <= 0) {
       return [];

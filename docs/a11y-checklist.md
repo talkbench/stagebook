@@ -54,8 +54,8 @@ to that one too.
 - [ ] Text ≥ 4.5:1, and UI components / large text ≥ 3:1, against the actual
       background. (1.4.3 / 1.4.11) Use the theme tokens, then let the gate
       measure the result: a token is only as good as the surface it lands on
-      (`--stagebook-text-muted` passes on the page and fails on the hover
-      fill, #616). A new colour token has to be classified in the ledger in
+      (`--stagebook-text-muted` passed on the page and failed on the hover
+      fill until #651). A new colour token has to be classified in the ledger in
       `packages/stagebook/src/styles.test.ts` — measured by a gate case, or
       excluded with a reason.
 - [ ] Meaning is never conveyed by color alone. (1.4.1)
