@@ -50,17 +50,70 @@ const baseMetadataFields = {
   locale: localeSchema.optional(),
 };
 
+// `body: none` (#718) declares that a prompt deliberately has no body: its
+// response options, or its `ariaLabel`, stand in for the question. An empty
+// body without it stays an error, so an unfinished question can't pass.
+// `ariaLabel` names the control for assistive technology only — it is never
+// displayed, so it restates what nearby content shows rather than adding to
+// it. Only types whose control can carry a name accept these fields; the
+// cross-field rules live in the union's `.superRefine`.
+
+// Text that names a control must render something. `trim()` isn't enough:
+// zero-width, control and format characters survive it, as does a lone
+// combining mark. Symbols such as 👍 count — they're visible and named.
+const VISIBLE_CHARACTER = /[^\p{White_Space}\p{Cc}\p{Cf}\p{M}]/u;
+
+const bodylessFields = {
+  body: z
+    .literal("none", {
+      errorMap: () => ({ message: "`body` accepts only `none`" }),
+    })
+    .optional(),
+  ariaLabel: z
+    .string()
+    .max(100)
+    .regex(/^[^\r\n\u2028\u2029]*$/, "ariaLabel must be a single line")
+    .regex(VISIBLE_CHARACTER, "ariaLabel must contain visible text")
+    .optional(),
+};
+
+/** Say why a strict branch rejects a key that another branch accepts. */
+function explainUnsupportedKeys(reasons: Record<string, string>) {
+  const errorMap: z.ZodErrorMap = (issue, ctx) => {
+    if (issue.code === z.ZodIssueCode.unrecognized_keys) {
+      // Zod reports every unknown key in one issue. Keep its message, which
+      // names them all, so an explained key can't hide a typo beside it.
+      const reasonsGiven = issue.keys
+        .filter((key) => Object.hasOwn(reasons, key))
+        .map((key) => reasons[key]);
+      if (reasonsGiven.length > 0) {
+        return { message: [ctx.defaultError, ...reasonsGiven].join(". ") };
+      }
+    }
+    return { message: ctx.defaultError };
+  };
+  return { errorMap };
+}
+
 const noResponseMetadataSchema = z
-  .object({
-    type: z.literal("noResponse"),
-    ...baseMetadataFields,
-  })
+  .object(
+    {
+      type: z.literal("noResponse"),
+      ...baseMetadataFields,
+    },
+    explainUnsupportedKeys({
+      body: "`body: none` isn't available on noResponse prompts: the body is all they show.",
+      ariaLabel:
+        "`ariaLabel` isn't available on noResponse prompts: there's no response control to name.",
+    }),
+  )
   .strict();
 
 const openResponseMetadataSchema = z
   .object({
     type: z.literal("openResponse"),
     ...baseMetadataFields,
+    ...bodylessFields,
     required: z.boolean().optional(),
     rows: z.number().int().min(1).optional(),
     minLength: z.number().int().min(0).optional(),
@@ -77,6 +130,7 @@ const numericResponseMetadataSchema = z
   .object({
     type: z.literal("numericResponse"),
     ...baseMetadataFields,
+    ...bodylessFields,
     required: z.boolean().optional(),
     min: z.number().finite().optional(),
     max: z.number().finite().optional(),
@@ -90,6 +144,7 @@ const multipleChoiceMetadataSchema = z
   .object({
     type: z.literal("multipleChoice"),
     ...baseMetadataFields,
+    ...bodylessFields,
     required: z.boolean().optional(),
     select: z.enum(["single", "multiple"]).optional().default("single"),
     layout: z.enum(["vertical", "horizontal"]).optional().default("vertical"),
@@ -105,6 +160,7 @@ const dropdownMetadataSchema = z
   .object({
     type: z.literal("dropdown"),
     ...baseMetadataFields,
+    ...bodylessFields,
     required: z.boolean().optional(),
     placeholder: z.string().optional(),
     shuffle: z.boolean().optional(),
@@ -112,11 +168,18 @@ const dropdownMetadataSchema = z
   .strict();
 
 const listSorterMetadataSchema = z
-  .object({
-    type: z.literal("listSorter"),
-    ...baseMetadataFields,
-    shuffle: z.boolean().optional(),
-  })
+  .object(
+    {
+      type: z.literal("listSorter"),
+      ...baseMetadataFields,
+      shuffle: z.boolean().optional(),
+    },
+    explainUnsupportedKeys({
+      body: "`body: none` isn't supported on listSorter prompts yet: the list can't carry a name.",
+      ariaLabel:
+        "`ariaLabel` isn't supported on listSorter prompts yet: the list can't carry a name.",
+    }),
+  )
   .strict();
 
 const sliderMetadataSchema = z
@@ -136,19 +199,11 @@ const sliderMetadataSchema = z
       // count tick marks anyway.
       showValue: z.boolean().optional(),
     },
-    {
-      errorMap: (issue, ctx) => {
-        if (
-          issue.code === z.ZodIssueCode.unrecognized_keys &&
-          issue.keys.includes("required")
-        ) {
-          return {
-            message: "`required` isn't supported on sliders yet (#689).",
-          };
-        }
-        return { message: ctx.defaultError };
-      },
-    },
+    explainUnsupportedKeys({
+      required: "`required` isn't supported on sliders yet (#689).",
+      body: "`body: none` isn't supported on sliders yet (#689).",
+      ariaLabel: "`ariaLabel` isn't supported on sliders yet (#689).",
+    }),
   )
   .strict();
 
@@ -174,6 +229,41 @@ export const promptMetadataSchema = z
     sliderMetadataSchema,
   ])
   .superRefine((data, ctx) => {
+    const bodyless = "body" in data && data.body === "none";
+    const ariaLabel = "ariaLabel" in data ? data.ariaLabel : undefined;
+    if (ariaLabel !== undefined && !bodyless) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "`ariaLabel` names a prompt that has no body, so it needs `body: none`. A prompt with a body is named by it.",
+        path: ["ariaLabel"],
+      });
+    }
+    if (bodyless) {
+      if ("required" in data && data.required === true) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "`required` isn't supported with `body: none` yet: the Required marker would have no question to sit under.",
+          path: ["required"],
+        });
+      }
+      // Each checkbox is a yes/no that its own label names. A set of radio
+      // buttons is one question, and every other control is a single field:
+      // without a body, nothing would name them.
+      const optionsNameThemselves =
+        data.type === "multipleChoice" && data.select === "multiple";
+      if (ariaLabel === undefined && !optionsNameThemselves) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            data.type === "multipleChoice"
+              ? "A radio-button prompt with `body: none` needs an `ariaLabel`: a set of radio buttons is one question, and assistive technology needs its name. Checkbox prompts (`select: multiple`) don't."
+              : `${data.type} prompts with \`body: none\` need an \`ariaLabel\`, so assistive technology can name the control.`,
+          path: ["ariaLabel"],
+        });
+      }
+    }
     if (data.type === "numericResponse") {
       if (
         data.min !== undefined &&
@@ -547,10 +637,31 @@ export const promptFileSchema: z.ZodType<
     }
     const parsedMetadata = metaResult.data;
 
-    if (!body || body.trim().length === 0) {
+    const hasBodyText = body !== undefined && body.trim().length > 0;
+    if ("body" in parsedMetadata && parsedMetadata.body === "none") {
+      // The section stays, empty, so every response type keeps its three
+      // sections and position-based consumers need no special case.
+      if (hasBodyText) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            responseString === undefined &&
+            parsedMetadata.type !== "numericResponse"
+              ? "With `body: none`, keep an empty body section: put a `---` line between the frontmatter and the responses."
+              : "The body section must be empty when the frontmatter says `body: none`. Remove the text, or remove `body: none`. Notes for authors go in `notes:`.",
+          path: ["body"],
+        });
+      }
+    } else if (!hasBodyText) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Prompt body section is empty",
+        message:
+          parsedMetadata.type === "multipleChoice" ||
+          parsedMetadata.type === "dropdown" ||
+          parsedMetadata.type === "openResponse" ||
+          parsedMetadata.type === "numericResponse"
+            ? "Prompt body section is empty. If that's deliberate, add `body: none` to the frontmatter."
+            : "Prompt body section is empty",
         path: ["body"],
       });
     }
@@ -736,6 +847,29 @@ export const promptFileSchema: z.ZodType<
         .map((line) =>
           line === "-" || line === ">" ? "" : line.substring(2).trim(),
         );
+    }
+
+    // A bodyless choice prompt shows only its options, and each option's
+    // label is the only thing that names its control.
+    if (
+      parsedMetadata.type === "multipleChoice" &&
+      parsedMetadata.body === "none"
+    ) {
+      if (responseItems.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["responses"],
+          message:
+            "A `body: none` prompt needs at least one option: the options are all it shows.",
+        });
+      } else if (responseItems.some((item) => !VISIBLE_CHARACTER.test(item))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["responses"],
+          message:
+            "With `body: none`, every option needs a label: it's the only thing that names the control.",
+        });
+      }
     }
 
     return {

@@ -545,13 +545,16 @@ Required controls support `ariaRequired?: boolean` on `TextArea`, `NumericInput`
 `CheckboxGroup` accepts `ariaDescribedBy?: string` to associate its required
 marker because role `group` does not support `aria-required`. Prompt sets these
 associations and the localized `promptRequired` marker automatically.
+`RadioGroup` and `CheckboxGroup` also accept `flush?: boolean`, which drops the
+top margin and start indent that set the options under a question; Prompt sets
+it for `body: none` prompts.
 
 | Component       | Key Props                                                                                                                                                          |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Button`        | `onClick`, `children`, `primary?`, `disabled?`, `icon?`, `aria-label?` (required with `icon`), `title?`                                                            |
 | `Separator`     | `style?` (`"thin"`, `"regular"`, `"thick"`)                                                                                                                        |
-| `RadioGroup`    | `options`, `value`, `onChange`, `label?`                                                                                                                           |
-| `CheckboxGroup` | `options`, `value`, `onChange`, `label?`                                                                                                                           |
+| `RadioGroup`    | `options`, `value`, `onChange`, `label?`, `layout?`, `flush?`                                                                                                      |
+| `CheckboxGroup` | `options`, `value`, `onChange`, `label?`, `layout?`, `flush?`                                                                                                      |
 | `Select`        | `options`, `value`, `onChange`, `label?`, `placeholder?`, `disabled?`                                                                                              |
 | `TextArea`      | `value`, `onChange`, `rows?`, `minLength?`, `maxLength?`, `showCharacterCount?`, `onDebugMessage?`                                                                 |
 | `NumericInput` | `entry?`, `numberFormat?`, `nextEditNumberFormat?`, `constraints?`, `prefix?`, `suffix?`, `onChange?`, `onDebugMessage?`, `ariaLabel?`, `ariaLabelledBy?`, `ariaRequired?` |
@@ -621,7 +624,7 @@ back to the active catalog, including host overrides.
 | Slot                  | Config                                                                  | When Used                                                                                                                                                                                                                                                                                                 |
 | --------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `renderDiscussion`    | Full `DiscussionType` config                                            | Stage with `discussion` block                                                                                                                                                                                                                                                                             |
-| `renderSharedNotepad` | `{ padName, defaultText?, rows?, onLocalEdit, onRemoteChange, onBlur }` | `shared: true` open-response prompt. Each callback takes the latest merged text. `defaultText` is placeholder-only: hint text, never seeded into the shared document or saved value. See the [shared editor contract](integration-guide.md#shared-notepad) for timing and own-transaction classification. |
+| `renderSharedNotepad` | `{ padName, defaultText?, rows?, ariaLabelledBy, onLocalEdit, onRemoteChange, onBlur }` | `shared: true` open-response prompt. Each callback takes the latest merged text. `defaultText` is placeholder-only: hint text, never seeded into the shared document or saved value. Set `ariaLabelledBy` as the editor's `aria-labelledby`. See the [shared editor contract](integration-guide.md#shared-notepad) for timing and own-transaction classification. |
 | `renderSharedNumericResponse` | `SharedNumericResponseConfig` (exported from `stagebook/components`) | `shared: true` numeric prompt. Its own optional slot; missing support renders an error and reports a contract violation. See [Shared numeric responses](integration-guide.md#shared-numeric-responses). |
 
 ### Conditional Components

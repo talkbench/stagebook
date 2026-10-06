@@ -3,7 +3,7 @@
 Prompts are Markdown files with two or three sections separated by lines of three or more dashes (`---`):
 
 1. **Metadata** — YAML frontmatter defining the prompt type and behavior.
-2. **Body** — Markdown-formatted text displayed to the participant.
+2. **Body** — Markdown-formatted text displayed to the participant. Some prompts can leave it empty on purpose; see [Prompts without a body](#prompts-without-a-body).
 3. **Responses** — Response options (format depends on type). Required for `multipleChoice`, `dropdown`, `openResponse`, `listSorter`, `slider`. **Omitted entirely for `noResponse` and `numericResponse`**; these files have two sections.
 
 ## Example
@@ -32,6 +32,8 @@ Each per-type schema is `.strict()` (#243) — unknown frontmatter keys (typos l
 | `name` | string | no | Optional human-readable identifier. Can be any string. |
 | `type` | enum | yes | `multipleChoice`, `dropdown`, `openResponse`, `numericResponse`, `noResponse`, `listSorter`, `slider` |
 | `notes` | string | no | Internal notes (not displayed) |
+| `body` | `none` | no | The prompt deliberately has no body. See [Prompts without a body](#prompts-without-a-body). |
+| `ariaLabel` | string | with `body: none` | A name for assistive technology, never displayed. See [Prompts without a body](#prompts-without-a-body). |
 
 ### Type-specific fields
 
@@ -115,6 +117,103 @@ Images use paths relative to the asset repository root:
 ```
 
 **Note:** You cannot use `---` as a horizontal rule in the body since it's used as the section delimiter. Use `***` or `___` instead — both render identically to `---` in any markdown viewer.
+
+### Prompts without a body
+
+Sometimes the response options are the whole prompt: a checkbox that flags a
+recording, or a row of show/hide toggles on a crowded call screen. Say so with
+`body: none` in the frontmatter, and leave the body section empty:
+
+```markdown
+---
+type: multipleChoice
+select: multiple
+layout: horizontal
+body: none
+notes: No question text; the option labels are the prompt.
+---
+
+---
+
+- Show briefing materials
+- Show strategy notes
+```
+
+The options then render with nothing above them: no body, and no gap or indent
+where the question would be. Each checkbox is named by its own label, so a
+bodyless choice prompt needs at least one option, and every option needs
+visible label text (a symbol such as 👍 counts; a zero-width character doesn't).
+
+The saved value is the usual list of checked labels. To show content while a
+checkbox is checked, gate it on `includes`; to hide content while it's
+checked, use `doesNotInclude`, which also holds before the participant has
+touched the checkbox:
+
+```yaml
+conditions:
+  - reference: self.prompt.recording_errors
+    comparator: doesNotInclude
+    value: This recording has technical errors that prevent analysis
+```
+
+In the saved data, a prompt nobody touched has no record, while one that was
+checked and then unchecked saves `[]`.
+
+An empty body *without* `body: none` is still an error, so an unfinished
+question can't slip through. `body: none` with text in the body section is an
+error too; notes for other authors go in `notes:`. Keep the empty body section
+(the `---` line after the frontmatter) so the file keeps its usual shape.
+
+Other prompt types need a name that the participant's screen reader or voice
+control can use. Give it with `ariaLabel`:
+
+```markdown
+---
+type: openResponse
+body: none
+ariaLabel: Notes on this recording
+---
+
+---
+
+> Anything else we should know?
+```
+
+A `numericResponse` without a body is frontmatter alone:
+
+```markdown
+---
+type: numericResponse
+body: none
+ariaLabel: Age in years
+suffix: years
+---
+```
+
+| Type | `body: none` | `ariaLabel` |
+|------|--------------|-------------|
+| `multipleChoice` with `select: multiple` | yes | optional; names the group of checkboxes |
+| `multipleChoice` with `select: single` | yes | required: a set of radio buttons is one question |
+| `dropdown`, `openResponse`, `numericResponse` | yes | required |
+| `slider` | not yet ([#689](https://github.com/talkbench/stagebook/issues/689)) | — |
+| `listSorter` | not yet | — |
+| `noResponse` | no: the body is all it shows | — |
+
+`ariaLabel` is a single line of plain text, at most 100 characters. It's only
+accepted with `body: none`; a prompt with a body is named by it. `required` is
+not supported with `body: none` yet. Shared prompts (`shared: true`) work the
+same way.
+
+Two rules for `ariaLabel` that the validator can't check:
+
+- **Only leave out the body when something else on the stage visibly labels
+  the control**, such as a heading element above it or the recording it
+  annotates. A participant who can see needs that label as much as one who
+  can't. The `ariaLabel` should contain the visible label's words, because
+  voice-control users say what they see.
+- **`ariaLabel` restates; it doesn't add.** Only assistive technology announces
+  it. Instructions or question wording that aren't on screen would give
+  screen-reader participants a different instrument from everyone else.
 
 ## Response Section
 

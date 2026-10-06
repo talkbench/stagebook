@@ -596,6 +596,7 @@ const context: StagebookContext = {
     padName,
     defaultText,
     rows,
+    ariaLabelledBy,
     onLocalEdit,
     onRemoteChange,
     onBlur,
@@ -604,6 +605,7 @@ const context: StagebookContext = {
       padName={padName}
       placeholder={defaultText}
       rows={rows}
+      aria-labelledby={ariaLabelledBy}
       onLocalEdit={onLocalEdit}
       onRemoteChange={onRemoteChange}
       onBlur={onBlur}
@@ -611,6 +613,8 @@ const context: StagebookContext = {
   ),
 };
 ```
+
+`ariaLabelledBy` is the id of the element that names the prompt: its visible body, or for a `body: none` prompt a hidden element holding its `ariaLabel`. Set it as the `aria-labelledby` of the element that receives focus (for CodeMirror, the content element via `EditorView.contentAttributes`), so the editor has an accessible name.
 
 `defaultText` carries the prompt file's `> ` placeholder lines and is **placeholder-only**: render it as ephemeral hint text (e.g. a CodeMirror `placeholder()` extension) that disappears once anyone types. Do not seed it into the shared document — it is never part of the saved/exported value, matching how non-shared open-response prompts treat placeholder text.
 
@@ -695,7 +699,7 @@ The exported `SharedNumericResponseConfig` contains:
 | `required` | Boolean for `aria-required`; Stagebook renders the marker |
 | `numberFormat` | Effective `{ decimal, grouping }` for this live shared answer |
 | `inputmode` | `"numeric"` or `undefined`; omit the attribute for the default keyboard |
-| `ariaLabelledBy` | Prompt body ID for the input's `aria-labelledby` |
+| `ariaLabelledBy` | ID for the input's `aria-labelledby`: the prompt body, or a hidden `ariaLabel` element for `body: none` |
 | `filterInsertion(change)` | Bound `(NumericInsertion) => NumericInsertionResult`; returns the accepted text and selection, plus `accepted` / `refused` |
 | `getFeedback(entry, revealProblems)` | `{ state: "neutral" \| "valid" \| "problem", text: string }`; `text` is localized plain text including its symbol, rendered without recreating messages in the host |
 | `onLocalEdit`, `onRemoteChange`, `onBlur` | Each takes the current merged string, including `""` |

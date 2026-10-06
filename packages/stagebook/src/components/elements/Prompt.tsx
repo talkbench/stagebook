@@ -120,7 +120,9 @@ function PromptContent({
   // dropdown's `<select>` points its `aria-labelledby` here so the
   // control is named by the question the participant reads, rather
   // than shipping a duplicate visible label (#545). `useId()` keeps
-  // it unique when multiple Prompts share a page.
+  // it unique when multiple Prompts share a page. For a `body: none`
+  // prompt (#718) the id moves to a hidden element holding its
+  // `ariaLabel`, so every control keeps the same wiring.
   const bodyId = useId();
   const requiredId = useId();
   const messages = useMessages();
@@ -128,6 +130,8 @@ function PromptContent({
 
   const promptType = metadata.type;
   const required = "required" in metadata && metadata.required === true;
+  const bodyless = "body" in metadata && metadata.body === "none";
+  const ariaLabel = "ariaLabel" in metadata ? metadata.ariaLabel : undefined;
   // Per-type fields only exist on the discriminated-union branch where
   // they were declared (#243). Safely-narrowed lookups via the type tag.
   const rows = promptType === "openResponse" ? (metadata.rows ?? 5) : 5;
@@ -252,9 +256,21 @@ function PromptContent({
 
   return (
     <>
-      <div id={bodyId}>
-        <Markdown text={body} resolveURL={resolveURL} />
-      </div>
+      {bodyless ? (
+        // Nothing visible above the control. The schema requires an
+        // `ariaLabel` for every bodyless type except checkboxes, whose
+        // own labels name them. Inline `display: none` backs up `hidden`
+        // against host CSS that sets `display` on spans (#213).
+        ariaLabel !== undefined && (
+          <span id={bodyId} hidden style={{ display: "none" }}>
+            {ariaLabel}
+          </span>
+        )
+      ) : (
+        <div id={bodyId}>
+          <Markdown text={body} resolveURL={resolveURL} />
+        </div>
+      )}
 
       {required && (
         <div
@@ -285,6 +301,7 @@ function PromptContent({
             }))}
             value={typeof value === "number" ? String(value) : undefined}
             layout={metadata.layout}
+            flush={bodyless}
             ariaLabelledBy={bodyId}
             ariaRequired={required || undefined}
             onChange={(e) => {
@@ -304,6 +321,7 @@ function PromptContent({
             }))}
             value={value as string | undefined}
             layout={metadata.layout}
+            flush={bodyless}
             ariaLabelledBy={bodyId}
             ariaRequired={required || undefined}
             onChange={(e) =>
@@ -321,7 +339,12 @@ function PromptContent({
           }))}
           value={(value as string[]) ?? []}
           layout={metadata.layout}
-          ariaLabelledBy={bodyId}
+          flush={bodyless}
+          // A bodyless checkbox group may have no name: each checkbox's own
+          // label names it, and the id would point at nothing.
+          ariaLabelledBy={
+            bodyless && ariaLabel === undefined ? undefined : bodyId
+          }
           ariaDescribedBy={required ? requiredId : undefined}
           onChange={(newSelection) => saveData(newSelection, record)}
         />
@@ -335,7 +358,7 @@ function PromptContent({
         // numeric values they should use multipleChoice + numeric
         // labels (which gives them the radio UI that pairs naturally
         // with point-anchored Likert scales).
-        <div style={{ marginTop: "1rem" }}>
+        <div style={bodyless ? undefined : { marginTop: "1rem" }}>
           {/* Preserve study-prompt spacing here; standalone Select lets
               its host own the surrounding layout (#605). */}
           <Select
@@ -380,6 +403,7 @@ function PromptContent({
           padName={name}
           defaultText={responses.join("\n")}
           rows={rows}
+          ariaLabelledBy={bodyId}
           renderSharedNotepad={renderSharedNotepad}
           onCommit={(text) => saveData(text, record)}
         />
@@ -496,19 +520,27 @@ function SharedNotepadResponse({
   padName,
   defaultText,
   rows,
+  ariaLabelledBy,
   renderSharedNotepad,
   onCommit,
 }: {
   padName: string;
   defaultText: string;
   rows: number;
+  ariaLabelledBy: string;
   renderSharedNotepad: NonNullable<PromptProps["renderSharedNotepad"]>;
   onCommit: (text: string) => void;
 }) {
   return (
     <SharedResponse onCommit={onCommit}>
       {(callbacks) =>
-        renderSharedNotepad({ padName, defaultText, rows, ...callbacks })
+        renderSharedNotepad({
+          padName,
+          defaultText,
+          rows,
+          ariaLabelledBy,
+          ...callbacks,
+        })
       }
     </SharedResponse>
   );

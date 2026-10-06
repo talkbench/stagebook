@@ -195,6 +195,10 @@ export interface StagebookContext {
     padName: string;
     defaultText?: string;
     rows?: number;
+    /** Id of the element that names the prompt: its visible body, or for a
+     * `body: none` prompt a hidden element holding its `ariaLabel` (#718).
+     * Set it as the editor's `aria-labelledby`. */
+    ariaLabelledBy: string;
     /** Own transactions only; text is the editor's current merged value. */
     onLocalEdit: (text: string) => void;
     /** Refresh pending local text without delaying its commit. A former
