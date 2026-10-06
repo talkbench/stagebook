@@ -616,11 +616,21 @@ spelled-out form says what you mean.
 A condition-hidden, untouched prompt has no record: an `equals: true` gate
 waiting on it cannot pass. The optional idiom allows that absence.
 
-Do not gate a group with `all.prompt.<name>.isValid`. The resolver drops
-participants with no record, so that reference can pass as soon as one
-participant has a valid answer. Until #299 preserves missing participant slots,
-list each participant explicitly under `all`, for example
-`0.prompt.essay.isValid`, `1.prompt.essay.isValid`, and so on.
+To require a valid answer from every participant, use an explicit `all`
+quantifier around an `everyone.` leaf. Missing seats stay in the group read,
+so the gate waits for every seat:
+
+```yaml
+conditions:
+  all:
+    reference: everyone.prompt.essay.isValid
+    comparator: equals
+    value: true
+```
+
+The former `all.` reference prefix is removed. See
+[group condition migration](conditions.md#upgrading-group-conditions) for
+the comparator-specific changes.
 
 Validation only advises the participant. Gating the submit button on `isValid`
 keeps participants to valid answers, but it cannot guarantee one: a last-moment

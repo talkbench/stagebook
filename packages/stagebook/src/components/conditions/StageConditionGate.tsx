@@ -36,7 +36,7 @@ export type { Condition };
  *   the host to advance. Stage body never renders.
  * - **Early termination.** Conditions reference data in the *current*
  *   stage, authored so they evaluate to `true` when the value is
- *   `undefined` (typically `comparator: doesNotExist`). Stage renders
+ *   Missing (typically `comparator: doesNotExist`). Stage renders
  *   normally; when a value arrives that flips a condition to false,
  *   stagebook asks the host to advance.
  *
@@ -51,7 +51,14 @@ export function StageConditionGate({
   conditions,
   children,
 }: StageConditionGateProps) {
-  const { resolve, advanceStage, submit, stageId } = useStagebookContext();
+  const {
+    readReference,
+    onContractViolation,
+    violationKeys,
+    advanceStage,
+    submit,
+    stageId,
+  } = useStagebookContext();
 
   // Reset the advance latch whenever the stage changes. Tracks
   // `stageId` when the host supplies one (authoritative identity),
@@ -65,15 +72,14 @@ export function StageConditionGate({
     advanceFiredRef.current = false;
   }
 
-  // `conditions` accepts the full boolean-tree shape — a flat array
-  // (implicit `all`), an operator node, or a single leaf. The "no gate"
-  // case is a missing field or an empty array; everything else is a
-  // real condition tree to evaluate.
-  const hasConditions =
-    conditions !== undefined &&
-    conditions !== null &&
-    !(Array.isArray(conditions) && conditions.length === 0);
-  const allMet = hasConditions ? evaluateConditions(conditions, resolve) : true;
+  // Only an omitted field means no gate. Invalid empty/null slots are
+  // rejected by authoring validation and do not become unconditional here.
+  const hasConditions = conditions !== undefined;
+  const allMet = evaluateConditions(conditions, {
+    readReference,
+    onViolation: onContractViolation,
+    violationKeys,
+  });
 
   useEffect(() => {
     if (!hasConditions) return;

@@ -51,7 +51,7 @@ still share the `qualtricsDataReady` trigger.
 `get(key, scope)` must:
 
 1. Look up the key in the appropriate state scope
-2. Return an **array** of raw stored values (exactly what was passed to `save()`)
+2. Return a **singleton array** containing the latest raw stored value (exactly what was passed to `save()`), or `[]` when the key has no record
 
 Stagebook handles DSL reference parsing and nested path extraction internally — the platform does not need to import `getReferenceKeyAndPath()` or understand the reference syntax. The platform's `get()` is a flat key-value lookup.
 
@@ -62,9 +62,24 @@ The `scope` parameter determines whose state to read:
 | `"player"` or omitted    | Current participant's player state             |
 | `"shared"`               | Shared/game state                              |
 | `"0"`, `"1"`, `"2"`, ... | Specific participant by slot index (as string) |
-| `"all"`                  | Array with one value per participant           |
 
-After #238, stagebook only sends those four scopes. `"all"` is still reachable through `display.position: "all"` and `trackedLink` / `qualtrics` `urlParams[].position: "all"` — these uses of position weren't narrowed by #238 (only condition leaves were). Stagebook normalizes `display.position: "any"` to `"all"` before calling `get()` (the storage shape is the same — host returns one value per participant; whether "any value satisfies" is decided at the consumer). The pre-#238 aggregator value `"percentAgreement"` was removed entirely and is unreachable from a validated treatment.
+The host no longer implements an `"all"` scope. The shared React-free `readReference(reference, get, {position, playerCount})` function builds `everyone.` results by calling `get(key, "0")` through `get(key, String(playerCount - 1))`. It returns one entry per seat in numeric seat order, including a dedicated `Missing` sentinel for absent answers. A `self` read uses its assigned numeric seat when known, otherwise the host's `"player"` scope before assignment. Single-position references return the value itself, not the host's transport array.
+
+Reference reads normalize `null` / `undefined` to `Missing`. Blank prompt `.value` answers (`""`, whitespace-only strings, `[]`) also become Missing using the shared blank-answer rule. Stored records and validity flags are unchanged; non-prompt empty lists remain present. Conditions, Display, URL parameters, dispatch, and viewer inspection all use this boundary.
+
+Stored list values have a normalization budget of 10,000 visited values and a nesting limit of 128. An oversized value becomes Missing; Stagebook stops before copying an oversized array or continuing an exhausted traversal. This applies separately to each seat's stored value, so an `everyone.` result retains every roster slot. Whole records are not recursively copied, and stored data is never rewritten.
+
+### Ready snapshots
+
+Mount and evaluate Stagebook only once required state and the roster are ready. A known roster does not require every participant to have answered. `playerCount` must be a known nonnegative integer before an `everyone.` read; unknown size is a contract/precondition error, not an empty group. Never represent unloaded records as Missing. Host subscriptions must trigger rerenders after data changes; the pure read and expression functions do not subscribe or persist data.
+
+### Breaking reference-read migration (#757)
+
+Replace `context.resolve(reference)` and `useResolve(reference)` with `context.readReference(reference)` and `useReadReference(reference)`. The hook remains in `stagebook/components`; the pure `readReference` and `Missing` are available from `stagebook` without React. Remove code that unwraps a single read with `[0]` or filters missing group entries. Distinguish the outer `everyone.` seat list from one participant's array-valued answer using the reference's position. Display preserves group order and leaves missing seats empty.
+
+Remove the host adapter's `"all"` branch; all group reads now use numeric seats. Replace authoring `all.` references with `everyone.` and explicit comparator quantifiers, following the [researcher migration guide](../researcher/conditions.md#upgrading-group-conditions). This change lands with the new expression evaluator, not against the old answered-participants-only evaluator.
+
+Expression type mismatches call `onContractViolation` with `{kind: "typeMismatch", reference, expected, actual}`. Do not read `message` unconditionally: the earlier `missingStableParticipantId` / `missingSharedNumericResponse` variants still include it, while a type mismatch reports only sanitized type/reference metadata. A provider deduplicates expression violations across its consumers and rerenders. The offending operand becomes Missing and evaluation continues under the ordinary expression rules; it is not a separate error state.
 
 ### Reactivity
 
@@ -104,12 +119,12 @@ if (!result.success) {
 The exported `hostRecordSchemas` map lists the supported sources. Individual
 schemas are also available from the same React-free entrypoint:
 
-| Source | Export | Stored shape |
-| --- | --- | --- |
-| `attributes` | `attributesSchema` | Existing participant-attributes contract, including required `stableParticipantId` |
-| `timeline` | `timelineRecordSchema` | A bare array of ranges (`start`, `end`) or points (`time`), with optional `track`; `[]` is valid |
-| `trackedLink` | `trackedLinkRecordSchema` | `name`, `url`, `displayText`, `events`, `totalTimeAwaySeconds`, and optional last-event fields |
-| `submitButton` | `submitButtonRecordSchema` | Required numeric `time`, in elapsed stage seconds |
+| Source         | Export                     | Stored shape                                                                                     |
+| -------------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
+| `attributes`   | `attributesSchema`         | Existing participant-attributes contract, including required `stableParticipantId`               |
+| `timeline`     | `timelineRecordSchema`     | A bare array of ranges (`start`, `end`) or points (`time`), with optional `track`; `[]` is valid |
+| `trackedLink`  | `trackedLinkRecordSchema`  | `name`, `url`, `displayText`, `events`, `totalTimeAwaySeconds`, and optional last-event fields   |
+| `submitButton` | `submitButtonRecordSchema` | Required numeric `time`, in elapsed stage seconds                                                |
 
 Tracked-link events use `type: "click"`, `"blur"`, or `"focus"`, with numeric
 `timestamp` (Unix milliseconds), `stageTimeSeconds`, and optional
@@ -135,7 +150,7 @@ data.
 
 Some reference namespaces require the platform to collect and store data that Stagebook components don't produce. If your treatment files use conditions or displays referencing these namespaces, the platform must populate them in player state during onboarding:
 
-**`attributes.*`** — everything the participant arrives with, stored under a single key `attributes` as one flat nested object (#473). The platform populates it during consent/onboarding and keeps it current (values may change mid-study, e.g. screen width on resize). Internally, Stagebook's `resolve("self.attributes.country")` calls `get("attributes")` and traverses `.country`.
+**`attributes.*`** — everything the participant arrives with, stored under a single key `attributes` as one flat nested object (#473). The platform populates it during consent/onboarding and keeps it current (values may change mid-study, e.g. screen width on resize). Internally, Stagebook's `readReference("self.attributes.country")` calls `get("attributes", scope)` for the current participant and traverses `.country`.
 
 This single bag replaces the former `connectionInfo`, `browserInfo`, and `participantInfo` keys. References to those legacy sources are now rejected by validation — migrate them to `attributes.*`.
 
@@ -156,7 +171,7 @@ Onboarding / connection / browser fields (all optional):
 
 Example stored object: `{ stableParticipantId: "d3f1…", name: "alice", country: "US", screenWidth: 1280 }`. The bag is open — the platform may add further fields a treatment references; the exported `attributesSchema` (zod) is the authoritative shape.
 
-If a field is not populated, references to it resolve to `undefined` and conditions return "can't determine yet" (not a hard failure) — this is true for every `attributes` field, including `stableParticipantId` when a study doesn't use it. The only loud signal is at the Qualtrics use site described above.
+If a field is not populated in a ready snapshot, `readReference` returns `Missing`. Positive comparisons needing that field are false, and their negations are true; there is no "can't determine yet" state. This applies to every `attributes` field, including `stableParticipantId` when a study doesn't use it. The Qualtrics use site separately reports a missing stable ID as described above. An unloaded attributes record must not be presented as an absent field; wait for snapshot readiness before mounting or evaluating Stagebook.
 
 **Privacy boundary — `entryUrl.params`.** Keeping recruitment PII out of the referenceable surface is the reason `attributes` deliberately omits the recruitment-platform id. That guarantee covers `attributes` only — `entryUrl.params.<key>` still exposes whatever the host put in the participant's landing URL (e.g. a Prolific PID), and a treatment can route any such value into an outgoing Qualtrics/`trackedLink` `urlParams`. So a host that wants the guarantee to hold end-to-end must not place participant PII in the entry URL (and reviewers should watch for treatments that forward `entryUrl.params.*` PII into external links). Stagebook can't enforce this — it's a host responsibility.
 

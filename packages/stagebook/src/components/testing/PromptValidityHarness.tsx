@@ -28,7 +28,7 @@ function Content({
   operator = "all",
 }: PromptValidityHarnessProps) {
   const context = useStagebookContext();
-  const resolve = (reference: string) => context.resolve(reference);
+  const { readReference, onContractViolation, violationKeys } = context;
   const save = (key: string, record: unknown, scope?: "player" | "shared") =>
     context.save(key, record, scope);
   const names = two ? ["first", "second"] : ["first"];
@@ -57,7 +57,9 @@ function Content({
                 }
               : undefined
           }
-          resolve={resolve}
+          readReference={readReference}
+          onViolation={onContractViolation}
+          violationKeys={violationKeys}
         >
           <section data-testid={name}>
             <Prompt
@@ -88,7 +90,9 @@ function Content({
       ))}
       <ConditionsConditionalRender
         conditions={{ [operator]: names.map(answered) } as ConditionNode}
-        resolve={resolve}
+        readReference={readReference}
+        onViolation={onContractViolation}
+        violationKeys={violationKeys}
       >
         <SubmitButton
           name="answered"
@@ -99,7 +103,9 @@ function Content({
       </ConditionsConditionalRender>
       <ConditionsConditionalRender
         conditions={{ [operator]: names.map(optional) } as ConditionNode}
-        resolve={resolve}
+        readReference={readReference}
+        onViolation={onContractViolation}
+        violationKeys={violationKeys}
       >
         <SubmitButton
           name="optional"

@@ -3,12 +3,30 @@
 // dispatcher means appending one `runContractSuite(...)` call; the
 // same invariants run automatically.
 
-import { buildEligibilityForScenario, runContractSuite } from "./contract.js";
+import { expect, test } from "vitest";
+import {
+  buildEligibilityForScenario,
+  genScenario,
+  mulberry32,
+  runContractSuite,
+} from "./contract.js";
 import { uniformRandom } from "./uniformRandom.js";
 import { weightedRandom } from "./weightedRandom.js";
 import { urnRandomization } from "./urnRandomization.js";
 import { softmaxKnockdown } from "./softmaxKnockdown.js";
 import type { LabeledMatrix, LabeledScalars } from "./types.js";
+
+test("contract fixtures omit unconstrained conditions instead of authoring empty arrays", () => {
+  const rng = mulberry32(42);
+  for (let index = 0; index < 50; index++) {
+    for (const treatment of genScenario(rng).treatments) {
+      for (const slot of treatment.groupComposition ?? []) {
+        if (Array.isArray(slot.conditions))
+          expect(slot.conditions.length).toBeGreaterThan(0);
+      }
+    }
+  }
+});
 
 runContractSuite("uniform-random", ({ scenario, rng }) => {
   const eligibility = buildEligibilityForScenario(scenario);

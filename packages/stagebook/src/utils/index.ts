@@ -53,3 +53,8 @@ export {
   type NumericInsertion,
   type NumericInsertionResult,
 } from "./numericResponse.js";
+export {
+  readReference,
+  type ReferenceReadContext,
+  type ReferenceGetter,
+} from "./readReference.js";

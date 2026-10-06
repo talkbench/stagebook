@@ -13,6 +13,7 @@ import {
   resolvePathOrAncestor,
   type PositionMapper,
 } from "./yamlPositionMap.js";
+import { prepareGrammarUpgradeSource } from "./grammarUpgradeSource.js";
 import type { Diagnostic } from "./types.js";
 
 export interface UpgradeWarning {
@@ -38,7 +39,12 @@ export function collectUpgradeWarnings(
   rules: readonly UpgradeRule[] = upgradeRules,
 ): UpgradeWarning[] {
   const declared = declaredStagebookVersion(
-    input.kind === "treatment" ? input.file : input.prompt.metadata,
+    // The position mapper keeps YAML merge keys as written. Version gating
+    // reads their effective root fields; detectors still receive raw source
+    // so their findings retain the original anchor/template positions.
+    input.kind === "treatment"
+      ? prepareGrammarUpgradeSource(input.file).view(input.file)
+      : input.prompt.metadata,
   );
   const where =
     input.kind === "treatment"

@@ -1,8 +1,8 @@
 # Conditions and References
 
-Conditions control when elements are displayed and how participants are assigned to groups. They compare a referenced value against an expected value using a comparator.
+Conditions control when elements are displayed, when stages remain active, and how participants are assigned to groups. A condition can compare a reference with a literal value or combine expressions for agreement, counts, and calculations.
 
-> **Every reference string starts with a position selector (#298).** The first segment of every reference is required and is one of: `self` (the current participant), `shared` (group-shared state), `all` (every participant as a list), or a non-negative integer slot index (`0`, `1`, …). Un-prefixed references like `prompt.topicVote` are rejected at parse time; the error message suggests `self.prompt.topicVote` for the common case. Examples below default to `self` unless the example illustrates cross-participant reads.
+> **Every reference starts with a position selector.** Use `self` (the current participant), `shared` (group-shared state), `everyone` (one value per participant seat), or a nonnegative integer seat (`0`, `1`, …). Structured references require their own `position` field too. Unprefixed references like `prompt.topicVote` are invalid; use `self.prompt.topicVote` for the current participant. The former `all.` prefix is now `everyone.`; see [upgrading group conditions](#upgrading-group-conditions).
 
 ## Basic Syntax
 
@@ -13,7 +13,17 @@ conditions:
     value: "Yes"
 ```
 
-Multiple conditions use AND logic — all must be satisfied:
+A list under `conditions:` uses AND logic — every condition must be true. Omit `conditions` for an unconditional element; an empty list or a whole `conditions: null` is invalid. Numbers, strings, and lists do not count as true merely because they contain data.
+
+```yaml
+# A direct Boolean expression is also a condition.
+conditions:
+  allEqual:
+    - reference: 0.prompt.topicVote
+    - reference: 1.prompt.topicVote
+```
+
+Multiple conditions:
 
 ```yaml
 conditions:
@@ -37,7 +47,9 @@ conditions:
     value: yes
   - reference: self.prompt.b
     comparator: exists
+```
 
+```yaml
 # Explicit all
 conditions:
   all:
@@ -75,19 +87,53 @@ conditions:
     - { reference: self.prompt.discussion_overflow, comparator: doesNotExist }
 ```
 
-### Three-valued logic — what happens before data arrives
+### Missing answers and true/false conditions
 
-Each leaf condition can be **true**, **false**, or **unknown** (data not yet recorded). Operators propagate "unknown" so fallback elements gated on `none:` don't render prematurely:
+An expression produces a value or **Missing**. Missing means there is no usable value: nothing is recorded, a prompt answer is blank (`""`, whitespace only, or `[]`), a numeric entry has no saved number, a reference or literal is `null`, or a calculation cannot produce a finite number. A wrong runtime type also becomes Missing and is reported. There is no third “unknown” or waiting state.
 
-| Operator | True when            | False when           |
-| -------- | -------------------- | -------------------- |
-| `all`    | every child is true  | any child is false   |
-| `any`    | any child is true    | every child is false |
-| `none`   | every child is false | any child is true    |
+Zero and `false` are present. Literal empty strings and lists are present too; it is specifically a **prompt answer** that treats a blank string or empty list as Missing. This does not rewrite the saved answer or its `isValid` flag. A missing member of a list keeps its position.
 
-If neither row applies (because some children are still "unknown"), the operator itself is unknown — at the rendering boundary, that collapses to "don't show yet." The most common place this matters: a `none:` block whose children all reference data nobody has answered yet stays hidden until at least one answer arrives, instead of rendering as if "no one matched."
+A missing answer matches nothing, including another missing answer. Positive comparisons needing it return false; their negations return true. `exists` means present and `doesNotExist` means Missing. Use those comparators without a `value`; `null` is invalid anywhere in a comparator's literal `value`, including a candidate list.
 
-**Negative comparators on absent data.** The four negative comparators — `doesNotEqual`, `doesNotInclude`, `doesNotMatch`, `isNotOneOf` — return **true** when the referenced value is absent, not unknown. The mental model: "the value is not X, because it's nothing." This lets a fallback like
+| Operator | True when                  | False when                    |
+| -------- | -------------------------- | ----------------------------- |
+| `all`    | Every input is true        | Any input is false or Missing |
+| `any`    | At least one input is true | No input is true              |
+| `none`   | No input is true           | Any input is true             |
+
+Only Booleans belong in these operators. A Missing Boolean counts as not true; other present values do not gain JavaScript-style truthiness. A condition whose final result is Missing hides an element, skips or advances a stage, or makes a participant ineligible, just as false does.
+
+### Waiting is explicit
+
+`none` around “rated above 50” is true before anyone answers. If a message should wait until both participants answer, say so:
+
+```yaml
+conditions:
+  all:
+    - reference: 0.prompt.familiarity
+      comparator: exists
+    - reference: 1.prompt.familiarity
+      comparator: exists
+    - none:
+        - { reference: 0.prompt.familiarity, comparator: isAbove, value: 50 }
+        - { reference: 1.prompt.familiarity, comparator: isAbove, value: 50 }
+```
+
+A positive condition can state the same wait more directly for a whole group:
+
+```yaml
+conditions:
+  all:
+    reference: everyone.prompt.familiarity
+    comparator: isAtMost
+    value: 50
+```
+
+Every seat must have a number and that number must be at most 50. See [group quantifiers](#group-quantifiers) for the `everyone.` form.
+
+### Negation versus the opposite comparator
+
+`doesNotEqual`, `doesNotInclude`, `doesNotMatch`, and `isNotOneOf` are exactly the negations of their positive comparators. They are true before an answer arrives. This fallback therefore appears immediately, and disappears if the participant answers “Yes”:
 
 ```yaml
 conditions:
@@ -96,15 +142,21 @@ conditions:
     value: "Yes"
 ```
 
-render before the participant has answered. The positive twins (`equals`, `includes`, `matches`, `isOneOf`) stay unknown on absent data so positive gates wait for definite answers. The asymmetry is intentional but means logically-equivalent rewrites can differ: `none: [doesNotEqual "X"]` resolves more definitively than its De Morgan twin `equals "X"` when the data is absent (both return false at the boundary, but only the second propagates as "unknown" into outer operators).
+Numeric opposites behave differently. `isBelow: 5` and `isAtLeast: 5` both need a number, so both are false for a missing answer. `none` around `isBelow: 5` is true for a missing answer. Write the positive `isAtLeast` test when “has answered and scored at least 5” is the intended condition.
 
-For OR logic on a single reference (across positions, comparators, etc.), `any:` is usually clearer than creating separate elements. For NOR, `none:` replaces the De Morgan trick of stacking negated comparators (`doesNotEqual`, `doesNotInclude`, `isNotOneOf`).
+### Text comparisons and raw lengths
+
+Equality and membership trim surrounding whitespace and lowercase text using the default Unicode mapping. This applies to `equals`, `isOneOf`, `includes`, `allEqual`, `allUnique`, `countUnique`, and the negative comparator forms. `" Red car "` and `"red car"` therefore match. Internal whitespace is not collapsed, and there is no additional Unicode normalization or participant-locale rule.
+
+`matches` and `doesNotMatch` use the raw string and their explicit regex flags. `length` and `hasLengthAtLeast` / `hasLengthAtMost` count raw **UTF-16 code units** for strings (`🙂` has length 2), or positions for lists. A blank prompt answer is Missing before these operations run, so a whitespace-only response does not satisfy a length requirement. Stored and displayed text is unchanged.
+
+Regex patterns may contain at most 1,024 UTF-16 code units. An input longer than 4,096 UTF-16 code units does not match; it is never truncated, and `doesNotMatch` is consequently true. These limits do not prevent a complex pattern from taking a long time. See [regex execution](../engineer/regex-execution.md) before using patterns with nested repetition or other substantial backtracking.
 
 **Visibility-field interaction.** When an element also has `displayTime`, `hideTime`, `showToPositions`, or `hideFromPositions` set, all of those fields combine with `conditions` using implicit AND — the element is visible only when every visibility field that's set evaluates to "show." See [Element visibility](elements.md#visibility) for the full picture.
 
 ## Reference Strings
 
-References point to data collected earlier in the experiment. The dotted form is always `<position>.<source>.<...>`, where the position selector (`self`, `shared`, `all`, or a numeric slot index — see the note at the top) is required as the first segment and the rest depends on the source:
+References point to data collected earlier in the experiment. The dotted form is always `<position>.<source>.<...>`, where the position selector (`self`, `shared`, `everyone`, or a numeric seat — see the note at the top) is required as the first segment and the rest depends on the source:
 
 - **Named sources** (`prompt`, `submitButton`, `qualtrics`, `mediaPlayer`, `timeline`, `trackedLink`, `discussion`): `<position>.<source>.<name>(.<path>...)` — `name` is required, `path` is optional.
 - **External sources** (`entryUrl`, `attributes`): `<position>.<source>.<path>...` — no `name`, `path` is required. `entryUrl` references must currently use the `params` subpath (see [URL Parameters](#url-parameters) below).
@@ -115,20 +167,23 @@ References point to data collected earlier in the experiment. The dotted form is
 - reference: self.entryUrl.params.condition # external: position.source.path...
 ```
 
-After #240, references can also be written in **structured form** — preferred in new code, especially when you need to override the implicit defaults the dotted form bakes in (e.g. addressing the `debugMessages` field on a prompt's saved record instead of the default `value`):
+References can also be written in **structured form**, especially when reading a saved field other than the prompt's default `value`:
 
 ```yaml
 - reference:
+    position: self
     source: prompt
     name: familiarity
-    path: [value] # explicit; same as the dotted `prompt.familiarity`
+    path: [value] # explicit; same as the dotted `self.prompt.familiarity`
 
 - reference:
+    position: self
     source: prompt
     name: familiarity
     path: [debugMessages] # newly possible — addresses other saved fields
 
 - reference:
+    position: self
     source: entryUrl
     path: [params, condition]
 ```
@@ -142,7 +197,8 @@ committed response. Use `equals` with `value: true` to wait for a passing answer
 For an optional answer, use `any` combining `doesNotExist` and `equals: true`;
 an untouched prompt has no flag. See [response validity](prompts.md#response-validity-and-conditions)
 for both complete idioms, timing and trust limits, hidden-prompt gates, and the
-warning against `all.prompt.<name>.isValid`. Shared numeric prompts support
+group-validity guidance. To require every seat to be valid, put an
+`everyone.prompt.<name>.isValid` comparator leaf directly under `all:`. Shared numeric prompts support
 `shared.prompt.<name>.isValid` for the group's answer. Shared nonnumeric prompts
 still have no flag, so references to their shared validity are rejected.
 
@@ -174,6 +230,23 @@ value alone does not distinguish an optional blank from malformed text. Read
 `isValid` when that distinction matters. Validity can trail the live entry by a
 commit window, and a late edit can pass a gate before its commit arrives; use
 [recomputation for analysis](prompts.md#response-validity-and-conditions).
+
+### Prompts that save numbers
+
+The prompt's declared response mode determines its type, even before anyone answers:
+
+| Response mode                                                            | Saved answer type |
+| ------------------------------------------------------------------------ | ----------------- |
+| `numericResponse`, `slider`, numeric-mode single-choice `multipleChoice` | Number            |
+| `openResponse`, text-mode single-choice `multipleChoice`, `dropdown`     | String            |
+| Multi-select `multipleChoice`, `listSorter`                              | List of strings   |
+| `noResponse`                                                             | No answer value   |
+
+Use `numericResponse` for typed numerical entry. For numeric multiple choice, write explicit numeric option prefixes such as `- 4: Agree`; a bare `- 4` is the text label `"4"`. See [Prompt files](prompts.md) for each response mode.
+
+Compare numbers with unquoted YAML numbers (`value: 4`), and text with quoted values when it looks numeric (`value: "4"`). A number and a string cannot be compared or added by implicit conversion. An open response containing `"100.00"` is text and differs from `"100"`; numeric responses entered as those two spellings both save the number 100.
+
+URL query parameters are always strings too. For example, use `value: "2"` with `self.entryUrl.params.condition`, not `value: 2`. Type checks use the prompt's response mode, not the current participant's answer; a missing or malformed numeric entry does not turn a numeric prompt into a text prompt.
 
 ### Survey Instruments
 
@@ -313,18 +386,62 @@ You can also check that a minimum number of selections have been made:
 
 `<name>` is the `name:` of the discussion block on the stage. After #240 the storage namespace is `discussion_<name>`, so a per-discussion lookup needs the name segment between `discussion` and the metric path. Available metrics depend on the host platform's discussion implementation.
 
-## Position Modifier
+## Position selectors
 
-`position` is a **read selector** — it tells stagebook which player's data to look up for a given reference:
+A position belongs **inside each reference**, either as the dotted prefix or the structured `reference.position`. It is required; `player` and an omitted default are not authoring forms. `groupComposition[].position` is a separate field that names the role being filled.
 
-| Value              | Meaning                                       |
-| ------------------ | --------------------------------------------- |
-| _(omitted)_        | Current participant (same as `player`)        |
-| `player`           | Current participant                           |
-| `shared`           | Shared records (e.g., `shared: true` prompts) |
-| `0`, `1`, `2`, ... | Specific participant by position index        |
+| Value            | Meaning                                                             |
+| ---------------- | ------------------------------------------------------------------- |
+| `self`           | Current participant                                                 |
+| `shared`         | Shared records, such as a shared prompt                             |
+| `0`, `1`, `2`, … | A specific participant seat                                         |
+| `everyone`       | One value per seat in numeric seat order, retaining missing answers |
 
-**Cross-player aggregation lives in the boolean tree, not in `position`.** The pre-#238 values `all`, `any`, and `percentAgreement` were removed: they conflated "which player to read from" with "how to combine results across players." Combining is now the job of the `all:` / `any:` / `none:` operators ([Boolean operators](#boolean-operators-all-any-none)). `percentAgreement` was pulled out entirely; a future countables/aggregates family will replace it.
+### Group quantifiers
+
+An `everyone.` **reference expression** supplies list data. For example, `allEqual: {reference: everyone.prompt.label}` asks whether every seat gave the same label. It is false if any answer is missing. `sumExisting: {reference: everyone.prompt.points}` totals the numbers currently available.
+
+An `everyone.` **comparator leaf** applies its comparator to each seat separately, returning one Boolean per seat. Consume it directly with `all`, `any`, `none`, or `countTrue`:
+
+```yaml
+conditions:
+  all: # Every seat answered.
+    reference: everyone.prompt.topic_vote
+    comparator: exists
+```
+
+```yaml
+conditions:
+  nonDecreasing: # At least four participants said Yes.
+    - 4
+    - countTrue:
+        reference: everyone.prompt.topic_vote
+        comparator: equals
+        value: "Yes"
+```
+
+`any` means at least one seat passes; `none` means no seat passes. These quantifiers are explicit: a bare `everyone.` leaf cannot be a condition. Nor can it be an item inside an operand list. Wrap it first:
+
+```yaml
+conditions:
+  any:
+    - any: # Quantify the per-seat results before combining with another test.
+        reference: everyone.prompt.help
+        comparator: equals
+        value: "Yes"
+    - reference: shared.submitButton.finish
+      comparator: exists
+```
+
+Per-seat `includes` tests membership in each participant's answer, including a multi-select answer; per-seat `hasLengthAtLeast` measures each answer. Neither measures the group list itself. Group collections of list-valued answers are not general nested-list expressions; these per-seat comparator leaves are the supported way to test them.
+
+### Upgrading group conditions
+
+The former `all.` prefix checked only recorded answers, so replacing it needs a comparator-specific choice:
+
+- `all.x` with `exists` meant someone answered: use `any` around an `everyone.x` `exists` leaf.
+- `doesNotExist` and the four negative comparators retain their meaning under `all` around the equivalent `everyone.` leaf.
+- Other positive comparisons use `all`, which now requires **every seat** to answer and pass. Add that wait deliberately.
 
 ### Examples
 
@@ -367,17 +484,17 @@ Display another participant's response:
 
 ### Existence
 
-| Comparator     | Description            | Value    |
-| -------------- | ---------------------- | -------- |
-| `exists`       | Reference is defined   | _(none)_ |
-| `doesNotExist` | Reference is undefined | _(none)_ |
+| Comparator     | Description               | Value    |
+| -------------- | ------------------------- | -------- |
+| `exists`       | A usable value is present | _(none)_ |
+| `doesNotExist` | The value is Missing      | _(none)_ |
 
 ### Equality
 
-| Comparator     | Description        | Value Type                 |
-| -------------- | ------------------ | -------------------------- |
-| `equals`       | Strict equality    | string, number, or boolean |
-| `doesNotEqual` | Not strictly equal | string, number, or boolean |
+| Comparator     | Description                     | Value Type                        |
+| -------------- | ------------------------------- | --------------------------------- |
+| `equals`       | Typed equality; text normalized | Scalar or compatible literal list |
+| `doesNotEqual` | Negation of equality            | Scalar or compatible literal list |
 
 ### Numeric
 
@@ -388,28 +505,106 @@ Display another participant's response:
 | `isAtLeast` | Greater than or equal | number     |
 | `isAtMost`  | Less than or equal    | number     |
 
-### String Length
+### String and List Length
 
-| Comparator         | Description            | Value Type |
-| ------------------ | ---------------------- | ---------- |
-| `hasLengthAtLeast` | String length >= value | integer    |
-| `hasLengthAtMost`  | String length <= value | integer    |
+| Comparator         | Description                                  | Value Type          |
+| ------------------ | -------------------------------------------- | ------------------- |
+| `hasLengthAtLeast` | Raw string length or list positions >= value | nonnegative integer |
+| `hasLengthAtMost`  | Raw string length or list positions <= value | nonnegative integer |
 
-### String Content
+### Content and Regex
 
-| Comparator       | Description                                                                                                    | Value Type     |
-| ---------------- | -------------------------------------------------------------------------------------------------------------- | -------------- |
-| `includes`       | Contains substring; on a `select: multiple` response, the option text is among the checked options             | string         |
-| `doesNotInclude` | Does not contain substring; on a `select: multiple` response, the option text is not among the checked options | string         |
-| `matches`        | Matches regular expression                                                                                     | string (regex) |
-| `doesNotMatch`   | Does not match regex                                                                                           | string (regex) |
+| Comparator       | Description                                                           | Value Type        |
+| ---------------- | --------------------------------------------------------------------- | ----------------- |
+| `includes`       | Contains normalized substring; for a list, contains the scalar member | compatible scalar |
+| `doesNotInclude` | Negation of `includes`, including true for a missing answer           | compatible scalar |
+| `matches`        | Matches a JavaScript regular expression on raw text                   | string (regex)    |
+| `doesNotMatch`   | Does not match regex                                                  | string (regex)    |
 
 ### Set Membership
 
-| Comparator   | Description               | Value Type             |
-| ------------ | ------------------------- | ---------------------- |
-| `isOneOf`    | Value is in the array     | array of string/number |
-| `isNotOneOf` | Value is not in the array | array of string/number |
+| Comparator   | Description               | Value Type                       |
+| ------------ | ------------------------- | -------------------------------- |
+| `isOneOf`    | Value is in the array     | nonempty list of one scalar type |
+| `isNotOneOf` | Value is not in the array | nonempty list of one scalar type |
+
+## Expressions and calculations
+
+Expressions can be scalar literals, `{literal: ...}`, references, comparator leaves, or an object with exactly one operator key. Strings stay literals even if they contain dots. Use `{reference: self.prompt.score}` to read a value, not the string `self.prompt.score`. Known types must match; there is no automatic conversion from strings or Booleans to numbers.
+
+A bare list after an operator is a list of **operand expressions**. To supply list data, use `literal: [red, blue]` or a reference that returns a list. Operators accepting a runtime list take that expression directly:
+
+```yaml
+average:
+  reference: everyone.prompt.rating
+```
+
+Do not write `average: [{reference: everyone.prompt.rating}]`: that places a list where one numeric operand is expected. There is no implicit flattening. Empty authored operand lists are invalid. Runtime lists keep missing positions; `length` counts those positions, while the count operators describe what is present.
+
+The [syntax reference](syntax-reference.md#expression-operators) lists all 28 operators and their input shapes. `allEqual` compares at least two values of one type; list-to-list comparisons also require the same length, order, and corresponding values. A missing value never agrees with another missing value. `allUnique` requires at least two present, pairwise different scalar values.
+
+### Strict and partial calculations
+
+`sum`, `average`, `product`, `min`, `max`, `subtract`, `divide`, and `length` need every required input. A missing input makes the result Missing, even in `product: [0, null]`. An empty runtime list has no strict numeric reduction result. Division by a data-derived zero or any nonfinite result is Missing; a literal zero divisor is invalid authoring.
+
+Use `sumExisting`, `averageExisting`, `minExisting`, or `maxExisting` when a calculation should omit missing numeric inputs. Their `atLeast` option is the minimum number of present input positions, defaulting to 1:
+
+```yaml
+averageExisting:
+  inputs:
+    - reference: self.prompt.itemA
+    - reference: self.prompt.itemB
+    - reference: self.prompt.itemC
+  atLeast: 2
+```
+
+With answers 6, Missing, and 2, this is 4. With only one answer it is Missing. Repeated operands count as separate positions. This policy applies only to that calculation: it cannot remove a missing factor from a nested strict `product`. There is no `productExisting` or `missing: skip` mode.
+
+`firstExisting` chooses the first present result, in written order. Add a literal fallback only when the default is part of the study's intended scoring:
+
+```yaml
+firstExisting:
+  - sumExisting: { reference: everyone.prompt.points }
+  - 0
+```
+
+Zero, false, and literal empty strings or lists are present, so they can be selected. A blank prompt answer is Missing. All present results must have compatible types, including list element types.
+
+### Counts never wait
+
+`countExisting` counts present scalar values, `countTrue` counts true results, and `countUnique` counts distinct present scalar values using normalized text equality. Missing values do not count. All three return 0 when nothing counts, including an empty runtime list. There is no `countTrueExisting` or `countUniqueExisting` variant.
+
+A `countUnique` of 1 does not establish that everyone answered or agreed. Use `allEqual` for agreement, or add an explicit presence check before showing a count that should wait for everyone.
+
+### State every band in a case
+
+A `case` checks rules in written order and selects the first true `when`. Missing conditions are not true. Only the selected `value` is evaluated; if it is Missing, the case does not fall through to another rule. No selected rule and no default also means Missing.
+
+Write every substantive band as a rule. A default of `low` would include people who never answered:
+
+```yaml
+case:
+  rules:
+    - when:
+        reference: self.prompt.score
+        comparator: isAtLeast
+        value: 80
+      value: high
+    - when:
+        reference: self.prompt.score
+        comparator: isAtLeast
+        value: 50
+      value: medium
+    - when:
+        reference: self.prompt.score
+        comparator: isBelow
+        value: 50
+      value: low
+    - default: true
+      value: null # No answer, so no band.
+```
+
+There may be one default rule, and it must be last. All present branch results must have compatible types; `null` contributes no present type. Every branch and reference still follows the authoring checks, even if a prior rule always selects first. A string-valued case is an expression, not by itself a Boolean `conditions:` gate.
 
 ## Using Conditions for Group Assignment
 
@@ -477,7 +672,7 @@ consent:
                 comparator: exists
 ```
 
-This `exists` gate assumes a single-choice `multipleChoice` prompt. For `select: multiple` checkboxes, use `comparator: includes` and `value:` set to the exact required option text. Unchecking every box saves `[]`, which still passes `exists`. If several acknowledgements are required, add an `includes` condition for each one.
+This `exists` gate requires a nonblank answer. For `select: multiple` checkboxes, an unchecked `[]` answer is Missing and does not pass `exists`; selecting any option does. To require a specific acknowledgement, use `comparator: includes` with its option text. If several acknowledgements are required, add an `includes` condition for each one. Membership ignores surrounding spaces and case, so use a uniquely worded option for each acknowledgement.
 
 Recommended, not required: make the consent text itself the body of that acknowledgement prompt, so the option can only be selected alongside the rendered text and the agreed-to text is saved with the response — see [the gated-submit pattern](treatment-files.md#the-gated-submit-pattern) and the [validated annotated walkthrough](../../examples/annotated-walkthrough/README.md#consent-acknowledgement).
 
@@ -485,9 +680,9 @@ References travel the other way only inside consent: a later consent step may re
 
 ## Stage-level conditions
 
-Any stage, intro step, or exit step can carry its own `conditions` array. Think of it as: _this stage should be active while these conditions hold._ When any condition is false, stagebook asks the host to advance — either skipping the stage at load (if the data comes from an earlier stage) or ending it early (if it comes from the current stage).
+Any stage, intro step, or exit step can carry its own Boolean `conditions` expression or condition list. Think of it as: _this stage should be active while these conditions hold._ When any condition is false, stagebook asks the host to advance — either skipping the stage at load (if the data comes from an earlier stage) or ending it early (if it comes from the current stage).
 
-Same condition syntax, same comparators, same position modifier as element-level conditions.
+The expression rules and reference syntax are the same as for element conditions. There is no implicit wait: false or a final Missing result asks the host to advance.
 
 ### Skip a stage based on prior data
 
@@ -537,14 +732,16 @@ gameStages:
 
 ### Position rules
 
-Game-stage conditions must evaluate **identically on every client** or the stage desyncs (one participant skips while the other renders). `position` after #238 is a pure read selector — `shared` and numeric slot indices are cross-client (every client reads the same value); the default `player` reads the current participant's own data and is rejected at game-stage level.
+Game-stage conditions must evaluate **identically on every client** or the stage desyncs. Use `shared`, explicit numeric seats, or `everyone`, which give all clients the same references. `self` is invalid at game-stage level because it reads a different participant on each client.
 
-| Context            | Default / `player`       | `shared` / numeric index |
-| ------------------ | ------------------------ | ------------------------ |
-| Game stages        | ❌ rejected at preflight | ✅                       |
-| Intro / exit steps | ✅                       | ✅                       |
+| Context          | Allowed reference positions                                                  |
+| ---------------- | ---------------------------------------------------------------------------- |
+| Game-stage gate  | `shared`, numeric seat, `everyone`                                           |
+| Intro step       | `self`, `shared`; numeric seats and `everyone` are invalid before assignment |
+| Exit step        | `self`, `shared`, numeric seat, `everyone`                                   |
+| Group assignment | `self` only                                                                  |
 
-Intro and exit steps run per-participant, so any position is fine there — including the default.
+The selector is required in every context. Shared reads do not permit authoring shared prompts in intro or exit steps; those prompt-placement constraints still apply.
 
 ### Host requirements
 
@@ -557,7 +754,7 @@ See [platform-requirements.md](../engineer/platform-requirements.md) for the ful
 
 ## Preflight reference validation
 
-References (in conditions, `display.reference`, `trackedLink` / `qualtrics` `urlParams`, discussion conditions, and `groupComposition` conditions) are checked at preflight. Three rules, the second of which is stage-condition-specific:
+Apply the following authoring rules to references in conditions, `display.reference`, `trackedLink` / `qualtrics` `urlParams`, discussion conditions, and `groupComposition` conditions. Every expression branch matters for reference and type checking, including branches that runtime short-circuiting may not evaluate.
 
 ### No forward references — everywhere
 
@@ -575,14 +772,14 @@ References that resolve from intro-step data are checked against the treatment's
 
 ### No always-skip-at-load — stage-level conditions only
 
-A stage-level condition that references its _own_ stage's data (early-termination pattern) must be authored so `compare(undefined, comparator, value) === true` — otherwise the stage evaluates false at mount and always skips itself, which is almost always a forgotten `doesNotExist`.
+Evaluate the **whole condition tree** with current-stage references set to Missing when designing an early-termination gate. It must permit the stage to enter before its own answers arrive. A gate that is necessarily false at that point skips the stage at load; checking each comparator in isolation would miss the effects of `all`, `any`, and `none`.
 
 OK:
 
 ```yaml
 conditions:
   - reference: shared.submitButton.speedSubmit
-    comparator: doesNotExist # true against undefined → stage renders
+    comparator: doesNotExist # true while Missing → stage renders
 ```
 
 Rejected at preflight:
@@ -590,10 +787,10 @@ Rejected at preflight:
 ```yaml
 conditions:
   - reference: shared.submitButton.speedSubmit
-    comparator: exists # false against undefined → always skips
+    comparator: exists # false while Missing → always skips
 ```
 
-This rule only applies to stage-level conditions. Element-level conditions, `display.reference`, `urlParams`, and discussion conditions all have "wait for data to arrive" semantics where false-at-load is the standard pattern (e.g., a submit button that appears only after the prompt is answered).
+This rule applies to stage gates. False-at-load is a normal element condition: for example, a submit button can start hidden and appear after a prompt is answered. The element is re-evaluated when data changes; the expression itself has no waiting state.
 
 ### No unsatisfiable conditions — dead gates
 
@@ -609,11 +806,19 @@ conditions:
     value: "joint solution" # substring of NO option → dead gate
 ```
 
-The check compares against the prompt's bounded value domain: `multipleChoice` / `dropdown` options (a numeric-mode choice stores its number, not its label), the `slider` range `[min, max]`, and `openResponse` length capped by `maxLength`. It runs on **every** `conditions:` block — display and submit alike — so chained gates (an element shown only if a prior answer matches, whose own answer then gates submit) fall out naturally.
+Known answer domains include `multipleChoice` / `dropdown` options (a numeric-mode choice stores its number, not its label), the `slider` range `[min, max]`, and `openResponse` length capped by `maxLength`. Check every condition block, including chained gates where one answer reveals another prompt whose answer then reveals a submit button.
 
 `numericResponse` bounds are advisory and do not define a bounded stored domain.
 For example, `isAbove: 99` is possible even when the prompt declares `max: 99`,
 for both player and shared answers: the value is saved and marked invalid.
 Combine value conditions with `isValid` when you need an in-range answer.
 
-It stays silent whenever it can't _prove_ a gate is dead, so false positives are near zero: negative comparators (`doesNotEqual`, `doesNotInclude`, …) and `exists` / `doesNotExist` are satisfiable before any answer arrives; free-text `openResponse` value comparisons can't be disproven; a `slider` equality is only flagged when the target is fully outside `[min, max]` (an in-range value may land on an unlabeled snap point); leaves inside `any:` / `none:` operators aren't flagged (a sibling can carry the gate); and `matches` regexes, multi-select checkboxes, and `listSorter` are not checked. It proves _reachability_ (at least one option can satisfy the gate), not _correctness_ — a gate that matches the wrong option still passes.
+Reachability means at least one possible answer can satisfy the **whole expression**, not that every leaf can. An impossible leaf under `any` need not make the gate impossible, and `none` reverses the result. Free-text answers, unknown reference types, and other unbounded domains need conservative checks: lack of a proof is not proof that a gate is dead. Reachability also does not establish correctness—a condition that accepts the wrong answer may still be satisfiable.
+
+### Types and treatment-specific checks
+
+Known incompatible types are authoring errors in either direction: a number cannot equal a string, a list cannot be used as one number, and a `case` cannot return known incompatible branch types. These rules apply separately to each treatment and its compatible intro sequences. Reusing a prompt name in another treatment does not change the type of this treatment's reference.
+
+A reference with an unknown type is still usable, with an authoring warning explaining why: the source has no declared schema, its prompt file could not be read, or its possible producers disagree. Unknown does not erase a conflict between types that are known elsewhere in the expression. A wrong type actually encountered at runtime is reported without participant values and becomes Missing, after which the ordinary expression rules apply.
+
+For prompt records, answer types come from response modes, as described in [Prompts that save numbers](#prompts-that-save-numbers). Other prompt fields may remain unknown even when their values are usable. Host fields with declared schemas have known types; additional host fields without schemas remain unknown. Pilot the study's real data paths as well as checking its authoring structure.

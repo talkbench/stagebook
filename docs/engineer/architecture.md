@@ -6,13 +6,9 @@ Stagebook display components need to do four things: read experiment state, writ
 
 ```typescript
 interface StagebookContext {
-  // Look up raw stored values by storage key.
-  // scope: "player" (default), "shared", "all" (one value per
-  // participant), or a numeric string for a specific slot index.
-  // Stagebook normalizes display.position: "any" to "all" before
-  // calling get() — both have the same storage shape. The pre-#238
-  // aggregator value "percentAgreement" was removed entirely and is
-  // unreachable.
+  // Return the latest raw record as [record], or [] when absent.
+  // scope: "player" (before assignment), "shared", or a numeric seat string.
+  // readReference assembles everyone reads from numeric seats.
   get(key: string, scope?: string): unknown[];
 
   // Write state under a DSL-derived key
@@ -69,9 +65,11 @@ The platform provides the StagebookProvider context. Stagebook handles everythin
 
 ## How reading works
 
-Every element that reads experiment state does so through a **reference** — a DSL concept like `self.prompt.myQuestion`, `self.qualtrics.exit.result.score`, or `self.entryUrl.params.condition`. The first segment is a position selector (`self`, `shared`, `all`, or a numeric slot index — required by #298). Internally, the `StagebookProvider` converts each reference (string-shorthand or structured form) into a flat storage key and navigated path (e.g., `self.prompt.myQuestion` → key `prompt_myQuestion`, path `["value"]`, position `"self"`), calls the platform's `get()` with the appropriate position, then extracts the requested path from each result. The result is always an array — typically a single-element array, but the contract returns an array so platforms can handle multi-value lookups uniformly. Components don't need to know the details — they call `resolve()` (via `useResolve`) and get extracted values back.
+Every element that reads experiment state does so through a **reference**, such as `self.prompt.myQuestion`, `self.qualtrics.exit.result.score`, or `self.entryUrl.params.condition`. Its required position is `self`, `shared`, `everyone`, or a numeric seat. The pure `readReference(reference, get, {position, playerCount})` function converts it to a storage key and nested path, reads the host's raw record, and normalizes absent/null values and blank prompt answers to the shared `Missing` sentinel. A single-position read returns one value; an `everyone.` read returns one entry per numeric seat, retaining missing positions. No host `"all"` scope is used. The provider binds this function to its current snapshot; components use `context.readReference` or `useReadReference`. The expression evaluator, server-side dispatcher, and viewer use the same boundary. Loading and roster readiness belong to the host, outside expression evaluation.
 
-The platform's `get()` is a simple key-value lookup — it doesn't need to understand the DSL reference syntax or the internal record structure. It returns exactly what was passed to `save()`.
+The platform's `get()` is a simple key-value lookup — it doesn't need to understand the DSL reference syntax or the internal record structure. It returns the latest raw saved value in a singleton transport array, or `[]` when absent.
+
+Expression structure is defined by recursive Zod schemas in `schemas/expression.ts`: strict object variants, required fields, operand arrays, arity, and literal options. Semantic refinements check reference syntax, type agreement, and group placement. The operator table in `expressions/operators.ts` describes operand roles and result types for traversal and evaluation; it does not duplicate the structural schemas. Authoring and resolved validation share these definitions, with resolved validation rejecting unfilled templates.
 
 ## How writing works
 

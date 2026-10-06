@@ -6,6 +6,8 @@ import {
 import { createPositionMapper, extractYamlErrors } from "./yamlPositionMap.js";
 import { newerThanValidatorWarning } from "./stagebookVersion.js";
 import type { Diagnostic } from "./types.js";
+import { checkExpressionTypes } from "../schemas/expressionTypes.js";
+import type { PromptFileType } from "../schemas/promptFile.js";
 
 export type { Diagnostic };
 
@@ -25,7 +27,10 @@ export interface ValidationResult {
  * since treatmentFileSchema uses altTemplateContext() and accepts
  * both concrete objects and template contexts at every level.
  */
-export function validateTreatmentSource(source: string): ValidationResult {
+export function validateTreatmentSource(
+  source: string,
+  options: { promptFiles?: ReadonlyMap<string, PromptFileType> } = {},
+): ValidationResult {
   const diagnostics: Diagnostic[] = [];
 
   // Step 1: Check for YAML syntax errors and duplicate keys
@@ -129,6 +134,27 @@ export function validateTreatmentSource(source: string): ValidationResult {
     diagnostics.push({
       message: `${issue.message} (${formatPath(issue.path)})`,
       severity: "warning",
+      range,
+    });
+  }
+
+  // Unknown-type warnings are a validation policy, never a schema failure.
+  // A host with loaded prompt metadata can provide it without introducing I/O
+  // into this synchronous source API.
+  for (const issue of checkExpressionTypes(
+    parsedObj,
+    options.promptFiles ?? new Map(),
+  )) {
+    let path = issue.path;
+    let range = mapper.resolve(path);
+    while (!range && path.length > 0) {
+      path = path.slice(0, -1);
+      range = mapper.resolve(path);
+    }
+    diagnostics.push({
+      code: "expression-type",
+      message: `${issue.message} (${formatPath(issue.path)})`,
+      severity: issue.severity,
       range,
     });
   }

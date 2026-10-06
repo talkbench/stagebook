@@ -30,6 +30,120 @@ import { getValidKeysForElementType } from "./treatment.js";
 import { fillTemplates } from "../templates/fillTemplates.js";
 import { resolvedTreatmentSchema } from "./resolved.js";
 
+describe("expression grammar integration", () => {
+  test("conditions accept calculations, explicit quantifiers, and case branches", () => {
+    expect(
+      conditionsSchema.safeParse({
+        all: [
+          {
+            nonDecreasing: [
+              4,
+              {
+                countTrue: {
+                  reference: "everyone.prompt.agree.value",
+                  comparator: "equals",
+                  value: "Yes",
+                },
+              },
+            ],
+          },
+          {
+            case: {
+              rules: [
+                { when: true, value: { allEqual: [1, { sum: [0, 1] }] } },
+                { default: true, value: false },
+              ],
+            },
+          },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+  test("expression and operand templates are accepted before expansion", () => {
+    expect(
+      conditionsSchema.safeParse({
+        all: [
+          { template: "gate", fields: { cutoff: 4 } },
+          { nonIncreasing: [{ sum: "${numbers}" }, "${cutoff}"] },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+  test("stage position rules inspect references in lazy default branches", () => {
+    const result = stageSchema.safeParse({
+      name: "stage",
+      duration: 10,
+      elements: [{ type: "submitButton" }],
+      conditions: {
+        case: {
+          rules: [
+            { when: true, value: true },
+            {
+              default: true,
+              value: {
+                allEqual: [{ reference: "self.attributes.isKnownVpn" }, false],
+              },
+            },
+          ],
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success)
+      expect(
+        result.error.issues.some(
+          (issue) =>
+            issue.path.join(".") ===
+              "conditions.case.rules.1.value.allEqual.0.reference" &&
+            issue.message.includes("cross-client"),
+        ),
+      ).toBe(true);
+  });
+  test("group eligibility rejects nested non-self references", () => {
+    expect(
+      playerSchema.safeParse({
+        position: 0,
+        conditions: {
+          nonIncreasing: [
+            { sum: { reference: "everyone.attributes.age" } },
+            18,
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+  test.each([
+    "0.attributes.age",
+    "everyone.attributes.age",
+    { position: "0", source: "attributes", path: ["age"] },
+  ])("intro rejects nested %j references", (reference) => {
+    const result = introStepsSchema.safeParse([
+      {
+        name: "intro",
+        elements: [
+          {
+            type: "submitButton",
+            conditions: { nonIncreasing: [{ sum: { reference } }, 18] },
+          },
+        ],
+      },
+    ]);
+    expect(result.success).toBe(false);
+    if (!result.success)
+      expect(
+        result.error.issues.some((issue) =>
+          issue.message.includes("before group assignment"),
+        ),
+      ).toBe(true);
+  });
+  test("static literal mismatch is rejected inside a condition", () => {
+    expect(
+      conditionsSchema.safeParse({ nonIncreasing: [{ sum: [1, "2"] }, 3] })
+        .success,
+    ).toBe(false);
+  });
+});
+
 // ----------- Reference Schema ------------
 test("reference with valid prompt", () => {
   const reference = "self.prompt.namedPrompt";
@@ -1683,8 +1797,8 @@ test("stageSchema accepts stage-level conditions with a cross-client position", 
   expect(result.success).toBe(true);
 });
 
-test("stageSchema accepts stage-level conditions with `all.X` reference (cross-client list, #298)", () => {
-  // After #298, `all.X` is a list-returning reference (one entry per
+test("stageSchema accepts stage-level conditions with `everyone.X` reference (cross-client list, #298)", () => {
+  // After #298, `everyone.X` is a list-returning reference (one entry per
   // participant). It's cross-client safe — every client resolves the
   // same list — so it's allowed at game-stage level.
   const result = stageSchema.safeParse({
@@ -1692,9 +1806,11 @@ test("stageSchema accepts stage-level conditions with `all.X` reference (cross-c
     duration: 120,
     conditions: [
       {
-        reference: "all.prompt.continueVote",
-        comparator: "equals",
-        value: "yes",
+        all: {
+          reference: "everyone.prompt.continueVote",
+          comparator: "equals",
+          value: "yes",
+        },
       },
     ],
     elements: [{ type: "submitButton" }],
@@ -1827,19 +1943,25 @@ test("playerSchema accepts a groupComposition condition with a `self` position",
 for (const [badReference, got] of [
   ["0.prompt.role", "0"], // numeric slot index
   ["shared.prompt.role", "shared"], // group-shared state
-  ["all.prompt.role", "all"], // cross-participant list
+  ["everyone.prompt.role", "everyone"], // cross-participant list
 ] as const) {
   test(`playerSchema rejects a groupComposition condition with a non-self position (${badReference})`, () => {
     const result = playerSchema.safeParse({
       position: 0,
       conditions: [
-        { reference: badReference, comparator: "equals", value: "buyer" },
+        {
+          all: {
+            reference: badReference,
+            comparator: "equals",
+            value: "buyer",
+          },
+        },
       ],
     });
     expect(result.success).toBe(false);
     if (!result.success) {
       const issue = result.error.issues.find(
-        (i) => i.path.join(".") === "conditions.0.reference",
+        (i) => i.path.join(".") === "conditions.0.all.reference",
       );
       expect(issue?.message).toMatch(/must use the `self` position selector/);
       // The message echoes the offending selector, so the three cases are
@@ -1909,7 +2031,7 @@ test("playerSchema require-self rule stays silent on an invalid/unresolved struc
         },
       ],
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(badPosition === "${slot}");
     if (!result.success) {
       const selfIssue = result.error.issues.find((i) =>
         i.message.includes("must use the `self` position selector"),

@@ -15,6 +15,199 @@ import {
   validateResolvedTreatmentFile,
 } from "./resolved.js";
 import { fillTemplates } from "../templates/fillTemplates.js";
+import { promptFileSchema } from "./promptFile.js";
+
+describe("resolved expression grammar", () => {
+  test("accepts a computed Boolean condition", () => {
+    expect(
+      resolvedElementSchema.safeParse({
+        type: "submitButton",
+        conditions: {
+          nonIncreasing: [
+            { sumExisting: { reference: "everyone.prompt.points.value" } },
+            20,
+          ],
+        },
+      }).success,
+    ).toBe(true);
+  });
+  test.each([
+    { nonIncreasing: [{ sum: [1, "2"] }, 3] },
+    {
+      all: {
+        reference: "everyone.prompt.choice",
+        comparator: "equals",
+        value: null,
+      },
+    },
+    { all: [{ reference: "everyone.prompt.choice", comparator: "exists" }] },
+    { all: ["${unbound}"] },
+  ])("rejects invalid post-fill expression %j", (conditions) => {
+    expect(
+      resolvedElementSchema.safeParse({ type: "submitButton", conditions })
+        .success,
+    ).toBe(false);
+  });
+  test("retains step conditions after parsing", () => {
+    const conditions = { nonIncreasing: [{ sum: [1, 2] }, 3] };
+    const result = resolvedTreatmentFileSchema.parse({
+      introSequences: [
+        {
+          name: "intro",
+          introSteps: [
+            { name: "step", conditions, elements: [{ type: "submitButton" }] },
+          ],
+        },
+      ],
+    });
+    expect(result.introSequences?.[0].introSteps[0]).toHaveProperty(
+      "conditions",
+      conditions,
+    );
+  });
+  test("declared prompt metadata enables post-hydration A4 type checks", () => {
+    const filled = {
+      treatments: [
+        {
+          name: "t",
+          playerCount: 1,
+          compatibleIntroSequences: [],
+          gameStages: [
+            {
+              name: "s",
+              duration: 10,
+              elements: [
+                { type: "prompt", name: "choice", file: "choice.prompt.md" },
+                {
+                  type: "submitButton",
+                  conditions: {
+                    reference: "self.prompt.choice.value",
+                    comparator: "equals",
+                    value: 4,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const promptFiles = new Map([
+      [
+        "choice.prompt.md",
+        promptFileSchema.parse(
+          "---\ntype: openResponse\n---\nAnswer.\n---\n> Your answer",
+        ),
+      ],
+    ]);
+    expect(validateResolvedTreatmentFile(filled).success).toBe(true);
+    const result = validateResolvedTreatmentFile(filled, { promptFiles });
+    expect(result.success).toBe(false);
+    expect(
+      result.issues.some(
+        (issue) =>
+          issue.reason === "expression-type" &&
+          issue.path.slice(0, 2).join(".") === "treatments.0",
+      ),
+    ).toBe(true);
+  });
+  test("known host fields are type checked without loaded prompt files", () => {
+    const result = validateResolvedTreatmentFile({
+      introSequences: [
+        {
+          name: "intro",
+          introSteps: [
+            {
+              name: "step",
+              elements: [
+                {
+                  type: "submitButton",
+                  conditions: {
+                    reference: "self.attributes.isKnownVpn",
+                    comparator: "equals",
+                    value: 1,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    expect(
+      result.issues.some((issue) => issue.reason === "expression-type"),
+    ).toBe(true);
+  });
+  test.each([
+    ["introSequences", "introSteps"],
+    ["consent", "steps"],
+  ])(
+    "%s rejects quoted numeric positions after template fill",
+    (collection, steps) => {
+      const result = validateResolvedTreatmentFile({
+        [collection]: [
+          {
+            name: "pre-group",
+            [steps]: [
+              {
+                name: "step",
+                elements: [
+                  {
+                    type: "submitButton",
+                    conditions: {
+                      reference: {
+                        position: "0",
+                        source: "attributes",
+                        path: ["isKnownVpn"],
+                      },
+                      comparator: "exists",
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      expect(result.success).toBe(false);
+      expect(
+        result.issues.some((issue) =>
+          issue.message.includes("before group assignment"),
+        ),
+      ).toBe(true);
+    },
+  );
+  test.each([
+    { nonIncreasing: [{ sum: [1, "${weight}"] }, 2] },
+    {
+      reference: { position: "${seat}", source: "prompt", name: "answer" },
+      comparator: "exists",
+    },
+    { reference: "${reference}", comparator: "equals", value: "yes" },
+  ])(
+    "unbound expression slots remain suppressible during authoring preview: %j",
+    (conditions) => {
+      const filled = {
+        introSequences: [
+          {
+            name: "intro",
+            introSteps: [
+              {
+                name: "step",
+                elements: [{ type: "submitButton", conditions }],
+              },
+            ],
+          },
+        ],
+      };
+      expect(validateResolvedTreatmentFile(filled).success).toBe(false);
+      expect(
+        validateResolvedTreatmentFile(filled, { skipUnresolved: true }).success,
+      ).toBe(true);
+    },
+  );
+});
 
 /**
  * `notes` is researcher-facing metadata. It's valid in authoring schemas so

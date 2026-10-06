@@ -49,12 +49,12 @@ describe("resolveReferencePosition (#349)", () => {
     });
   });
 
-  it("maps `all.X` to the aggregator marker (read across all positions)", () => {
-    expect(resolveReferencePosition("all.prompt.q1", 0)).toEqual({
-      kind: "all",
+  it("maps `everyone.X` to the aggregator marker (read across all positions)", () => {
+    expect(resolveReferencePosition("everyone.prompt.q1", 0)).toEqual({
+      kind: "everyone",
     });
-    expect(resolveReferencePosition("all.prompt.q1", 5)).toEqual({
-      kind: "all",
+    expect(resolveReferencePosition("everyone.prompt.q1", 5)).toEqual({
+      kind: "everyone",
     });
   });
 

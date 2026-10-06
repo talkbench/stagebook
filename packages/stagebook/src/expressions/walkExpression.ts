@@ -39,6 +39,60 @@ function own(value: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
+const MAX_GRAPH_VALUES = 10_000;
+const MAX_GRAPH_DEPTH = 128;
+
+/** Iterate values lazily so a large operand/rule container stops at the budget,
+ * without reading all its values first. Opaque payloads still count as syntax
+ * graph data, matching the expression schema's preflight limits. */
+function* graphChildren(value: object): Generator<unknown> {
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index++)
+      yield value[index] as unknown;
+  } else {
+    for (const key of Object.keys(value))
+      yield (value as Record<string, unknown>)[key];
+  }
+}
+
+/** Reject unsafe graphs before yielding any best-effort visits. Consumers run
+ * after failed schema checks too, so they cannot assume the input was bounded.
+ * Aliases count per occurrence: each valid authored path still gets a visit,
+ * but a small shared DAG cannot expand into unbounded traversal or warnings. */
+function safeGraph(input: unknown): boolean {
+  interface Frame {
+    value: unknown;
+    depth: number;
+    children?: Generator<unknown>;
+  }
+  const frames: Frame[] = [{ value: input, depth: 0 }];
+  const active = new Set<object>();
+  let values = 0;
+  while (frames.length > 0) {
+    const frame = frames[frames.length - 1];
+    const value = frame.value;
+    if (frame.children === undefined) {
+      if (++values > MAX_GRAPH_VALUES || frame.depth > MAX_GRAPH_DEPTH)
+        return false;
+      if (value === null || typeof value !== "object") {
+        frames.pop();
+        continue;
+      }
+      if (active.has(value)) return false;
+      active.add(value);
+      frame.children = graphChildren(value);
+    }
+    const next = frame.children.next();
+    if (next.done) {
+      active.delete(value as object);
+      frames.pop();
+    } else {
+      frames.push({ value: next.value, depth: frame.depth + 1 });
+    }
+  }
+  return true;
+}
+
 interface OperandSite {
   node: unknown;
   path: ExpressionPath;
@@ -217,11 +271,14 @@ function* walkNodes(
 
 /** Pre-order, best-effort structural traversal of the settled expression
  * vocabulary. This does not validate, evaluate, expand templates, or enable
- * syntax in treatment schemas. Every branch is visited, even case defaults. */
+ * syntax in treatment schemas. Every branch is visited, even case defaults.
+ * Cycles, graph depth over 128, or more than 10,000 graph values yield no
+ * visits; the expression schema reports those invalid inputs separately. */
 export function* walkExpression(
   expression: unknown,
   options: WalkExpressionOptions = {},
 ): Generator<ExpressionVisit> {
+  if (!safeGraph(expression)) return;
   yield* walkNodes(
     expression,
     options.path ?? [],
@@ -240,11 +297,13 @@ export interface ConditionLeafSite {
 
 /** Compatibility traversal for today's conditions grammar. Only array-valued
  * all/any/none operators recurse; other objects remain leaf candidates for
- * callers' existing guards. Templates and malformed primitive nodes are skipped. */
+ * callers' existing guards. Templates and malformed primitive nodes are skipped.
+ * The same graph safety limits as walkExpression apply before any visits. */
 export function* walkConditionLeaves(
   conditions: unknown,
   pathPrefix: ExpressionPath = [],
 ): Generator<ConditionLeafSite> {
+  if (!safeGraph(conditions)) return;
   for (const visit of walkNodes(
     conditions,
     pathPrefix,

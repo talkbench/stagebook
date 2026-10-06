@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computeSemanticTokens } from "./semanticTokens";
+import { OPERATOR_KEYS } from "stagebook";
 
 describe("computeSemanticTokens", () => {
   describe("element types", () => {
@@ -77,7 +78,7 @@ describe("computeSemanticTokens", () => {
       }
     });
 
-    it("does not highlight future expression operators or ordinary data keys", () => {
+    it("does not highlight unknown operators or ordinary data keys", () => {
       const src = `conditions:
   not:
     subtract: [1, 2]
@@ -90,6 +91,46 @@ data:
           (token) => token.tokenType === "keyword",
         ),
       ).toEqual([]);
+    });
+    it.each(OPERATOR_KEYS)(
+      "highlights the %s expression operator",
+      (operator) => {
+        const tokens = computeSemanticTokens(`conditions:\n  ${operator}: []`);
+        expect(
+          tokens.some(
+            (token) => token.text === operator && token.tokenType === "keyword",
+          ),
+        ).toBe(true);
+      },
+    );
+    it("follows named operands and case rules while keeping literal payloads opaque", () => {
+      const source = `conditions:
+  case:
+    rules:
+      - when:
+          nonIncreasing:
+            - sumExisting:
+                inputs:
+                  - subtract: {from: 8, value: 2}
+                atLeast: 1
+            - 4
+        value:
+          allEqual:
+            - literal: {sum: [1, 2]}
+            - literal: {sum: [1, 2]}
+      - default: true
+        value: false`;
+      expect(
+        computeSemanticTokens(source)
+          .filter((token) => token.tokenType === "keyword")
+          .map((token) => token.text),
+      ).toEqual([
+        "case",
+        "nonIncreasing",
+        "sumExisting",
+        "subtract",
+        "allEqual",
+      ]);
     });
   });
 

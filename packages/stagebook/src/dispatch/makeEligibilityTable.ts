@@ -1,10 +1,11 @@
-import { getNestedValueByPath } from "../utils/reference.js";
+import { Missing } from "../expressions/missing.js";
+import type {
+  ExpressionReference,
+  ExpressionTypeViolation,
+} from "../expressions/evaluateExpression.js";
+import { readReference } from "../utils/readReference.js";
 import { eligibilityReference } from "./eligibilityReference.js";
-import {
-  evaluateConditions,
-  type Condition,
-  type ConditionNode,
-} from "../utils/evaluateConditions.js";
+import { evaluateConditions } from "../utils/evaluateConditions.js";
 import type {
   DispatchConditionNode,
   EligibilityTable,
@@ -12,11 +13,16 @@ import type {
   Treatment,
 } from "./types.js";
 
-interface MakeEligibilityTableArgs {
+export interface MakeEligibilityTableArgs {
   playerIds: string[];
   treatments: Treatment[];
   /** Per-player storage-key map. Keys come from `extractConditionKeys`. */
   playerData: PlayerDataSnapshot;
+  /** Sanitized reference/type diagnostics; participant answers are omitted. */
+  onViolation?: (violation: ExpressionTypeViolation) => void;
+  /** Retain across ticks to deduplicate the same reference/type mismatch.
+   * By default reports are deduplicated across this tick's whole table. */
+  violationKeys?: Set<string>;
 }
 
 /**
@@ -28,10 +34,11 @@ interface MakeEligibilityTableArgs {
  * answer.
  *
  * Only `self.X.Y` references are resolved — eligibility is a per-
- * candidate question, and numeric/`shared`/`all` selectors would
+ * candidate question, and numeric/`shared`/`everyone` selectors would
  * require the eventual group composition (a circular dependency). Those
- * reads return `undefined` from the resolve callback, which the tri-
- * state evaluator collapses to "data not yet" → false at the boundary.
+ * reads return Missing. They cannot match a positive comparator; negative
+ * comparisons and explicitly authored fallbacks follow ordinary Missing
+ * semantics. Authoring validation rejects non-self eligibility references.
  * Treatments without `groupComposition`, and slots without
  * `conditions`, are unconstrained (everyone eligible).
  *
@@ -42,6 +49,8 @@ export function makeEligibilityTable({
   playerIds,
   treatments,
   playerData,
+  onViolation,
+  violationKeys = new Set<string>(),
 }: MakeEligibilityTableArgs): EligibilityTable {
   // Map<playerId, Map<treatmentIndex, Map<position, bool>>>.
   // A nested map (rather than a flat string-keyed cache) keeps the
@@ -50,20 +59,18 @@ export function makeEligibilityTable({
   const cache = new Map<string, Map<number, Map<number, boolean>>>();
 
   for (const pid of playerIds) {
-    const dataForPlayer = playerData[pid] ?? {};
-    const resolveForPlayer = (reference: unknown): unknown[] => {
-      // Eligibility resolves only `self.*` references. Anything else
-      // collapses to "no values resolved" — the tri-state leaf
-      // evaluator then returns false (positive comparators) or true
-      // (`doesNotEqual` family) per `compare`'s undefined-lhs policy.
+    const dataForPlayer =
+      (Object.prototype.hasOwnProperty.call(playerData, pid)
+        ? playerData[pid]
+        : undefined) ?? {};
+    const readForPlayer = (reference: ExpressionReference): unknown => {
       const parsed = eligibilityReference(reference);
-      if (!parsed) return [];
-      const { referenceKey, path } = parsed;
-      const record = dataForPlayer[referenceKey];
-      if (record === undefined) return [];
-      const value = getNestedValueByPath(record, path);
-      if (value === undefined) return [];
-      return [value];
+      if (!parsed) return Missing;
+      return readReference(reference, (key) =>
+        Object.prototype.hasOwnProperty.call(dataForPlayer, key)
+          ? [dataForPlayer[key]]
+          : [],
+      );
     };
 
     const treatmentMap = new Map<number, Map<number, boolean>>();
@@ -82,14 +89,15 @@ export function makeEligibilityTable({
           const slot = gc.find((s) => s?.position === pos);
           conditions = slot?.conditions;
         }
-        if (conditions === undefined || conditions === null) {
+        if (conditions === undefined) {
           positionMap.set(pos, true);
           continue;
         }
-        const ok = evaluateConditions(
-          conditions as ConditionNode | ConditionNode[] | Condition,
-          resolveForPlayer,
-        );
+        const ok = evaluateConditions(conditions, {
+          readReference: readForPlayer,
+          onViolation,
+          violationKeys,
+        });
         positionMap.set(pos, ok);
       }
     });

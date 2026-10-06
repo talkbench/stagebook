@@ -7,8 +7,7 @@ import { run } from "./validate.js";
 import { STAGEBOOK_VERSION } from "../validate/stagebookVersion.js";
 import { FIXTURE_VALUE } from "../validate/fixtures/upgradeRuleFixtures.js";
 
-// The `stagebook:` version field (#756) through the CLI. The production
-// upgrade-rule table ships empty, so fixture rules stand in for it.
+// Fixture rules isolate the CLI's version plumbing from release-specific rules.
 vi.mock("../validate/upgradeRules.js", async (importOriginal) => {
   const fixtures = await import("../validate/fixtures/upgradeRuleFixtures.js");
   return {
@@ -142,9 +141,11 @@ describe("upgrade warnings", () => {
       "--no-expand",
       join(dir, "study.stagebook.yaml"),
     ]);
-    expect(noExpand.stdout).toContain("2 warnings in 1 file.");
+    expect(noExpand.stdout.match(/warning: Fixture change/g)).toHaveLength(2);
+    expect(noExpand.code).toBe(0);
     const stdin = await runCli(["--type=treatment", "-"], study(null));
-    expect(stdin.stdout).toContain("2 warnings in 1 file.");
+    expect(stdin.stdout.match(/warning: Fixture change/g)).toHaveLength(2);
+    expect(stdin.code).toBe(0);
   });
 
   it("judge a template by its own file, and report it at the definition", async () => {

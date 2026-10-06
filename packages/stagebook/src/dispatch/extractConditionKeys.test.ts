@@ -3,6 +3,104 @@ import { extractConditionKeys } from "./extractConditionKeys.js";
 import type { Treatment } from "./types.js";
 
 describe("extractConditionKeys", () => {
+  test("discovers full expression operands and every case branch", () => {
+    const treatments: Treatment[] = [
+      {
+        name: "calculated",
+        playerCount: 1,
+        groupComposition: [
+          {
+            position: 0,
+            conditions: {
+              all: [
+                {
+                  nonDecreasing: [
+                    10,
+                    {
+                      sum: [
+                        { reference: "self.prompt.score.value" },
+                        {
+                          reference: {
+                            position: "self",
+                            source: "prompt",
+                            name: "bonus",
+                            path: ["value"],
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+                {
+                  case: {
+                    rules: [
+                      {
+                        when: { reference: "self.attributes.blocked" },
+                        value: { reference: "self.prompt.selected.value" },
+                      },
+                      {
+                        default: true,
+                        value: {
+                          firstExisting: [
+                            { reference: "self.prompt.fallback.value" },
+                            { reference: "self.entryUrl.params.fallback" },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ];
+    expect(extractConditionKeys(treatments)).toEqual(
+      new Set([
+        "prompt_score",
+        "prompt_bonus",
+        "attributes",
+        "prompt_selected",
+        "prompt_fallback",
+        "entryUrl",
+      ]),
+    );
+  });
+  test("literal and regex options stay opaque to reference discovery", () => {
+    const treatments: Treatment[] = [
+      {
+        name: "data",
+        playerCount: 1,
+        groupComposition: [
+          {
+            position: 0,
+            conditions: {
+              all: [
+                {
+                  includes: {
+                    container: { literal: ["self.prompt.notAReference"] },
+                    members: [{ reference: "self.prompt.choice.value" }],
+                  },
+                },
+                {
+                  matches: {
+                    string: { reference: "self.prompt.text.value" },
+                    patterns: ["self.prompt.notAReference"],
+                    flags: "i",
+                  },
+                },
+                { literal: { reference: "self.prompt.opaquePayload" } },
+              ],
+            },
+          },
+        ],
+      },
+    ];
+    expect(extractConditionKeys(treatments)).toEqual(
+      new Set(["prompt_choice", "prompt_text"]),
+    );
+  });
   test("returns empty set for treatments with no groupComposition", () => {
     const treatments: Treatment[] = [
       { name: "t0", playerCount: 2 },
@@ -110,7 +208,7 @@ describe("extractConditionKeys", () => {
     expect(extractConditionKeys(treatments)).toEqual(new Set(["entryUrl"]));
   });
 
-  test("skips numeric / shared / all selectors (not resolvable from candidate alone)", () => {
+  test("skips numeric / shared / everyone selectors (not resolvable from candidate alone)", () => {
     const treatments: Treatment[] = [
       {
         name: "t0",
@@ -121,7 +219,7 @@ describe("extractConditionKeys", () => {
             conditions: [
               { reference: "0.prompt.role", comparator: "equals", value: "a" },
               { reference: "shared.prompt.x", comparator: "exists" },
-              { reference: "all.prompt.y", comparator: "exists" },
+              { reference: "everyone.prompt.y", comparator: "exists" },
             ],
           },
         ],

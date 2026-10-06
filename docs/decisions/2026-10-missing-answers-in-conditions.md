@@ -172,6 +172,14 @@ The `all.` position is renamed `everyone.`, so it no longer reads like the
 `all:` operator. `everyone.<reference>` is a list with one entry per seat,
 in seat order, with a missing entry where a seat has no answer.
 
+The shared `readReference` boundary builds this list by reading each numeric
+seat from the host; hosts do not supply an aggregated `all` scope. The roster
+must be known and the host snapshot ready before evaluation (#757). An unknown
+roster or unloaded snapshot is not an empty group or a missing answer. Hosts
+defer evaluation while loading; once ready, a known zero-seat roster is `[]`
+and an unanswered seat contributes Missing. See the
+[reference-read contract](../engineer/platform-requirements.md).
+
 Operators that take a list use it directly: `allEqual`, the container of
 `includes`, `sumExisting`, and so on. A leaf on `everyone.` gives one
 true/false per seat, and `all`, `any`, `none`, or `countTrue` must consume

@@ -20,6 +20,7 @@ export * from "./checkPairing.js";
 export * from "./getRequiredServices.js";
 export * from "./getTreatmentDurations.js";
 export * from "./sharedPromptValidation.js";
+export * from "./expressionTypes.js";
 export * from "./stagebookVersion.js";
 export * from "./upgradeRules.js";
 export * from "./upgradeWarnings.js";

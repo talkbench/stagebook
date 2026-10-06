@@ -473,7 +473,7 @@ function GateProbe() {
       {String(
         evaluateConditions(
           { reference: "self.prompt.age", comparator: "isAtLeast", value: 18 },
-          (reference) => ctx.resolve(reference),
+          { readReference: (reference) => ctx.readReference(reference) },
         ),
       )}
     </output>
@@ -519,10 +519,7 @@ test.each([false, true])(
         );
         await Promise.resolve();
       });
-      expect(get).toHaveBeenCalledWith(
-        "prompt_age",
-        shared ? "shared" : "player",
-      );
+      expect(get).toHaveBeenCalledWith("prompt_age", shared ? "shared" : "0");
       if (shared) {
         expect(slot.numberFormat).toEqual(hostFormat);
         expect(slot.getFeedback("25,5", true).state).toBe("valid");

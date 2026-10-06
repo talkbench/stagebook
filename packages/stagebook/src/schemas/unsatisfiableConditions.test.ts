@@ -236,9 +236,7 @@ describe("checkUnsatisfiableConditions", () => {
       expect(issues).toHaveLength(1);
     });
 
-    test("flags numeric `equals` against small-integer text labels (compare coerces)", () => {
-      // Text-mode options whose labels happen to be small integers coerce to
-      // numbers in `compare`, so `equals 3` against "1"/"2" is provably dead.
+    test("flags numeric `equals` against text labels without coercing them", () => {
       const issues = checkUnsatisfiableConditions(
         fileWith([leaf("equals", 3)]),
         domains({ "q.prompt.md": mcText(["1", "2"]) }),
@@ -324,12 +322,12 @@ describe("checkUnsatisfiableConditions", () => {
       expect(issues).toEqual([]);
     });
 
-    test("passes numeric `equals` matching a small-integer text label", () => {
+    test("numeric `equals` cannot match a small-integer text label", () => {
       const issues = checkUnsatisfiableConditions(
         fileWith([leaf("equals", 2)]),
         domains({ "q.prompt.md": mcText(["1", "2"]) }),
       );
-      expect(issues).toEqual([]);
+      expect(issues).toHaveLength(1);
     });
   });
 
@@ -360,12 +358,12 @@ describe("checkUnsatisfiableConditions", () => {
       }
     });
 
-    test("skips type-mismatched comparators (numeric compare on text options)", () => {
+    test("strict numeric comparators cannot match text options", () => {
       const issues = checkUnsatisfiableConditions(
         fileWith([leaf("isAtLeast", 5)]),
         domains({ "q.prompt.md": mcText(["Low", "Medium", "High"]) }),
       );
-      expect(issues).toEqual([]);
+      expect(issues).toHaveLength(1);
     });
 
     test("skips openResponse value comparators (free text is not disprovable)", () => {
@@ -617,7 +615,7 @@ describe("checkUnsatisfiableConditions", () => {
   });
 
   describe("path reporting", () => {
-    test("points the issue path at the offending condition value", () => {
+    test("points the issue path at the whole dead condition root", () => {
       const issues = checkUnsatisfiableConditions(
         fileWith([leaf("equals", "Maybe")]),
         domains({ "q.prompt.md": mcText(["Yes", "No"]) }),
@@ -630,8 +628,6 @@ describe("checkUnsatisfiableConditions", () => {
         "elements",
         1,
         "conditions",
-        0,
-        "value",
       ]);
     });
   });
@@ -674,4 +670,293 @@ describe("numericResponse has advisory bounds, not a bounded stored domain (#687
       ).toEqual([]);
     },
   );
+});
+
+describe("whole expression reachability (#690)", () => {
+  const choiceDomains = domains({ "q.prompt.md": mcText(["Yes", "No"]) });
+  const q = { reference: "self.prompt.q.value" };
+
+  test("reports one root when every nested any branch is dead", () => {
+    const conditions = {
+      any: [leaf("equals", "Maybe"), { all: [leaf("equals", "Never")] }],
+    };
+    const issues = checkUnsatisfiableConditions(
+      fileWith(conditions),
+      choiceDomains,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path.at(-1)).toBe("conditions");
+  });
+
+  test.each([
+    { strictlyIncreasing: [0, { countTrue: [leaf("equals", "Maybe")] }] },
+    { allEqual: [{ sum: [q, 1] }, 99] },
+    {
+      case: {
+        rules: [
+          { when: leaf("equals", 1), value: false },
+          { default: true, value: false },
+        ],
+      },
+    },
+    { allEqual: [{ divide: { numerator: 6, denominator: 2 } }, 4] },
+  ])("evaluates full calculation/count/case trees: %j", (conditions) => {
+    expect(
+      checkUnsatisfiableConditions(
+        fileWith(conditions),
+        domains({
+          "q.prompt.md": mcNumeric([
+            [1, "Low"],
+            [5, "High"],
+          ]),
+        }),
+      ),
+    ).toHaveLength(1);
+  });
+
+  test("the unanswered state can make a negative leaf reachable", () => {
+    expect(
+      checkUnsatisfiableConditions(
+        fileWith(leaf("doesNotEqual", "Yes")),
+        domains({ "q.prompt.md": mcText(["Yes"]) }),
+      ),
+    ).toEqual([]);
+  });
+
+  test("repeated references share one assignment rather than independent values", () => {
+    expect(
+      checkUnsatisfiableConditions(
+        fileWith({ all: [leaf("equals", "Yes"), leaf("equals", "No")] }),
+        choiceDomains,
+      ),
+    ).toHaveLength(1);
+  });
+
+  test("blank prompt options normalize to Missing through readReference", () => {
+    const parsed = mcText(["Yes"]);
+    parsed.responseItems = [" ", ""];
+    expect(
+      checkUnsatisfiableConditions(
+        fileWith({ reference: "self.prompt.q", comparator: "exists" }),
+        domains({ "q.prompt.md": parsed }),
+      ),
+    ).toHaveLength(1);
+  });
+
+  test("unknown branches cannot prove an any root dead", () => {
+    expect(
+      checkUnsatisfiableConditions(
+        fileWith({
+          any: [
+            leaf("equals", "Maybe"),
+            { reference: "self.attributes.ready" },
+          ],
+        }),
+        choiceDomains,
+      ),
+    ).toEqual([]);
+  });
+
+  test("a dead all branch proves the root dead despite an unknown sibling", () => {
+    expect(
+      checkUnsatisfiableConditions(
+        fileWith({
+          all: [
+            { reference: "self.attributes.ready" },
+            leaf("equals", "Maybe"),
+          ],
+        }),
+        choiceDomains,
+      ),
+    ).toHaveLength(1);
+  });
+
+  test("analytic slider proofs compose through Boolean context", () => {
+    const parsed = domains({ "q.prompt.md": slider(0, 100, [0, 100]) });
+    const dead = leaf("isAbove", 200);
+    expect(
+      checkUnsatisfiableConditions(fileWith({ any: [dead, false] }), parsed),
+    ).toHaveLength(1);
+    expect(
+      checkUnsatisfiableConditions(fileWith({ none: [dead] }), parsed),
+    ).toEqual([]);
+  });
+
+  test("regex anywhere leaves the root unproven without executing author patterns", () => {
+    expect(
+      checkUnsatisfiableConditions(
+        fileWith({
+          all: [false, { matches: { string: "a", patterns: ["a"] } }],
+        }),
+        choiceDomains,
+      ),
+    ).toEqual([]);
+  });
+
+  test("a known group reference remains unproven without a finite roster domain", () => {
+    expect(
+      checkUnsatisfiableConditions(
+        fileWith({
+          any: [
+            {
+              reference: "everyone.prompt.q",
+              comparator: "equals",
+              value: "Maybe",
+            },
+          ],
+        }),
+        choiceDomains,
+      ),
+    ).toEqual([]);
+  });
+
+  test("prompt producers are scoped per treatment", () => {
+    const first = fileWith(leaf("equals", "Yes"), { promptFile: "a.prompt.md" })
+      .treatments[0];
+    const second = fileWith(leaf("equals", "Yes"), {
+      promptFile: "b.prompt.md",
+    }).treatments[0];
+    const issues = checkUnsatisfiableConditions(
+      { treatments: [first, second] },
+      domains({
+        "a.prompt.md": mcText(["Yes"]),
+        "b.prompt.md": mcText(["No"]),
+      }),
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path.slice(0, 2)).toEqual(["treatments", 1]);
+  });
+
+  test("only compatible intro producers contribute to a treatment", () => {
+    const file = {
+      treatments: [
+        {
+          compatibleIntroSequences: ["chosen"],
+          gameStages: [{ conditions: leaf("equals", "Yes") }],
+        },
+      ],
+      introSequences: [
+        {
+          name: "chosen",
+          introSteps: [
+            { elements: [{ type: "prompt", name: "q", file: "no.prompt.md" }] },
+          ],
+        },
+        {
+          name: "other",
+          introSteps: [
+            {
+              elements: [{ type: "prompt", name: "q", file: "yes.prompt.md" }],
+            },
+          ],
+        },
+      ],
+    };
+    expect(
+      checkUnsatisfiableConditions(
+        file,
+        domains({
+          "no.prompt.md": mcText(["No"]),
+          "yes.prompt.md": mcText(["Yes"]),
+        }),
+      ),
+    ).toHaveLength(1);
+  });
+
+  test("shared references do not borrow private prompt domains", () => {
+    expect(
+      checkUnsatisfiableConditions(
+        fileWith({
+          reference: "shared.prompt.q",
+          comparator: "equals",
+          value: "Maybe",
+        }),
+        choiceDomains,
+      ),
+    ).toEqual([]);
+  });
+
+  test("shared and private producers with the same name keep separate domains", () => {
+    const file = {
+      treatments: [
+        {
+          gameStages: [
+            {
+              elements: [
+                { type: "prompt", name: "q", file: "private.prompt.md" },
+                {
+                  type: "prompt",
+                  name: "q",
+                  file: "shared.prompt.md",
+                  shared: true,
+                },
+                {
+                  conditions: {
+                    reference: "shared.prompt.q",
+                    comparator: "equals",
+                    value: "Yes",
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(
+      checkUnsatisfiableConditions(
+        file,
+        domains({
+          "private.prompt.md": mcText(["Yes"]),
+          "shared.prompt.md": mcText(["No"]),
+        }),
+      ),
+    ).toHaveLength(1);
+  });
+
+  test("skips an oversized Cartesian domain instead of sampling it", () => {
+    const parsed = mcNumeric(
+      Array.from({ length: 64 }, (_, value) => [value, String(value)]),
+    );
+    const file = fileWith({
+      allEqual: [{ sum: [q, { reference: "self.prompt.r" }] }, 999],
+    });
+    file.treatments[0].gameStages[0].elements.push({
+      type: "prompt",
+      name: "r",
+      file: "q.prompt.md",
+    });
+    expect(
+      checkUnsatisfiableConditions(file, domains({ "q.prompt.md": parsed })),
+    ).toEqual([]);
+  });
+
+  test("does not mistake an unresolved nested template for Missing", () => {
+    expect(
+      checkUnsatisfiableConditions(
+        fileWith({ any: [false, { template: "later", fields: {} }] }),
+        choiceDomains,
+      ),
+    ).toEqual([]);
+  });
+
+  test("bounds shared syntax DAGs before walking or evaluating", () => {
+    let conditions: unknown = false;
+    for (let index = 0; index < 14; index++)
+      conditions = { all: [conditions, conditions] };
+    expect(
+      checkUnsatisfiableConditions(fileWith(conditions), choiceDomains),
+    ).toEqual([]);
+  });
+
+  test("openResponse length proofs retain their enclosing none semantics", () => {
+    const parsed = domains({ "q.prompt.md": openResponse({ maxLength: 40 }) });
+    const dead = leaf("hasLengthAtLeast", 50);
+    expect(
+      checkUnsatisfiableConditions(fileWith({ any: [dead, false] }), parsed),
+    ).toHaveLength(1);
+    expect(
+      checkUnsatisfiableConditions(fileWith({ none: [dead] }), parsed),
+    ).toEqual([]);
+  });
 });

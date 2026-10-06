@@ -37,7 +37,9 @@ function Content() {
           comparator: "doesNotInclude",
           value: TECHNICAL_ERRORS,
         }}
-        resolve={(reference) => context.resolve(reference)}
+        readReference={context.readReference}
+        onViolation={context.onContractViolation}
+        violationKeys={context.violationKeys}
       >
         <p data-testid="other-questions">Other questions</p>
       </ConditionsConditionalRender>

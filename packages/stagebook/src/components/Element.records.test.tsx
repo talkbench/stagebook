@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { Missing } from "../expressions/missing.js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -23,7 +24,9 @@ function renderElement(element: ElementConfig) {
     ["attributes", { stableParticipantId: "stable-1" }],
   ]);
   let elapsedTime = 0;
-  let resolve: ReturnType<typeof useStagebookContext>["resolve"] = () => [];
+  let readReference: ReturnType<
+    typeof useStagebookContext
+  >["readReference"] = () => Missing;
   const save = vi.fn((key: string, value: unknown) => state.set(key, value));
   const onSubmit = vi.fn();
   const context: StagebookContext = {
@@ -41,7 +44,7 @@ function renderElement(element: ElementConfig) {
   };
   function ReadReferences() {
     const context = useStagebookContext();
-    resolve = (reference) => context.resolve(reference);
+    readReference = (reference) => context.readReference(reference);
     return null;
   }
   const container = document.createElement("div");
@@ -60,7 +63,7 @@ function renderElement(element: ElementConfig) {
     state,
     save,
     onSubmit,
-    resolve: (reference: string) => resolve(reference),
+    readReference: (reference: string) => readReference(reference),
     setElapsedTime: (time: number) => {
       elapsedTime = time;
     },
@@ -74,17 +77,17 @@ describe("Element referenceable completion records (#690)", () => {
       const view = renderElement({ type: "submitButton", name });
       const recordName = name ?? "game_0_survey";
       const reference = `self.submitButton.${recordName}.time`;
-      expect(view.resolve(reference)).toEqual([]);
+      expect(view.readReference(reference)).toBe(Missing);
 
       // The clock is read at the click, not when the element mounts.
       view.setElapsedTime(25.5);
-      let valueAtSubmit: unknown[] = [];
+      let valueAtSubmit: unknown = [];
       view.onSubmit.mockImplementation(() => {
-        valueAtSubmit = view.resolve(reference);
+        valueAtSubmit = view.readReference(reference);
       });
       act(() => view.container.querySelector("button")!.click());
 
-      expect(valueAtSubmit).toEqual([25.5]);
+      expect(valueAtSubmit).toBe(25.5);
       expect(view.state.get(`submitButton_${recordName}`)).toEqual({
         time: 25.5,
         step: "game_0_survey",
@@ -101,12 +104,12 @@ describe("Element referenceable completion records (#690)", () => {
       const view = renderElement({ type: "qualtrics", name, url });
       const recordName = name ?? "game_0_survey";
       const reference = `self.qualtrics.${recordName}.sessionId`;
-      expect(view.resolve(reference)).toEqual([]);
+      expect(view.readReference(reference)).toBe(Missing);
       view.setElapsedTime(42);
-      let valueAtSubmit: unknown[] = [];
+      let valueAtSubmit: unknown = [];
       let triggerAtSubmit: unknown;
       view.onSubmit.mockImplementation(() => {
-        valueAtSubmit = view.resolve(reference);
+        valueAtSubmit = view.readReference(reference);
         triggerAtSubmit = view.state.get("qualtricsDataReady");
       });
 
@@ -126,7 +129,7 @@ describe("Element referenceable completion records (#690)", () => {
         step: "game_0_survey",
         stageTimeElapsed: 42,
       };
-      expect(valueAtSubmit).toEqual(["sess-1"]);
+      expect(valueAtSubmit).toBe("sess-1");
       expect(triggerAtSubmit).toEqual(expected);
       expect(view.state.get(`qualtrics_${recordName}`)).toEqual(expected);
       expect(view.state.get("qualtricsDataReady")).toEqual(expected);
@@ -154,7 +157,7 @@ describe("Element referenceable completion records (#690)", () => {
     });
 
     expect(view.save).not.toHaveBeenCalled();
-    expect(view.resolve("self.qualtrics.exit.sessionId")).toEqual([]);
+    expect(view.readReference("self.qualtrics.exit.sessionId")).toBe(Missing);
     expect(view.onSubmit).not.toHaveBeenCalled();
   });
 
@@ -173,7 +176,7 @@ describe("Element referenceable completion records (#690)", () => {
       );
     });
 
-    expect(view.resolve("self.qualtrics.exit.sessionId")).toEqual(["sess-1"]);
+    expect(view.readReference("self.qualtrics.exit.sessionId")).toBe("sess-1");
     expect(view.onSubmit).toHaveBeenCalledTimes(1);
   });
 });

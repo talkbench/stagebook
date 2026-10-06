@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import React from "react";
+import { Missing } from "../expressions/missing.js";
 import { ErrorCallout } from "./ErrorCallout.js";
 import {
   useStagebookContext,
@@ -40,7 +41,7 @@ function isUnresolvedAsset(url: string): boolean {
   return /^asset:\/\//i.test(url);
 }
 
-// Resolve element URL params using the StagebookProvider's resolve.
+// Resolve element URL params using the StagebookProvider's readReference.
 // Plain function — no hooks — so it's safe to call conditionally (e.g. in
 // a switch case) without violating the Rules of Hooks.
 function resolveParams(
@@ -55,7 +56,7 @@ function resolveParams(
         reference?: string | ReferenceType;
       }>
     | undefined,
-  resolve: (ref: string | ReferenceType) => unknown[],
+  readReference: (ref: string | ReferenceType) => unknown,
 ): ResolvedParam[] {
   if (!urlParams) return [];
   return urlParams.map((param) => {
@@ -70,11 +71,23 @@ function resolveParams(
     }
     // Per #298 the position is part of the reference itself; the
     // sibling `param.position` field is removed.
-    const values = resolve(param.reference);
-    const picked = values.find((v) => v !== undefined);
+    const value = readReference(param.reference);
+    const parsed =
+      typeof param.reference === "string"
+        ? parseDottedReference(param.reference)
+        : { ok: true as const, value: param.reference };
+    // Only a group reference has an outer seat list. A participant's array
+    // answer remains one value rather than silently selecting its first item.
+    const picked: unknown =
+      parsed.ok && parsed.value.position === "everyone" && Array.isArray(value)
+        ? value.find((entry) => entry !== Missing)
+        : value;
     return {
       key: param.key,
-      value: picked == null ? "" : String(picked as string | number | boolean),
+      value:
+        picked === Missing || picked == null
+          ? ""
+          : String(picked as string | number | boolean),
     };
   });
 }
@@ -85,7 +98,7 @@ export interface ElementConfig {
   file?: string;
   style?: "" | "thin" | "regular" | "thick";
   // After #240, references accept the dotted-string sugar OR the structured
-  // `{source, name?, path?}` form. Element.tsx forwards either to `resolve`
+  // `{source, name?, path?}` form. Element.tsx forwards either to `readReference`
   // (which handles both) and stringifies for the `data-reference` attribute
   // on Display.
   reference?: string | ReferenceType;
@@ -122,7 +135,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
   const ctx = useStagebookContext();
   const messages = useMessages();
   const {
-    resolve,
+    readReference,
     save,
     getElapsedTime,
     getAssetURL,
@@ -167,7 +180,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
 
   const resolvedParams = resolveParams(
     element.type === "trackedLink" ? element.urlParams : undefined,
-    resolve,
+    readReference,
   );
 
   switch (element.type) {
@@ -201,13 +214,13 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
 
     case "display": {
       // Per #298, the position is part of the reference itself —
-      // `0.prompt.foo.value`, `all.prompt.recall.value`, etc. The
+      // `0.prompt.foo.value`, `everyone.prompt.recall.value`, etc. The
       // Display element no longer takes a sibling `position:` field;
       // the position is parsed out of the reference and used for
       // layout hints. The resolver handles the same parsing internally
       // when resolving values.
       const ref = element.reference ?? `self.prompt.${String(element.name)}`;
-      const values = resolve(ref);
+      const value = readReference(ref);
       // Parse once, derive both the canonical dotted-string form (for
       // `data-reference`) and the position (for layout) from the same
       // structured shape.
@@ -225,7 +238,11 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
         <Display
           reference={refString}
           position={positionForLayout}
-          values={values}
+          values={
+            parsed?.position === "everyone" && Array.isArray(value)
+              ? value
+              : [value]
+          }
         />
       );
     }
@@ -294,17 +311,15 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
       // reference itself per #298 — `shared.prompt.X` for shared
       // prompts, `self.prompt.X` for player-scoped.
       const scope = element.shared ? "shared" : "self";
-      const currentValues = resolve(`${scope}.prompt.${promptName}`);
-      const currentValue = currentValues[0];
-      const savedEntries =
+      const currentValue = readReference(`${scope}.prompt.${promptName}`);
+      const savedEntry =
         metadata.type === "numericResponse"
-          ? resolve(`${scope}.prompt.${promptName}.entry`)
-          : [];
-      const savedFormats =
+          ? readReference(`${scope}.prompt.${promptName}.entry`)
+          : Missing;
+      const savedFormat =
         metadata.type === "numericResponse"
-          ? resolve(`${scope}.prompt.${promptName}.numberFormat`)
-          : [];
-      const savedFormat = savedFormats[0];
+          ? readReference(`${scope}.prompt.${promptName}.numberFormat`)
+          : Missing;
       // Restored records can be client-written. Reuse a complete valid pair;
       // otherwise the numeric field/slot falls back to the active catalog.
       const validSavedFormat = isNumberFormat(savedFormat)
@@ -320,10 +335,8 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           name={promptName}
           file={element.file}
           shared={element.shared}
-          value={currentValue}
-          entry={
-            typeof savedEntries[0] === "string" ? savedEntries[0] : undefined
-          }
+          value={currentValue === Missing ? undefined : currentValue}
+          entry={typeof savedEntry === "string" ? savedEntry : undefined}
           numberFormat={validSavedFormat}
           save={save}
           step={progressLabel}
@@ -437,9 +450,9 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
       // stage see their existing marks. Matches the form-input convention
       // (Prompt reads `self.prompt.<name>`, Timeline reads
       // `self.timeline.<name>`). The `self.` position prefix is mandatory
-      // after #298 — without it `resolve` rejects the reference, logs
+      // after #298 — without it `readReference` rejects the reference, logs
       // "Invalid reference", and the saved marks silently vanish on reload.
-      const savedSelections = resolve(`self.timeline.${timelineName}`)[0];
+      const savedSelections = readReference(`self.timeline.${timelineName}`);
       return (
         <Timeline
           source={String(element.source ?? "")}
@@ -451,7 +464,9 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           multiSelect={element.multiSelect as boolean | undefined}
           showWaveform={element.showWaveform as boolean | undefined}
           trackLabels={element.trackLabels as string[] | undefined}
-          initialSelections={savedSelections as unknown[] | undefined}
+          initialSelections={
+            Array.isArray(savedSelections) ? savedSelections : undefined
+          }
           save={wrappedSave}
         />
       );
@@ -473,16 +488,17 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
       );
 
     case "qualtrics": {
-      const qualtricsParams = resolveParams(element.urlParams, resolve);
+      const qualtricsParams = resolveParams(element.urlParams, readReference);
       // Source the standard Qualtrics identifiers from the current
       // participant's attributes (#473) — the anonymized, release-safe
       // `stableParticipantId` (NOT the internal `playerId`) and, once the
-      // game phase has assigned it, the per-row `sampleId`. `resolve`
-      // returns one value per matched position; for `self.*` that's a
-      // single value (or none, when sampleId isn't assigned yet).
+      // game phase has assigned it, the per-row `sampleId`. `readReference`
+      // returns a scalar or Missing for these single-participant references.
       const asString = (ref: string): string => {
-        const picked = resolve(ref).find((v) => v !== undefined);
-        return picked == null ? "" : String(picked as string | number);
+        const picked = readReference(ref);
+        return picked === Missing || picked == null
+          ? ""
+          : String(picked as string | number);
       };
       return (
         <Qualtrics
