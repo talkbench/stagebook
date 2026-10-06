@@ -5,8 +5,7 @@ import { validatePromptSource } from "./validatePrompt.js";
 import { STAGEBOOK_VERSION } from "./stagebookVersion.js";
 import { FIXTURE_VALUE } from "./fixtures/upgradeRuleFixtures.js";
 
-// Upgrade warnings (#756) through the validators that surface them. The
-// production table ships empty, so the fixture rules stand in for it.
+// Fixture rules isolate upgrade-warning plumbing from the release rule table.
 vi.mock("./upgradeRules.js", async (importOriginal) => {
   const fixtures = await import("./fixtures/upgradeRuleFixtures.js");
   return {
@@ -175,7 +174,7 @@ describe("a template is judged by the version of the file that defines it", () =
 describe("upgrade warnings stay off the expanded-YAML validator", () => {
   it("validateTreatmentSource reports none, since it also sees expanded YAML", () => {
     const { diagnostics } = validateTreatmentSource(study(null));
-    expect(diagnostics).toEqual([]);
+    expect(diagnostics.filter((d) => d.code !== "expression-type")).toEqual([]);
   });
 });
 

@@ -1,8 +1,8 @@
 import type { UpgradeRule, UpgradeRuleHit } from "../upgradeRules.js";
 
 /**
- * Test-only upgrade rules (#756). The production table ships empty; these
- * exercise its plumbing. Both fire on a marker value, so they never touch a
+ * Test-only upgrade rules (#756) isolate the plumbing from release rules.
+ * Both fire on a marker value, so they never touch a
  * file that doesn't opt in.
  */
 

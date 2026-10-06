@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { z } from "zod";
 import { EXPRESSION_OPERATOR_KEYS } from "../expressions/operators.js";
 import {
   createExpressionSchemas,
@@ -543,20 +544,125 @@ test("cyclic aliases in template broadcast are rejected before delegated parsing
 
 test("nested default rules parse their shared value once per level", () => {
   let reads = 0;
-  let expression: unknown = 1;
-  for (let depth = 0; depth < 20; depth++) {
-    const value = expression;
-    const rule = {
-      default: true,
-      get value() {
+  const schema = createExpressionSchemas({
+    mode: "authoring",
+    templateSchema: z
+      .object({ template: z.literal("score") })
+      .strict()
+      .superRefine(() => {
         reads++;
-        return value;
-      },
-    };
-    expression = { case: { rules: [rule] } };
+      }),
+  }).expressionSchema;
+  let expression: unknown = { template: "score" };
+  for (let depth = 0; depth < 20; depth++) {
+    expression = { case: { rules: [{ default: true, value: expression }] } };
   }
-  expect(expressionSchema.safeParse(expression).success).toBe(true);
-  expect(reads).toBeLessThanOrEqual(200);
+  expect(schema.safeParse(expression).success).toBe(true);
+  expect(reads).toBe(1);
+});
+
+describe("native structural diagnostic resource limits", () => {
+  test("wide invalid operand lists retain a bounded set of native issues", () => {
+    const result = expressionSchema.safeParse({
+      sum: Array.from({ length: 1000 }, () => ({ bad: 1 })),
+    });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.length).toBeLessThanOrEqual(65);
+    expect(result.error.message.length).toBeLessThan(1000000);
+    expect(
+      result.error.issues.some(
+        (issue) =>
+          issue.code === "unrecognized_keys" &&
+          issue.keys.includes("bad") &&
+          issue.path[0] === "sum" &&
+          typeof issue.path[1] === "number",
+      ),
+    ).toBe(true);
+  });
+
+  test.each(["case", "sum"])(
+    "deep invalid %s expressions produce serializable native errors",
+    (operator) => {
+      let expression: unknown = { bad: 1 };
+      const depth = operator === "case" ? 31 : 127;
+      for (let index = 0; index < depth; index++)
+        expression =
+          operator === "case"
+            ? { case: { rules: [{ default: true, value: expression }] } }
+            : { sum: expression };
+      const result = expressionSchema.safeParse(expression);
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      // Assert the bounded representation first: a regression must not ask the
+      // test reporter to stringify the original exponentially large tree.
+      expect(
+        result.error.issues.every(
+          (issue) =>
+            issue.code !== "invalid_union" || issue.unionErrors.length === 0,
+        ),
+      ).toBe(true);
+      expect(result.error.issues.length).toBeLessThanOrEqual(65);
+      expect(result.error.message.length).toBeLessThan(1000000);
+      expect(
+        result.error.issues.some(
+          (issue) =>
+            issue.code === "unrecognized_keys" &&
+            issue.keys.includes("bad") &&
+            issue.path.length === (operator === "case" ? 124 : 127),
+        ),
+      ).toBe(true);
+      try {
+        expressionSchema.parse(expression);
+        expect.unreachable("invalid expressions must throw a ZodError");
+      } catch (error) {
+        expect(error).toBeInstanceOf(z.ZodError);
+        expect((error as z.ZodError).message.length).toBeLessThan(1000000);
+      }
+    },
+  );
+});
+
+describe("all properties visible to Zod are guarded", () => {
+  test("rejects an inherited expression cycle", () => {
+    const expression = {};
+    Object.setPrototypeOf(expression, { sum: expression });
+    expect(expressionSchema.safeParse(expression).success).toBe(false);
+  });
+
+  test("rejects a nonenumerable options cycle", () => {
+    const expression = { sumExisting: {} };
+    Object.defineProperty(expression.sumExisting, "inputs", {
+      value: expression,
+    });
+    expect(expressionSchema.safeParse(expression).success).toBe(false);
+  });
+
+  test.each([false, true])(
+    "rejects executable property accessors without reading them (inherited: %s)",
+    (inherited) => {
+      let reads = 0;
+      const properties = Object.defineProperty({}, "sum", {
+        enumerable: true,
+        get: () => {
+          reads++;
+          return 1;
+        },
+      });
+      const expression: unknown = inherited
+        ? Object.create(properties)
+        : properties;
+      const result = expressionSchema.safeParse(expression);
+      expect(result.success).toBe(false);
+      expect(reads).toBe(0);
+    },
+  );
+
+  test("preserves timestamps in opaque template fields", () => {
+    const date = new Date("2026-10-01T00:00:00Z");
+    const expression = { template: "score", fields: { date } };
+    expect(expressionSchema.parse(expression)).toEqual(expression);
+  });
 });
 
 test.each(['{"sum":[1],"__proto__":{}}', '{"literal":1,"__proto__":{}}'])(

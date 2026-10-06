@@ -292,7 +292,7 @@ import type { StagebookContext } from "stagebook/components";
 
 const context: StagebookContext = {
   // Look up raw stored values by storage key.
-  // Returns an array of values — exactly what was passed to save().
+  // Returns the latest raw saved value in a singleton transport array.
   // "scope" is "player" (before assignment), "shared", or a numeric seat string.
   // Return [latestRecord] or []; Stagebook assembles group reads per seat.
   // Stagebook handles DSL reference parsing internally.

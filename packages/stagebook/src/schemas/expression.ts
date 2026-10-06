@@ -257,6 +257,80 @@ function createComparatorSchema(templateSchema: z.ZodType<TemplateInvocation>) {
 }
 type ComparatorLeaf = z.infer<ReturnType<typeof createComparatorSchema>>;
 
+/** Keep native issue codes and paths, without retaining recursive unionErrors.
+ * This boundary is applied at every expression, before a parent can accumulate
+ * its children's failed alternatives. Deepest existing paths take precedence
+ * over Required errors from unrelated union alternatives. */
+function nativeStructure<T>(
+  select: (input: unknown) => z.ZodType<T, z.ZodTypeDef, unknown>,
+) {
+  return z.unknown().transform((input, ctx): T => {
+    const result = select(input).safeParse(input);
+    if (result.success) return result.data;
+    const pending = [...result.error.issues];
+    const visited = new Set<z.ZodIssue>();
+    const retained = new Map<
+      string,
+      { issue: z.ZodIssue; depth: number; quality: number }
+    >();
+    const compare = (
+      left: { depth: number; quality: number },
+      right: { depth: number; quality: number },
+    ) => left.depth - right.depth || left.quality - right.quality;
+    let omitted = false;
+    while (pending.length && visited.size < 100000) {
+      const issue = pending.pop()!;
+      if (visited.has(issue)) continue;
+      visited.add(issue);
+      if (issue.code === "invalid_union") {
+        for (const error of issue.unionErrors) pending.push(...error.issues);
+        if (issue.message === "Invalid input") continue;
+      }
+      const flat =
+        issue.code === "invalid_union" ? { ...issue, unionErrors: [] } : issue;
+      let site = input;
+      let depth = 0;
+      for (const key of issue.path) {
+        if (site === null || typeof site !== "object" || !(key in site)) break;
+        site = (site as Record<string | number, unknown>)[key];
+        depth++;
+      }
+      const candidate = {
+        issue: flat,
+        depth,
+        quality:
+          issue.code === "invalid_type"
+            ? issue.received === "undefined"
+              ? 0
+              : 1
+            : 2,
+      };
+      const key = JSON.stringify(flat);
+      if (retained.has(key)) continue;
+      if (retained.size === 64) {
+        const least = [...retained.entries()].reduce((left, right) =>
+          compare(left[1], right[1]) <= 0 ? left : right,
+        );
+        omitted = true;
+        if (compare(candidate, least[1]) <= 0) continue;
+        retained.delete(least[0]);
+      }
+      retained.set(key, candidate);
+    }
+    for (const { issue } of [...retained.values()].sort((left, right) =>
+      compare(right, left),
+    ))
+      ctx.addIssue({ ...issue, fatal: true });
+    if (omitted || pending.length)
+      ctx.addIssue({
+        code: "custom",
+        message: "Additional expression validation errors were omitted.",
+        fatal: true,
+      });
+    return z.NEVER;
+  });
+}
+
 /** Zod is the canonical structural grammar. Metadata supplies discovery and
  * operand type expectations; each registered key must also have a schema. */
 function createExpressionStructure(
@@ -271,51 +345,32 @@ function createExpressionStructure(
     z.null(),
   ]);
   const comparatorSchema = createComparatorSchema(templateSchema);
+  const referenceExpressionSchema = z
+    .object({
+      reference: rawReferenceSchema,
+      comparator: z.never().optional(),
+      value: z.never().optional(),
+    })
+    .strict();
   const literalSchema = z
     .object({ literal: deferred(z.union([scalar, z.array(scalar)])) })
     .strict();
-  const expressionErrors: z.RawCreateParams = {
-    errorMap: (_issue, ctx) => ({
-      message:
-        record(ctx.data) &&
-        own(ctx.data, "reference") &&
-        ctx.data.value === null
-          ? "Null is not allowed in a comparison value; use exists or doesNotExist for presence."
-          : ctx.defaultError,
-    }),
-  };
-  const expression: z.ZodType<ExpressionNode, z.ZodTypeDef, unknown> = z.lazy(
-    () =>
-      z.union(
-        [
-          scalar,
-          // Reject a missing/primitive field before trying every object variant.
-          // This keeps invalid nested expressions from multiplying union work.
-          z
-            .object({})
-            .passthrough()
-            .pipe(
-              z.union(
-                [
-                  comparatorSchema,
-                  z
-                    .object({
-                      reference: rawReferenceSchema,
-                      comparator: z.never().optional(),
-                      value: z.never().optional(),
-                    })
-                    .strict(),
-                  literalSchema,
-                  templateSchema,
-                  ...Object.values(operators),
-                ],
-                expressionErrors,
-              ),
-            ),
-        ],
-        expressionErrors,
-      ),
-  );
+  const expression: z.ZodType<ExpressionNode, z.ZodTypeDef, unknown> =
+    nativeStructure<ExpressionNode>((input) => {
+      if (!record(input)) return scalar;
+      // Routing does not validate a shape: the selected strict native schema
+      // still owns required fields, unknown keys, arity, and every operand.
+      // Avoid trying 28 irrelevant recursive operators for each known key.
+      if ("reference" in input || "comparator" in input)
+        return "comparator" in input
+          ? comparatorSchema
+          : referenceExpressionSchema;
+      if ("literal" in input) return literalSchema;
+      if ("template" in input) return templateSchema;
+      for (const key of Object.keys(operators) as (keyof typeof operators)[])
+        if (key in input) return operators[key];
+      return unknownExpression;
+    });
   const inputs = (minimum = 1) =>
     z.union([z.array(expression).min(minimum), expression]);
   const named = <T extends z.ZodRawShape>(shape: T) =>
@@ -413,9 +468,23 @@ function createExpressionStructure(
     keyof typeof EXPRESSION_OPERATORS,
     z.ZodType<ExpressionNode, z.ZodTypeDef, unknown>
   >;
+  // All recognized grammar keys route above. Unknown objects get native strict
+  // key errors, while never rejects the empty object, without constructing
+  // missing-field diagnostics for every unrelated operator.
+  const unknownExpression = z
+    .object({})
+    .strict()
+    .pipe(
+      z.never({
+        message:
+          "Expected an expression with a reference, literal, template, or operator key.",
+      }),
+    );
   return {
     expression,
-    conditions: z.union([z.array(expression).nonempty(), expression]),
+    conditions: nativeStructure(() =>
+      z.union([z.array(expression).nonempty(), expression]),
+    ),
   };
 }
 
@@ -481,22 +550,66 @@ export function createExpressionSchemas(options: ExpressionSchemaOptions) {
       }
       active.add(value);
       try {
-        // Avoid Object.entries: it reads every value eagerly, even after a
-        // shallow primitive list has exhausted the traversal budget.
-        if (Array.isArray(value)) {
-          for (let index = 0; index < value.length; index++) {
-            if (!safeGraph(value[index], [...path, index])) return false;
+        const arrayLength = Array.isArray(value) ? value.length : 0;
+        if (arrayLength > 10000 - graphNodes) {
+          issue(path, "Expression exceeds the validation complexity limit.");
+          return false;
+        }
+        let sparseSlots = arrayLength;
+        const seen = new Set<string>();
+        let prototypeDepth = 0;
+        // Native object schemas read declared inherited/nonenumerable fields.
+        // Inspect descriptors, including prototypes, instead of executing
+        // getters. Programmatic expression input must contain data properties;
+        // opaque values such as YAML timestamps remain supported.
+        for (
+          let owner: object | null = value;
+          owner !== null;
+          owner = Object.getPrototypeOf(owner) as object | null
+        ) {
+          if (++prototypeDepth > 128 || ++graphNodes > 10000) {
+            issue(path, "Expression exceeds the validation complexity limit.");
+            return false;
           }
-        } else {
-          for (const key of Object.keys(value)) {
+          for (const key of Object.getOwnPropertyNames(owner)) {
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const descriptor = Object.getOwnPropertyDescriptor(owner, key)!;
+            // Object.prototype's standard nonenumerable helpers cannot be
+            // expression fields. Its extra enumerable data is still guarded.
             if (
-              !safeGraph((value as Record<string, unknown>)[key], [
-                ...path,
-                key,
-              ])
+              owner === Object.prototype &&
+              !descriptor.enumerable &&
+              (key === "__proto__" || typeof descriptor.value === "function")
+            )
+              continue;
+            const index = Number(key);
+            const arrayIndex =
+              Array.isArray(value) &&
+              Number.isInteger(index) &&
+              index >= 0 &&
+              index < arrayLength &&
+              String(index) === key;
+            const propertyPath = [...path, arrayIndex ? index : key];
+            if (!own(descriptor, "value")) {
+              issue(
+                propertyPath,
+                "Expression input must use data properties, not getters or setters.",
+              );
+              return false;
+            }
+            if (arrayIndex) sparseSlots--;
+            if (
+              typeof descriptor.value !== "function" &&
+              !safeGraph(descriptor.value, propertyPath)
             )
               return false;
           }
+        }
+        graphNodes += sparseSlots;
+        if (graphNodes > 10000) {
+          issue(path, "Expression exceeds the validation complexity limit.");
+          return false;
         }
         return true;
       } finally {

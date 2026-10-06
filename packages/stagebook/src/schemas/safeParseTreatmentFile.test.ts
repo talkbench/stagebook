@@ -1,4 +1,5 @@
-import { describe, expect, it, test } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
+import * as expressions from "../expressions/index.js";
 import {
   getValidKeysForComparator,
   getValidKeysForDiscussion,
@@ -250,26 +251,33 @@ describe("safeParseTreatmentFile — condition unrecognized keys", () => {
     const stages = (tf.treatments as Record<string, unknown>[])[0]
       .gameStages as Record<string, unknown>[];
     const count = 256;
-    let operatorReads = 0;
-    stages[0].conditions = Array.from({ length: count }, () => ({
+    const conditions = Array.from({ length: count }, () => ({
       reference: "shared.entryUrl.params.role",
       comparator: "exists",
       valu: 1,
-      // Count inspections, not elapsed time, so the bound is independent of
-      // the test machine. This malformed operator still leaves a diagnostic
-      // on each otherwise-valid comparator leaf.
-      get all() {
-        operatorReads++;
-        return undefined;
-      },
     }));
-    const result = safeParseTreatmentFile(tf);
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(
-      result.error.issues.filter((issue) => issue.path.at(-1) === "valu"),
-    ).toHaveLength(count);
-    expect(operatorReads).toBeLessThan(count * 40);
+    stages[0].conditions = conditions;
+    // Count tree inspections, not elapsed time or executable input getters.
+    // Enriching many typo diagnostics must index their condition tree once.
+    const walk = vi.spyOn(expressions, "walkExpression");
+    try {
+      const result = safeParseTreatmentFile(tf);
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      const typos = result.error.issues.filter(
+        (issue) => issue.path.at(-1) === "valu",
+      );
+      expect(typos.length).toBeGreaterThan(0);
+      expect(typos.length).toBeLessThanOrEqual(64);
+      expect(
+        result.error.issues.some((issue) => /omitted/.test(issue.message)),
+      ).toBe(true);
+      expect(
+        walk.mock.calls.filter(([input]) => input === conditions),
+      ).toHaveLength(1);
+    } finally {
+      walk.mockRestore();
+    }
   });
 
   test.each([

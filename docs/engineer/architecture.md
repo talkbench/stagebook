@@ -67,7 +67,9 @@ The platform provides the StagebookProvider context. Stagebook handles everythin
 
 Every element that reads experiment state does so through a **reference**, such as `self.prompt.myQuestion`, `self.qualtrics.exit.result.score`, or `self.entryUrl.params.condition`. Its required position is `self`, `shared`, `everyone`, or a numeric seat. The pure `readReference(reference, get, {position, playerCount})` function converts it to a storage key and nested path, reads the host's raw record, and normalizes absent/null values and blank prompt answers to the shared `Missing` sentinel. A single-position read returns one value; an `everyone.` read returns one entry per numeric seat, retaining missing positions. No host `"all"` scope is used. The provider binds this function to its current snapshot; components use `context.readReference` or `useReadReference`. The expression evaluator, server-side dispatcher, and viewer use the same boundary. Loading and roster readiness belong to the host, outside expression evaluation.
 
-The platform's `get()` is a simple key-value lookup — it doesn't need to understand the DSL reference syntax or the internal record structure. It returns exactly what was passed to `save()`.
+The platform's `get()` is a simple key-value lookup — it doesn't need to understand the DSL reference syntax or the internal record structure. It returns the latest raw saved value in a singleton transport array, or `[]` when absent.
+
+Expression structure is defined by recursive Zod schemas in `schemas/expression.ts`: strict object variants, required fields, operand arrays, arity, and literal options. Semantic refinements check reference syntax, type agreement, and group placement. The operator table in `expressions/operators.ts` describes operand roles and result types for traversal and evaluation; it does not duplicate the structural schemas. Authoring and resolved validation share these definitions, with resolved validation rejecting unfilled templates.
 
 ## How writing works
 

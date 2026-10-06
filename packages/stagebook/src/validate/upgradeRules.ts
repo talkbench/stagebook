@@ -1,4 +1,5 @@
 import type { PromptFileType } from "../schemas/index.js";
+import { grammarUpgradeDetectors } from "./grammarUpgradeDetectors.js";
 
 /**
  * The table of silent changes by release (#756).
@@ -84,5 +85,13 @@ export interface UpgradeRule {
   detect: (input: UpgradeRuleInput) => UpgradeRuleHit[];
 }
 
-/** Ordered by release. The #299 condition-grammar rules land in #690. */
-export const upgradeRules: readonly UpgradeRule[] = [];
+/** Ordered by release. */
+export const upgradeRules: readonly UpgradeRule[] = grammarUpgradeDetectors.map(
+  (rule) => ({
+    id: rule.id,
+    introducedIn: "0.34",
+    appliesTo: ["treatment"],
+    detect: (input) =>
+      input.kind === "treatment" ? rule.detect(input.file) : [],
+  }),
+);

@@ -55,20 +55,30 @@ import type {
 
 ### `compare(lhs, comparator, rhs?)`
 
-Evaluate a condition comparator.
+Evaluate a comparator against one already-read value, using the expression evaluator's rules.
 
 ```typescript
 import { compare, type Comparator } from "stagebook";
 
 compare(5, "isAbove", 3); // true
-compare(undefined, "doesNotEqual", "x"); // true (undefined != anything)
-compare(undefined, "equals", "x"); // undefined (can't determine yet)
+compare(undefined, "doesNotEqual", "x"); // true (negation of a failed comparison)
+compare(undefined, "equals", "x"); // false (Missing matches nothing)
+compare("5", "isAbove", 3); // false (no numeric coercion)
+compare(" YES ", "equals", "yes"); // true (normalized text equality)
 compare("hello", "matches", "\\d+"); // false
 ```
 
-**Returns:** `true`, `false`, or `undefined` (when comparison can't be made yet, e.g., undefined lhs).
+**Returns:** `true` or `false`. Use `readReference` first for study references: it applies prompt-specific blank-answer normalization and preserves group seats. A list passed to `compare` is one value, not an implicit group quantifier.
 
 **Comparators:** `exists`, `doesNotExist`, `equals`, `doesNotEqual`, `isAbove`, `isBelow`, `isAtLeast`, `isAtMost`, `hasLengthAtLeast`, `hasLengthAtMost`, `includes`, `doesNotInclude`, `matches`, `doesNotMatch`, `isOneOf`, `isNotOneOf`.
+
+### `evaluateExpression(expression, options)` / `evaluateConditions(conditions, options)`
+
+Both functions are React-free root exports. Pass an `EvaluateExpressionOptions` object with a `readReference(reference)` callback bound to a ready snapshot. It returns one value or Missing for a single position, or a seat-preserving list for `everyone`, using the [pure reference reader](#pure-reference-reads).
+
+`evaluateExpression` returns a value or `Missing`. `evaluateConditions` returns a Boolean: only an exact `true` passes a supplied gate. An omitted (`undefined`) conditions field is unconstrained; an outer conditions array is implicit `all`. Empty arrays and null are invalid authored gates, not omissions. Use explicit `all`, `any`, `none`, or `countTrue` around an `everyone` comparator leaf.
+
+Optional `onViolation` receives sanitized `{kind: "typeMismatch", reference, expected, actual}` diagnostics. Retain an optional `violationKeys: Set<string>` across evaluations to deduplicate them; without it, deduplication lasts for one evaluation. Wrong operand types become Missing. Snapshot-readiness failures and exceptions thrown by the host reader propagate.
 
 ### `getReferenceKeyAndPath(reference)`
 
@@ -471,7 +481,7 @@ if (answer !== Missing) {
 
 | Hook                          | Returns                                   | Requires Provider |
 | ----------------------------- | ----------------------------------------- | ----------------- |
-| `useStagebookContext()`       | Full `StagebookContext` object            | yes               |
+| `useStagebookContext()`       | Host context plus bound `readReference`, `violationKeys`, and resolved messages | yes               |
 | `useReadReference(reference)` | `unknown` (scalar, Missing, or seat list) | yes               |
 | `useSave()`                   | `save` function                           | yes               |
 | `useElapsedTime()`            | `number` (seconds)                        | yes               |
@@ -487,7 +497,7 @@ import { Stage, type StageConfig } from "stagebook/components";
 
 Requires StagebookProvider. Renders a complete stage: lays out elements with conditional rendering (time, position, conditions), handles two-column layout when a discussion is present, and shows a waiting message after submission. **This is the primary rendering API** — prefer `Stage` over manually rendering `Element` components.
 
-`StageConfig` has: `name` (string), `duration?` (number), `elements` (ElementConfig[]), `discussion?` (DiscussionType).
+`StageConfig` has: `name` (string), `duration?` (number), `elements` (ElementConfig[]), `discussion?` (DiscussionType), and `conditions?` (an expression or implicit-`all` array).
 
 `scrollMode?: "internal" | "host"` (default `"internal"`) — controls who owns the scroll container around Stage's elements. `internal` keeps the existing `overflow: auto` wrapper + internal `<ScrollIndicator>`; `host` drops both, lets content flow naturally, and lets you mount your own scroll container with the publicly exported `useScrollAwareness` + `<ScrollIndicator>`. See [Page Chrome and Scroll Model](./integration-guide.md#page-chrome-and-scroll-model) in the integration guide for the host-mode setup pattern.
 
@@ -622,6 +632,12 @@ Peaks helpers exported alongside it: `createPeaksArrays(channelCount, bucketCoun
 | `TrainingVideo` | `url`, `getElapsedTime`, `onComplete`                                                                                           |
 | `Qualtrics`     | `url`, `resolvedParams?`, `stableParticipantId?`, `sampleId?`, `onContractViolation?`, `save`, `onComplete`                     |
 
+`Display.values` remains an array of display entries. Wrap a single-position
+`readReference` result in `[value]`, including when that participant's answer is
+itself a list. Pass an `everyone` result as its seat list without filtering or
+flattening it. Missing entries render empty, with a newline between seats.
+`Element` handles this conversion when rendering a `display` element.
+
 For a directly rendered `Prompt`, pass `step` and `getElapsedTime` to include
 commit-time context in its records. When reusing it across stages, pass the
 host's `stageId`; changes cancel pending work from the old prompt lifetime.
@@ -649,8 +665,13 @@ back to the active catalog, including host overrides.
 | ----------------------------- | ---------------------------------------------------------------- |
 | `TimeConditionalRender`       | `displayTime?`, `hideTime?`, `getElapsedTime`, `children`        |
 | `PositionConditionalRender`   | `showToPositions?`, `hideFromPositions?`, `position`, `children` |
-| `ConditionsConditionalRender` | `conditions`, `resolve`, `children`, `fallback?`                 |
+| `ConditionsConditionalRender` | `conditions`, `readReference`, `children`, `fallback?`, `onViolation?`, `violationKeys?` |
 | `SubmissionConditionalRender` | `isSubmitted`, `playerCount`, `children`                         |
+
+For custom condition wrappers inside a provider, pass its bound `readReference`,
+`onContractViolation` as `onViolation`, and `violationKeys` from
+`useStagebookContext()`. `Stage` already forwards these for element and discussion
+visibility; its stage gate uses the same reader and evaluator.
 
 ## Viewer harness (`stagebook/viewer`)
 
