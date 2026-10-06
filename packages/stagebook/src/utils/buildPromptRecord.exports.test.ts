@@ -4,6 +4,7 @@ import {
   cpSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -116,4 +117,51 @@ describe("host record contracts published main entry (#751)", () => {
       ).toBe("ok");
     },
   );
+});
+
+describe("stagebook/audio-probe published subpath (#663)", () => {
+  test.each(["commonjs", "module"])(
+    "%s loads in Node and fails closed without Web Audio",
+    (format) => {
+      const imports =
+        format === "commonjs"
+          ? "const assert = require('node:assert/strict'); const { CAPABILITIES, probeChannelOrder } = require('stagebook/audio-probe');"
+          : "import assert from 'node:assert/strict'; import { CAPABILITIES, probeChannelOrder } from 'stagebook/audio-probe';";
+      const { version } = JSON.parse(
+        readFileSync(join(packageRoot, "package.json"), "utf8"),
+      ) as { version: string };
+      const script = `${imports}
+      assert.deepEqual(CAPABILITIES, { channelProbe: true, perSpeakerTracks: false });
+      probeChannelOrder().then((probe) => {
+        assert.equal(probe.verdict, 'fail');
+        assert.deepEqual(Object.keys(probe.detail), ['2', '3', '4', '5', '6', '7', '8']);
+        for (const detail of Object.values(probe.detail)) assert.equal(detail.failure.reason, 'unsupported');
+        assert.equal(probe.stagebookVersion, ${JSON.stringify(version)});
+        process.stdout.write('ok');
+      });
+    `;
+      expect(
+        execFileSync(
+          process.execPath,
+          [`--input-type=${format}`, "-e", script],
+          { cwd: fixture, encoding: "utf8" },
+        ),
+      ).toBe("ok");
+    },
+  );
+
+  test("the calibration assets ship only in the audio-probe bundle", () => {
+    // The start of every embedded MP4's base64 ("....ftypisom").
+    const marker = "AAAAHGZ0eXBp";
+    const dist = join(fixture, "node_modules", "stagebook", "dist");
+    const holding = readdirSync(dist, { recursive: true, encoding: "utf8" })
+      .filter((file) => /\.(c?js)$/.test(file))
+      .filter((file) =>
+        readFileSync(join(dist, file), "utf8").includes(marker),
+      );
+    expect(holding.sort()).toEqual([
+      join("audio-probe", "index.cjs"),
+      join("audio-probe", "index.js"),
+    ]);
+  });
 });
