@@ -347,9 +347,8 @@ describe("collectStorageKeyCollisions", () => {
   });
 
   it("flags any two qualtrics elements in the same scope as colliding (fixed key)", () => {
-    // Qualtrics writes to a fixed `qualtricsDataReady` key regardless of
-    // name/url (Qualtrics.tsx:50), so any two qualtrics elements in the
-    // same scope silently overwrite each other.
+    // Qualtrics still writes its fixed `qualtricsDataReady` host trigger
+    // alongside named completion records, so preserve the collision guard.
     const data = {
       treatments: [
         {

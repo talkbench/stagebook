@@ -28,6 +28,7 @@ test.describe("Save metadata (wrappedSave)", () => {
       (s: { key: string }) => s.key === "submitButton_confirm",
     );
     expect(submitSave).toBeDefined();
+    expect(submitSave.value.time).toBe(25.5);
     expect(submitSave.value.step).toBe("game_0_testStage");
     expect(submitSave.value.stageTimeElapsed).toBe(25.5);
   });

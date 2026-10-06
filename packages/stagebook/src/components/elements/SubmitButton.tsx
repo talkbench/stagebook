@@ -7,6 +7,8 @@ export interface SubmitButtonProps {
   name: string;
   buttonText?: string;
   save: (key: string, value: unknown) => void;
+  /** Stage clock for the saved `time`; always supplied by Element. */
+  getElapsedTime?: () => number;
 }
 
 export function SubmitButton({
@@ -14,6 +16,7 @@ export function SubmitButton({
   name,
   buttonText,
   save,
+  getElapsedTime,
 }: SubmitButtonProps) {
   const messages = useMessages();
   // Researcher-set `buttonText` wins in any locale; otherwise the active
@@ -21,7 +24,10 @@ export function SubmitButton({
   const label = buttonText ?? messages.submitButtonDefault;
 
   const handleClick = () => {
-    save(`submitButton_${name}`, {});
+    save(
+      `submitButton_${name}`,
+      getElapsedTime ? { time: getElapsedTime() } : {},
+    );
     onSubmit();
   };
 

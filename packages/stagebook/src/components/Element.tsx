@@ -348,6 +348,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           name={buttonName}
           buttonText={element.buttonText}
           save={wrappedSave}
+          getElapsedTime={getElapsedTime}
         />
       );
     }
@@ -485,6 +486,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
       };
       return (
         <Qualtrics
+          name={element.name ?? progressLabel}
           url={element.url ?? ""}
           resolvedParams={qualtricsParams}
           stableParticipantId={asString("self.attributes.stableParticipantId")}
