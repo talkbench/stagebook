@@ -69,6 +69,16 @@
         "types": "./dist/dispatch/contract.d.cts",
         "default": "./dist/dispatch/contract.cjs"
       }
+    },
+    "./audio-probe": {
+      "import": {
+        "types": "./dist/audio-probe/index.d.ts",
+        "default": "./dist/audio-probe/index.js"
+      },
+      "require": {
+        "types": "./dist/audio-probe/index.d.cts",
+        "default": "./dist/audio-probe/index.cjs"
+      }
     }
   },
   "files": [

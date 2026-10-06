@@ -476,6 +476,8 @@ The waveform tracks fill in progressively as the participant plays the clip — 
 
 If the media file has multiple audio channels (e.g., per-speaker audio from a group video composition), each channel is displayed as a separate track. Mono or stereo files show a single track.
 
+While the waveform is captured, the tracks shown play mixed together in both ears, each at an equal share, and muting a track silences only that track. A speaker recorded on one channel is heard in both ears, and stereo media plays as mono.
+
 **CORS requirement:** The media must be served with proper CORS headers (`Access-Control-Allow-Origin`). Without them, the waveform tracks render as flat lines (the browser silently taints the audio stream). Same-origin media is unaffected. If this happens, a console warning appears after 5 seconds of playback.
 
 ### Saved data

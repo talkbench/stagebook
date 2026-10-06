@@ -28,6 +28,7 @@ import {
   allBuffersSilent,
 } from "./mediaPlayer/waveformCapture.js";
 import { setChannelGain } from "./mediaPlayer/muteChannels.js";
+import { buildPlaybackGraph } from "./mediaPlayer/playbackGraph.js";
 import { useMessages, useIsRTL } from "../StagebookProvider.js";
 import { focusRingCss } from "../focusRing.js";
 
@@ -325,9 +326,9 @@ export function MediaPlayer({
   // Uint8Array<ArrayBuffer> variant, not Uint8Array<ArrayBufferLike>.
   // Type the array element explicitly so TS doesn't widen it.
   const analyserBuffersRef = useRef<Uint8Array<ArrayBuffer>[]>([]);
-  // Per-channel GainNodes (splitter → gain → merger → destination). Mute
-  // state is ephemeral: setChannelMuted writes here and to mutedStateRef
-  // below; not persisted and not saved.
+  // Per-channel GainNodes (see buildPlaybackGraph). Mute state is
+  // ephemeral: setChannelMuted writes here and to mutedStateRef below; not
+  // persisted and not saved.
   const gainNodesRef = useRef<GainNode[]>([]);
   const mutedStateRef = useRef<boolean[]>([]);
   const peaksRef = useRef<Float32Array[]>([]);
@@ -349,42 +350,16 @@ export function MediaPlayer({
     try {
       const ctx = new AudioContext();
       const source = ctx.createMediaElementSource(v);
-      const splitter = ctx.createChannelSplitter(source.channelCount || 1);
-      source.connect(splitter);
-
       const numChannels = source.channelCount || 1;
-      const analysers: AnalyserNode[] = [];
-      const buffers: Uint8Array<ArrayBuffer>[] = [];
-      const gainNodes: GainNode[] = [];
-      const merger = ctx.createChannelMerger(numChannels);
-
-      // splitter → analyser → gainNode → merger → destination.
-      // AnalyserNode is a pass-through tap, so reading peaks from the
-      // analyser gives the pre-gain (dry) signal — the displayed waveform
-      // reflects the recorded audio, not the mute state. Keeping the
-      // analyser inline (not dead-ended) also ensures the Web Audio graph
-      // pulls it, so getByteTimeDomainData() returns live samples.
-      for (let ch = 0; ch < numChannels; ch++) {
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 2048;
-        splitter.connect(analyser, ch);
-
-        const gainNode = ctx.createGain();
-        gainNode.gain.value = 1;
-        analyser.connect(gainNode);
-        gainNode.connect(merger, 0, ch);
-
-        analysers.push(analyser);
-        buffers.push(new Uint8Array(analyser.frequencyBinCount));
-        gainNodes.push(gainNode);
-      }
-
-      merger.connect(ctx.destination);
+      const { analysers, gains } = buildPlaybackGraph(ctx, source, numChannels);
+      const buffers = analysers.map(
+        (analyser) => new Uint8Array(analyser.frequencyBinCount),
+      );
 
       audioCtxRef.current = ctx;
       analysersRef.current = analysers;
       analyserBuffersRef.current = buffers;
-      gainNodesRef.current = gainNodes;
+      gainNodesRef.current = gains;
       mutedStateRef.current = new Array<boolean>(numChannels).fill(false);
       setChannelCount(numChannels);
       setWaveformActive(true);

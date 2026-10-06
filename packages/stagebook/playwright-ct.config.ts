@@ -43,7 +43,19 @@ export default defineConfig({
     },
     {
       name: "firefox",
-      use: { ...devices["Desktop Firefox"] },
+      use: {
+        ...devices["Desktop Firefox"],
+        // CI's Linux containers have no audio output device, and there
+        // Firefox never starts an AudioContext: it stays "suspended", so
+        // nothing played through Web Audio can be measured (#663). A mock
+        // output device lets it render; decoding and the media-element path
+        // are unchanged. macOS keeps its real device.
+        ...(process.platform === "linux" && {
+          launchOptions: {
+            firefoxUserPrefs: { "media.cubeb.force_mock_context": true },
+          },
+        }),
+      },
     },
   ],
 });

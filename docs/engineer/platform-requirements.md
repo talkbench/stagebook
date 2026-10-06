@@ -511,6 +511,8 @@ For studies involving video or audio:
 
 Check that the participant's browser meets minimum requirements. Stagebook's `BrowserConditionalRender` component can block unsupported browsers, but the platform may want to check earlier (before loading the full experiment).
 
+Studies that present group recordings, with one audio channel per participant, also need the channel-order probe. Call `probeChannelOrder()` from `stagebook/audio-probe` inside the start-session click and store its result with the session. It measures the order this browser decodes those channels in, and its verdict says whether the browser can present them. Safari currently fails it. See [Channel-Order Probe for Group Recordings](./integration-guide.md#channel-order-probe-for-group-recordings).
+
 ### Participant Identity
 
 Collect or verify a participant identifier:

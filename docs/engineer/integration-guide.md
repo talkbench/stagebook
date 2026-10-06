@@ -16,7 +16,7 @@ npm install zod js-yaml react react-dom
 
 ## Package Structure
 
-Stagebook exports from two entry points:
+Stagebook's main entry points:
 
 ```typescript
 // Schemas, validators, and utilities — no React dependency
@@ -29,7 +29,12 @@ import {
   Markdown,
   Button,
 } from "stagebook/components";
+
+// Session-start channel-order probe for group recordings — no React dependency
+import { probeChannelOrder, CAPABILITIES } from "stagebook/audio-probe";
 ```
+
+See [Channel-Order Probe for Group Recordings](#channel-order-probe-for-group-recordings).
 
 ## Validating Treatment Files
 
@@ -558,6 +563,50 @@ const { referenceKey, path } = getReferenceKeyAndPath(
 // Expand templates
 const expanded = fillTemplates({ obj: treatments, templates });
 ```
+
+## Channel-Order Probe for Group Recordings
+
+A group recording carries one audio channel per participant: multichannel Opus, mapping family 255. Browsers don't agree on the order they decode those channels in. Some permute them by channel count, and which browsers do has changed between versions. So stagebook measures the order in the participant's own browser instead of looking it up ([#663](https://github.com/talkbench/stagebook/issues/663)).
+
+`probeChannelOrder()` from `stagebook/audio-probe` plays seven short calibration assets, one per channel count from 2 to 8, through the path a recording takes: a media element into Web Audio. Each asset's channels carry markers in a known order, so the order they arrive in is the mapping. The probe is silent and usually takes 1 to 3 seconds. Every wait in it is time-limited, so even when the audio stack never responds it settles within about 30 seconds.
+
+**Call it from your start-session click handler.** Browsers start audio only from a user gesture. The probe creates and resumes its `AudioContext` synchronously, before its first `await`, so call it directly in the handler and not after an `await` of your own:
+
+```typescript
+import { probeChannelOrder, CAPABILITIES } from "stagebook/audio-probe";
+
+startButton.addEventListener("click", () => {
+  void probeChannelOrder().then((probe) => {
+    // Store verdict, mappings and detail with the session.
+    saveSessionField("channelProbe", probe);
+    // Gate on probe.verdict according to your mode (see CAPABILITIES below).
+  });
+});
+```
+
+It never rejects. A browser that can't run the probe gets `verdict: "fail"`, and `detail` says why. Call it once per session, and disable the button while it runs: each call opens its own `AudioContext`, and some browsers cap how many a page may hold.
+
+| Field              | Meaning                                                                                                                                                                                                                                             |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `verdict`          | `"pass"` only if, at every count, each decoded channel carried its marker and nothing else                                                                                                                                                          |
+| `mappings`         | Keyed by channel count, 2 to 8. `mappings[C][d]` is the source channel this browser delivers on decoded channel `d` of a C-channel recording. `null` for a count that failed. Never apply one count's mapping to a recording with a different count |
+| `detail`           | Keyed by channel count: `asset` (the calibration asset's `artifactId` and `sha256`), `failure` (`reason`, `message` and, when particular channels are at fault, `channels`; or `null`), and `report` (what was measured on each channel, or `null` if the asset never finished playing)                 |
+| `stagebookVersion` | The stagebook release that measured it                                                                                                                                                                                                              |
+| `elapsedMs`        | Time from the call to the verdict                                                                                                                                                                                                                   |
+
+Failure reasons: `unsupported` (no Web Audio or AudioWorklet, not a secure context, or the worklet blocked by your CSP), `playback` (the asset couldn't play, including when your CSP blocks `blob:` media, or when the probe wasn't started from a user gesture), `timeout` (the audio context never started, as with no output device, or an asset didn't finish within 10 seconds), `channel-count`, `marker-missing`, `extra-signal` and `coincident-markers`.
+
+Measured verdicts (October 2026): Chrome, Chromium and Firefox pass. Safari fails, because it plays a recording's stereo AAC fallback track instead of its multichannel Opus track.
+
+**Store `verdict`, `mappings` and `detail` with the session.** Then the order used to present each recording can be audited later, against the browser and the stagebook release that measured it. The result is reported by the participant's browser, so validate it on your server before you store it or rely on it. Check that `verdict` is `"pass"` or `"fail"`, that the keys are 2 to 8, that each non-null mapping is a permutation of `0` to `C − 1`, and that the size is bounded.
+
+**`CAPABILITIES` describes the bundled release**, so key your gate mode on it rather than on a flag of your own. In this release it is `{ channelProbe: true, perSpeakerTracks: false }`: the probe exists, but MediaPlayer doesn't draw per-participant tracks yet and doesn't use the result. Record the verdict, and don't block on it, until `perSpeakerTracks` is `true`.
+
+**Requirements:**
+
+- **A secure context.** AudioWorklet is available only over HTTPS or on `localhost`. Elsewhere the probe fails with `unsupported`.
+- **Content-Security-Policy.** If you set one, allow `blob:` in `media-src`, because the assets play from blob URLs. Also allow it in the directive that governs scripts (`script-src-elem` if you set it, else `script-src`, else `default-src`), because the AudioWorklet module loads from a blob URL. Allowing `blob:` scripts lets any blob your origin creates run as a script; weigh that if you keep a strict CSP.
+- **No network access.** The assets are embedded in the `stagebook/audio-probe` bundle (about 135 kB of base64), so nothing is fetched. The main and `stagebook/components` bundles don't include them.
 
 ## Render Slots for Service-Coupled Elements
 

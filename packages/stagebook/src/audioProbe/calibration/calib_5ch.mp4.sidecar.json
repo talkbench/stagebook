@@ -1,0 +1,90 @@
+{
+  "artifact_id": "compose_group_calibration_5ch",
+  "artifact_type": "channel_order_calibration",
+  "path": "transforms/compose_group/calibration/calib_5ch.mp4",
+  "hash": "sha256:85d8a8ece7487e9969e074369eca6ccfa34431ff82aa9bb46f3f6f0f2bd1a003",
+  "created": "2026-10-05T21:28:51.641494Z",
+  "size_bytes": 13989,
+  "direct_inputs": [],
+  "direct_transform": {
+    "transform_id": "compose_group_20261005_212851_620039ae",
+    "lambda_name": "compose_group",
+    "version": "2.0.0",
+    "git_sha": "1faa70ca534a74a3b4b63ada15201e0b9ef9257a",
+    "timestamp": "2026-10-05T21:28:51.641611",
+    "inputs": [],
+    "outputs": ["compose_group_calibration_5ch"],
+    "parameters": {
+      "channels": 5,
+      "encoder_args": [
+        "-c:a:0",
+        "libopus",
+        "-mapping_family:a:0",
+        "255",
+        "-ac:a:0",
+        "5",
+        "-b:a:0",
+        "96k",
+        "-c:a:1",
+        "aac",
+        "-ac:a:1",
+        "2",
+        "-b:a:1",
+        "96k",
+        "-disposition:a:0",
+        "default",
+        "-disposition:a:1",
+        "default"
+      ],
+      "bitexact_args": [
+        "-fflags",
+        "+bitexact",
+        "-flags:a",
+        "+bitexact",
+        "-map_metadata",
+        "-1"
+      ],
+      "sample_rate": 48000,
+      "duration_s": 0.7,
+      "opus_track": {
+        "marker_frequency_hz": 1000,
+        "marker_amplitude": 0.5,
+        "markers": [
+          {
+            "channel": 0,
+            "start_s": 0.1,
+            "end_s": 0.12
+          },
+          {
+            "channel": 1,
+            "start_s": 0.16,
+            "end_s": 0.18
+          },
+          {
+            "channel": 2,
+            "start_s": 0.22,
+            "end_s": 0.24
+          },
+          {
+            "channel": 3,
+            "start_s": 0.28,
+            "end_s": 0.3
+          },
+          {
+            "channel": 4,
+            "start_s": 0.34,
+            "end_s": 0.36
+          }
+        ]
+      },
+      "aac_track": {
+        "tone_frequency_hz": 3000,
+        "tone_amplitude": 0.25
+      }
+    },
+    "metrics": {}
+  },
+  "full_provenance": null,
+  "metadata": {},
+  "audio_channel_mapping": null
+}
