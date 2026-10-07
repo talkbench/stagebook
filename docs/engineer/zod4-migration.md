@@ -35,6 +35,9 @@ The check verifies:
   and `skipLibCheck: false`.
 - The ESM and CJS schemas accept representative valid inputs and reject malformed
   treatment, prompt, and condition inputs with structured issues.
+- Omitted deferred authoring fields remain omitted, including template content,
+  treatment stages, intro elements/steps, and consent steps. These checks cover
+  the optional-field behavior that changed in Zod 4.4.
 - `stagebook/validate` handles valid and malformed source through its public API.
 - All runtime entry points import in ESM and CJS and bundle for a browser, with
   the Zod 4 implementation. `stagebook/dispatch/contract` is a Vitest test harness,
@@ -42,7 +45,7 @@ The check verifies:
 
 Keep this package test alongside the schema, validation, viewer, CLI, and browser
 tests: it catches declaration and peer-resolution failures that workspace tests
-can miss.
+can miss. CI runs the packed check with both Zod 4.3.6 and 4.4.3.
 
 ## Coordinate host adoption
 
@@ -66,29 +69,35 @@ removed constructor options, `.issues` instead of `.errors`, and explicit
 `.optional()` on fields that are allowed to be absent. Preserve each host's
 validation behavior when making those changes.
 
-## Candidate verification, 2026-10-06
+## Candidate verification, 2026-10-06–07
 
-The candidate was packed from the migrated source while retaining the existing
-`0.34.0` package version; it was not published. The isolated package check passed
+Candidates were packed from the migrated source while retaining the existing
+`0.34.0` package version; they were not published. The isolated package check passed
 on Zod **4.3.6** and **4.4.3**, including strict ESM/CJS declaration composition,
 rejection of a boolean numeric-field input at compile time, malformed-input
 diagnostics, peer identity, runtime imports, and browser bundling.
 
-The same tarball was installed in isolated copies of these consumers. Their
-original working trees and databases were not modified.
+The October 6 candidate was installed in isolated copies of all four consumers.
+On October 7, Annotator and Talkbench were rechecked at their default-branch
+commits below with a freshly packed candidate. The fresh candidate has identical
+runtime files, declarations, manifests, and assets to the October 6 candidate;
+only build-location paths in CJS source maps differ. The original working trees
+and databases were not modified.
 
 | Consumer source commit                               | Resolved Zod | Passed checks                                                                                                                                                                                                                |
 | ---------------------------------------------------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Runner `c73debf0a30afb441ab5f0fa6c398700d499f698`    | 4.3.6        | 1,238 server, 207 contract, 31 mock, and 106 adapter tests; server/client builds; final-candidate recheck of 280 preflight tests plus contracts, mock, adapters, composition, and peer identity                              |
-| Annotator `0555fbe3a91ab862cdfd99c057628ff4c018b89c` | 4.3.6        | 94 treatment-expansion tests; 16 provider/adapter tests; frontend TypeScript and Vite build; strict schema composition and ESM/CJS probes                                                                                    |
+| Annotator `c76d48899030e8c3bb8b4e8fc770164ff2fe1879` | 4.3.6        | 94 treatment-expansion tests; 22 provider/adapter/media-path tests; frontend TypeScript and Vite build; strict schema composition and ESM/CJS probes                                                                         |
 | Manager `1cb71313b373274452f2d06b70a09aa56d3e1e30`   | 4.4.1        | 167 hydration, asset, service, treatment-listing, and dispatcher tests; TypeScript build; strict schema composition and ESM/CJS probes                                                                                       |
-| Talkbench `21e865a3eac1a11a61624039d5800f57739d4908` | 4.4.3        | 98 preflight, asset-snapshot, contract, and existing pin-consistency tests using a disposable database; 5 validation/preview tests; service/frontend typechecks; browser build; strict schema composition and ESM/CJS probes |
+| Talkbench `47618d644a5dd01ac0b8276625162cf9ccde49a3` | 4.4.3        | 98 preflight, asset-snapshot, contract, and existing pin-consistency tests using a disposable database; 5 validation/preview tests; service/frontend typechecks; browser build; strict schema composition and ESM/CJS probes |
 
-The Talkbench snapshot above is the local `feat/connected-study-editing` branch,
-one commit ahead of default-branch commit `47618d6`; its results describe that
-snapshot. Annotator has since advanced to `c76d488`, with changes in the Stagebook
-provider. Fresh default-branch checks for both hosts are being recorded separately.
-Runner and Manager were checked at their current default-branch commits.
+All source commits above were the respective default-branch heads when last
+checked. Annotator verification includes its prepared single-participant state
+reader: explicit seat zero reads work, other seats remain absent, and stored
+arrays retain their singleton transport envelope. The adapter adjustment was
+rebased over the provider's media-path changes and still belongs in Annotator's
+adoption PR. Talkbench verification required only the candidate dependency
+replacement; its coordinated release pins remain unchanged.
 
 These checks establish candidate compatibility. Release adoption still requires
 regenerating consumer lockfiles against the published release. Talkbench's
