@@ -149,7 +149,6 @@
    * primary-color fallback where it renders. A :root alias would capture
    * the root primary and ignore scoped host themes (#651). */
   --stagebook-timer-fill: initial;
-  --stagebook-timer-track: var(--sb-gray-200);
 
   /* Text */
   --stagebook-text: var(--sb-gray-800);
