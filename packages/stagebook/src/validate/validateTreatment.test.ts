@@ -410,7 +410,7 @@ treatments:
   });
 
   describe("diagnostic quality", () => {
-    it("missing required fields produce messages mentioning 'required'", () => {
+    it("missing required fields identify the expected type and missing value", () => {
       const src = `treatments:
   - name: study1
     gameStages:
@@ -422,7 +422,8 @@ treatments:
       expect(result.diagnostics).toContainEqual(
         expect.objectContaining({
           severity: "error",
-          message: expect.stringMatching(/required/i),
+          message:
+            "Invalid input: expected number, received undefined (treatments[0].playerCount)",
         }),
       );
     });

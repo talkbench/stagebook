@@ -215,8 +215,12 @@ Rate something.
       const messages = result.diagnostics.map((d) => d.message);
       // After #243 the discriminated-union branch declares min/max/interval
       // as required (not optional), so missing them triggers Zod's
-      // "Required" message rather than a custom per-field message.
-      expect(messages.filter((m) => m === "Required").length).toBe(3);
+      // native missing-number message rather than a custom per-field message.
+      expect(
+        messages.filter(
+          (m) => m === "Invalid input: expected number, received undefined",
+        ).length,
+      ).toBe(3);
     });
   });
 

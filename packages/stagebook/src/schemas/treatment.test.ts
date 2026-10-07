@@ -1512,7 +1512,7 @@ test("durationSchema rejects a non-integer duration (whole seconds only)", () =>
   const result = durationSchema.safeParse(5.5);
   expect(result.success).toBe(false);
   if (!result.success) {
-    expect(result.error.issues[0]?.message).toContain("Expected integer");
+    expect(result.error.issues[0]?.message).toContain("expected int");
   }
 });
 
@@ -2484,7 +2484,9 @@ test("element: missing `type` discriminator is rejected", () => {
   expect(result.success).toBe(false);
   if (!result.success) {
     expect(
-      result.error.issues.some((i) => i.code === "invalid_union_discriminator"),
+      result.error.issues.some(
+        (i) => i.code === "invalid_union" && i.discriminator === "type",
+      ),
     ).toBe(true);
   }
 });
@@ -2523,7 +2525,9 @@ test("element: type 'talkMeter' is rejected (removed in #250)", () => {
   expect(result.success).toBe(false);
   if (!result.success) {
     expect(
-      result.error.issues.some((i) => i.code === "invalid_union_discriminator"),
+      result.error.issues.some(
+        (i) => i.code === "invalid_union" && i.discriminator === "type",
+      ),
     ).toBe(true);
   }
 });
@@ -2536,7 +2540,9 @@ test("element: type 'sharedNotepad' is rejected (removed in #250)", () => {
   expect(result.success).toBe(false);
   if (!result.success) {
     expect(
-      result.error.issues.some((i) => i.code === "invalid_union_discriminator"),
+      result.error.issues.some(
+        (i) => i.code === "invalid_union" && i.discriminator === "type",
+      ),
     ).toBe(true);
   }
 });
@@ -2554,7 +2560,9 @@ test("element: type 'discussion' is rejected — discussion is stage-level only 
   expect(result.success).toBe(false);
   if (!result.success) {
     expect(
-      result.error.issues.some((i) => i.code === "invalid_union_discriminator"),
+      result.error.issues.some(
+        (i) => i.code === "invalid_union" && i.discriminator === "type",
+      ),
     ).toBe(true);
   }
 });
@@ -2570,10 +2578,10 @@ test("element: literal `type: survey` is rejected with migration guidance (#669)
     });
     expect(result.success).toBe(false);
     if (result.success) return;
-    // Keeps Zod's discriminator code (editor tooling routes on it) but
-    // carries the guidance instead of the default enum list.
+    // Zod 4 identifies unmatched discriminators on invalid_union issues;
+    // preserve that metadata while carrying the migration guidance.
     const issue = result.error.issues.find(
-      (i) => i.code === "invalid_union_discriminator",
+      (i) => i.code === "invalid_union" && i.discriminator === "type",
     );
     expect(issue).toBeDefined();
     expect(issue!.message).toBe(SURVEY_ELEMENT_REMOVED_MESSAGE);
@@ -2591,10 +2599,10 @@ test("element: an unknown type still gets Zod's default discriminator message (t
   expect(result.success).toBe(false);
   if (result.success) return;
   const issue = result.error.issues.find(
-    (i) => i.code === "invalid_union_discriminator",
+    (i) => i.code === "invalid_union" && i.discriminator === "type",
   );
   expect(issue).toBeDefined();
-  expect(issue!.message).toContain("Invalid discriminator value");
+  expect(issue!.message).toMatch(/Invalid (input|discriminator value)/);
   expect(issue!.message).not.toContain("#669");
 });
 

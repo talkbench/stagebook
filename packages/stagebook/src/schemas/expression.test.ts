@@ -55,9 +55,8 @@ describe("resolved expression vocabulary", () => {
     );
   });
   test.each(Object.entries(validOperators))("accepts %s", (operator, value) => {
-    expect(
-      resolvedExpressionSchema.safeParse({ [operator]: value }).success,
-    ).toBe(true);
+    const expression = { [operator]: value };
+    expect(resolvedExpressionSchema.parse(expression)).toEqual(expression);
   });
   test.each([
     null,
@@ -119,15 +118,7 @@ describe("strict expression structure", () => {
       const result = resolvedExpressionSchema.safeParse(input);
       expect(result.success).toBe(false);
       if (!result.success) {
-        const flatten = (
-          issues: typeof result.error.issues,
-        ): typeof result.error.issues =>
-          issues.flatMap((issue) =>
-            issue.code === "invalid_union"
-              ? issue.unionErrors.flatMap((error) => flatten(error.issues))
-              : [issue],
-          );
-        expect(flatten(result.error.issues)).toEqual(
+        expect(result.error.issues).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
               code,
@@ -562,6 +553,45 @@ test("nested default rules parse their shared value once per level", () => {
 });
 
 describe("native structural diagnostic resource limits", () => {
+  test.each([
+    [[], [], "invalid_type"],
+    [
+      { ...ref, comparator: "unsupported", value: 1 },
+      ["comparator"],
+      "invalid_union",
+    ],
+    [
+      { all: [{ ...ref, comparator: "unsupported", value: 1 }] },
+      ["all", 0, "comparator"],
+      "invalid_union",
+    ],
+  ])(
+    "malformed expressions return native errors instead of throwing: %j",
+    (input, path, code) => {
+      const result = expressionSchema.safeParse(input);
+      expect(result.success).toBe(false);
+      if (result.success) return;
+      expect(result.error.issues).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path, code })]),
+      );
+      if (code === "invalid_union") {
+        const discriminator = result.error.issues.find(
+          (issue) => issue.code === code && issue.path.join() === path.join(),
+        );
+        expect(discriminator?.message).toContain("Unsupported comparator");
+        expect(discriminator?.message).toContain("exists");
+        expect(discriminator?.message).toContain("isNotOneOf");
+      }
+      expect(
+        result.error.issues.every(
+          (issue) =>
+            issue.code !== "invalid_union" || issue.errors.length === 0,
+        ),
+      ).toBe(true);
+      expect(() => expressionSchema.parse(input)).toThrow(z.ZodError);
+    },
+  );
+
   test("wide invalid operand lists retain a bounded set of native issues", () => {
     const result = expressionSchema.safeParse({
       sum: Array.from({ length: 1000 }, () => ({ bad: 1 })),
@@ -599,7 +629,7 @@ describe("native structural diagnostic resource limits", () => {
       expect(
         result.error.issues.every(
           (issue) =>
-            issue.code !== "invalid_union" || issue.unionErrors.length === 0,
+            issue.code !== "invalid_union" || issue.errors.length === 0,
         ),
       ).toBe(true);
       expect(result.error.issues.length).toBeLessThanOrEqual(65);

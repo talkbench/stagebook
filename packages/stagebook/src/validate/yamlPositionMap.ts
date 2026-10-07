@@ -22,7 +22,7 @@ export interface YamlError {
 function resolvePathInDoc(
   doc: ReturnType<typeof parseDocument>,
   source: string,
-  path: (string | number)[],
+  path: PropertyKey[],
 ): SourceRange | null {
   if (!doc.contents) return null;
 
@@ -67,7 +67,7 @@ function resolvePathInDoc(
 function resolveKeyInDoc(
   doc: ReturnType<typeof parseDocument>,
   source: string,
-  path: (string | number)[],
+  path: PropertyKey[],
 ): SourceRange | null {
   if (path.length === 0) return null;
   const lastSegment = path[path.length - 1];
@@ -120,7 +120,7 @@ function resolveKeyInDoc(
  */
 export function pathToRange(
   source: string,
-  path: (string | number)[],
+  path: PropertyKey[],
 ): SourceRange | null {
   const doc = parseDocument(source, { uniqueKeys: false });
   return resolvePathInDoc(doc, source, path);
@@ -128,7 +128,7 @@ export function pathToRange(
 
 export interface PositionMapper {
   /** Resolve a path to a source range. Returns null if the path cannot be resolved. */
-  resolve(path: (string | number)[]): SourceRange | null;
+  resolve(path: PropertyKey[]): SourceRange | null;
   /**
    * Resolve a path to the *key token* range at the final map segment.
    * Where `resolve(["a", "b", "c"])` returns the range of the value at
@@ -140,7 +140,7 @@ export interface PositionMapper {
    * Returns null when the final segment isn't a string (i.e. it
    * indexes into a sequence) or when the path can't be resolved.
    */
-  resolveKey(path: (string | number)[]): SourceRange | null;
+  resolveKey(path: PropertyKey[]): SourceRange | null;
   /** Get the parsed JS object (for passing to Zod or remapErrorPath). */
   toJSON(): unknown;
 }
@@ -152,7 +152,7 @@ export interface PositionMapper {
  */
 export function resolvePathOrAncestor(
   mapper: PositionMapper,
-  path: (string | number)[],
+  path: PropertyKey[],
 ): SourceRange | null {
   for (let p = path; ; p = p.slice(0, -1)) {
     const range = mapper.resolve(p);
@@ -272,13 +272,13 @@ function countExpandedItems(
  * If no remapping is needed, returns the original path unchanged.
  */
 export function remapErrorPath(
-  errorPath: (string | number)[],
+  errorPath: PropertyKey[],
   originalObj: Record<string, unknown>,
   templates: TemplateRecord[],
-): (string | number)[] {
+): PropertyKey[] {
   const path = [...errorPath];
   let current: unknown = originalObj;
-  const consumed: (string | number)[] = [];
+  const consumed: PropertyKey[] = [];
 
   for (let i = 0; i < path.length; i++) {
     const segment = path[i];

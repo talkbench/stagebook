@@ -2,7 +2,7 @@
 
 ## Schemas
 
-All schemas are [Zod](https://zod.dev/) objects. Use `.safeParse(data)` for validation or `.parse(data)` to throw on invalid input.
+All schemas use [Zod 4](https://zod.dev/) (`>=4.3.6 <5`). Use `.safeParse(data)` for validation or `.parse(data)` to throw on invalid input.
 
 ### Treatment File
 

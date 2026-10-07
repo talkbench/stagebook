@@ -73,7 +73,7 @@ const VISIBLE_CHARACTER = /[^\p{White_Space}\p{Cc}\p{Cf}\p{M}]/u;
 const bodylessFields = {
   body: z
     .literal("none", {
-      errorMap: () => ({ message: "`body` accepts only `none`" }),
+      error: () => ({ message: "`body` accepts only `none`" }),
     })
     .optional(),
   ariaLabel: z
@@ -86,7 +86,7 @@ const bodylessFields = {
 
 /** Say why a strict branch rejects a key that another branch accepts. */
 function explainUnsupportedKeys(reasons: Record<string, string>) {
-  const errorMap: z.ZodErrorMap = (issue, ctx) => {
+  const error: z.ZodErrorMap = (issue) => {
     if (issue.code === z.ZodIssueCode.unrecognized_keys) {
       // Zod reports every unknown key in one issue. Keep its message, which
       // names them all, so an explained key can't hide a typo beside it.
@@ -94,12 +94,17 @@ function explainUnsupportedKeys(reasons: Record<string, string>) {
         .filter((key) => Object.hasOwn(reasons, key))
         .map((key) => reasons[key]);
       if (reasonsGiven.length > 0) {
-        return { message: [ctx.defaultError, ...reasonsGiven].join(". ") };
+        return {
+          message: [
+            `Unrecognized keys: ${issue.keys.map((key) => JSON.stringify(key)).join(", ")}`,
+            ...reasonsGiven,
+          ].join(". "),
+        };
       }
     }
-    return { message: ctx.defaultError };
+    return undefined;
   };
-  return { errorMap };
+  return { error };
 }
 
 const noResponseMetadataSchema = z
@@ -584,11 +589,7 @@ export function splitOnTopLevelHrules(input: string): string[] {
   return sections.map((s) => s.replaceAll(MASK, ""));
 }
 
-export const promptFileSchema: z.ZodType<
-  ParsedPromptFile,
-  z.ZodTypeDef,
-  string
-> = z
+export const promptFileSchema: z.ZodType<ParsedPromptFile, string> = z
   .string()
   .min(1, "Prompt file string is empty")
   .transform((str, ctx): ParsedPromptFile | typeof z.NEVER => {

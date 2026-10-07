@@ -75,15 +75,13 @@ treatments:
       // in both passes (hydrated re-attaches `templates:` so the
       // definition stays visible), so the diff matches that instance.
       // Real bug, not a templating artifact.
-      expect(
-        result.matched.some((i) => i.code === "invalid_union_discriminator"),
-      ).toBe(true);
+      expect(result.matched.some((i) => i.code === "invalid_union")).toBe(true);
       // It must not land in sourceOnly — that bucket means "templating
       // artifact, suppress," which would be wrong for a real
       // template-definition bug.
-      expect(
-        result.sourceOnly.some((i) => i.code === "invalid_union_discriminator"),
-      ).toBe(false);
+      expect(result.sourceOnly.some((i) => i.code === "invalid_union")).toBe(
+        false,
+      );
       // The hydrated pass also surfaces the error at the expansion
       // site (`treatments[0].gameStages[0].elements[0].type`) — same
       // underlying bug, one extra hydrated instance per invocation.
@@ -843,9 +841,7 @@ treatments:
       // The discriminator-value error from the invalid element type
       // appears in both runs (once in the template definition, once
       // in the expanded treatment) and the diff matches them.
-      expect(
-        result.matched.some((i) => i.code === "invalid_union_discriminator"),
-      ).toBe(true);
+      expect(result.matched.some((i) => i.code === "invalid_union")).toBe(true);
     });
   });
 });

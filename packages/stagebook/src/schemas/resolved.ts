@@ -623,7 +623,9 @@ export function validateResolvedTreatmentFile(
                 | undefined)
             : undefined;
         return {
-          path: [...issue.path],
+          path: issue.path.map((key) =>
+            typeof key === "symbol" ? String(key) : key,
+          ),
           message: issue.message,
           reason: params?.reason,
         };

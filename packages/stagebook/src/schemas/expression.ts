@@ -29,7 +29,7 @@ type CollectionOperator = Exclude<
   | "firstExisting"
 >;
 
-// Zod 3 requires an explicit recursive annotation. Nonrecursive leaf/template
+// Explicit recursive annotations keep the public AST precise. Leaf/template
 // fields below are inferred from their schemas; this map supplies the recursive
 // operator edges rather than erasing the public AST to Record<string, unknown>.
 interface ExpressionRecursion {
@@ -108,13 +108,13 @@ export interface ExpressionSchemaOptions {
   ) => ExpressionStaticType | undefined;
   /** Inject treatment.ts's templateContextSchema when composing its schemas,
    * avoiding a circular dependency from this module back into treatment.ts. */
-  templateSchema?: z.ZodTypeAny;
+  templateSchema?: z.ZodType;
   /** Syntax checking only; defaults to the native JavaScript regex validator.
    * An override must never match researcher patterns against text. */
   validateRegex?: (pattern: string, flags: string) => string | undefined;
 }
 
-type Path = (string | number)[];
+type Path = PropertyKey[];
 type ScalarType = "number" | "string" | "boolean";
 type Type =
   | { kind: "unknown" | "missing" | "record" }
@@ -212,19 +212,18 @@ const rawReferenceSchema = z.union([
 ]);
 
 function createComparatorSchema(templateSchema: z.ZodType<TemplateInvocation>) {
-  const deferred = <T extends z.ZodTypeAny>(schema: T) =>
+  const deferred = <T extends z.ZodType>(schema: T) =>
     z.union([schema, wholePlaceholderSchema, templateSchema]);
   const scalar = z.union([z.string(), z.number().finite(), z.boolean()]);
-  const presenceHint: z.RawCreateParams = {
-    errorMap: (_issue, ctx) => ({
-      message:
-        ctx.data === null
+  const comparison = deferred(
+    z.union([scalar, z.array(scalar)], {
+      error: (issue) =>
+        issue.input === null
           ? "Null is not allowed in a comparison value; use exists or doesNotExist for presence."
-          : ctx.defaultError,
+          : undefined,
     }),
-  };
-  const comparison = deferred(z.union([scalar, z.array(scalar)], presenceHint));
-  const leaf = <C extends string, V extends z.ZodTypeAny>(name: C, value: V) =>
+  );
+  const leaf = <C extends string, V extends z.ZodType>(name: C, value: V) =>
     z
       .object({
         reference: rawReferenceSchema,
@@ -236,7 +235,7 @@ function createComparatorSchema(templateSchema: z.ZodType<TemplateInvocation>) {
     z
       .object({ reference: rawReferenceSchema, comparator: z.literal(name) })
       .strict();
-  return z.discriminatedUnion("comparator", [
+  const alternatives = [
     presence("exists"),
     presence("doesNotExist"),
     leaf("equals", comparison),
@@ -253,21 +252,30 @@ function createComparatorSchema(templateSchema: z.ZodType<TemplateInvocation>) {
     leaf("doesNotMatch", deferred(z.string())),
     leaf("isOneOf", deferred(z.array(scalar).nonempty())),
     leaf("isNotOneOf", deferred(z.array(scalar).nonempty())),
-  ]);
+  ] as const;
+  return z.discriminatedUnion("comparator", alternatives, {
+    error: (issue) =>
+      issue.code === "invalid_union"
+        ? `Unsupported comparator. Expected one of: ${alternatives
+            .map((alternative) => alternative.shape.comparator.value)
+            .join(", ")}.`
+        : undefined,
+  });
 }
 type ComparatorLeaf = z.infer<ReturnType<typeof createComparatorSchema>>;
 
-/** Keep native issue codes and paths, without retaining recursive unionErrors.
+/** Keep native issue codes and paths, without retaining recursive union errors.
  * This boundary is applied at every expression, before a parent can accumulate
  * its children's failed alternatives. Deepest existing paths take precedence
  * over Required errors from unrelated union alternatives. */
-function nativeStructure<T>(
-  select: (input: unknown) => z.ZodType<T, z.ZodTypeDef, unknown>,
-) {
+function nativeStructure<T>(select: (input: unknown) => z.ZodType<T, unknown>) {
   return z.unknown().transform((input, ctx): T => {
     const result = select(input).safeParse(input);
     if (result.success) return result.data;
-    const pending = [...result.error.issues];
+    const pending = result.error.issues.map((issue) => ({
+      issue,
+      prefix: [] as PropertyKey[],
+    }));
     const visited = new Set<z.ZodIssue>();
     const retained = new Map<
       string,
@@ -279,31 +287,38 @@ function nativeStructure<T>(
     ) => left.depth - right.depth || left.quality - right.quality;
     let omitted = false;
     while (pending.length && visited.size < 100000) {
-      const issue = pending.pop()!;
+      const { issue, prefix } = pending.pop()!;
       if (visited.has(issue)) continue;
       visited.add(issue);
+      const path = [...prefix, ...issue.path];
       if (issue.code === "invalid_union") {
-        for (const error of issue.unionErrors) pending.push(...error.issues);
-        if (issue.message === "Invalid input") continue;
+        // Zod 4 stores branch issues with paths relative to the union site.
+        // Empty branches also represent an unmatched discriminator, so retain
+        // that native issue even when its message is the generic union error.
+        for (const errors of issue.errors)
+          for (const child of errors)
+            pending.push({ issue: child, prefix: path });
+        if (issue.errors.length && issue.message === "Invalid input") continue;
       }
-      const flat =
-        issue.code === "invalid_union" ? { ...issue, unionErrors: [] } : issue;
+      const flat: z.ZodIssue =
+        issue.code === "invalid_union"
+          ? { ...issue, path, errors: [] }
+          : { ...issue, path };
       let site = input;
       let depth = 0;
-      for (const key of issue.path) {
-        if (site === null || typeof site !== "object" || !(key in site)) break;
-        site = (site as Record<string | number, unknown>)[key];
+      for (const key of path) {
+        if (site === null || typeof site !== "object" || !(key in site)) {
+          site = undefined;
+          break;
+        }
+        site = (site as Record<PropertyKey, unknown>)[key];
         depth++;
       }
       const candidate = {
         issue: flat,
         depth,
         quality:
-          issue.code === "invalid_type"
-            ? issue.received === "undefined"
-              ? 0
-              : 1
-            : 2,
+          issue.code === "invalid_type" ? (site === undefined ? 0 : 1) : 2,
       };
       const key = JSON.stringify(flat);
       if (retained.has(key)) continue;
@@ -336,7 +351,7 @@ function nativeStructure<T>(
 function createExpressionStructure(
   templateSchema: z.ZodType<TemplateInvocation>,
 ) {
-  const deferred = <T extends z.ZodTypeAny>(schema: T) =>
+  const deferred = <T extends z.ZodType>(schema: T) =>
     z.union([schema, wholePlaceholderSchema, templateSchema]);
   const scalar = z.union([
     z.string(),
@@ -355,7 +370,7 @@ function createExpressionStructure(
   const literalSchema = z
     .object({ literal: deferred(z.union([scalar, z.array(scalar)])) })
     .strict();
-  const expression: z.ZodType<ExpressionNode, z.ZodTypeDef, unknown> =
+  const expression: z.ZodType<ExpressionNode, unknown> =
     nativeStructure<ExpressionNode>((input) => {
       if (!record(input)) return scalar;
       // Routing does not validate a shape: the selected strict native schema
@@ -386,26 +401,19 @@ function createExpressionStructure(
       inputs(),
     ]),
   );
+  const whenRule = z.object({ when: expression, value: expression }).strict();
+  const defaultRule = z
+    .object({
+      default: z.union([z.literal(true), wholePlaceholderSchema]),
+      value: expression,
+    })
+    .strict();
+  // Route selectors to strict schemas so the recursive value parses once.
+  // An intersection can discard nested unrecognized-key issues while merging
+  // its two sides, and a union repeats recursive work at each default rule.
   const caseRule = deferred(
-    // Parse the shared recursive value exactly once. Putting it in both union
-    // alternatives doubles work at every nested default rule. Projections keep
-    // intersection merging from walking the same recursive value again.
-    z.intersection(
-      z
-        .object({ value: expression })
-        .passthrough()
-        .transform(({ value }) => ({ value })),
-      z
-        .union([
-          z.object({ when: expression, value: z.unknown() }).strict(),
-          z
-            .object({
-              default: z.union([z.literal(true), wholePlaceholderSchema]),
-              value: z.unknown(),
-            })
-            .strict(),
-        ])
-        .transform(({ value: _value, ...selector }) => selector),
+    nativeStructure<Exclude<CaseRule, DeferredExpression>>((input) =>
+      record(input) && "when" in input ? whenRule : defaultRule,
     ),
   );
   const operators = {
@@ -466,7 +474,7 @@ function createExpressionStructure(
     countUnique: z.object({ countUnique: inputs() }).strict(),
   } satisfies Record<
     keyof typeof EXPRESSION_OPERATORS,
-    z.ZodType<ExpressionNode, z.ZodTypeDef, unknown>
+    z.ZodType<ExpressionNode, unknown>
   >;
   // All recognized grammar keys route above. Unknown objects get native strict
   // key errors, while never rejects the empty object, without constructing
@@ -627,7 +635,7 @@ export function createExpressionSchemas(options: ExpressionSchemaOptions) {
       for (const key of path)
         site =
           site && typeof site === "object"
-            ? (site as Record<string | number, unknown>)[key]
+            ? (site as Record<PropertyKey, unknown>)[key]
             : undefined;
       const unresolved =
         !authoring &&

@@ -87,10 +87,10 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-function formatPath(p: (string | number)[]): string {
+function formatPath(p: PropertyKey[]): string {
   if (p.length === 0) return "(root)";
   return p
-    .map((seg) => (typeof seg === "number" ? `[${seg}]` : seg))
+    .map((seg) => (typeof seg === "number" ? `[${seg}]` : String(seg)))
     .join(".")
     .replace(/\.\[/g, "[");
 }

@@ -434,7 +434,7 @@ function resolveIssueRange(
  */
 function resolveOrWalkUp(
   mapper: ReturnType<typeof createPositionMapper>,
-  path: (string | number)[],
+  path: PropertyKey[],
 ): Diagnostic["range"] {
   return (
     resolvePathOrAncestor(mapper, path) ?? {
@@ -460,14 +460,14 @@ function appendPathIfMissing(issue: ZodIssue | PreHydrationIssue): string {
   return `${issue.message} (${pathStr})`;
 }
 
-function formatPath(path: (string | number)[]): string {
+function formatPath(path: PropertyKey[]): string {
   if (path.length === 0) return "";
   let out = "";
   for (const segment of path) {
     if (typeof segment === "number") {
       out += `[${segment}]`;
     } else {
-      out += out ? `.${segment}` : segment;
+      out += out ? `.${String(segment)}` : String(segment);
     }
   }
   return out;

@@ -6,12 +6,12 @@ import { promptMetadataSchema, promptFileSchema } from "./promptFile.js";
 // stand in for the question. The flag is what tells a deliberate omission
 // apart from an unfinished question.
 
-function issues(result: z.SafeParseReturnType<unknown, unknown>) {
+function issues(result: z.ZodSafeParseResult<unknown>) {
   return result.success ? [] : result.error.issues;
 }
 
 function issueAt(
-  result: z.SafeParseReturnType<unknown, unknown>,
+  result: z.ZodSafeParseResult<unknown>,
   ...path: (string | number)[]
 ) {
   return issues(result).find(

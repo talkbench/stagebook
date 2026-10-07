@@ -344,7 +344,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -353,6 +353,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: npm run test:package
+      - run: npm run test:package
+        env:
+          STAGEBOOK_ZOD_VERSION: "4.4.3"
 
   validate-action:
     name: Dogfood validate-action

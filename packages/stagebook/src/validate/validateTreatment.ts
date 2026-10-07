@@ -181,14 +181,14 @@ export function validateTreatmentSource(
  * Format a Zod issue path as a readable dotted string.
  * Array indices are shown in brackets: ["treatments", 0, "gameStages", 1] → "treatments[0].gameStages[1]"
  */
-function formatPath(path: (string | number)[]): string {
+function formatPath(path: PropertyKey[]): string {
   if (path.length === 0) return "";
   let result = "";
   for (const segment of path) {
     if (typeof segment === "number") {
       result += `[${segment}]`;
     } else {
-      result += result ? `.${segment}` : segment;
+      result += result ? `.${String(segment)}` : String(segment);
     }
   }
   return result;

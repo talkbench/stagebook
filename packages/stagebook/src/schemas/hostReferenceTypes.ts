@@ -44,74 +44,81 @@ function union(results: HostReferenceTypeResult[]): HostReferenceTypeResult {
 /** Follow the actual saved-record schemas rather than maintaining field tables.
  * Optional/nullable fields have the type of their present values. */
 function atPath(
-  schema: z.ZodTypeAny,
+  schema: z.core.$ZodType,
   path: readonly string[],
   depth = 0,
 ): HostReferenceTypeResult {
   if (depth > 128)
     return { kind: "unknown", detail: "the host schema is too deeply nested" };
-  const next = (inner: z.ZodTypeAny, rest = path) =>
+  const next = (inner: z.core.$ZodType, rest = path) =>
     atPath(inner, rest, depth + 1);
   if (
     schema instanceof z.ZodOptional ||
     schema instanceof z.ZodNullable ||
     schema instanceof z.ZodReadonly ||
-    schema instanceof z.ZodBranded
+    schema instanceof z.ZodDefault ||
+    schema instanceof z.ZodPrefault ||
+    schema instanceof z.ZodCatch ||
+    schema instanceof z.ZodNonOptional
   )
-    return next(schema.unwrap() as z.ZodTypeAny);
-  if (schema instanceof z.ZodDefault || schema instanceof z.ZodCatch)
-    return next(schema._def.innerType as z.ZodTypeAny);
-  if (schema instanceof z.ZodEffects) {
-    // Refinements preserve the declared type; transformations may not.
-    return schema._def.effect.type === "refinement"
-      ? next(schema.innerType() as z.ZodTypeAny)
-      : { kind: "unknown", detail: "the host field has a transformed type" };
-  }
+    return next(schema.unwrap());
+  // Zod 4 stores refinements and brands on their underlying schema. Pipes
+  // and transforms can change its type, so they remain gradual here.
+  if (schema instanceof z.ZodPipe || schema instanceof z.ZodTransform)
+    return { kind: "unknown", detail: "the host field has a transformed type" };
   if (schema instanceof z.ZodUnion)
-    return union(
-      (schema.options as z.ZodTypeAny[]).map((option) => next(option)),
-    );
-  if (schema instanceof z.ZodDiscriminatedUnion)
-    return union(
-      (schema.options as z.ZodTypeAny[]).map((option) => next(option)),
-    );
+    return union(schema.options.map((option) => next(option)));
   if (schema instanceof z.ZodObject) {
     if (path.length === 0) return known("record");
     const [key, ...rest] = path;
-    const shape = schema.shape as z.ZodRawShape;
+    const shape = schema.shape as z.core.$ZodShape;
     if (own(shape, key)) return next(shape[key], rest);
-    if (!(schema._def.catchall instanceof z.ZodNever))
-      return next(schema._def.catchall as z.ZodTypeAny, rest);
-    return schema._def.unknownKeys === "passthrough"
+    const catchall = schema.def.catchall;
+    // In Zod 4, passthrough objects have an unknown catchall; strip objects
+    // have none, and strict objects have a never catchall.
+    if (!catchall || catchall instanceof z.ZodNever) return invalid();
+    return catchall instanceof z.ZodUnknown
       ? {
           kind: "unknown",
           unlisted: true,
           detail: `field ${key} is a passthrough field without a declared type`,
         }
-      : invalid();
+      : next(catchall, rest);
   }
   if (schema instanceof z.ZodArray) {
     if (path.length === 0) {
-      const element = next(schema.element as z.ZodTypeAny, []);
+      const element = next(schema.element, []);
       return element.kind === "known" ? known({ list: element.type }) : element;
     }
     const [key, ...rest] = path;
     if (key === "length") return next(z.number(), rest);
-    return /^(0|[1-9]\d*)$/.test(key)
-      ? next(schema.element as z.ZodTypeAny, rest)
-      : invalid();
+    return /^(0|[1-9]\d*)$/.test(key) ? next(schema.element, rest) : invalid();
   }
   if (schema instanceof z.ZodRecord)
     return path.length === 0
       ? known("record")
-      : next(schema.valueSchema as z.ZodTypeAny, path.slice(1));
+      : next(schema.valueType, path.slice(1));
   if (schema instanceof z.ZodUnknown || schema instanceof z.ZodAny)
     return { kind: "unknown", detail: "the host field has no declared type" };
-  if (
-    schema instanceof z.ZodString ||
-    schema instanceof z.ZodEnum ||
-    (schema instanceof z.ZodLiteral && typeof schema.value === "string")
-  ) {
+  if (schema instanceof z.ZodEnum || schema instanceof z.ZodLiteral) {
+    const values =
+      schema instanceof z.ZodEnum ? schema.options : [...schema.values];
+    return union(
+      values.map((value) => {
+        if (typeof value === "string") return next(z.string());
+        if (typeof value === "number") return next(z.number());
+        if (typeof value === "boolean") return next(z.boolean());
+        if (value === null || value === undefined) return next(z.null());
+        return path.length > 0
+          ? invalid()
+          : {
+              kind: "unknown",
+              detail: "the host field is not an expression value",
+            };
+      }),
+    );
+  }
+  if (schema instanceof z.ZodString) {
     if (path.length === 0) return known("string");
     const [key, ...rest] = path;
     if (key === "length") return next(z.number(), rest);
@@ -126,17 +133,6 @@ function atPath(
     schema instanceof z.ZodNever
   )
     return known("missing");
-  if (schema instanceof z.ZodLiteral) {
-    const value: unknown = schema.value;
-    return value === null || value === undefined
-      ? known("missing")
-      : ["string", "number", "boolean"].includes(typeof value)
-        ? known(typeof value as "string" | "number" | "boolean")
-        : {
-            kind: "unknown",
-            detail: "the host field is not an expression value",
-          };
-  }
   return {
     kind: "unknown",
     detail: "the host field type is not yet supported",

@@ -11,8 +11,10 @@ npm install stagebook
 Peer dependencies (install if not already present):
 
 ```bash
-npm install zod js-yaml react react-dom
+npm install "zod@>=4.3.6 <5" react react-dom
 ```
+
+Stagebook develops and tests against Zod 4.3.6. Upgrade first-party host schemas to Zod 4 before composing them with Stagebook schemas; see [Zod 4 package boundary](zod4-migration.md) for packed-candidate verification and coordinated adoption.
 
 ## Package Structure
 

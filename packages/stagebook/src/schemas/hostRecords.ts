@@ -87,7 +87,7 @@ export type HostRecord = z.infer<(typeof hostRecordSchemas)[HostRecordSource]>;
 export function checkHostRecord(
   source: string,
   record: unknown,
-): z.SafeParseReturnType<unknown, HostRecord> {
+): z.ZodSafeParseResult<HostRecord> {
   if (!Object.prototype.hasOwnProperty.call(hostRecordSchemas, source)) {
     return {
       success: false,
@@ -97,7 +97,7 @@ export function checkHostRecord(
           path: [],
           message: `Unsupported host record source "${source}". Supported sources: ${Object.keys(hostRecordSchemas).join(", ")}.`,
         },
-      ]),
+      ]) as z.ZodError<HostRecord>,
     };
   }
   return hostRecordSchemas[source as HostRecordSource].safeParse(record);
