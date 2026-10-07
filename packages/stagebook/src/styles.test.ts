@@ -424,8 +424,6 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
       "unconsumed: a status pair declared for hosts; no stagebook component renders it",
     "--stagebook-warning-bg":
       "unconsumed: a status pair declared for hosts; no stagebook component renders it",
-    "--stagebook-timer-track":
-      "unconsumed: KitchenTimer reads --stagebook-bg-track for its track",
     "--stagebook-waveform-color": "canvas — no reader in the gate can see it",
     "--stagebook-waveform-track-bg":
       "canvas, and translucent over whatever the host paints behind the timeline",
