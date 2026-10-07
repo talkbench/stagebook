@@ -26,14 +26,16 @@
 //     (<option> rows, a trigger with a background image). Two computed
 //     styles and the WCAG ratio; a translucent value fails loudly.
 //   - `pixels`, for a mark whose colour is only knowable from the paint:
-//     the Slider's ticks are drawn at opacity 0.7 over a translucent tint,
-//     which no computed style expresses. Two screenshot pixels.
+//     the Slider's labelled ticks sit on a translucent tint when the track
+//     is hovered, which no computed style expresses. Two screenshot pixels.
 // Focus indicators have no axe rule and live in focus.gate.ct.tsx. Canvas
 // is invisible to all three readers; the waveform's tokens are excluded
 // explicitly in styles.test.ts's token ledger.
 //
-// Known failures (#616) are asserted to STILL fail, so fixing one flips its
-// entry red and prompts its removal.
+// Known failures are asserted to STILL fail at their recorded ratio, so
+// fixing one flips its entry red and prompts its removal, and a regression
+// cannot hide behind it. The ones left are a deliberate exception: the light
+// outline of text-entry fields, TextArea and NumericInput (`fieldBorder`).
 import { test, expect } from "@playwright/experimental-ct-react";
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "playwright/test";
@@ -125,8 +127,8 @@ const dropdownPrompt = {
 const peaks = [-0.2, 0.2, -0.8, 0.8, -0.5, 0.5, -0.1, 0.1];
 
 /**
- * An axe result that is expected: a violation recorded in #616, or a node
- * axe declined to score. Matched on the rule id, the element it sits
+ * An axe result that is expected: a recorded violation, or a node axe
+ * declined to score. Matched on the rule id, the element it sits
  * inside, and (when that element also holds passing text) a fragment of
  * the node's text — never on the selector axe generates, which carries
  * React ids and nth-child positions. A recorded failure can pin its ratio,
@@ -411,28 +413,14 @@ const timerFill = (fails?: Mark["fails"]): Mark => ({
   fails,
 });
 
-// The Slider's ticks, read from the paint (see `Pixel`). Snap ticks are
-// gray at opacity 0.7; labelled ticks are opaque. Each against the track
-// 6px to its right — the next tick is 10% of the width away.
-const SNAP_TICK = ':nth-match([data-testid="slider-snap-tick"], 2)';
+// The Slider's labelled ticks, read from the paint (see `Pixel`), against
+// the track 6px to their right — the next tick is 10% of the width away.
+// The minor snap ticks (the tick colour at opacity 0.7) carry no floor:
+// they are a supplementary hint at where the slider snaps, kept quieter on
+// purpose so they do not invite responses aligned to them (#616).
+// Slider.ct.tsx pins that hierarchy, at rest and on a hovered track.
 const LABEL_TICK = ':nth-match([data-testid="slider-label-tick"], 2)';
 const tickPixels = (track: string): Pixel[] => [
-  {
-    name: `snap tick on the ${track} track`,
-    at: SNAP_TICK,
-    beside: [6, 0],
-    min: UI,
-    fails:
-      track === "hovered"
-        ? {
-            ratio: 2.12,
-            why: "#616: approved minor-tick hierarchy, --stagebook-slider-tick at 0.7 opacity; necessity of the 3:1 floor remains under review",
-          }
-        : {
-            ratio: 2.43,
-            why: "#616: approved minor-tick hierarchy at rest; below the provisional 3:1 floor",
-          },
-  },
   {
     name: `labelled tick on the ${track} track`,
     at: LABEL_TICK,
@@ -459,6 +447,23 @@ const muteGlyph = (fails?: Mark["fails"]): Mark => ({
   },
   min: UI,
   fails,
+});
+
+/**
+ * A text-entry field's outline on the page. Kept light on purpose, so a
+ * response outweighs its frame: a documented exception to 1.4.11 (#616,
+ * docs/decisions/2026-09-contrast-hierarchy.md), pinned at its ratio so it
+ * can neither change nor worsen unnoticed.
+ */
+const fieldBorder = (el: string): Mark => ({
+  name: "field border on the page",
+  fg: { el, prop: "border-top-color" },
+  bg: PAGE,
+  min: UI,
+  fails: {
+    ratio: 1.47,
+    why: "#616: deliberate exception — text-entry outlines stay light so the response outweighs its frame",
+  },
 });
 
 /** An unchecked choice is identified by its outline, including on hover. */
@@ -530,6 +535,7 @@ const cases: Case[] = [
           suffix={affixes ? "per year" : undefined}
         />
       ),
+      marks: [fieldBorder('[data-testid="numeric-field"]')],
       prepare:
         state === "pulse"
           ? async (page) => {
@@ -737,18 +743,7 @@ const cases: Case[] = [
   {
     name: "TextArea",
     node: <TextArea value="Some typed response" ariaLabel="Your answer" />,
-    marks: [
-      {
-        name: "control border on the page",
-        fg: { el: "textarea", prop: "border-top-color" },
-        bg: PAGE,
-        min: UI,
-        fails: {
-          ratio: 1.47,
-          why: "#616: reviewed light field outline retained; the text-area boundary remains an open accessibility question",
-        },
-      },
-    ],
+    marks: [fieldBorder("textarea")],
   },
   {
     name: "Slider (anchored)",

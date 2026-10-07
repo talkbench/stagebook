@@ -38,7 +38,7 @@ so a host can set `--stagebook-primary` on any ancestor, with or without the
 stylesheet. Aliasing the fill to primary at `:root` would capture the root color
 and ignore scoped primary overrides. An explicit timer-fill override still wins.
 
-## Verification and remaining questions
+## Verification and settled questions
 
 The rendered contrast gate measures unchecked choices at rest and on hover,
 text, the timer fill, and the mute glyph. A full-height waveform fixture measures
@@ -46,10 +46,26 @@ track-label text against the painted background beneath its translucent backing.
 Regression tests preserve the minor/major tick hierarchy and independent theme
 controls, including their inline fallbacks.
 
-This implements the approved appearance, not a complete resolution of #616.
-The light text-area boundary still measures 1.47:1 against white. Minor ticks
-measure about 2.43:1 on the resting track and 2.12:1 on hover, below the gate's
-provisional 3:1 floor. These remain explicit known shortfalls while we resolve
-whether the minor marks are necessary to understand the scale and how to treat
-the text-area boundary. The stronger bottom edge and stronger minor-tick options
-from the mockup were not selected.
+This implemented the approved appearance and left two questions open. Both
+were settled in October 2026, which closes #616:
+
+- **Text-entry field boundaries stay light, as a deliberate exception.** The
+  TextArea's outline, and NumericInput's (added later, in #708, with the same
+  border), measure 1.47:1 against white. That is below WCAG 1.4.11's 3:1
+  floor for the boundary of a control. They stay light so that a
+  participant's response keeps more visual weight than its frame. The gate
+  pins the ratio for both, so it cannot change unnoticed. This is a
+  documented exception to the components' WCAG 2.2 AA conformance
+  (`2026-07-accessibility.md`, decision 3). The stronger bottom edge from the
+  mockup was not selected.
+- **Minor slider ticks are supplementary, so they have no contrast floor.**
+  They hint at where the slider snaps, but a participant can understand and
+  use the slider without them: the labels give the scale, and the thumb shows
+  the chosen position. They stay quieter than the labelled ticks so they do
+  not invite responses aligned to them. The gate no longer measures them, and
+  a component test keeps them subordinate to the labelled ticks, at rest and
+  on a hovered track. The stronger minor-tick option from the mockup was not
+  selected.
+
+`--stagebook-timer-warn` was declared but read by nothing, so it was removed.
+KitchenTimer's warning fill reads `--stagebook-danger`.

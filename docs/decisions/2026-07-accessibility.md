@@ -90,6 +90,9 @@ distinguishes what we control:
 
 1. **Stagebook's own components, viewer chrome, and the VS Code preview
    webview** — **we conform to WCAG 2.2 AA.** Fully in our control.
+   _Updated 2026-10:_ one documented exception, the light boundary of
+   text-entry fields (TextArea and NumericInput, 1.47:1 against a 3:1
+   floor), kept deliberately; see `2026-09-contrast-hierarchy.md` (#616).
 2. **Researcher-authored content** (prompts, images, stimuli) — we cannot
    _guarantee_ it, but as an authoring tool we **help** the author produce it
    (the spirit of ATAG, the Authoring Tool Accessibility Guidelines). Concrete,

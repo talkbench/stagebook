@@ -23,7 +23,22 @@ for (const [theme, color] of [
     await expect(major).toHaveCSS("height", "16px");
     await expect(minor).toHaveCSS("opacity", "0.7");
     await expect(major).toHaveCSS("opacity", "1");
+    await expect(minor).toBeVisible();
+    await expect(minor).toHaveCSS("width", "2px");
     await expect(component.getByTestId("slider-thumb")).toHaveCount(0);
+
+    // The minor ticks are decorative, so the a11y gate holds them to no
+    // contrast floor (#616). This test is what keeps them quiet, including
+    // on a hovered track, the moment before a participant clicks.
+    const track = component.getByTestId("slider-track");
+    const resting = await track.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    );
+    await track.hover();
+    await expect(track).not.toHaveCSS("background-color", resting);
+    await expect(minor).toHaveCSS("background-color", color);
+    await expect(minor).toHaveCSS("height", "6px");
+    await expect(minor).toHaveCSS("opacity", "0.7");
   });
 }
 

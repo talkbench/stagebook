@@ -319,10 +319,10 @@ describe("styles.css uses theme variables for hardcoded values (#116)", () => {
 //
 // That one thing is the LEDGER. Axe can only see what renders: it cannot
 // tell you about a token nobody wired up (#616 found --stagebook-timer-warn
-// declared and read by nothing), or about a canvas. So every colour token is
-// either MEASURED — consumed by a component the gate mounts, in a state it
-// scans — or EXCLUDED here with a reason. A new token has to be classified
-// before this passes; a removed one has to be un-listed.
+// declared and read by nothing, and it was removed), or about a canvas. So
+// every colour token is either MEASURED — consumed by a component the gate
+// mounts, in a state it scans — or EXCLUDED here with a reason. A new token
+// has to be classified before this passes; a removed one has to be un-listed.
 describe("every colour token is measured in the a11y gate or excluded with a reason (#633)", () => {
   const css = readFileSync(stylesPath, "utf8");
   const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -379,9 +379,10 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
     "--stagebook-select-chevron":
       "Select disclosure SVG path on the control surface",
     "--stagebook-slider-tick":
-      "Slider (ticks), including the known minor-tick contrast shortfall (#616)",
+      "Slider (labelled ticks); the minor snap ticks are decorative and carry no floor (#616)",
     "--stagebook-timeline-ruler-text": "Timeline ruler timestamps",
-    "--stagebook-border": "TextArea (a known failure, #616)",
+    "--stagebook-border":
+      "TextArea and NumericInput outlines (a deliberate exception, pinned at its ratio, #616)",
     "--stagebook-bg":
       "Slider (ticks) value badge text; the page, which the gate paints from it and reads behind every PAGE-backed mark",
     "--stagebook-bg-muted":
@@ -423,8 +424,6 @@ describe("every colour token is measured in the a11y gate or excluded with a rea
       "unconsumed: a status pair declared for hosts; no stagebook component renders it",
     "--stagebook-warning-bg":
       "unconsumed: a status pair declared for hosts; no stagebook component renders it",
-    "--stagebook-timer-warn":
-      "unconsumed: KitchenTimer reads --stagebook-danger for its warning fill (#616)",
     "--stagebook-timer-track":
       "unconsumed: KitchenTimer reads --stagebook-bg-track for its track",
     "--stagebook-waveform-color": "canvas — no reader in the gate can see it",
