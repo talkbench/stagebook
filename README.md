@@ -25,7 +25,7 @@ From GitHub (builds automatically on install):
 npm install talkbench/stagebook
 ```
 
-Peer dependencies: `zod >= 3.23`, `js-yaml >= 4`. React components additionally peer-depend on `react >= 18` and `react-dom >= 18`.
+Peer dependency: `zod >=4.3.6 <5` (tested minimum: 4.3.6). React components additionally peer-depend on `react >=18` and `react-dom >=18`. See the [Zod 4 migration guide](docs/engineer/zod4-migration.md) when upgrading a consuming application.
 
 ## Usage
 

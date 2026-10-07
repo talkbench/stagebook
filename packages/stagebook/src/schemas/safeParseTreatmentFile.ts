@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { walkExpression } from "../expressions/index.js";
-import type { SafeParseReturnType, ZodIssue } from "zod";
+import type { ZodSafeParseResult, ZodIssue } from "zod";
 import {
   getValidKeysForComparator,
   getValidKeysForDiscussion,
@@ -319,7 +319,7 @@ function rewriteUnrecognizedKeysIssue(
   if (issue.code !== z.ZodIssueCode.unrecognized_keys) return [issue];
 
   const containerLabel = classifyContainer(
-    issue.path,
+    issue.path.map((key) => (typeof key === "symbol" ? String(key) : key)),
     parsedInput,
     conditionLabels,
   );
@@ -369,7 +369,7 @@ function rewriteUnrecognizedKeysIssue(
  */
 export function safeParseTreatmentFile(
   input: unknown,
-): SafeParseReturnType<unknown, TreatmentFileType> {
+): ZodSafeParseResult<TreatmentFileType> {
   const result = treatmentFileSchema.safeParse(input);
   if (result.success) return result;
 
@@ -384,5 +384,5 @@ export function safeParseTreatmentFile(
   return {
     success: false,
     error: new z.ZodError(rewrittenIssues),
-  } as SafeParseReturnType<unknown, TreatmentFileType>;
+  } as ZodSafeParseResult<TreatmentFileType>;
 }

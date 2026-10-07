@@ -100,10 +100,8 @@ export const positionSelectorSchema = z.union(
     z.enum(["self", "shared", "everyone"]),
   ],
   {
-    errorMap: (_issue, ctx) => ({
-      message:
-        ctx.data === "all" ? legacyAllPositionMessage() : ctx.defaultError,
-    }),
+    error: (issue) =>
+      issue.input === "all" ? legacyAllPositionMessage() : undefined,
   },
 );
 export type PositionSelectorType = z.infer<typeof positionSelectorSchema>;
@@ -390,27 +388,33 @@ export const referenceSchema = z.union(
     // that fails every branch reports a bare "Invalid input". The dotted
     // form gets its migration hint from `parseDottedReference`; this gives
     // the structured form the same hint (#669).
-    errorMap: (issue, ctx) => {
+    error: (issue) => {
+      // Preserve dotted-reference migration guidance rather than the union's
+      // generic message when neither structured branch can accept a string.
+      if (typeof issue.input === "string") {
+        const parsed = stringReferenceSchema.safeParse(issue.input);
+        if (!parsed.success) return parsed.error.issues[0]?.message;
+      }
       if (
         issue.code === z.ZodIssueCode.invalid_union &&
-        ctx.data !== null &&
-        typeof ctx.data === "object" &&
-        (ctx.data as { position?: unknown }).position === "all"
+        issue.input !== null &&
+        typeof issue.input === "object" &&
+        (issue.input as { position?: unknown }).position === "all"
       ) {
         return { message: legacyAllPositionMessage() };
       }
       if (
         issue.code === z.ZodIssueCode.invalid_union &&
-        isRemovedSurveyReference(ctx.data)
+        isRemovedSurveyReference(issue.input)
       ) {
-        const name = (ctx.data as { name?: unknown }).name;
+        const name = (issue.input as { name?: unknown }).name;
         return {
           message: surveySourceRemovedMessage(
             `{ source: survey${typeof name === "string" ? `, name: ${name}` : ""} }`,
           ),
         };
       }
-      return { message: ctx.defaultError };
+      return undefined;
     },
   },
 );

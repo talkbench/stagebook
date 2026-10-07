@@ -413,11 +413,11 @@ function templateInvocationResolvesToAdvancement(
 }
 
 /** Navigate `obj` along a Zod issue path (mixed string/number segments). */
-function getAtPath(obj: unknown, path: (string | number)[]): unknown {
+function getAtPath(obj: unknown, path: PropertyKey[]): unknown {
   let acc: unknown = obj;
   for (const key of path) {
     if (acc === null || typeof acc !== "object") return undefined;
-    acc = (acc as Record<string | number, unknown>)[key];
+    acc = (acc as Record<PropertyKey, unknown>)[key];
   }
   return acc;
 }

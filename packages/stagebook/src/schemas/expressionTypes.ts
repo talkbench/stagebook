@@ -278,7 +278,12 @@ export function checkExpressionTypes(
             if (baselineErrors.has(JSON.stringify([issue.path, issue.message])))
               continue;
             issues.push({
-              path: [...site.path, ...issue.path],
+              path: [
+                ...site.path,
+                ...issue.path.map((part) =>
+                  typeof part === "symbol" ? String(part) : part,
+                ),
+              ],
               severity: "error",
               message: `${issue.message} For text/number comparisons, quote text values or use a prompt that saves numbers: https://github.com/talkbench/stagebook/blob/main/docs/researcher/conditions.md#prompts-that-save-numbers`,
             });

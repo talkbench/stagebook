@@ -39,7 +39,7 @@ function findDelimiterLines(source: string): number[] {
  */
 function mapPromptErrorToRange(
   source: string,
-  path: (string | number)[],
+  path: PropertyKey[],
   delimiters: number[],
 ): SourceRange | null {
   if (delimiters.length < 2) {

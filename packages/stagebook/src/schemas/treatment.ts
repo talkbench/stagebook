@@ -86,6 +86,21 @@ const fieldPlaceholderSchema = z.string().regex(FIELD_PLACEHOLDER_PATTERN, {
 // embedded placeholder survives verbatim and is always flagged. (#566 review)
 const WHOLE_FIELD_PLACEHOLDER_PATTERN = /^\$\{[a-zA-Z0-9_]+\}$/;
 
+function withFieldPlaceholder<T extends z.ZodType>(schema: T) {
+  // Keep the concrete schema's useful issues when neither parses; Zod 4
+  // unions otherwise bury these authoring diagnostics under "Invalid input".
+  return z
+    .custom<z.input<T> | string>(() => true)
+    .transform((input, ctx): z.output<T> | string => {
+      const parsed = schema.safeParse(input);
+      if (parsed.success) return parsed.data;
+      const placeholder = fieldPlaceholderSchema.safeParse(input);
+      if (placeholder.success) return placeholder.data;
+      for (const issue of parsed.error.issues) ctx.addIssue({ ...issue });
+      return z.NEVER;
+    });
+}
+
 const wholeFieldPlaceholderSchema = z
   .string()
   .regex(WHOLE_FIELD_PLACEHOLDER_PATTERN, {
@@ -298,9 +313,7 @@ export type PositionType = z.infer<typeof positionSchema>;
 
 export const showToPositionsSchema = z
   .array(positionSchema, {
-    required_error:
-      "Expected an array for `showToPositions`. Make sure each item starts with a dash (`-`) in YAML.",
-    invalid_type_error:
+    error:
       "Expected an array for `showToPositions`. Make sure each item starts with a dash (`-`) in YAML.",
   })
   .nonempty(); // TODO: check for unique values (or coerce to unique values)
@@ -308,9 +321,7 @@ export type ShowToPositionsType = z.infer<typeof showToPositionsSchema>;
 
 export const hideFromPositionsSchema = z
   .array(positionSchema, {
-    required_error:
-      "Expected an array for `hideFromPositions`. Make sure each item starts with a dash (`-`) in YAML.",
-    invalid_type_error:
+    error:
       "Expected an array for `hideFromPositions`. Make sure each item starts with a dash (`-`) in YAML.",
   })
   .nonempty(); // TODO: check for unique values (or coerce to unique values)
@@ -437,7 +448,7 @@ const layoutDefinitionSchema = z
     // `${field}` placeholder accepted (#284) — substituted with a literal
     // array at fillTemplates time. The grid-bounds superRefine below
     // skips iteration when feeds is a placeholder string.
-    feeds: z.array(layoutFeedSchema).nonempty().or(fieldPlaceholderSchema),
+    feeds: withFieldPlaceholder(z.array(layoutFeedSchema).nonempty()),
     defaults: layoutFeedDefaultsSchema.optional(),
   })
   .strict()
@@ -493,9 +504,7 @@ const discussionRoomSchema = z
   .object({
     includePositions: z
       .array(positionSchema, {
-        required_error:
-          "Expected an array for `includePositions`. Make sure each item starts with a dash (`-`) in YAML.",
-        invalid_type_error:
+        error:
           "Expected an array for `includePositions`. Make sure each item starts with a dash (`-`) in YAML.",
       })
       .nonempty(),
@@ -530,11 +539,9 @@ export const discussionSchema = z
     // `${field}` placeholder accepted (#284) — substituted with a literal
     // array at fillTemplates time. Resolved-shape validation in resolved.ts
     // catches placeholders that survive substitution.
-    rooms: z
-      .array(discussionRoomSchema)
-      .nonempty()
-      .or(fieldPlaceholderSchema)
-      .optional(),
+    rooms: withFieldPlaceholder(
+      z.array(discussionRoomSchema).nonempty(),
+    ).optional(),
     // New: allow discussion-level position-based visibility controls
     showToPositions: showToPositionsSchema.optional(),
     hideFromPositions: hideFromPositionsSchema.optional(),
@@ -674,37 +681,40 @@ export const templateContextSchema = z
 export type TemplateContextType = z.infer<typeof templateContextSchema>;
 
 // helper function to extend a schema with template context, and
-function altTemplateContext<T extends z.ZodTypeAny>(baseSchema: T) {
-  return z.any().superRefine((data, ctx) => {
-    if (data === undefined) {
-      // throw new Error("data is undefined, this should not happen. This is a bug in the schema.");
-      // console.log(
-      //   "data is undefined, this should not happen. This is a bug in the schema."
-      // );
-      // return ctx.addIssue({
-      //   code: z.ZodIssueCode.custom,
-      //   message: "Data is undefined",
-      // });
-      return;
-    }
-    // Determine schema based on presence of `template` field
+function altTemplateContext<T extends z.ZodType>(baseSchema: T) {
+  return z
+    .any()
+    .superRefine((data, ctx) => {
+      if (data === undefined) {
+        // throw new Error("data is undefined, this should not happen. This is a bug in the schema.");
+        // console.log(
+        //   "data is undefined, this should not happen. This is a bug in the schema."
+        // );
+        // return ctx.addIssue({
+        //   code: z.ZodIssueCode.custom,
+        //   message: "Data is undefined",
+        // });
+        return;
+      }
+      // Determine schema based on presence of `template` field
 
-    const schemaToUse =
-      data !== null && typeof data === "object" && "template" in data
-        ? templateContextSchema
-        : baseSchema;
-    // console.log("data", data, "schemaToUse", 'template' in data ? "template" : "base");
-    const result = schemaToUse.safeParse(data);
+      const schemaToUse =
+        data !== null && typeof data === "object" && "template" in data
+          ? templateContextSchema
+          : baseSchema;
+      // console.log("data", data, "schemaToUse", 'template' in data ? "template" : "base");
+      const result = schemaToUse.safeParse(data);
 
-    if (!result.success) {
-      result.error.issues.forEach((issue) =>
-        ctx.addIssue({
-          ...issue,
-          path: [...issue.path],
-        }),
-      );
-    }
-  });
+      if (!result.success) {
+        result.error.issues.forEach((issue) =>
+          ctx.addIssue({
+            ...issue,
+            path: [...issue.path],
+          }),
+        );
+      }
+    })
+    .optional();
 }
 
 // References live in `./reference.js` (#240) and are re-exported above.
@@ -942,7 +952,7 @@ export const conditionsSchema = z
   .superRefine((data, ctx) => {
     const parsed = authoringExpressions.conditionsSchema.safeParse(data);
     if (!parsed.success)
-      parsed.error.issues.forEach((issue) => ctx.addIssue(issue));
+      parsed.error.issues.forEach((issue) => ctx.addIssue({ ...issue }));
     // Pre-scan for operator-key typos on object inputs only. If the
     // user wrote a single object (not an array) and its keys look like
     // a near-miss for `all`/`any`/`none`, emit a hint *before* the
@@ -1043,18 +1053,14 @@ const elementBaseSchema = z
     // mediaPlayer). Per-type schemas declare it themselves so a stray
     // `file:` on (e.g.) `submitButton` fails strict-key validation at
     // preflight rather than being silently accepted. See #249.
-    displayTime: displayTimeSchema.or(fieldPlaceholderSchema).optional(),
-    hideTime: hideTimeSchema.or(fieldPlaceholderSchema).optional(),
-    showToPositions: showToPositionsSchema
-      .or(fieldPlaceholderSchema)
-      .optional(),
-    hideFromPositions: hideFromPositionsSchema
-      .or(fieldPlaceholderSchema)
-      .optional(),
+    displayTime: withFieldPlaceholder(displayTimeSchema).optional(),
+    hideTime: withFieldPlaceholder(hideTimeSchema).optional(),
+    showToPositions: withFieldPlaceholder(showToPositionsSchema).optional(),
+    hideFromPositions: withFieldPlaceholder(hideFromPositionsSchema).optional(),
     conditions: conditionsSchema.optional(),
     tags: z
       .array(z.string(), {
-        invalid_type_error:
+        error:
           "Expected an array for `tags`. Make sure each item starts with a dash (`-`) in YAML.",
       })
       .optional(),
@@ -1164,9 +1170,12 @@ export const NON_FINITE_SECONDS_MESSAGE =
 /**
  * A time in seconds: any finite number. Callers add the sign constraint.
  */
-export const finiteSecondsSchema = z
-  .number()
-  .finite({ message: NON_FINITE_SECONDS_MESSAGE });
+export const finiteSecondsSchema = z.number({
+  error: (issue) =>
+    typeof issue.input === "number" && !Number.isFinite(issue.input)
+      ? NON_FINITE_SECONDS_MESSAGE
+      : undefined,
+});
 
 const timerSchema = elementBaseSchema
   .extend({
@@ -1198,19 +1207,12 @@ export const mediaPlayerSchema = elementBaseSchema
     playVideo: z.boolean().optional(),
     playAudio: z.boolean().optional(),
     captionsFile: fileSchema.optional(),
-    startAt: finiteSecondsSchema
-      .nonnegative()
-      .or(fieldPlaceholderSchema)
-      .optional(),
-    stopAt: finiteSecondsSchema
-      .positive()
-      .or(fieldPlaceholderSchema)
-      .optional(),
+    startAt: withFieldPlaceholder(finiteSecondsSchema.nonnegative()).optional(),
+    stopAt: withFieldPlaceholder(finiteSecondsSchema.positive()).optional(),
     allowScrubOutsideBounds: z.boolean().optional(),
-    stepDuration: finiteSecondsSchema
-      .positive()
-      .or(fieldPlaceholderSchema)
-      .optional(),
+    stepDuration: withFieldPlaceholder(
+      finiteSecondsSchema.positive(),
+    ).optional(),
     syncToStageTime: z.boolean().optional(),
     submitOnComplete: z.boolean().optional(),
     playback: z.enum(["once", "manual"]).optional(),
@@ -1222,11 +1224,8 @@ export type MediaPlayerType = z.infer<typeof mediaPlayerSchema>;
 
 /**
  * mediaPlayer cross-field rules. Lives outside `mediaPlayerSchema` because
- * `z.discriminatedUnion` in Zod 3 only accepts plain `ZodObject` members
- * (not `ZodEffects` wrappers), so any `.refine`/`.superRefine` applied to a
- * member would break elementSchema's discriminated union. We apply these
- * rules from the union's outer superRefine instead — same behavior, same
- * error messages.
+ * the authoring element union owns these checks. Keeping this boundary also
+ * preserves the standalone media-player schema's existing parse behavior.
  */
 function checkMediaPlayerCrossFields(
   data: z.infer<typeof mediaPlayerSchema>,
@@ -1282,7 +1281,7 @@ export const timelineSchema = elementBaseSchema
     showWaveform: z.boolean().optional(),
     trackLabels: z
       .array(z.string(), {
-        invalid_type_error:
+        error:
           "Expected an array for `trackLabels`. Make sure each item starts with a dash (`-`) in YAML.",
       })
       .optional(),
@@ -1317,7 +1316,7 @@ const qualtricsSchema = elementBaseSchema
     url: browserUrlSchema,
     urlParams: z
       .array(trackedLinkParamSchema, {
-        invalid_type_error:
+        error:
           "Expected an array for `urlParams`. Make sure each item starts with a dash (`-`) in YAML.",
       })
       .optional(),
@@ -1335,7 +1334,7 @@ const trackedLinkSchema = elementBaseSchema
     helperText: z.string().optional(),
     urlParams: z
       .array(trackedLinkParamSchema, {
-        invalid_type_error:
+        error:
           "Expected an array for `urlParams`. Make sure each item starts with a dash (`-`) in YAML.",
       })
       .optional(),
@@ -1438,8 +1437,8 @@ export function getValidKeysForComparator(comparator: string): string[] | null {
 /**
  * Return the list of valid keys allowed on a stage. Hardcoded rather
  * than read from `stageSchema.shape` because stageSchema is wrapped in
- * `altTemplateContext(...).strict().superRefine(...)`, which produces a
- * `ZodEffects` that doesn't expose `.shape`. Keep in sync with
+ * `altTemplateContext(...)`, which validates through a ZodAny refinement
+ * without exposing the wrapped object's `.shape`. Keep in sync with
  * `stageSchema` above.
  */
 export function getValidKeysForStage(): string[] {
@@ -1448,7 +1447,7 @@ export function getValidKeysForStage(): string[] {
 
 /**
  * Return the list of valid keys allowed on an intro/exit step. Same
- * `ZodEffects` constraint as `getValidKeysForStage`. Keep in sync with
+ * wrapper constraint as `getValidKeysForStage`. Keep in sync with
  * `introExitStepSchema` above.
  */
 export function getValidKeysForIntroExitStep(): string[] {
@@ -1465,8 +1464,7 @@ export function getValidKeysForTreatment(): string[] {
 }
 
 /**
- * Return the list of valid keys allowed on a discussion. Hardcoded —
- * `discussionSchema` is a `.strict().superRefine(...)` `ZodEffects`.
+ * Return the list of valid keys allowed on a discussion.
  * Keep in sync with `discussionSchema` above.
  */
 export function getValidKeysForDiscussion(): string[] {
@@ -1522,23 +1520,12 @@ export const elementSchema = altTemplateContext(
         trackedLinkSchema,
       ],
       {
-        // The union's own errorMap only sees the issues the union itself
-        // raises (the discriminator check), so member-schema messages are
-        // untouched. A removed element type keeps Zod's
-        // `invalid_union_discriminator` code — editor tooling already
-        // routes on it — but swaps in the migration guidance. This fires
-        // for a literal `type: survey` in source AND for a templated
-        // `type: ${kind}` that fills to `survey`, because the hydrated
-        // tree is re-parsed through this same schema.
-        errorMap: (issue, ctx) => {
-          if (
-            issue.code === z.ZodIssueCode.invalid_union_discriminator &&
-            isRemovedSurveyElement(ctx.data)
-          ) {
-            return { message: SURVEY_ELEMENT_REMOVED_MESSAGE };
-          }
-          return { message: ctx.defaultError };
-        },
+        // Zod 4 represents discriminator failures as invalid_union, with
+        // the offending object available on the error callback's input.
+        error: (issue) =>
+          issue.code === "invalid_union" && isRemovedSurveyElement(issue.input)
+            ? SURVEY_ELEMENT_REMOVED_MESSAGE
+            : undefined,
       },
     )
     .superRefine((data, ctx) => {
@@ -1564,9 +1551,7 @@ export type ElementType = z.infer<typeof elementSchema>;
 export const elementsSchema = altTemplateContext(
   z
     .array(elementSchema, {
-      required_error:
-        "Expected an array for `elements`. Make sure each item starts with a dash (`-`) in YAML.",
-      invalid_type_error:
+      error:
         "Expected an array for `elements`. Make sure each item starts with a dash (`-`) in YAML.",
     })
     .nonempty(),
@@ -1583,7 +1568,7 @@ export const stageSchema = altTemplateContext(
       notes: z.string().optional(),
       conditions: conditionsSchema.optional(),
       discussion: discussionSchema.optional(),
-      duration: durationSchema.or(fieldPlaceholderSchema),
+      duration: withFieldPlaceholder(durationSchema),
       elements: elementsSchema,
     })
     .strict()
@@ -1659,9 +1644,7 @@ export type StageType = z.infer<typeof stageSchema>;
 const stagesSchema = altTemplateContext(
   z
     .array(stageSchema, {
-      required_error:
-        "Expected an array for `stages`. Make sure each item starts with a dash (`-`) in YAML.",
-      invalid_type_error:
+      error:
         "Expected an array for `stages`. Make sure each item starts with a dash (`-`) in YAML.",
     })
     .nonempty(),
@@ -1717,9 +1700,7 @@ export type IntroExitStepType = z.infer<typeof introExitStepSchema>;
 export const introExitStepsBaseSchema = altTemplateContext(
   z
     .array(introExitStepSchema, {
-      required_error:
-        "Expected an array for `introSteps`. Make sure each item starts with a dash (`-`) in YAML.",
-      invalid_type_error:
+      error:
         "Expected an array for `introSteps`. Make sure each item starts with a dash (`-`) in YAML.",
     })
     .nonempty(),
@@ -1880,8 +1861,7 @@ function makeStepListSchema(fieldName: string) {
   return altTemplateContext(
     z
       .array(introExitStepSchema, {
-        required_error: `Expected an array for \`${fieldName}\`. Make sure each item starts with a dash (\`-\`) in YAML.`,
-        invalid_type_error: `Expected an array for \`${fieldName}\`. Make sure each item starts with a dash (\`-\`) in YAML.`,
+        error: `Expected an array for \`${fieldName}\`. Make sure each item starts with a dash (\`-\`) in YAML.`,
       })
       .nonempty(),
   );
@@ -1905,7 +1885,7 @@ export const consentArmSchema = altTemplateContext(
       // own locale — same semantics as intro sequences. The host selects
       // the arm by NAME (a `consentName` config field); locale may
       // repeat across arms (two consents for the same locale are fine).
-      locale: localeSchema.or(fieldPlaceholderSchema).optional(),
+      locale: withFieldPlaceholder(localeSchema).optional(),
       steps: consentStepsSchema,
     })
     .strict(),
@@ -1915,9 +1895,7 @@ export type ConsentArmType = z.infer<typeof consentArmSchema>;
 export const consentSchema = altTemplateContext(
   z
     .array(consentArmSchema, {
-      required_error:
-        "Expected an array for `consent`. Make sure each item starts with a dash (`-`) in YAML.",
-      invalid_type_error:
+      error:
         "Expected an array for `consent`. Make sure each item starts with a dash (`-`) in YAML.",
     })
     .nonempty(),
@@ -1937,7 +1915,7 @@ export const introSequenceSchema = altTemplateContext(
       // templates, concrete value enum-shape-checked post-fill. Which locale
       // a participant actually sees here is the host's assignment decision
       // (intro selection is pre-arm); stagebook just renders what's declared.
-      locale: localeSchema.or(fieldPlaceholderSchema).optional(),
+      locale: withFieldPlaceholder(localeSchema).optional(),
       introSteps: introStepsSchema,
     })
     .strict(),
@@ -1947,9 +1925,7 @@ export type IntroSequenceType = z.infer<typeof introSequenceSchema>;
 export const introSequencesSchema = altTemplateContext(
   z
     .array(introSequenceSchema, {
-      required_error:
-        "Expected an array for `introSequence`. Make sure each item starts with a dash (`-`) in YAML.",
-      invalid_type_error:
+      error:
         "Expected an array for `introSequence`. Make sure each item starts with a dash (`-`) in YAML.",
     })
     .nonempty(),
@@ -1985,20 +1961,19 @@ export const baseTreatmentSchema = z
     // Dangling names, duplicates, and the "every listed sequence
     // provides every referenced key" rule live in validateReferences.ts;
     // post-fill leaks are caught by `resolvedTreatmentSchema`.
-    // The union-level errorMap keeps the guidance message on wrong-typed
+    // The union-level error callback keeps the guidance message on wrong-typed
     // values (e.g. `compatibleIntroSequences: 5`), which would otherwise
     // surface as a bare "Invalid input" — the union discards sub-schema
-    // invalid_type_error messages when no option matches.
+    // type-error messages when no option matches.
     compatibleIntroSequences: z.union(
       [
         z.array(z.string().min(1), {
-          required_error: COMPATIBLE_INTRO_SEQUENCES_REQUIRED_MESSAGE,
-          invalid_type_error: COMPATIBLE_INTRO_SEQUENCES_REQUIRED_MESSAGE,
+          error: COMPATIBLE_INTRO_SEQUENCES_REQUIRED_MESSAGE,
         }),
         fieldPlaceholderSchema,
       ],
       {
-        errorMap: () => ({
+        error: () => ({
           message: COMPATIBLE_INTRO_SEQUENCES_REQUIRED_MESSAGE,
         }),
       },
@@ -2010,18 +1985,17 @@ export const baseTreatmentSchema = z
     // `contentType: treatment` template can fan out per-locale arms, threading
     // the same field into both `locale:` and `prompts/${locale}/…` paths; the
     // concrete value is enum-shape-checked post-fill by `resolvedTreatmentSchema`.
-    locale: localeSchema.or(fieldPlaceholderSchema).optional(),
+    locale: withFieldPlaceholder(localeSchema).optional(),
     // `${field}` placeholder accepted (#284) — substituted with a literal
     // array at fillTemplates time. Lets a single `treatment` template power
     // studies that vary group structure per condition (e.g. dyads vs.
     // triads under the same protocol).
-    groupComposition: z
-      .array(playerSchema, {
-        invalid_type_error:
+    groupComposition: withFieldPlaceholder(
+      z.array(playerSchema, {
+        error:
           "Expected an array for `groupComposition`. Make sure each item starts with a dash (`-`) in YAML.",
-      })
-      .or(fieldPlaceholderSchema)
-      .optional(),
+      }),
+    ).optional(),
     gameStages: stagesSchema,
     // Exit steps run after the game, at the participant's own pace. Debrief
     // content (study purpose, dehoaxing, any data-withdrawal choice) is
@@ -2223,9 +2197,7 @@ export type TreatmentType = z.infer<typeof treatmentSchema>;
 export const treatmentsSchema = altTemplateContext(
   z
     .array(treatmentSchema, {
-      required_error:
-        "Expected an array for `treatments`. Make sure each item starts with a dash (`-`) in YAML.",
-      invalid_type_error:
+      error:
         "Expected an array for `treatments`. Make sure each item starts with a dash (`-`) in YAML.",
     })
     .nonempty(),
@@ -2237,10 +2209,9 @@ export const treatmentsSchema = altTemplateContext(
 // a contentType so a complete group config can be templated as one unit.
 // `${field}` placeholder accepted (#284) — substituted with a literal
 // array at fillTemplates time.
-export const groupCompositionSchema = z
-  .array(playerSchema)
-  .nonempty()
-  .or(fieldPlaceholderSchema);
+export const groupCompositionSchema = withFieldPlaceholder(
+  z.array(playerSchema).nonempty(),
+);
 
 export const contentTypeEnum = z.enum([
   "introSequence",
@@ -2267,7 +2238,7 @@ export const contentTypeEnum = z.enum([
 
 export type ContentType = z.infer<typeof contentTypeEnum>;
 
-export function matchContentType(contentType: ContentType): z.ZodTypeAny {
+export function matchContentType(contentType: ContentType): z.ZodType {
   switch (contentType) {
     case "introSequence":
       return introSequenceSchema;
@@ -2324,7 +2295,7 @@ export const templateSchema = z
     name: nameSchema,
     contentType: contentTypeEnum,
     notes: z.string().optional(),
-    content: z.any(),
+    content: z.any().optional(),
   })
   .strict()
   .superRefine((data, ctx) => {

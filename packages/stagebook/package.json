@@ -117,7 +117,7 @@
   "peerDependencies": {
     "react": ">=18",
     "react-dom": ">=18",
-    "zod": ">=3.23"
+    "zod": ">=4.3.6 <5"
   },
   "peerDependenciesMeta": {
     "react": {
@@ -149,7 +149,7 @@
     "typescript-eslint": "^8.0.0",
     "vitest": "^2.0.0",
     "yaml": "^2.8.3",
-    "zod": "^3.23.0"
+    "zod": "4.3.6"
   },
   "repository": {
     "type": "git",

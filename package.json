@@ -12,7 +12,8 @@
     "format": "npm run format --workspaces --if-present",
     "format:check": "npm run format:check --workspaces --if-present",
     "validate:examples": "npm run build -w stagebook && node packages/stagebook/bin/stagebook.js validate \"examples/**/*.stagebook.yaml\" \"examples/**/*.prompt.md\"",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:package": "node scripts/verify-packed-consumer.mjs"
   },
   "devDependencies": {
     "husky": "^9.1.7",
