@@ -383,7 +383,7 @@ describe("condition roots and references", () => {
     };
     expect(expressionSchema.parse(expression)).toEqual(expression);
   });
-  test("group leaves compare each list-valued answer, without exposing nested lists", () => {
+  test("group leaves compare each list-valued answer; length counts the outer group", () => {
     const schemas = createExpressionSchemas({
       mode: "resolved",
       referenceType: () => ({ list: { list: "string" } }),
@@ -399,7 +399,7 @@ describe("condition roots and references", () => {
       }).success,
     ).toBe(false);
     expect(schemas.expressionSchema.safeParse({ length: group }).success).toBe(
-      false,
+      true,
     );
     expect(schemas.expressionSchema.safeParse(group).success).toBe(false);
   });
@@ -416,6 +416,81 @@ describe("condition roots and references", () => {
     );
     expect(schemas.conditionsSchema.safeParse(group).success).toBe(false);
   });
+});
+
+describe("structural length types (#780)", () => {
+  test.each(["record", { list: "number" }] as const)(
+    "accepts a referenced array with %j members only for length operations",
+    (element) => {
+      const schemas = createExpressionSchemas({
+        mode: "resolved",
+        referenceType: () => ({ list: element }),
+      });
+      for (const expression of [
+        { length: ref },
+        { length: { firstExisting: [ref, null] } },
+        { length: { firstExisting: [ref, { literal: [] }] } },
+        { length: { case: { rules: [{ when: true, value: ref }] } } },
+        { ...ref, comparator: "hasLengthAtLeast", value: 1 },
+        { ...ref, comparator: "hasLengthAtMost", value: 1 },
+      ])
+        expect(schemas.expressionSchema.safeParse(expression).success).toBe(
+          true,
+        );
+      for (const expression of [
+        { includes: { container: ref, members: [1] } },
+        { ...ref, comparator: "includes", value: 1 },
+        { allEqual: [ref, ref] },
+        { allEqual: ref },
+        { allUnique: [ref, ref] },
+        { allUnique: ref },
+        { countExisting: ref },
+        { countUnique: ref },
+      ])
+        expect(schemas.expressionSchema.safeParse(expression).success).toBe(
+          false,
+        );
+    },
+  );
+  test("keeps bare nested-array results invalid outside length", () => {
+    const schemas = createExpressionSchemas({
+      mode: "resolved",
+      referenceType: () => ({ list: { list: "number" } }),
+    });
+    for (const expression of [
+      ref,
+      { firstExisting: [ref, null] },
+      { case: { rules: [{ when: true, value: ref }] } },
+    ])
+      expect(schemas.expressionSchema.safeParse(expression).success).toBe(
+        false,
+      );
+  });
+  test.each(["number", "boolean", "record"] as const)(
+    "rejects a referenced %s container for length operations",
+    (type) => {
+      const schemas = createExpressionSchemas({
+        mode: "resolved",
+        referenceType: () => type,
+      });
+      for (const expression of [
+        { length: ref },
+        { ...ref, comparator: "hasLengthAtLeast", value: 1 },
+        { ...ref, comparator: "hasLengthAtMost", value: 1 },
+      ])
+        expect(schemas.expressionSchema.safeParse(expression).success).toBe(
+          false,
+        );
+    },
+  );
+  test.each([[{ time: 1 }], [[1, 2]]])(
+    "does not expand authored literal grammar for length",
+    (value) => {
+      expect(
+        expressionSchema.safeParse({ length: { literal: [value] } }).success,
+      ).toBe(false);
+    },
+  );
 });
 
 describe("authoring versus resolved templates", () => {

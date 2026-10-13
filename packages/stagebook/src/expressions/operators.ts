@@ -7,6 +7,7 @@ export type ExpressionValueType =
   | "scalar"
   | "scalarOrList"
   | "stringOrList"
+  | "stringOrArray"
   | "value";
 
 export type ExpressionOperandLayout =
@@ -132,7 +133,7 @@ export const EXPRESSION_OPERATORS = {
   },
   length: {
     resultType: "number",
-    operands: input("expression", "input", "stringOrList"),
+    operands: input("expression", "input", "stringOrArray"),
   },
   case: {
     resultType: "operand",

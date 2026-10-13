@@ -688,9 +688,12 @@ export function createExpressionSchemas(options: ExpressionSchemaOptions) {
             ? (type.kind === "list" &&
                 ["scalar", "unknown", "missing"].includes(type.element.kind)) ||
               (type.kind === "scalar" && type.type === "string")
-            : expected === "scalar"
-              ? type.kind === "scalar"
-              : type.kind === "scalar" && type.type === expected;
+            : expected === "stringOrArray"
+              ? type.kind === "list" ||
+                (type.kind === "scalar" && type.type === "string")
+              : expected === "scalar"
+                ? type.kind === "scalar"
+                : type.kind === "scalar" && type.type === expected;
       if (!accepted)
         issue(
           path,
@@ -877,7 +880,7 @@ export function createExpressionSchemas(options: ExpressionSchemaOptions) {
           expectType(comparison, "number", [...path, "value"], name);
           expectType(valueType, "number", [...path, "reference"], name);
         } else if (name.startsWith("hasLength")) {
-          expectType(valueType, "stringOrList", [...path, "reference"], name);
+          expectType(valueType, "stringOrArray", [...path, "reference"], name);
           expectType(comparison, "number", [...path, "value"], name);
         } else if (name === "matches" || name === "doesNotMatch") {
           expectType(valueType, "string", [...path, "reference"], name);
@@ -928,7 +931,9 @@ export function createExpressionSchemas(options: ExpressionSchemaOptions) {
       }
       const type = expression(value, path, groupConsumers.has(operator));
       const operand = type.kind === "list" ? type.element : type;
-      expectType(operand, expected, path);
+      // allEqual compares flat lists only when supplied as authored operands;
+      // one runtime collection supplies scalar members, just like evaluation.
+      expectType(operand, operator === "allEqual" ? "scalar" : expected, path);
       if (minimum > 1 && (type.kind === "scalar" || type.kind === "missing"))
         issue(
           path,
@@ -1118,13 +1123,7 @@ export function createExpressionSchemas(options: ExpressionSchemaOptions) {
           if (own(value, "comparator"))
             return comparator(value, path, groupAllowed);
 
-          const type = reference(value.reference, [...path, "reference"]).type;
-          if (type.kind === "list" && type.element.kind === "list")
-            issue(
-              path,
-              "Nested list expression values are not supported; compare each seat's answer with an everyone comparator leaf.",
-            );
-          return type;
+          return reference(value.reference, [...path, "reference"]).type;
         }
         if (own(value, "literal")) {
           return literal(value.literal, [...path, "literal"]);
@@ -1146,7 +1145,16 @@ export function createExpressionSchemas(options: ExpressionSchemaOptions) {
           expectType(expression(item, [index]), "boolean", [index]),
         );
       } else expectType(expression(input, []), "boolean", []);
-    } else expression(input, []);
+    } else {
+      const type = expression(input, []);
+      // Nested arrays can pass through branches to a shape-only consumer
+      // such as length; they are still not general expression results.
+      if (type.kind === "list" && type.element.kind === "list")
+        issue(
+          [],
+          "Nested list expression results are not supported; use length for outer positions or an everyone comparator leaf for each seat's answer.",
+        );
+    }
   }
 
   return {

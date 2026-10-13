@@ -48,6 +48,7 @@ type ExpectedType =
   | "scalar"
   | "scalarOrList"
   | "stringOrList"
+  | "stringOrArray"
   | "value";
 interface ConcreteType {
   scalar?: ScalarType;
@@ -184,6 +185,9 @@ function matchesType(value: ExpressionValue, expected: ExpectedType): boolean {
         (valueList(value) &&
           value.every((item) => item === Missing || scalar(item)))
       );
+    case "stringOrArray":
+      // Length consumes only the container shape, not its member types.
+      return typeof value === "string" || valueList(value);
     default:
       return typeof value === expected;
   }
@@ -338,13 +342,17 @@ export function evaluateExpression(
     if (input.value === Missing) return input;
     if (expected.list) {
       if (!valueList(input.value))
-        return mismatch(input, `${expected.scalar ?? "scalar"}[]`);
+        return mismatch(
+          input,
+          expected.scalar ? `${expected.scalar}[]` : "array",
+        );
+      // An empty literal establishes array shape without a member type.
+      // Content-consuming operators apply their own scalar/list contracts.
+      const elementType = expected.scalar;
+      if (!elementType) return input;
       const values = input.value.map(
         (value) =>
-          check(
-            { value, reference: input.reference },
-            expected.scalar ?? "scalar",
-          ).value,
+          check({ value, reference: input.reference }, elementType).value,
       );
       return { ...input, value: values };
     }
@@ -583,7 +591,7 @@ export function evaluateExpression(
   }
 
   function length(input: Result): Result {
-    const value = check(input, "stringOrList").value;
+    const value = check(input, "stringOrArray").value;
     return result(
       typeof value === "string" || valueList(value) ? value.length : Missing,
     );
@@ -740,7 +748,7 @@ export function evaluateExpression(
         return absent();
       }
       case "length":
-        return length(evaluate(value, depth + 1, "stringOrList"));
+        return length(evaluate(value, depth + 1, "stringOrArray"));
       case "subtract":
       case "divide": {
         const names =

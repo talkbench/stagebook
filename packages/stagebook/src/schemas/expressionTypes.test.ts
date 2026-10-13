@@ -156,6 +156,30 @@ describe("declared host reference types", () => {
       prompts,
     );
 
+  test.each(["self.timeline.selection", "self.trackedLink.link.events"])(
+    "accepts length gates over declared host arrays at %s (#780)",
+    (reference) => {
+      expect(
+        check({
+          all: [
+            { reference, comparator: "hasLengthAtLeast", value: 1 },
+            { reference, comparator: "hasLengthAtMost", value: 2 },
+            { nonDecreasing: [1, { length: { reference } }] },
+          ],
+        }),
+      ).toEqual([]);
+      expect(
+        check({
+          all: {
+            reference: reference.replace("self.", "everyone."),
+            comparator: "hasLengthAtLeast",
+            value: 1,
+          },
+        }),
+      ).toEqual([]);
+    },
+  );
+
   test.each([
     ["self.attributes.isKnownVpn", true],
     ["self.attributes.screenWidth", 1024],
