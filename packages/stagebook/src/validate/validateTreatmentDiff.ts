@@ -246,8 +246,8 @@ export async function validateTreatmentWithDiff({
   //
   //   (a) Templating artifacts. The classic case is a refinement that
   //       fires on the unfilled source but passes on the hydrated form
-  //       (e.g., intro-step advancement-element rule on a template
-  //       invocation that expands to a submitButton). Another common
+  //       (e.g., an advancement-element rule on a template invocation too
+  //       indirect for the conservative proof in #347/#784). Another common
   //       case is a reference whose producer lives in a template body
   //       — the strict reference check on source pass fires
   //       (templates not yet expanded), but the hydrated pass passes

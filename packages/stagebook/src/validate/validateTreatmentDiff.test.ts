@@ -29,6 +29,68 @@ const loaderFromMap = (files: Record<string, string>) => {
 
 const noImports = loaderFromMap({});
 
+describe("nested template advancement in the viewer validator (#784)", () => {
+  it.each(["local", "imported"])(
+    "suppresses the proven warning in a %s exit template using imported elements",
+    async (location) => {
+      const wrapper = {
+        name: "exitWrapper",
+        contentType: "exitSteps",
+        content: [{ name: "finish", elements: [{ template: "actions" }] }],
+      };
+      const source = JSON.stringify({
+        imports: [
+          location === "local"
+            ? "actions.stagebook.yaml"
+            : "modules/steps.stagebook.yaml",
+        ],
+        templates: [
+          {
+            name: "spacer",
+            contentType: "element",
+            content: { type: "separator" },
+          },
+          ...(location === "local" ? [wrapper] : []),
+        ],
+        treatments: [
+          {
+            name: "study",
+            playerCount: 1,
+            compatibleIntroSequences: [],
+            gameStages: [
+              {
+                name: "game",
+                duration: 10,
+                elements: [{ type: "submitButton" }],
+              },
+            ],
+            exitSequence: [{ template: "exitWrapper" }],
+          },
+        ],
+      });
+      const result = await validateTreatmentWithDiff({
+        source,
+        loadImport: loaderFromMap({
+          "modules/steps.stagebook.yaml": JSON.stringify({
+            imports: ["../actions.stagebook.yaml"],
+            templates: [wrapper],
+          }),
+          "actions.stagebook.yaml": JSON.stringify({
+            templates: [
+              {
+                name: "actions",
+                contentType: "elements",
+                content: [{ type: "submitButton" }],
+              },
+            ],
+          }),
+        }),
+      });
+      expect(result.diagnostics).toEqual([]);
+    },
+  );
+});
+
 describe("validateTreatmentWithDiff", () => {
   describe("happy path", () => {
     it("returns no diagnostics for a clean treatment", async () => {

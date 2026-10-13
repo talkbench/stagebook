@@ -32,14 +32,13 @@ import {
  *                    template's content has `contentType:
  *                    introExitStep` (or similar) and the inner
  *                    refinement fires on its own pre-fill view of
- *                    the elements list. NOTE: the usage-site form of
- *                    this artifact is now dropped from `sourceOnly`
- *                    when the invocation provably resolves one level
- *                    deep to an advancement element (see
- *                    `suppressResolvedAdvancementWarnings`, #347); the
- *                    instances that remain here are the non-provable
- *                    ones (parameterized name, deeper nesting) and the
- *                    prefixed template-content form.
+ *                    the elements list. Both usage-site and template-
+ *                    content forms are dropped from `sourceOnly` when
+ *                    the invocation provably resolves one level deep
+ *                    to an advancement element (see
+ *                    `suppressResolvedAdvancementWarnings`, #347, #784).
+ *                    Non-provable instances (parameterized names,
+ *                    deeper nesting) remain in this bucket.
  *
  *                  - real bugs that didn't survive hydration into a
  *                    matched pair. The most common: an unused
@@ -312,7 +311,7 @@ export function runValidationDiff({
 }
 
 /**
- * #347: drop intro/exit "needs advancement element" warnings from the
+ * #347, #784: drop intro/exit "needs advancement element" warnings from the
  * source-only bucket when the offending step's element list contains a
  * `template:` invocation that provably resolves — one level deep — to a
  * lexical advancement element.
@@ -325,12 +324,12 @@ export function runValidationDiff({
  * when two steps carry the identical message — and that bug must not be
  * silently dropped.
  *
- * Scope is deliberately the bare `ADVANCEMENT_ELEMENT_MESSAGE` — the
- * usage-site form. The same rule firing while validating a template's
- * own `content:` carries the templateSchema's "Invalid content for
- * contentType '...': " prefix (see `stripTemplateContentPrefix`) and is
- * left untouched: a template definition is validated in isolation, and
- * its invocation sites get their own diagnosis.
+ * The same rule firing inside a template definition has the schema's
+ * "Invalid content for contentType '...': " prefix. Strip that known
+ * wrapper when identifying the rule, but retain the full source path:
+ * the exact offending elements list must supply the positive proof,
+ * using the same merged templates as hydration. Unused broken templates
+ * and unrelated source-only issues remain diagnosed.
  */
 function suppressResolvedAdvancementWarnings(
   sourceOnly: ZodIssue[],
@@ -338,7 +337,8 @@ function suppressResolvedAdvancementWarnings(
   mergedTemplates: unknown[],
 ): ZodIssue[] {
   const isAdvancementWarning = (issue: ZodIssue) =>
-    issue.code === "custom" && issue.message === ADVANCEMENT_ELEMENT_MESSAGE;
+    issue.code === "custom" &&
+    stripTemplateContentPrefix(issue.message) === ADVANCEMENT_ELEMENT_MESSAGE;
 
   if (!sourceOnly.some(isAdvancementWarning)) return sourceOnly;
 
@@ -391,10 +391,40 @@ function templateInvocationResolvesToAdvancement(
   if (!element || typeof element !== "object" || Array.isArray(element)) {
     return false;
   }
-  const name = (element as Record<string, unknown>).template;
+  const invocation = element as Record<string, unknown>;
+  const name = invocation.template;
   // Only concrete, statically-known template names. A parameterized
   // name (`template: ${x}`) can't be resolved pre-fill — keep the warning.
   if (typeof name !== "string" || name.includes("${")) return false;
+
+  // A lexical button is not enough when broadcast might emit no copies.
+  // Prove only literal, nonempty dimensions of field maps: an invocation
+  // inside an array can expand away. Leave resolution/expansion to the normal
+  // template pipeline. Canonical axis names match flattenBroadcast.
+  if ("broadcast" in invocation) {
+    const broadcast = invocation.broadcast;
+    if (!broadcast || typeof broadcast !== "object" || Array.isArray(broadcast))
+      return false;
+    const dimensions = Object.entries(broadcast);
+    if (
+      dimensions.length === 0 ||
+      !dimensions.every(
+        ([axis, values]) =>
+          /^d(0|[1-9]\d*)$/.test(axis) &&
+          Number.isSafeInteger(Number(axis.slice(1))) &&
+          Array.isArray(values) &&
+          values.length > 0 &&
+          values.every(
+            (entry: unknown) =>
+              entry !== null &&
+              typeof entry === "object" &&
+              !Array.isArray(entry) &&
+              !("template" in entry),
+          ),
+      )
+    )
+      return false;
+  }
 
   const tmpl = templatesByName.get(name);
   if (!tmpl) return false;
