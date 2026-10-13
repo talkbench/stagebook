@@ -33,7 +33,7 @@ import {
  *                    introExitStep` (or similar) and the inner
  *                    refinement fires on its own pre-fill view of
  *                    the elements list. Both usage-site and template-
- *                    content forms are dropped from `sourceOnly` when
+ *                    content forms are excluded before matching when
  *                    the invocation provably resolves one level deep
  *                    to an advancement element (see
  *                    `suppressResolvedAdvancementWarnings`, #347, #784).
@@ -290,8 +290,16 @@ export function runValidationDiff({
     ? []
     : [...hydratedResult.error.issues];
 
-  const { matched, sourceOnly, hydratedOnly } = diffIssues(
+  // Remove proven source artifacts before the lossy multiset match: otherwise
+  // one can consume a genuine same-message error's hydrated counterpart.
+  // Keep the raw sourceIssues unchanged for callers and hydration fallback.
+  const sourceIssuesToMatch = suppressResolvedAdvancementWarnings(
     sourceIssues,
+    merged,
+    mergedTemplates ?? [],
+  );
+  const { matched, sourceOnly, hydratedOnly } = diffIssues(
+    sourceIssuesToMatch,
     hydratedIssues,
   );
 
@@ -301,28 +309,22 @@ export function runValidationDiff({
     hydratedIssues,
     hydrated: expanded,
     matched,
-    sourceOnly: suppressResolvedAdvancementWarnings(
-      sourceOnly,
-      merged,
-      mergedTemplates ?? [],
-    ),
+    sourceOnly,
     hydratedOnly,
   };
 }
 
 /**
- * #347, #784: drop intro/exit "needs advancement element" warnings from the
- * source-only bucket when the offending step's element list contains a
+ * #347, #784: exclude intro/exit "needs advancement element" artifacts from
+ * source issues eligible for matching when the offending element list contains a
  * `template:` invocation that provably resolves — one level deep — to a
  * lexical advancement element.
  *
- * Such warnings reach `sourceOnly` precisely because the hydrated pass
- * did NOT re-fire them: after expansion the step gained an advancement
- * element. We still confirm the resolution statically (rather than
- * trusting bucket membership alone), because the multiset diff can
- * alias a genuine "step has no way to advance" bug into this bucket
- * when two steps carry the identical message — and that bug must not be
- * silently dropped.
+ * Positive static proof is required: after expansion the step gains an
+ * advancement element. Filter before the multiset diff so an artifact cannot
+ * consume a genuine "step has no way to advance" error with the same message.
+ * The raw source-pass issues remain available in the public result, including
+ * when hydration fails and callers must fall back to source-only validation.
  *
  * The same rule firing inside a template definition has the schema's
  * "Invalid content for contentType '...': " prefix. Strip that known
@@ -332,7 +334,7 @@ export function runValidationDiff({
  * and unrelated source-only issues remain diagnosed.
  */
 function suppressResolvedAdvancementWarnings(
-  sourceOnly: ZodIssue[],
+  sourceIssues: ZodIssue[],
   merged: Record<string, unknown>,
   mergedTemplates: unknown[],
 ): ZodIssue[] {
@@ -340,11 +342,11 @@ function suppressResolvedAdvancementWarnings(
     issue.code === "custom" &&
     stripTemplateContentPrefix(issue.message) === ADVANCEMENT_ELEMENT_MESSAGE;
 
-  if (!sourceOnly.some(isAdvancementWarning)) return sourceOnly;
+  if (!sourceIssues.some(isAdvancementWarning)) return sourceIssues;
 
   const templatesByName = indexTemplatesByName(mergedTemplates);
 
-  return sourceOnly.filter((issue) => {
+  return sourceIssues.filter((issue) => {
     if (!isAdvancementWarning(issue)) return true;
     // Keep the warning unless we can positively prove the step's
     // elements resolve to an advancement element via a template.

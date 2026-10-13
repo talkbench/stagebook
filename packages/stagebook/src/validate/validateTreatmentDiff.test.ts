@@ -30,6 +30,67 @@ const loaderFromMap = (files: Record<string, string>) => {
 const noImports = loaderFromMap({});
 
 describe("nested template advancement in the viewer validator (#784)", () => {
+  it.each(["before", "after"])(
+    "keeps the error on the broken step when a proven step comes %s it",
+    async (order) => {
+      const good = `      - name: ready
+        elements:
+          - template: actions`;
+      const broken = `      - name: stuck
+        elements:
+          - type: separator`;
+      const source = `imports:
+  - actions.stagebook.yaml
+templates:
+  - name: exitWrapper
+    contentType: exitSteps
+    content:
+${order === "before" ? `${good}\n${broken}` : `${broken}\n${good}`}
+treatments:
+  - name: study
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: game
+        duration: 10
+        elements:
+          - type: submitButton
+    exitSequence:
+      - template: exitWrapper
+`;
+      const result = await validateTreatmentWithDiff({
+        source,
+        loadImport: loaderFromMap({
+          "actions.stagebook.yaml": `templates:
+  - name: actions
+    contentType: elements
+    content:
+      - type: submitButton
+`,
+        }),
+      });
+      const advancement = result.diagnostics.filter((issue) =>
+        issue.message.includes("advancement element"),
+      );
+      const templateIssues = advancement.filter((issue) =>
+        issue.message.includes("templates[0].content"),
+      );
+      expect(templateIssues).toHaveLength(1);
+      expect(templateIssues[0].severity).toBe("error");
+      expect(templateIssues[0].message).toContain(
+        `templates[0].content[${order === "before" ? 1 : 0}].elements`,
+      );
+      expect(templateIssues[0].range?.startLine).toBe(
+        source
+          .split("\n")
+          .findIndex((line) => line.includes("- type: separator")),
+      );
+      expect(advancement.every((issue) => issue.severity === "error")).toBe(
+        true,
+      );
+    },
+  );
+
   it.each(["local", "imported"])(
     "suppresses the proven warning in a %s exit template using imported elements",
     async (location) => {
