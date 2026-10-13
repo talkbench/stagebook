@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { checkHostRecord } from "./hostRecords.js";
 import {
   mediaPlayerRecordSchema,
   videoEventSchema,
@@ -36,6 +37,43 @@ describe("mediaPlayerRecordSchema", () => {
     const beforePlay = { ...record };
     delete beforePlay.firstPlay;
     expect(mediaPlayerRecordSchema.safeParse(beforePlay).success).toBe(true);
+  });
+
+  it.each(["ended", "stopAt"])(
+    "accepts the %s event as the firstEnd milestone",
+    (type) => {
+      expect(
+        checkHostRecord("mediaPlayer", {
+          ...record,
+          firstEnd: { ...play, type },
+        }).success,
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    ["firstPlay", "pause"],
+    ["firstPlay", "ended"],
+    ["firstPlay", "seek"],
+    ["firstPlay", "speed"],
+    ["firstPlay", "stopAt"],
+    ["firstPlay", "removed"],
+    ["firstEnd", "play"],
+    ["firstEnd", "pause"],
+    ["firstEnd", "seek"],
+    ["firstEnd", "speed"],
+    ["firstEnd", "removed"],
+  ])("rejects %s containing a %s event", (milestone, type) => {
+    const result = checkHostRecord("mediaPlayer", {
+      ...record,
+      [milestone]: { ...play, type },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toEqual([
+        expect.objectContaining({ path: [milestone, "type"] }),
+      ]);
+    }
   });
 
   it.each(["play", "pause", "ended", "seek", "speed", "stopAt", "removed"])(

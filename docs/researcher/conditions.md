@@ -388,6 +388,8 @@ You can also check that a minimum number of selections have been made:
 when you need to reference its metrics. Names must be unique along a
 participant's path; a reference can read the current or an earlier discussion,
 but cannot read a discussion in a later stage or another treatment.
+Use `self`, a numeric seat, or `everyone` for `<position>`; `shared` is invalid
+because discussion records belong to individual participants.
 
 `discussionFailed` is Boolean; `cumulativeSpeakingTime` is a finite,
 nonnegative number of seconds. The host writes observations under

@@ -21,8 +21,10 @@ Stagebook never fabricates successful completion or speaking time.
 
 `createHostRecordSchemas` returns a per-host registry extended with typed
 `attributes` and `discussion` fields. Validation and host conformance APIs
-accept that registry explicitly. Built-in fields cannot be overridden. The
-runtime `readReference` boundary, stored data, and evaluator diagnostics remain
+accept that registry explicitly. Built-in fields cannot be overridden.
+Discussion references require `self`, a numeric seat, or `everyone`; `shared`
+is invalid because the host writes participant records. Custom fields do not
+change this storage scope. Stored data and evaluator diagnostics remain
 unchanged. Custom declarations are host code, not treatment syntax; standalone
 tools use the built-in registry.
 

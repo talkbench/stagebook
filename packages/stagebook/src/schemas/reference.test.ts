@@ -8,6 +8,61 @@ import {
   referenceSchema,
 } from "./reference.js";
 
+describe("discussion records use participant selectors", () => {
+  test.each([
+    "shared.discussion.chat.discussionFailed",
+    {
+      position: "shared",
+      source: "discussion",
+      name: "chat",
+      path: ["discussionFailed"],
+    },
+    "shared.discussion.${room}.${metric}",
+  ])(
+    "rejects shared discussion references with scope guidance",
+    (reference) => {
+      const result = referenceSchema.safeParse(reference);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toMatch(/participant/i);
+        expect(result.error.message).toContain("shared");
+        expect(result.error.message).toContain("everyone");
+      }
+    },
+  );
+
+  test("the standalone named schema also enforces the record scope", () => {
+    expect(
+      namedReferenceSchema.safeParse({
+        position: "shared",
+        source: "discussion",
+        name: "chat",
+      }).success,
+    ).toBe(false);
+  });
+
+  test.each(["self", 0, "2", "everyone"])(
+    "accepts both forms of the participant selector %s",
+    (position) => {
+      const structured = {
+        position,
+        source: "discussion",
+        name: "chat",
+        path: ["discussionFailed"],
+      };
+      expect(
+        referenceSchema.parse(`${position}.discussion.chat.discussionFailed`),
+      ).toEqual(referenceSchema.parse(structured));
+    },
+  );
+
+  test("shared prompts remain valid", () => {
+    expect(
+      referenceSchema.safeParse("shared.prompt.answer.value").success,
+    ).toBe(true);
+  });
+});
+
 describe("everyone references (#757)", () => {
   test.each([
     [

@@ -36,9 +36,11 @@ export const mediaPlayerRecordSchema = z
     /** Merged closed intervals [startSeconds, endSeconds] from the event log. */
     watchedRanges: z.array(z.tuple([finiteNumber, finiteNumber])),
     /** Absent until playback starts (#710). */
-    firstPlay: videoEventSchema.optional(),
+    firstPlay: videoEventSchema.extend({ type: z.literal("play") }).optional(),
     /** First ended or stopAt event; absent until playback reaches the end. */
-    firstEnd: videoEventSchema.optional(),
+    firstEnd: videoEventSchema
+      .extend({ type: z.enum(["ended", "stopAt"]) })
+      .optional(),
     // Element adds these fields; standalone MediaPlayer does not need to.
     step: z.string().optional(),
     stageTimeElapsed: finiteNumber.optional(),

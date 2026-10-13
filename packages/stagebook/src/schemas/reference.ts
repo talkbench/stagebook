@@ -125,7 +125,17 @@ export const namedReferenceSchema = z
   // Whether shared.prompt.<name>.isValid exists depends on the target
   // prompt's metadata (#687), not the reference syntax. The post-hydration
   // shared-prompt validator checks that once the host has loaded the file.
-  .strict();
+  .strict()
+  .superRefine((data, ctx) => {
+    if (data.source === "discussion" && data.position === "shared") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["position"],
+        message:
+          "Discussion records belong to individual participants, not shared state. Use self, a numeric seat, or everyone.",
+      });
+    }
+  });
 export type NamedReferenceType = z.infer<typeof namedReferenceSchema>;
 
 export const externalReferenceSchema = z

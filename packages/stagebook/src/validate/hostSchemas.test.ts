@@ -36,6 +36,27 @@ const hostSchemas = createHostRecordSchemas({
 });
 
 describe("host declarations reach validation surfaces", () => {
+  test("host metric declarations cannot enable shared discussion reads", async () => {
+    const shared = source.replace("self.discussion", "shared.discussion");
+    for (const diagnostics of [
+      validateTreatmentSource(shared, { hostSchemas }).diagnostics,
+      (
+        await validateTreatmentWithDiff({
+          source: shared,
+          hostSchemas,
+          loadImport: async () => "",
+        })
+      ).diagnostics,
+    ]) {
+      expect(
+        diagnostics.some(
+          (issue) =>
+            issue.severity === "error" && /participant/i.test(issue.message),
+        ),
+      ).toBe(true);
+    }
+  });
+
   test("template-only field warnings never highlight a shifted concrete reference", async () => {
     const templateSource = `stagebook: "0.35"
 templates:
