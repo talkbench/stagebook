@@ -1079,6 +1079,157 @@ describe("named discussion producers (#673)", () => {
     ]);
   });
 
+  describe("discussion gates cannot wait for their own metrics", () => {
+    test.each([
+      ["exists", gate],
+      ["Boolean equality", { reference, comparator: "equals", value: true }],
+      ["expression equality", { allEqual: [{ reference }, true] }],
+    ])(
+      "rejects an own-metric %s gate at the discussion conditions root",
+      (_, conditions) => {
+        const issues = validateTreatmentFileReferences(
+          baseFile({
+            gameStages: [
+              { ...producer, discussion: { ...discussion, conditions } },
+            ],
+          }),
+        );
+        expect(issues).toHaveLength(1);
+        expect(issues[0].path).toEqual([
+          "treatments",
+          0,
+          "gameStages",
+          0,
+          "discussion",
+          "conditions",
+        ]);
+        expect(issues[0].message).toMatch(
+          /discussion conditions can never become true/i,
+        );
+      },
+    );
+
+    test("allows an absence gate while its discussion metrics are missing", () => {
+      expect(
+        validateTreatmentFileReferences(
+          baseFile({
+            gameStages: [
+              {
+                ...producer,
+                discussion: {
+                  ...discussion,
+                  conditions: { reference, comparator: "doesNotExist" },
+                },
+              },
+            ],
+          }),
+        ),
+      ).toEqual([]);
+    });
+
+    test("allows a viable external alternative to its own metric", () => {
+      expect(
+        validateTreatmentFileReferences(
+          baseFile({
+            gameStages: [
+              {
+                ...producer,
+                discussion: {
+                  ...discussion,
+                  conditions: {
+                    any: [
+                      gate,
+                      {
+                        reference: "self.attributes.isKnownVpn",
+                        comparator: "equals",
+                        value: false,
+                      },
+                    ],
+                  },
+                },
+              },
+            ],
+          }),
+        ),
+      ).toEqual([]);
+    });
+
+    test("a same-stage prompt can unlock the discussion after the stage loads", () => {
+      expect(
+        validateTreatmentFileReferences(
+          baseFile({
+            gameStages: [
+              {
+                ...producer,
+                elements: [
+                  { type: "prompt", name: "ready", file: "ready.prompt.md" },
+                ],
+                discussion: {
+                  ...discussion,
+                  conditions: {
+                    reference: "self.prompt.ready",
+                    comparator: "equals",
+                    value: "yes",
+                  },
+                },
+              },
+            ],
+          }),
+        ),
+      ).toEqual([]);
+    });
+
+    test("allows a discussion gate on a prior discussion's metrics", () => {
+      expect(
+        validateTreatmentFileReferences(
+          baseFile({
+            gameStages: [
+              { ...producer, discussion: { ...discussion, name: "earlier" } },
+              {
+                ...producer,
+                name: "laterTalk",
+                discussion: {
+                  ...discussion,
+                  conditions: {
+                    reference: "self.discussion.earlier.discussionFailed",
+                    comparator: "equals",
+                    value: true,
+                  },
+                },
+              },
+            ],
+          }),
+        ),
+      ).toEqual([]);
+    });
+
+    test("defers unresolved own discussion names and metric paths", () => {
+      for (const [name, ownReference] of [
+        ["${room}", "self.discussion.${room}.discussionFailed"],
+        ["chat", "self.discussion.chat.${metric}"],
+      ])
+        expect(
+          validateTreatmentFileReferences(
+            baseFile({
+              gameStages: [
+                {
+                  ...producer,
+                  discussion: {
+                    ...discussion,
+                    name,
+                    conditions: {
+                      reference: ownReference,
+                      comparator: "exists",
+                    },
+                  },
+                },
+              ],
+            }),
+          ),
+        ).toEqual([]);
+    });
+  });
+
   test("another treatment's discussion cannot supply the consumer", () => {
     const issues = validateTreatmentFileReferences({
       treatments: [

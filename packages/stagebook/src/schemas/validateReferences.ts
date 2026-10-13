@@ -11,11 +11,11 @@
  *    stay unknown. Report one root issue only when the gate cannot be true
  *    under any prior/external outcome.
  *
- * Only stage-level conditions get Rule 2 because element-level, display,
- * urlParam, discussion, and groupComposition references all have a
- * well-defined "wait for data" semantics: element not rendered, display
- * empty, urlParam omitted, discussion hidden, no player match. None of
- * those are fatal the way a stage-level always-skip is.
+ * Named discussion conditions also get Rule 2, but only their own new record
+ * is Missing: other stage elements can still produce data while a discussion
+ * is hidden. A discussion cannot wait for metrics it must itself produce.
+ * Element-level, display, urlParam, and groupComposition references retain
+ * their "wait for data" semantics.
  */
 
 import { getReferenceKeyAndPath } from "../utils/reference.js";
@@ -541,6 +541,27 @@ function validateTreatment({
     // Discussion conditions nested under the stage
     const discussion = stage.discussion;
     if (isRecord(discussion)) {
+      const name = discussion.name;
+      if (typeof name === "string" && !name.includes("${")) {
+        const key = `discussion_${name}`;
+        // Only this discussion's own new record is unavailable until it
+        // mounts. Other elements remain able to unlock its conditions.
+        if (
+          producedAt.get(key) === rank &&
+          conditionIsAlwaysFalseAtLoad(discussion.conditions, {
+            currentKeys: new Set([key]),
+            playerCount:
+              typeof treatment.playerCount === "number"
+                ? treatment.playerCount
+                : undefined,
+          })
+        )
+          issues.push({
+            path: [...stagePath, "discussion", "conditions"],
+            message:
+              "Discussion conditions can never become true before this discussion starts. Its own metrics are unavailable until it starts. Use an absence check such as doesNotExist or a condition that other elements or earlier stages can satisfy.",
+          });
+      }
       for (const { leaf, path } of walkReferenceNodes(discussion.conditions, [
         ...stagePath,
         "discussion",
