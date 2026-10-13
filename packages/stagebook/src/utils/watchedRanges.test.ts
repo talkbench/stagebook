@@ -6,7 +6,10 @@ import {
 } from "./watchedRanges.js";
 import type { VideoEvent } from "../components/elements/MediaPlayer.js";
 
-function ev(type: VideoEvent["type"], videoTime: number): VideoEvent {
+function ev(
+  type: Exclude<VideoEvent["type"], "seek" | "speed">,
+  videoTime: number,
+): VideoEvent {
   return { type, videoTime, stageTimeElapsed: 0 };
 }
 
@@ -243,14 +246,28 @@ describe("playbackMilestones (#710)", () => {
   it("has neither before playback", () => {
     expect(playbackMilestones([])).toStrictEqual({});
     expect(
-      playbackMilestones([ev("seek", 10), ev("speed", 10), ev("pause", 10)]),
+      playbackMilestones([
+        { type: "seek", videoTime: 10, fromTime: 0, stageTimeElapsed: 0 },
+        {
+          type: "speed",
+          videoTime: 10,
+          playbackRate: 1.5,
+          stageTimeElapsed: 0,
+        },
+        ev("pause", 10),
+      ]),
     ).toStrictEqual({});
   });
 
   it("keeps the first play when playback resumes", () => {
     const first = ev("play", 4);
     expect(
-      playbackMilestones([ev("seek", 4), first, ev("pause", 9), ev("play", 9)]),
+      playbackMilestones([
+        { type: "seek", videoTime: 4, fromTime: 0, stageTimeElapsed: 0 },
+        first,
+        ev("pause", 9),
+        ev("play", 9),
+      ]),
     ).toEqual({ firstPlay: first });
   });
 

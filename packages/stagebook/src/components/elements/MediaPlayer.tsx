@@ -40,6 +40,11 @@ export type {
   VideoPlaybackRecord,
 } from "../../schemas/mediaPlayerRecord.js";
 
+// Preserve each event's required payload while recordEvent adds stage time.
+type VideoEventDetails<Event = VideoEvent> = Event extends VideoEvent
+  ? Pick<Event, "type" | "videoTime" | "fromTime" | "playbackRate">
+  : never;
+
 export interface MediaPlayerProps {
   name: string;
   url: string;
@@ -644,18 +649,12 @@ export function MediaPlayer({
   appendEventRef.current = appendEvent;
 
   const recordEvent = useCallback(
-    (
-      type: VideoEvent["type"],
-      videoTime: number,
-      extra?: Partial<Pick<VideoEvent, "fromTime" | "playbackRate">>,
-    ) => {
+    (event: VideoEventDetails) => {
       // A pending seek came first; log it first.
       seekLog.flush();
       appendEvent({
-        type,
-        videoTime,
+        ...event,
         stageTimeElapsed: getElapsedTimeRef.current(),
-        ...extra,
       });
     },
     [appendEvent, seekLog],
@@ -702,7 +701,7 @@ export function MediaPlayer({
       // not misclassify a later, real one.
       stopAtReachedRef.current = false;
       scrubPauseRef.current = false;
-      recordEvent("play", e.currentTarget.currentTime);
+      recordEvent({ type: "play", videoTime: e.currentTarget.currentTime });
     },
     [recordEvent],
   );
@@ -725,11 +724,11 @@ export function MediaPlayer({
       // paused first. A "pause" event only follows playback, never a paused
       // seek, so this is the clip reaching stopAt (#679).
       if (stopAt !== undefined && ct >= stopAt) {
-        recordEvent("stopAt", ct);
+        recordEvent({ type: "stopAt", videoTime: ct });
         if (submitOnComplete) onCompleteRef.current?.();
         return;
       }
-      recordEvent("pause", ct);
+      recordEvent({ type: "pause", videoTime: ct });
     },
     [recordEvent, stopAt, submitOnComplete],
   );
@@ -738,7 +737,7 @@ export function MediaPlayer({
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
       setIsPaused(true);
       setCurrentTime(e.currentTarget.currentTime);
-      recordEvent("ended", e.currentTarget.currentTime);
+      recordEvent({ type: "ended", videoTime: e.currentTarget.currentTime });
       if (submitOnComplete) {
         onCompleteRef.current?.();
       }
@@ -830,7 +829,7 @@ export function MediaPlayer({
       if (stopAt !== undefined && ct >= stopAt && !e.currentTarget.paused) {
         stopAtReachedRef.current = true;
         e.currentTarget.pause(); // fires "pause" event; handlePause suppresses it
-        recordEvent("stopAt", ct);
+        recordEvent({ type: "stopAt", videoTime: ct });
         if (submitOnComplete) onCompleteRef.current?.();
         return;
       }
@@ -852,7 +851,7 @@ export function MediaPlayer({
       const bounds = { startAt, stopAt, allowScrubOutsideBounds };
       const log = (fromTime: number, videoTime: number) => {
         if (held) recordSeek(fromTime, videoTime);
-        else recordEvent("seek", videoTime, { fromTime });
+        else recordEvent({ type: "seek", videoTime, fromTime });
       };
       if (ytHandle) {
         const cur = ytHandle.getCurrentTime();
@@ -895,7 +894,7 @@ export function MediaPlayer({
     if (replayable && atClipEnd(t, ytHandle !== null && ytEnded, clip)) {
       h.seekTo(clip.start);
       setCurrentTime(clip.start);
-      recordEvent("seek", clip.start, { fromTime: t });
+      recordEvent({ type: "seek", videoTime: clip.start, fromTime: t });
     }
     h.play();
   };
@@ -908,7 +907,11 @@ export function MediaPlayer({
       if (!v || next === playbackRate) return;
       v.playbackRate = next;
       setPlaybackRate(next);
-      recordEvent("speed", v.currentTime, { playbackRate: next });
+      recordEvent({
+        type: "speed",
+        videoTime: v.currentTime,
+        playbackRate: next,
+      });
     },
     [playbackRate, recordEvent],
   );
@@ -1118,7 +1121,7 @@ export function MediaPlayer({
       if (!v.paused) {
         scrubWasPlayingRef.current = true;
         scrubPauseRef.current = true;
-        recordEvent("pause", v.currentTime);
+        recordEvent({ type: "pause", videoTime: v.currentTime });
         v.pause();
       }
       recordSeek(v.currentTime, t);
@@ -1176,7 +1179,7 @@ export function MediaPlayer({
       if (!ytHandle.isPaused()) {
         scrubWasPlayingRef.current = true;
         scrubPauseRef.current = true;
-        recordEvent("pause", ytHandle.getCurrentTime());
+        recordEvent({ type: "pause", videoTime: ytHandle.getCurrentTime() });
         ytHandle.pause();
       }
       recordSeek(ytHandle.getCurrentTime(), t);
@@ -1441,7 +1444,7 @@ export function MediaPlayer({
               // has buffered. Nothing changed; logging it would also split
               // a Timeline drag into a seek per report (#682).
               if (endsMidPlayback(eventsRef.current)) return;
-              recordEvent("play", t);
+              recordEvent({ type: "play", videoTime: t });
             }}
             onPause={(t) => {
               const fromScrub = scrubPauseRef.current;
@@ -1459,20 +1462,20 @@ export function MediaPlayer({
                 (!isPaused && stopAt !== undefined && t >= stopAt)
               ) {
                 stopAtReachedRef.current = false;
-                recordEvent("stopAt", t);
+                recordEvent({ type: "stopAt", videoTime: t });
                 if (submitOnComplete) onCompleteRef.current?.();
                 return;
               }
               // YouTube also reports PAUSED after a seek made while paused;
               // log only a pause that ends playback (#682).
               if (!endsMidPlayback(eventsRef.current)) return;
-              recordEvent("pause", t);
+              recordEvent({ type: "pause", videoTime: t });
             }}
             onEnded={(t) => {
               setIsPaused(true);
               setYtEnded(true);
               setCurrentTime(t);
-              recordEvent("ended", t);
+              recordEvent({ type: "ended", videoTime: t });
               if (submitOnComplete) onCompleteRef.current?.();
             }}
           />

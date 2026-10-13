@@ -91,6 +91,54 @@ describe("mediaPlayerRecordSchema", () => {
   );
 
   it.each([
+    ["seek", "fromTime"],
+    ["speed", "playbackRate"],
+  ])("requires %s events to include %s", (type, field) => {
+    const event = { ...play, type };
+    expect(videoEventSchema.safeParse(event).success).toBe(false);
+    const result = checkHostRecord("mediaPlayer", {
+      ...record,
+      events: [event],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toEqual([
+        expect.objectContaining({ path: ["events", 0, field] }),
+      ]);
+    }
+  });
+
+  it.each([
+    { type: "seek", fromTime: 0 },
+    { type: "speed", playbackRate: 1.5 },
+  ])("accepts the required event payload: %j", (fields) => {
+    const event = { ...play, ...fields, hostExtension: "preserved" };
+    expect(videoEventSchema.parse(event)).toEqual(event);
+  });
+
+  it.each(["play", "pause", "ended", "stopAt", "removed"])(
+    "does not require seek or speed payloads on %s events",
+    (type) => {
+      expect(videoEventSchema.safeParse({ ...play, type }).success).toBe(true);
+    },
+  );
+
+  it.each([
+    { type: "seek", fromTime: undefined },
+    { type: "seek", fromTime: null },
+    { type: "seek", fromTime: "0" },
+    { type: "seek", fromTime: Infinity },
+    { type: "speed", playbackRate: undefined },
+    { type: "speed", playbackRate: null },
+    { type: "speed", playbackRate: "1.5" },
+    { type: "speed", playbackRate: NaN },
+  ])("rejects malformed event payloads: %j", (fields) => {
+    expect(videoEventSchema.safeParse({ ...play, ...fields }).success).toBe(
+      false,
+    );
+  });
+
+  it.each([
     { events: [{ ...play, type: "firstplay" }] },
     { lastVideoTime: "12" },
     { watchedRanges: [[0]] },
