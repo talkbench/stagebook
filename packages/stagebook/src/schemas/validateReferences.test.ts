@@ -115,6 +115,7 @@ interface StageConfig {
   name: string;
   duration?: number;
   conditions?: unknown;
+  discussion?: Record<string, unknown>;
   elements: Record<string, unknown>[];
 }
 
@@ -889,10 +890,7 @@ describe("Unknown-reference detection", () => {
     expect(unknown).toBeDefined();
   });
 
-  test("discussion.* references are not flagged as unknown (we don't model their storage keys)", () => {
-    // Regression: before the fix, `discussion.anyName.x` would fall
-    // through the walker as "unknown" because no discussion keys live
-    // in producedAt/globalProducedKeys. Leave discussion refs alone.
+  test("discussion references must name a reachable discussion block", () => {
     const file = baseFile({
       gameStages: [
         {
@@ -913,7 +911,20 @@ describe("Unknown-reference detection", () => {
       ],
     });
     const issues = validateTreatmentFileReferences(file);
-    expect(issues.length).toBe(0);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual([
+      "treatments",
+      0,
+      "gameStages",
+      0,
+      "elements",
+      0,
+      "conditions",
+      0,
+      "reference",
+    ]);
+    expect(issues[0].message).toContain("discussion_someRoom");
+    expect(issues[0].message).toContain("discussion block");
   });
 
   test("external references still skip unknown-reference check", () => {
@@ -934,6 +945,177 @@ describe("Unknown-reference detection", () => {
     });
     const issues = validateTreatmentFileReferences(file);
     expect(issues.length).toBe(0);
+  });
+});
+
+describe("named discussion producers (#673)", () => {
+  const reference = "self.discussion.chat.discussionFailed";
+  const gate = { reference, comparator: "exists" };
+  const display = { type: "display", reference };
+  const discussion = {
+    name: "chat",
+    chatType: "text",
+    showNickname: true,
+    showTitle: true,
+  };
+  const producer = { name: "talk", duration: 60, discussion, elements: [] };
+  const consumer = { name: "read", duration: 60, elements: [display] };
+
+  test("same-stage element gates and later stages read the named discussion", () => {
+    expect(
+      validateTreatmentFileReferences(
+        baseFile({
+          gameStages: [
+            {
+              ...producer,
+              elements: [{ type: "submitButton", conditions: [gate] }],
+            },
+            consumer,
+          ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  test("later discussion producers are forward references", () => {
+    const issues = validateTreatmentFileReferences(
+      baseFile({ gameStages: [consumer, producer] }),
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("later game stage");
+    expect(issues[0].path).toEqual([
+      "treatments",
+      0,
+      "gameStages",
+      0,
+      "elements",
+      0,
+      "reference",
+    ]);
+  });
+
+  test("discussion conditions also reject a later discussion reference", () => {
+    const issues = validateTreatmentFileReferences(
+      baseFile({
+        gameStages: [
+          {
+            ...consumer,
+            elements: [],
+            discussion: { ...discussion, name: "first", conditions: [gate] },
+          },
+          producer,
+        ],
+      }),
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("later game stage");
+    expect(issues[0].path).toEqual([
+      "treatments",
+      0,
+      "gameStages",
+      0,
+      "discussion",
+      "conditions",
+      0,
+      "reference",
+    ]);
+  });
+
+  test("intro references cannot read game discussion data, but exit references can", () => {
+    const issues = validateTreatmentFileReferences(
+      baseFile({
+        introSteps: [consumer],
+        gameStages: [producer],
+        exitSequence: [consumer],
+      }),
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("later phase");
+    expect(issues[0].path).toEqual([
+      "introSequences",
+      0,
+      "introSteps",
+      0,
+      "elements",
+      0,
+      "reference",
+    ]);
+  });
+
+  test("group composition cannot read game discussion data", () => {
+    const issues = validateTreatmentFileReferences(
+      baseFile({
+        gameStages: [producer],
+        groupComposition: [{ conditions: [gate] }],
+      }),
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain(
+      "groupComposition is evaluated before any stage runs",
+    );
+  });
+
+  test("a stage cannot require its own new discussion metrics at load", () => {
+    const issues = validateTreatmentFileReferences(
+      baseFile({
+        gameStages: [
+          {
+            ...producer,
+            conditions: [
+              { ...gate, reference: "0.discussion.chat.discussionFailed" },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("always skip the stage at load");
+    expect(issues[0].path).toEqual([
+      "treatments",
+      0,
+      "gameStages",
+      0,
+      "conditions",
+    ]);
+  });
+
+  test("another treatment's discussion cannot supply the consumer", () => {
+    const issues = validateTreatmentFileReferences({
+      treatments: [
+        { name: "a", compatibleIntroSequences: [], gameStages: [producer] },
+        { name: "b", compatibleIntroSequences: [], gameStages: [consumer] },
+      ],
+    });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain(
+      "doesn't match any discussion block reachable from this treatment",
+    );
+  });
+
+  test.each([undefined, "", "${room}"])(
+    "a discussion named %s does not invent a concrete producer",
+    (name) => {
+      const issues = validateTreatmentFileReferences(
+        baseFile({
+          gameStages: [
+            { ...producer, discussion: { ...discussion, name } },
+            consumer,
+          ],
+        }),
+      );
+      expect(issues).toHaveLength(1);
+      expect(issues[0].message).toContain("discussion_chat");
+    },
+  );
+
+  test("an uninvoked template does not supply discussion data", () => {
+    const file = baseFile({ gameStages: [consumer] });
+    const issues = validateTreatmentFileReferences({
+      ...file,
+      templates: [{ name: "talk", contentType: "stage", content: producer }],
+    });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain("discussion_chat");
   });
 });
 

@@ -31,35 +31,14 @@ import { setChannelGain } from "./mediaPlayer/muteChannels.js";
 import { buildPlaybackGraph } from "./mediaPlayer/playbackGraph.js";
 import { useMessages, useIsRTL } from "../StagebookProvider.js";
 import { focusRingCss } from "../focusRing.js";
-
-export interface VideoEvent {
-  /**
-   * `removed`: the player left the page during playback — the stage ended
-   * (submit, timer), or hideTime or a condition hid it (#677).
-   */
-  type: "play" | "pause" | "ended" | "seek" | "speed" | "stopAt" | "removed";
-  videoTime: number;
-  stageTimeElapsed: number;
-  /** Present on seek events: the position before seeking */
-  fromTime?: number;
-  /** Present on speed events: the new playback rate */
-  playbackRate?: number;
-}
-
-interface VideoRecord {
-  name: string;
-  url: string;
-  startAt?: number;
-  stopAt?: number;
-  events: VideoEvent[];
-  lastVideoTime: number;
-  /** Merged closed intervals [startSeconds, endSeconds] derived from the event log. */
-  watchedRanges: [number, number][];
-  /** The first `play`; absent until playback starts (#710). */
-  firstPlay?: VideoEvent;
-  /** The first `ended` or `stopAt`; absent until playback reaches the end. */
-  firstEnd?: VideoEvent;
-}
+import type {
+  VideoEvent,
+  VideoPlaybackRecord,
+} from "../../schemas/mediaPlayerRecord.js";
+export type {
+  VideoEvent,
+  VideoPlaybackRecord,
+} from "../../schemas/mediaPlayerRecord.js";
 
 export interface MediaPlayerProps {
   name: string;
@@ -648,7 +627,7 @@ export function MediaPlayer({
     (event: VideoEvent) => {
       if (logClosedRef.current) return;
       eventsRef.current = [...eventsRef.current, event];
-      const record: VideoRecord = {
+      const record: VideoPlaybackRecord = {
         name,
         url,
         ...(startAt !== undefined && { startAt }),

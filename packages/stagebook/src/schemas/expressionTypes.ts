@@ -9,6 +9,8 @@ import {
 import { promptValueType, type PromptFileType } from "./promptFile.js";
 import { referenceSchema } from "./reference.js";
 import { hostReferenceType } from "./hostReferenceTypes.js";
+import type { HostSchemaOptions } from "./hostRecords.js";
+import { enumerateStepSites } from "./validateReferences.js";
 
 export type UnknownExpressionTypeReason =
   | "missingSourceSchema"
@@ -127,7 +129,15 @@ function lookupReferenceType(
   reference: ReferenceDescription,
   producers: ReadonlyMap<string, Set<string>>,
   prompts: ReadonlyMap<string, PromptFileType>,
+  options: HostSchemaOptions,
 ): ReferenceTypeResult {
+  // Authoring may leave template fields unbound. The resolved validator's
+  // placeholder sweep owns those errors; infer a type only after expansion.
+  if (
+    reference.name?.includes("${") ||
+    reference.path?.some((segment) => segment.includes("${"))
+  )
+    return { type: "unknown" };
   const withGroup = (value: ReferenceTypeResult): ReferenceTypeResult => ({
     ...value,
     type: reference.position === "everyone" ? { list: value.type } : value.type,
@@ -135,7 +145,11 @@ function lookupReferenceType(
   const unknown = (reason: UnknownExpressionTypeReason, detail: string) =>
     withGroup({ type: "unknown", reason, detail });
   if (reference.source !== "prompt") {
-    const host = hostReferenceType(reference.source, reference.path ?? []);
+    const host = hostReferenceType(
+      reference.source,
+      reference.path ?? [],
+      options,
+    );
     if (host?.kind === "known") return withGroup({ type: host.type });
     if (host?.kind === "unknown")
       return unknown("unknownHostField", host.detail);
@@ -209,6 +223,7 @@ function lookupReferenceType(
 export function checkExpressionTypes(
   fileObj: unknown,
   prompts: ReadonlyMap<string, PromptFileType>,
+  options: HostSchemaOptions = {},
 ): ExpressionTypeIssue[] {
   if (!record(fileObj)) return [];
   const issues: ExpressionTypeIssue[] = [];
@@ -243,7 +258,9 @@ export function checkExpressionTypes(
       }
       const lookup = (input: unknown) => {
         const ref = describeReference(input);
-        return ref ? lookupReferenceType(ref, producers, prompts) : undefined;
+        return ref
+          ? lookupReferenceType(ref, producers, prompts, options)
+          : undefined;
       };
       const schema = createExpressionSchemas({
         mode: "resolved",
@@ -299,7 +316,7 @@ export function checkExpressionTypes(
             continue;
           const ref = describeReference(visit.node.reference);
           if (!ref) continue;
-          const type = lookupReferenceType(ref, producers, prompts);
+          const type = lookupReferenceType(ref, producers, prompts, options);
           if (type.error) {
             issues.push({
               path: [...site.path, ...visit.path, "reference"],
@@ -316,6 +333,40 @@ export function checkExpressionTypes(
             message: `Reference \`${referenceLabel(ref)}\` has an unknown type: ${type.detail}. Its type will be checked at runtime.`,
           });
         }
+      }
+      // Display and outgoing URL parameters do not consume expressions, but
+      // discussion paths must still name declared metrics on those surfaces.
+      for (const list of lists) {
+        array(container[list]).forEach((stage, stageIndex) => {
+          if (!record(stage)) return;
+          for (const site of enumerateStepSites(stage, [
+            key,
+            index,
+            list,
+            stageIndex,
+          ])) {
+            if (site.reference.source !== "discussion") continue;
+            const type = lookupReferenceType(
+              site.reference,
+              producers,
+              prompts,
+              options,
+            );
+            if (
+              !type.error ||
+              issues.some(
+                (issue) =>
+                  JSON.stringify(issue.path) === JSON.stringify(site.path),
+              )
+            )
+              continue;
+            issues.push({
+              path: site.path,
+              severity: "error",
+              message: `Reference \`${referenceLabel(site.reference)}\` has an invalid path: ${type.error}.`,
+            });
+          }
+        });
       }
     });
   }

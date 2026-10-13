@@ -14,9 +14,9 @@ Stagebook components read and write experiment state through the `get()` and `sa
 
 The platform needs two scopes of state:
 
-**Player state** — key-value pairs private to each participant. Used for individual prompt responses (survey-instrument items included), submit button timing, tracked link events, and any other per-participant data.
+**Player state** — key-value pairs private to each participant. Used for individual prompt responses (survey-instrument items included), submit button timing, tracked link events, named discussion metrics, and any other per-participant data.
 
-**Shared state** — key-value pairs visible to all participants in the group. Used for shared prompts (where one participant's edits are visible to all) and discussion metrics.
+**Shared state** — key-value pairs visible to all participants in the group. Used for shared prompts (where one participant's edits are visible to all).
 
 ### Key Patterns
 
@@ -125,6 +125,8 @@ schemas are also available from the same React-free entrypoint:
 | `timeline`     | `timelineRecordSchema`     | A bare array of ranges (`start`, `end`) or points (`time`), with optional `track`; `[]` is valid |
 | `trackedLink`  | `trackedLinkRecordSchema`  | `name`, `url`, `displayText`, `events`, `totalTimeAwaySeconds`, and optional last-event fields   |
 | `submitButton` | `submitButtonRecordSchema` | Required numeric `time`, in elapsed stage seconds                                                |
+| `mediaPlayer`  | `mediaPlayerRecordSchema`  | Playback event log, watched intervals, last video time, and optional first-play/end events       |
+| `discussion`   | `discussionMetricsSchema`  | Optional Boolean `discussionFailed` and nonnegative `cumulativeSpeakingTime` in seconds          |
 
 Tracked-link events use `type: "click"`, `"blur"`, or `"focus"`, with numeric
 `timestamp` (Unix milliseconds), `stageTimeSeconds`, and optional
@@ -134,17 +136,58 @@ also need to check individual entries.
 
 Object records may include the `step` and `stageTimeElapsed` metadata added by
 `Element`. Those fields are optional for standalone components; when present,
-their types are checked. Extra host fields pass through. The new record schemas
+their types are checked. Extra fields pass through except for discussion
+metrics, whose additional fields require a declaration. The record schemas
 require finite numbers and do not coerce strings. They check record shape, not
 timeline bounds, selection ordering, or consistency of tracked-link totals.
 
-Unsupported sources (including `prompt`, `qualtrics`, `mediaPlayer`,
-`discussion`, and `entryUrl`) return a failure; this helper does not claim to
+Unsupported sources (including `prompt`, `qualtrics`, and `entryUrl`) return a failure; this helper does not claim to
 validate their records. Checks run only when the host calls the helper and do
 not change participant behavior. `submitButtonRecordSchema` describes the
 click-time contract fixed in [#750](https://github.com/talkbench/stagebook/issues/750):
 older submit records without `time` fail it. The helper does not migrate stored
 data.
+
+### Declaring host fields
+
+Use `createHostRecordSchemas` to declare additional fields on `attributes` or
+`discussion`. It returns an isolated schema registry; it does not mutate global
+configuration, rewrite stored records, or add another reference resolver.
+Built-in fields cannot be redefined. Use ordinary Zod field schemas; unknown or
+transformed output types retain gradual-type warnings.
+
+```ts
+import { z } from "zod";
+import { createHostRecordSchemas, checkHostRecord } from "stagebook";
+import { validateTreatmentSource } from "stagebook/validate";
+
+const hostSchemas = createHostRecordSchemas({
+  attributes: { cohort: z.string().optional() },
+  discussion: { turnCount: z.number().int().nonnegative().optional() },
+});
+const diagnostics = validateTreatmentSource(source, { hostSchemas });
+const recordCheck = checkHostRecord("discussion", savedRecord, { hostSchemas });
+```
+
+Pass the same `hostSchemas` to `checkExpressionTypes` (third argument),
+`checkExpressionTypesWithLoader`, `validateResolvedTreatmentFile`,
+`validateTreatmentWithDiff`, and the options of `expandAndValidate` /
+`expandAndValidateWithImports`, as applicable. The standalone CLI and VS Code
+extension use the built-in registry. A host using custom discussion metrics
+must supply its registry when validating studies; the standalone tools cannot
+discover a host's JavaScript declarations. Undeclared `attributes` fields
+continue to warn rather than reject the study.
+
+A named discussion's host writes observations to `discussion_<name>` through
+the ordinary participant save adapter. An unnamed discussion makes no promise
+of a referenceable metrics record. Write `discussionFailed: true` when failure
+is observed, before advancing the stage; leave unmeasured metrics absent. If
+one client terminates a discussion for multiple participants, update each
+affected participant's record. Preserve previously observed fields. Never
+derive `cumulativeSpeakingTime` from elapsed call duration. Hosts that do not
+measure speaking time leave it absent. Shared notepads continue to use the
+prompt file's declared answer type and saved prompt-record shape; no new host
+declaration is needed for them.
 
 ### Platform-Populated State
 

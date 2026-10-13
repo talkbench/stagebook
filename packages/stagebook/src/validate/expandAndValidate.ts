@@ -5,6 +5,7 @@ import {
 } from "./expandTreatment.js";
 import { validateTreatmentSource } from "./validateTreatment.js";
 import type { Diagnostic } from "./types.js";
+import type { HostSchemaOptions } from "../schemas/hostRecords.js";
 
 export interface ExpandAndValidateResult {
   /** The expanded YAML as displayed (possibly truncated). "" if expansion failed. */
@@ -41,10 +42,10 @@ export interface ExpandAndValidateResult {
  */
 export function expandAndValidate(
   source: string,
-  options?: ExpandOptions,
+  options?: ExpandOptions & HostSchemaOptions,
 ): ExpandAndValidateResult {
   const expanded = expandTreatmentSource(source, options);
-  return finishExpandAndValidate(expanded);
+  return finishExpandAndValidate(expanded, options);
 }
 
 /**
@@ -60,22 +61,25 @@ export async function expandAndValidateWithImports({
 }: {
   source: string;
   loadImport: (importPath: string) => Promise<string>;
-  options?: ExpandOptions;
+  options?: ExpandOptions & HostSchemaOptions;
 }): Promise<ExpandAndValidateResult> {
   const expanded = await expandTreatmentSourceWithImports({
     source,
     loadImport,
     options,
   });
-  return finishExpandAndValidate(expanded);
+  return finishExpandAndValidate(expanded, options);
 }
 
-function finishExpandAndValidate(expanded: {
-  yaml: string;
-  fullYaml: string;
-  error: string | null;
-  truncated: boolean;
-}): ExpandAndValidateResult {
+function finishExpandAndValidate(
+  expanded: {
+    yaml: string;
+    fullYaml: string;
+    error: string | null;
+    truncated: boolean;
+  },
+  options?: HostSchemaOptions,
+): ExpandAndValidateResult {
   if (expanded.error) {
     return {
       yaml: expanded.yaml,
@@ -85,7 +89,7 @@ function finishExpandAndValidate(expanded: {
       diagnostics: [],
     };
   }
-  const { diagnostics } = validateTreatmentSource(expanded.fullYaml);
+  const { diagnostics } = validateTreatmentSource(expanded.fullYaml, options);
   return {
     yaml: expanded.yaml,
     fullYaml: expanded.fullYaml,

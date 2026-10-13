@@ -43,6 +43,9 @@
  *                   name/url, so preserve the existing guard.
  *   timeline     → `timeline_${name}` (name is required by the schema)
  *   trackedLink  → `trackedLink_${name}` (name is required by the schema)
+ *   discussion   → `discussion_${name}` for a named stage discussion block;
+ *                   the host writes its metrics record. Unnamed blocks do
+ *                   not declare a record.
  *
  * Why the file fallbacks aren't checked: a researcher who
  * doesn't `name:` an audio is opting out of cross-stage data
@@ -122,10 +125,16 @@ function emitDuplicates(
   const out: StorageKeyCollision[] = [];
   keys.forEach((paths, key) => {
     if (paths.length < 2) return;
+    const producers = key.startsWith("discussion_")
+      ? "discussion blocks"
+      : "elements";
+    const naming = key.startsWith("discussion_")
+      ? "a distinct discussion `name:`"
+      : "the per-element `name:` override";
     out.push({
       key,
       paths,
-      message: `Duplicate storage key "${key}" in ${scopeDescription}: ${paths.length} elements share this key. Storage keys must be unique within every (intro sequence × treatment) pair a participant can traverse. Use the per-element \`name:\` override to disambiguate.`,
+      message: `Duplicate storage key "${key}" in ${scopeDescription}: ${paths.length} ${producers} share this key. Storage keys must be unique within every (intro sequence × treatment) pair a participant can traverse. Use ${naming} to disambiguate.`,
     });
   });
   return out;
@@ -222,12 +231,28 @@ export function collectStorageKeyCollisions(
     const gameStages = Array.isArray(t.gameStages) ? t.gameStages : [];
     gameStages.forEach((stage, stageIdx) => {
       if (!stage || typeof stage !== "object") return;
-      const s = stage as { elements?: unknown };
+      const s = stage as { elements?: unknown; discussion?: unknown };
       scanElements(
         s.elements,
         ["treatments", tIdx, "gameStages", stageIdx, "elements"],
         keys,
       );
+      if (s.discussion && typeof s.discussion === "object") {
+        const name = strField(s.discussion as Record<string, unknown>, "name");
+        // Unresolved template names do not identify a concrete record yet.
+        if (name && !name.includes("${")) {
+          const key = `discussion_${name}`;
+          const paths = keys.get(key) ?? [];
+          paths.push([
+            "treatments",
+            tIdx,
+            "gameStages",
+            stageIdx,
+            "discussion",
+          ]);
+          keys.set(key, paths);
+        }
+      }
     });
     const exitSequence = Array.isArray(t.exitSequence) ? t.exitSequence : [];
     exitSequence.forEach((step, stepIdx) => {

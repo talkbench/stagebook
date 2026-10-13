@@ -513,6 +513,7 @@ const discussionRoomSchema = z
 
 export const discussionSchema = z
   .object({
+    name: nameSchema.optional(),
     chatType: z.enum(["text", "audio", "video"]),
     // `showNickname` / `showTitle` accept a whole-field `${field}` placeholder
     // (#565) so a single `treatment` template can vary the per-arm
@@ -1469,6 +1470,7 @@ export function getValidKeysForTreatment(): string[] {
  */
 export function getValidKeysForDiscussion(): string[] {
   return [
+    "name",
     "chatType",
     "showNickname",
     "showTitle",

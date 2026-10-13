@@ -24,6 +24,7 @@ Discussion stages display the chat interface on the left and elements on the rig
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `chatType` | `"text"`, `"audio"`, `"video"` | _required_ | Type of communication |
+| `name` | string | _(none)_ | Unique name for [discussion metric references](conditions.md#discussion-metrics); omit when no metrics are referenced |
 | `showNickname` | boolean | true | Display participant nicknames |
 | `showTitle` | boolean | false | Display participant titles (from `groupComposition`) |
 | `showToPositions` | int[] | _(all)_ | Restrict which positions see the discussion |

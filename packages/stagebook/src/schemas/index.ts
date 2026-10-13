@@ -1,16 +1,28 @@
 export {
+  videoEventSchema,
+  mediaPlayerRecordSchema,
+  type VideoEvent,
+  type VideoPlaybackRecord,
+} from "./mediaPlayerRecord.js";
+
+export {
   timelineRangeSchema,
   timelinePointSchema,
   timelineRecordSchema,
   trackedLinkEventSchema,
   trackedLinkRecordSchema,
   submitButtonRecordSchema,
+  discussionMetricsSchema,
   hostRecordSchemas,
+  createHostRecordSchemas,
   checkHostRecord,
   type TimelineRecord,
   type TrackedLinkEvent,
   type TrackedLinkRecord,
   type SubmitButtonRecord,
+  type DiscussionMetrics,
+  type HostRecordSchemas,
+  type HostSchemaOptions,
   type HostRecordSource,
   type HostRecord,
 } from "./hostRecords.js";

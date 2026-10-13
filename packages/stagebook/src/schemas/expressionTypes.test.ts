@@ -240,7 +240,7 @@ describe("declared host reference types", () => {
     ]);
   });
 
-  test.each(["self.qualtrics.exit.sessionId", "self.discussion.chat.count"])(
+  test.each(["self.qualtrics.exit.sessionId"])(
     "warns only when source %s has no schema",
     (reference) => {
       expect(check(leaf(reference, "x"))).toEqual([

@@ -2,6 +2,67 @@ import { describe, it, expect } from "vitest";
 import { collectStorageKeyCollisions } from "./storageKeyCollisions.js";
 
 describe("collectStorageKeyCollisions", () => {
+  it("rejects discussion names reused across game stages", () => {
+    const collisions = collectStorageKeyCollisions({
+      treatments: [
+        {
+          name: "t",
+          gameStages: [
+            { name: "first", discussion: { name: "chat" } },
+            { name: "second", discussion: { name: "chat" } },
+          ],
+        },
+      ],
+    });
+    expect(collisions).toEqual([
+      expect.objectContaining({
+        key: "discussion_chat",
+        paths: [
+          ["treatments", 0, "gameStages", 0, "discussion"],
+          ["treatments", 0, "gameStages", 1, "discussion"],
+        ],
+      }),
+    ]);
+    expect(collisions[0].message).toContain("discussion blocks");
+    expect(collisions[0].message).toContain("`name:`");
+  });
+
+  it("allows discussion name reuse in separate treatments and other source namespaces", () => {
+    expect(
+      collectStorageKeyCollisions({
+        treatments: ["a", "b"].map((name) => ({
+          name,
+          gameStages: [
+            {
+              name: "talk",
+              discussion: { name: "chat" },
+              elements: [{ type: "prompt", name: "chat" }],
+            },
+          ],
+        })),
+      }),
+    ).toEqual([]);
+  });
+
+  it.each([undefined, "", "${room}"])(
+    "does not assign a collision key to an unnamed or unresolved discussion: %s",
+    (name) => {
+      expect(
+        collectStorageKeyCollisions({
+          treatments: [
+            {
+              name: "t",
+              gameStages: [
+                { name: "first", discussion: { name } },
+                { name: "second", discussion: { name } },
+              ],
+            },
+          ],
+        }),
+      ).toEqual([]);
+    },
+  );
+
   it("returns no collisions for an empty/invalid input", () => {
     expect(collectStorageKeyCollisions(undefined)).toEqual([]);
     expect(collectStorageKeyCollisions(null)).toEqual([]);

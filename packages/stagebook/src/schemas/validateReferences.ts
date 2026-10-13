@@ -97,15 +97,11 @@ const RANK_GAME_BASE = 1;
 
 /** The types of reference whose target keys are **produced by a stage**. A
  *  reference of any other type (entryUrl, attributes, …) is external
- *  and always valid regardless of position.
- *
- *  Note: `discussion` references aren't in this set because stagebook
- *  doesn't model discussion storage keys — their shape depends on the
- *  host's runtime conventions (Tajriba attributes, chat transcript
- *  layout, …). We leave `discussion.*` refs alone rather than risk a
- *  false-positive "doesn't match any discussion element" on valid
- *  references. Forward-ref and unknown-ref checks both skip them. */
+ *  and always valid regardless of position. Named discussion blocks produce
+ *  host-written metrics under discussion_<name>, just as elements produce
+ *  their named records. */
 const STAGE_PRODUCED_REF_TYPES = new Set([
+  "discussion",
   "prompt",
   "submitButton",
   "qualtrics",
@@ -822,9 +818,17 @@ function applyRules({
 
   if (!STAGE_PRODUCED_REF_TYPES.has(refType)) return;
 
-  // Look up the producer rank. If the key isn't produced anywhere in the
-  // treatment (and not in the prior-phase keys), skip — it's either a
-  // typo (other tooling) or produced by external state we can't model.
+  // A discussion name may be a template field during authoring. Resolve its
+  // producer after fill; a concrete reference must still find a concrete name.
+  if (
+    refType === "discussion" &&
+    "name" in site.reference &&
+    site.reference.name.includes("${")
+  )
+    return;
+
+  // Look up the producer rank. A named source must resolve to a producer
+  // in this treatment's reachable scope, even when the host writes its data.
   const producerRank =
     producedAt.get(referenceKey) ??
     (priorPhaseKeys?.has(referenceKey) ? RANK_INTRO : undefined);
@@ -912,9 +916,13 @@ function applyRules({
         }.`;
       }
     }
+    const producerDescription =
+      refType === "discussion" ? "discussion block" : `${refType} element`;
+    const producerKind =
+      refType === "discussion" ? "discussion block" : "element";
     issues.push({
       path: site.path,
-      message: `Reference "${refStr}" doesn't match any ${refType} element reachable from ${scopeDescription}. Check the name — no element produces the storage key "${referenceKey}" ${reachableDescription}.${undeclaredHint}`,
+      message: `Reference "${refStr}" doesn't match any ${producerDescription} reachable from ${scopeDescription}. Check the name — no ${producerKind} produces the storage key "${referenceKey}" ${reachableDescription}.${undeclaredHint}`,
     });
     return;
   }
@@ -976,13 +984,19 @@ function applyRules({
 // Produced-key collection
 // ---------------------------------------------------------------------------
 
-/** Collect every storage key produced by the elements inside a single step
- *  (stage or intro/exit step). */
+/** Collect storage keys from elements and a named stage discussion. */
 function collectStepKeys(step: unknown): Set<string> {
   const keys = new Set<string>();
   if (!isRecord(step)) return keys;
   for (const el of toArray(step.elements)) {
     collectProducedKeys(el, keys);
+  }
+  if (isRecord(step.discussion)) {
+    const name = step.discussion.name;
+    // Unnamed discussions do not expose a metrics record. Template names
+    // become producers after expansion, when their concrete key is known.
+    if (typeof name === "string" && name.length > 0 && !name.includes("${"))
+      keys.add(`discussion_${name}`);
   }
   return keys;
 }
@@ -1006,13 +1020,6 @@ function collectProducedKeys(element: unknown, acc: Set<string>): void {
   ) {
     acc.add(`${type}_${name}`);
   }
-  // "discussion" references use the discussion's own name as the storage
-  // key (per getReferenceKeyAndPath's `discussion` branch). We don't
-  // currently track discussion names as produced keys at this level —
-  // discussions are a stage-level construct and their metrics come from
-  // runtime, not from a tracked element. Skipping is safe because
-  // references to discussion keys fall through to the "target not in
-  // producedAt" branch (no false positives) and runtime handles them.
 }
 
 // ---------------------------------------------------------------------------

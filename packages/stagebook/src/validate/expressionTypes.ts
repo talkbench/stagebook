@@ -1,4 +1,5 @@
 import { fileSchema } from "../schemas/treatment.js";
+import type { HostRecordSchemas } from "../schemas/hostRecords.js";
 import { collectReferencedPromptFiles } from "../schemas/localeConsistency.js";
 import {
   promptFileSchema,
@@ -14,9 +15,11 @@ import {
 export async function checkExpressionTypesWithLoader({
   fileObj,
   loadPrompt,
+  hostSchemas,
 }: {
   fileObj: unknown;
   loadPrompt: (relativePath: string) => Promise<string | null>;
+  hostSchemas?: HostRecordSchemas;
 }): Promise<ExpressionTypeIssue[]> {
   const prompts = new Map<string, PromptFileType>();
   for (const file of collectReferencedPromptFiles(fileObj)) {
@@ -31,5 +34,5 @@ export async function checkExpressionTypesWithLoader({
     const parsed = promptFileSchema.safeParse(source);
     if (parsed.success) prompts.set(file, parsed.data);
   }
-  return checkExpressionTypes(fileObj, prompts);
+  return checkExpressionTypes(fileObj, prompts, { hostSchemas });
 }

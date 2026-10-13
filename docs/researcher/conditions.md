@@ -384,7 +384,19 @@ You can also check that a minimum number of selections have been made:
 <position>.discussion.<name>.cumulativeSpeakingTime
 ```
 
-`<name>` is the `name:` of the discussion block on the stage. After #240 the storage namespace is `discussion_<name>`, so a per-discussion lookup needs the name segment between `discussion` and the metric path. Available metrics depend on the host platform's discussion implementation.
+`<name>` is the optional `name:` of the discussion block on the stage. Set it
+when you need to reference its metrics. Names must be unique along a
+participant's path; a reference can read the current or an earlier discussion,
+but cannot read a discussion in a later stage or another treatment.
+
+`discussionFailed` is Boolean; `cumulativeSpeakingTime` is a finite,
+nonnegative number of seconds. The host writes observations under
+`discussion_<name>` in that participant's state. A metric remains Missing until
+the host measures it: no record does not mean a successful discussion or zero
+speaking time. Check your host's support before gating on these fields.
+Undeclared metric paths are validation errors that list the available fields.
+Hosts can declare additional typed metrics through the
+[host schema API](../engineer/platform-requirements.md#declaring-host-fields).
 
 ## Position selectors
 

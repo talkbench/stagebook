@@ -5,6 +5,7 @@ import { text as readStream } from "node:stream/consumers";
 import { glob } from "tinyglobby";
 
 import type { Diagnostic } from "../validate/index.js";
+import { collectUnknownHostReferenceFields } from "../validate/hostReferenceFields.js";
 import {
   validateTreatmentSource,
   validatePromptSource,
@@ -597,10 +598,23 @@ async function checkExpressionTypeDiagnostics(
       }
     },
   });
-  return issues.map((issue) => ({
-    code: "expression-type",
-    message: `${issue.message} (${issue.path.join(".")})`,
-    severity: issue.severity,
-    range: null,
-  }));
+  // Source validation already reported the more specific field-name warning.
+  const fieldIssues = collectUnknownHostReferenceFields(fileObj);
+  return issues
+    .filter(
+      (issue) =>
+        !(
+          issue.severity === "warning" &&
+          fieldIssues.some(
+            (field) =>
+              JSON.stringify(field.path) === JSON.stringify(issue.path),
+          )
+        ),
+    )
+    .map((issue) => ({
+      code: "expression-type",
+      message: `${issue.message} (${issue.path.join(".")})`,
+      severity: issue.severity,
+      range: null,
+    }));
 }
