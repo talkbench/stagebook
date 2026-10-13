@@ -136,4 +136,28 @@ describe("host schema inspection", () => {
       type: { list: "string" },
     });
   });
+
+  test("reads homogeneous tuples as lists and follows exact tuple indexes", () => {
+    const ranges = z.array(z.tuple([z.number(), z.number()]));
+    expect(typeAt(ranges)).toEqual({
+      kind: "known",
+      type: { list: { list: "number" } },
+    });
+    expect(typeAt(ranges, ["0", "length"])).toEqual({
+      kind: "known",
+      type: "number",
+    });
+    expect(typeAt(ranges, ["0", "1"])).toEqual({
+      kind: "known",
+      type: "number",
+    });
+    expect(typeAt(ranges, ["0", "2"])).toMatchObject({ kind: "invalid" });
+    expect(typeAt(z.tuple([z.string(), z.number()]), ["1"])).toEqual({
+      kind: "known",
+      type: "number",
+    });
+    expect(typeAt(z.tuple([z.string(), z.number()]))).toMatchObject({
+      kind: "unknown",
+    });
+  });
 });

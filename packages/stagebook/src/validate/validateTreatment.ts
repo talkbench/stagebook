@@ -8,6 +8,8 @@ import { newerThanValidatorWarning } from "./stagebookVersion.js";
 import type { Diagnostic } from "./types.js";
 import { checkExpressionTypes } from "../schemas/expressionTypes.js";
 import type { PromptFileType } from "../schemas/promptFile.js";
+import type { HostSchemaOptions } from "../schemas/hostRecords.js";
+import { collectUnknownHostReferenceFields } from "./hostReferenceFields.js";
 
 export type { Diagnostic };
 
@@ -29,7 +31,9 @@ export interface ValidationResult {
  */
 export function validateTreatmentSource(
   source: string,
-  options: { promptFiles?: ReadonlyMap<string, PromptFileType> } = {},
+  options: HostSchemaOptions & {
+    promptFiles?: ReadonlyMap<string, PromptFileType>;
+  } = {},
 ): ValidationResult {
   const diagnostics: Diagnostic[] = [];
 
@@ -121,9 +125,11 @@ export function validateTreatmentSource(
   // The YouTube step/speed controls lint (#723) is the same kind of warning and
   // rides the same channel: a `${field}` placeholder `file` stays quiet here and
   // fires on the expanded YAML once it's filled.
+  const hostFieldIssues = collectUnknownHostReferenceFields(parsedObj);
   for (const issue of [
     ...collectMissingImageAltText(parsedObj),
     ...collectYouTubeUnsupportedControls(parsedObj),
+    ...hostFieldIssues,
   ]) {
     let range = mapper.resolve(issue.path);
     let ancestorPath = issue.path;
@@ -144,7 +150,15 @@ export function validateTreatmentSource(
   for (const issue of checkExpressionTypes(
     parsedObj,
     options.promptFiles ?? new Map(),
+    options,
   )) {
+    if (
+      issue.severity === "warning" &&
+      hostFieldIssues.some(
+        (field) => JSON.stringify(field.path) === JSON.stringify(issue.path),
+      )
+    )
+      continue;
     let path = issue.path;
     let range = mapper.resolve(path);
     while (!range && path.length > 0) {

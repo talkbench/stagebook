@@ -1,6 +1,10 @@
 import { z } from "zod";
 import type { ExpressionStaticType } from "./expression.js";
-import { hostRecordSchemas, type HostRecordSource } from "./hostRecords.js";
+import {
+  hostRecordSchemas,
+  type HostRecordSource,
+  type HostSchemaOptions,
+} from "./hostRecords.js";
 
 export type HostReferenceTypeResult =
   | { kind: "known"; type: ExpressionStaticType }
@@ -76,7 +80,11 @@ function atPath(
     const catchall = schema.def.catchall;
     // In Zod 4, passthrough objects have an unknown catchall; strip objects
     // have none, and strict objects have a never catchall.
-    if (!catchall || catchall instanceof z.ZodNever) return invalid();
+    if (!catchall || catchall instanceof z.ZodNever)
+      return {
+        kind: "invalid",
+        detail: `unknown field "${key}"; declared fields: ${Object.keys(shape).join(", ") || "(none)"}`,
+      };
     return catchall instanceof z.ZodUnknown
       ? {
           kind: "unknown",
@@ -93,6 +101,20 @@ function atPath(
     const [key, ...rest] = path;
     if (key === "length") return next(z.number(), rest);
     return /^(0|[1-9]\d*)$/.test(key) ? next(schema.element, rest) : invalid();
+  }
+  if (schema instanceof z.ZodTuple) {
+    const items = schema.def.items;
+    if (path.length === 0) {
+      const members = [...items, ...(schema.def.rest ? [schema.def.rest] : [])];
+      if (members.length === 0) return known({ list: "missing" });
+      const element = union(members.map((item) => next(item, [])));
+      return element.kind === "known" ? known({ list: element.type }) : element;
+    }
+    const [key, ...rest] = path;
+    if (key === "length") return next(z.number(), rest);
+    if (!/^(0|[1-9]\d*)$/.test(key)) return invalid();
+    const member = items[Number(key)] ?? schema.def.rest;
+    return member ? next(member, rest) : invalid();
   }
   if (schema instanceof z.ZodRecord)
     return path.length === 0
@@ -144,13 +166,15 @@ function atPath(
 export function hostReferenceType(
   source: string,
   path: readonly string[],
+  options: HostSchemaOptions = {},
 ): HostReferenceTypeResult | undefined {
   if (path.some((segment) => forbidden.has(segment))) return invalid();
   if (source === "entryUrl")
     return path[0] === "params" && path.length >= 2
       ? atPath(z.string(), path.slice(2))
       : invalid();
-  return own(hostRecordSchemas, source)
-    ? atPath(hostRecordSchemas[source as HostRecordSource], path)
+  const schemas = options.hostSchemas ?? hostRecordSchemas;
+  return own(schemas, source)
+    ? atPath(schemas[source as HostRecordSource], path)
     : undefined;
 }

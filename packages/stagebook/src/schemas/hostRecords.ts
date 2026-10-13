@@ -1,6 +1,7 @@
 /** Saved-record contracts for host CI (#690, #751), never runtime gates. */
 import { z } from "zod";
 import { attributesSchema } from "./attributes.js";
+import { mediaPlayerRecordSchema } from "./mediaPlayerRecord.js";
 
 const finiteNumber = z.number().finite();
 
@@ -67,15 +68,58 @@ export const submitButtonRecordSchema = z
   .passthrough();
 export type SubmitButtonRecord = z.infer<typeof submitButtonRecordSchema>;
 
+/** Metrics are absent until measured. Hosts must not synthesize a successful
+ * discussion or zero speaking time merely because the record was created. */
+export const discussionMetricsSchema = z
+  .object({
+    discussionFailed: z.boolean().optional(),
+    cumulativeSpeakingTime: finiteNumber.nonnegative().optional(),
+    ...elementMetadata,
+  })
+  .strict();
+export type DiscussionMetrics = z.infer<typeof discussionMetricsSchema>;
+
 /** Only these sources have a complete record contract in this helper. */
 export const hostRecordSchemas = Object.freeze({
   attributes: attributesSchema,
   timeline: timelineRecordSchema,
   trackedLink: trackedLinkRecordSchema,
   submitButton: submitButtonRecordSchema,
+  discussion: discussionMetricsSchema,
+  mediaPlayer: mediaPlayerRecordSchema,
 });
 export type HostRecordSource = keyof typeof hostRecordSchemas;
 export type HostRecord = z.infer<(typeof hostRecordSchemas)[HostRecordSource]>;
+export type HostRecordSchemas = Readonly<Record<HostRecordSource, z.ZodType>>;
+export interface HostSchemaOptions {
+  /** A per-host registry, never global mutable registration. */
+  hostSchemas?: HostRecordSchemas;
+}
+
+/** Declare additional host fields for validation and host conformance tests.
+ * Existing fields cannot be redefined. Runtime reads and stored records are
+ * unchanged; callers pass the returned registry to each validation entrypoint. */
+export function createHostRecordSchemas(
+  fields: { attributes?: z.ZodRawShape; discussion?: z.ZodRawShape } = {},
+): HostRecordSchemas {
+  for (const source of ["attributes", "discussion"] as const) {
+    for (const key of Object.keys(fields[source] ?? {})) {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          hostRecordSchemas[source].shape,
+          key,
+        ) ||
+        ["__proto__", "prototype", "constructor"].includes(key)
+      )
+        throw new Error(`Cannot redefine reserved ${source} field "${key}".`);
+    }
+  }
+  return Object.freeze({
+    ...hostRecordSchemas,
+    attributes: attributesSchema.extend(fields.attributes ?? {}),
+    discussion: discussionMetricsSchema.extend(fields.discussion ?? {}),
+  });
+}
 
 /**
  * Check one stored value using its source name (e.g. "timeline", not its
@@ -87,8 +131,10 @@ export type HostRecord = z.infer<(typeof hostRecordSchemas)[HostRecordSource]>;
 export function checkHostRecord(
   source: string,
   record: unknown,
+  options: HostSchemaOptions = {},
 ): z.ZodSafeParseResult<HostRecord> {
-  if (!Object.prototype.hasOwnProperty.call(hostRecordSchemas, source)) {
+  const schemas = options.hostSchemas ?? hostRecordSchemas;
+  if (!Object.prototype.hasOwnProperty.call(schemas, source)) {
     return {
       success: false,
       error: new z.ZodError([
@@ -100,5 +146,7 @@ export function checkHostRecord(
       ]) as z.ZodError<HostRecord>,
     };
   }
-  return hostRecordSchemas[source as HostRecordSource].safeParse(record);
+  return schemas[source as HostRecordSource].safeParse(
+    record,
+  ) as z.ZodSafeParseResult<HostRecord>;
 }

@@ -23,6 +23,8 @@ import { newerThanValidatorWarning } from "./stagebookVersion.js";
 import { treatmentUpgradeDiagnostics } from "./upgradeWarnings.js";
 import { versionConsistencyDiagnostics } from "./versionConsistency.js";
 import type { Diagnostic } from "./types.js";
+import type { HostRecordSchemas } from "../schemas/hostRecords.js";
+import { collectUnknownHostReferenceFields } from "./hostReferenceFields.js";
 
 /**
  * Editor-side wrapper around the diff orchestrator. Loads imports
@@ -72,9 +74,11 @@ export interface ValidateTreatmentDiffResult {
 export async function validateTreatmentWithDiff({
   source,
   loadImport: loadUncached,
+  hostSchemas,
 }: {
   source: string;
   loadImport: (importPath: string) => Promise<string>;
+  hostSchemas?: HostRecordSchemas;
 }): Promise<ValidateTreatmentDiffResult> {
   const diagnostics: Diagnostic[] = [];
 
@@ -133,9 +137,11 @@ export async function validateTreatmentWithDiff({
   // The YouTube step/speed controls lint (#723) is the same kind of warning,
   // squiggling the player's `controls:`; a player whose `file` comes from a
   // template field surfaces through the expanded pass instead.
+  const hostFieldIssues = collectUnknownHostReferenceFields(parsedObj);
   for (const issue of [
     ...collectMissingImageAltText(parsedObj),
     ...collectYouTubeUnsupportedControls(parsedObj),
+    ...hostFieldIssues,
   ]) {
     diagnostics.push({
       message: issue.message,
@@ -276,11 +282,31 @@ export async function validateTreatmentWithDiff({
   // those surface at runtime via the viewer's strict check or the
   // production host's own call.
   if (diff.hydrated) {
+    const hydratedHostFields = collectUnknownHostReferenceFields(diff.hydrated);
+    for (const issue of hydratedHostFields) {
+      if (hostFieldIssues.some((raw) => raw.message === issue.message))
+        continue;
+      // Expansion can insert or reorder elements, so its indexes cannot locate
+      // a raw source token. The expanded preview has the exact source range.
+      diagnostics.push({
+        message: issue.message,
+        severity: "warning",
+        range: null,
+      });
+    }
     const expressionTypes = await checkExpressionTypesWithLoader({
       fileObj: diff.hydrated,
       loadPrompt: loadImport,
+      hostSchemas,
     });
     for (const issue of expressionTypes) {
+      if (
+        issue.severity === "warning" &&
+        hydratedHostFields.some(
+          (field) => JSON.stringify(field.path) === JSON.stringify(issue.path),
+        )
+      )
+        continue;
       diagnostics.push({
         code: "expression-type",
         message: `${issue.message} (${formatPath(issue.path)})`,
@@ -290,6 +316,7 @@ export async function validateTreatmentWithDiff({
     }
     const resolved = validateResolvedTreatmentFile(diff.hydrated, {
       skipUnresolved: true,
+      hostSchemas,
     });
     const alreadyReported = new Set(diagnostics.map((d) => d.message));
     for (const issue of resolved.issues) {

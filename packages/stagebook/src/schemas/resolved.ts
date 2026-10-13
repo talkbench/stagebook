@@ -12,6 +12,7 @@
 import { z } from "zod";
 import { checkExpressionTypes } from "./expressionTypes.js";
 import type { PromptFileType } from "./promptFile.js";
+import type { HostSchemaOptions } from "./hostRecords.js";
 import { createExpressionSchemas, type ExpressionNode } from "./expression.js";
 import type { ExpressionReference } from "../expressions/evaluateExpression.js";
 import { localeSchema } from "./primitives.js";
@@ -570,7 +571,7 @@ export type ResolvedTreatmentFileType = z.infer<
   typeof resolvedTreatmentFileSchema
 >;
 
-export interface ValidateResolvedOptions {
+export interface ValidateResolvedOptions extends HostSchemaOptions {
   /** Parsed prompt metadata enables declared-value type checks after hydration. */
   promptFiles?: ReadonlyMap<string, PromptFileType>;
   /**
@@ -661,6 +662,7 @@ export function validateResolvedTreatmentFile(
     for (const issue of checkExpressionTypes(
       filled,
       options.promptFiles ?? new Map(),
+      options,
     )) {
       if (issue.severity !== "error") continue;
       const key = JSON.stringify([issue.path, issue.message]);

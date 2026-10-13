@@ -121,6 +121,8 @@ describe("checkHostRecord", () => {
   test("exports a source map and reuses the attributes contract", () => {
     expect(Object.keys(hostRecordSchemas).sort()).toEqual([
       "attributes",
+      "discussion",
+      "mediaPlayer",
       "submitButton",
       "timeline",
       "trackedLink",
@@ -162,8 +164,6 @@ describe("checkHostRecord", () => {
   test.each([
     "prompt",
     "qualtrics",
-    "mediaPlayer",
-    "discussion",
     "entryUrl",
     "unknown",
     "toString",

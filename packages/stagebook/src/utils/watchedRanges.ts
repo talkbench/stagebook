@@ -1,4 +1,7 @@
-import type { VideoEvent } from "../components/elements/MediaPlayer.js";
+import type {
+  VideoEvent,
+  VideoPlaybackRecord,
+} from "../schemas/mediaPlayerRecord.js";
 
 /**
  * Walks a VideoEvent log. A "play" opens a range. A "pause", "ended",
@@ -91,13 +94,16 @@ export function computeWatchedRanges(events: VideoEvent[]): [number, number][] {
  * that appears once the video has started. The log only grows, so neither
  * changes once set. Each is absent until it happens.
  */
-export function playbackMilestones(events: VideoEvent[]): {
-  firstPlay?: VideoEvent;
-  firstEnd?: VideoEvent;
-} {
-  const firstPlay = events.find((e) => e.type === "play");
+export function playbackMilestones(
+  events: VideoEvent[],
+): Pick<VideoPlaybackRecord, "firstPlay" | "firstEnd"> {
+  const firstPlay = events.find(
+    (e): e is NonNullable<VideoPlaybackRecord["firstPlay"]> =>
+      e.type === "play",
+  );
   const firstEnd = events.find(
-    (e) => e.type === "ended" || e.type === "stopAt",
+    (e): e is NonNullable<VideoPlaybackRecord["firstEnd"]> =>
+      e.type === "ended" || e.type === "stopAt",
   );
   return { ...(firstPlay && { firstPlay }), ...(firstEnd && { firstEnd }) };
 }
