@@ -136,7 +136,7 @@ The 28 operators below share the same rules wherever expressions are accepted. â
 | `nonIncreasing`      | 2+ numbers or one numeric-list expression                                 | Adjacent inputs satisfy `>=`                                                  |
 | `includes`           | `{container: expression, members: [expression, ...]}`                     | String/list contains every compatible scalar member                           |
 | `matches`            | `{string: expression, patterns: [string, ...], flags?: string}`           | Every literal regex matches the raw string                                    |
-| `length`             | One string/list expression                                                | UTF-16 code units or number of list positions                                 |
+| `length`             | One string or array expression                                            | UTF-16 code units or outer array positions, regardless of member type         |
 | `countExisting`      | Scalar operands or one scalar-list expression                             | Number of present values                                                      |
 | `countTrue`          | Boolean operands or one Boolean-list expression                           | Number of true values                                                         |
 | `countUnique`        | Compatible scalar operands or one scalar-list expression                  | Number of distinct present values                                             |

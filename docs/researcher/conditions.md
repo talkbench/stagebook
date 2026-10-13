@@ -148,7 +148,7 @@ Numeric opposites behave differently. `isBelow: 5` and `isAtLeast: 5` both need 
 
 Equality and membership trim surrounding whitespace and lowercase text using the default Unicode mapping. This applies to `equals`, `isOneOf`, `includes`, `allEqual`, `allUnique`, `countUnique`, and the negative comparator forms. `" Red car "` and `"red car"` therefore match. Internal whitespace is not collapsed, and there is no additional Unicode normalization or participant-locale rule.
 
-`matches` and `doesNotMatch` use the raw string and their explicit regex flags. `length` and `hasLengthAtLeast` / `hasLengthAtMost` count raw **UTF-16 code units** for strings (`🙂` has length 2), or positions for lists. A blank prompt answer is Missing before these operations run, so a whitespace-only response does not satisfy a length requirement. Stored and displayed text is unchanged.
+`matches` and `doesNotMatch` use the raw string and their explicit regex flags. `length` and `hasLengthAtLeast` / `hasLengthAtMost` count raw **UTF-16 code units** for strings (`🙂` has length 2), or positions for any referenced array, including Timeline selections, event records, and watched-range pairs. Array length counts outer positions, including Missing members, without inspecting member types. An empty saved array has length 0; a Missing value has no length. A blank prompt answer is Missing before these operations run, so a whitespace-only response does not satisfy a length requirement. Stored and displayed text is unchanged.
 
 Regex patterns may contain at most 1,024 UTF-16 code units. An input longer than 4,096 UTF-16 code units does not match; it is never truncated, and `doesNotMatch` is consequently true. These limits do not prevent a complex pattern from taking a long time. See [regex execution](../engineer/regex-execution.md) before using patterns with nested repetition or other substantial backtracking.
 
@@ -433,7 +433,7 @@ conditions:
       comparator: exists
 ```
 
-Per-seat `includes` tests membership in each participant's answer, including a multi-select answer; per-seat `hasLengthAtLeast` measures each answer. Neither measures the group list itself. Group collections of list-valued answers are not general nested-list expressions; these per-seat comparator leaves are the supported way to test them.
+Per-seat `includes` tests membership in each participant's answer, including a multi-select answer; per-seat `hasLengthAtLeast` measures each answer. Neither measures the group list itself. `length: {reference: everyone.timeline.selection}` counts the outer group positions, including missing seats. Array length does not enable nested-list arithmetic, membership, equality, or authored nested-list literals; use per-seat comparator leaves to test individual answers.
 
 ### Upgrading group conditions
 
