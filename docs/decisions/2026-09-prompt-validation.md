@@ -226,6 +226,13 @@ prompt file, with the exported function. The saved answer is `value`, or
 There's no new storage key, scope, or host API. Hosts that allowlist record
 fields must add it.
 
+**Expression typing ([#783](https://github.com/talkbench/stagebook/issues/783)).**
+The present `.isValid` value has Boolean type independently of a prompt's
+answer type. Validation still requires a producer in the reference's scope;
+the shared-prompt rules still decide whether that producer supports validity.
+The flag may be absent, and `everyone` preserves one Boolean or Missing value
+per seat. Other undeclared prompt fields remain gradually typed.
+
 **Docs.** The researcher docs replace "`minLength` must be enforced
 separately via conditions" with the two idioms above.
 

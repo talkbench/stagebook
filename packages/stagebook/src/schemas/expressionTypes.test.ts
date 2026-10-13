@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 import { promptFileSchema } from "./promptFile.js";
 import { checkExpressionTypes } from "./expressionTypes.js";
+import {
+  evaluateExpression,
+  Missing,
+} from "../expressions/evaluateExpression.js";
 
 const textPrompt = promptFileSchema.parse(
   "---\ntype: openResponse\n---\nAnswer.\n---\n> Your answer",
@@ -97,7 +101,7 @@ describe("per-treatment expression typing", () => {
     const t = treatment("number.prompt.md", {
       all: [
         leaf("self.attributes.custom", "x"),
-        leaf("self.prompt.answer.isValid", true),
+        leaf("self.prompt.answer.custom", true),
       ],
     });
     const issues = checkExpressionTypes({ treatments: [t] }, prompts);
@@ -281,13 +285,118 @@ describe("declared host reference types", () => {
     ).toBe(true);
   });
 
-  test("still keeps non-value prompt fields gradual", () => {
-    expect(check(leaf("self.prompt.answer.isValid", true))).toEqual([
+  test("still keeps undeclared prompt fields gradual", () => {
+    expect(check(leaf("self.prompt.answer.custom", true))).toEqual([
       expect.objectContaining({
         severity: "warning",
         reason: "unknownPromptField",
       }),
     ]);
+  });
+});
+
+describe("prompt validity types (#783)", () => {
+  const check = (conditions: unknown) =>
+    checkExpressionTypes(
+      { treatments: [treatment("text.prompt.md", conditions)] },
+      new Map(),
+    );
+
+  test.each(["self", "0"])(
+    "knows %s validity is Boolean without loading the answer type",
+    (position) => {
+      expect(check(leaf(`${position}.prompt.answer.isValid`, true))).toEqual(
+        [],
+      );
+      expect(check({ reference: `${position}.prompt.answer.isValid` })).toEqual(
+        [],
+      );
+    },
+  );
+
+  test.each(["true", 1])("rejects validity compared to %j", (value) => {
+    expect(check(leaf("self.prompt.answer.isValid", value))).toEqual([
+      expect.objectContaining({ severity: "error" }),
+    ]);
+  });
+
+  test("everyone validity is a Boolean list, including in expressions", () => {
+    const reference = "everyone.prompt.answer.isValid";
+    expect(check({ all: leaf(reference, true) })).toEqual([]);
+    expect(check({ all: { reference } })).toEqual([]);
+    expect(check({ all: leaf(reference, "true") })).toEqual([
+      expect.objectContaining({ severity: "error" }),
+    ]);
+    expect(check({ nonDecreasing: [0, { sum: { reference } }] })).toEqual([
+      expect.objectContaining({ severity: "error" }),
+    ]);
+  });
+
+  test("does not make an absent validity flag present or discard missing seats", () => {
+    const required = leaf("self.prompt.answer.isValid", true);
+    const optional = {
+      any: [
+        { reference: "self.prompt.answer.isValid", comparator: "doesNotExist" },
+        required,
+      ],
+    };
+    expect(check(optional)).toEqual([]);
+    expect(evaluateExpression(required, { readReference: () => Missing })).toBe(
+      false,
+    );
+    expect(evaluateExpression(optional, { readReference: () => Missing })).toBe(
+      true,
+    );
+    expect(evaluateExpression(optional, { readReference: () => false })).toBe(
+      false,
+    );
+    const group = { all: leaf("everyone.prompt.answer.isValid", true) };
+    expect(check(group)).toEqual([]);
+    expect(
+      evaluateExpression(group, { readReference: () => [true, Missing] }),
+    ).toBe(false);
+  });
+
+  test("rejects traversal through a Boolean validity flag", () => {
+    const issues = check({
+      reference: "self.prompt.answer.isValid.length",
+      comparator: "exists",
+    });
+    expect(issues).toEqual([expect.objectContaining({ severity: "error" })]);
+    expect(issues[0].message).toContain("path");
+  });
+
+  test("still requires a producer in the matching store and treatment", () => {
+    for (const reference of [
+      "self.prompt.absent.isValid",
+      "shared.prompt.answer.isValid",
+    ]) {
+      expect(check(leaf(reference, true))).toEqual([
+        expect.objectContaining({
+          severity: "warning",
+          reason: "missingProducer",
+        }),
+      ]);
+    }
+    const first = treatment(
+      "text.prompt.md",
+      leaf("self.prompt.answer.isValid", true),
+    );
+    const second = treatment(
+      "number.prompt.md",
+      leaf("self.prompt.answer.isValid", true),
+    );
+    second.gameStages[0].elements.shift();
+    const issues = checkExpressionTypes(
+      { treatments: [first, second] },
+      prompts,
+    );
+    expect(issues).toEqual([
+      expect.objectContaining({
+        reason: "missingProducer",
+      }),
+    ]);
+    expect(issues[0].path.slice(0, 2)).toEqual(["treatments", 1]);
   });
 });
 
