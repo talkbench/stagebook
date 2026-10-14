@@ -636,17 +636,16 @@ treatments:
       expect(matchedAtDef).toEqual([]);
     });
 
-    it("an artifact INSIDE a template body also lands in sourceOnly (path is not a reliable signal)", () => {
+    it("suppresses a proven advancement artifact inside a template body (#784)", () => {
       // The template's content is an introExitStep whose only direct
       // element is a `template:` invocation of another template that
       // does provide a submitButton. The schema's advancement-element
       // refinement fires inside the source-pass validation of this
       // template's content. After hydration the inner template expands
       // to include the submitButton, so the same refinement passes —
-      // this is a genuine artifact. Crucially: the path is
-      // `templates[...]`, identical to the unused-broken-template
-      // case above. Path can't distinguish the two; callers handle
-      // sourceOnly with lower confidence than matched/hydratedOnly.
+      // this is a genuine artifact. Its exact source path and the merged
+      // template index prove it can advance, unlike the unused broken
+      // template above.
       const source = `templates:
   - name: wrapAdvance
     contentType: introSteps
@@ -673,13 +672,348 @@ treatments:
 `;
       const result = runValidationDiff({ source });
       expect(result.hydrationError).toBeNull();
-      const advancementInSourceOnly = result.sourceOnly.find(
-        (i) =>
-          Array.isArray(i.path) &&
-          i.path[0] === "templates" &&
-          i.message.toLowerCase().includes("advancement element"),
-      );
-      expect(advancementInSourceOnly).toBeDefined();
+      const advancementAtDefinition = (i: {
+        path: PropertyKey[];
+        message: string;
+      }) =>
+        i.path[0] === "templates" &&
+        i.message.toLowerCase().includes("advancement element");
+      expect(result.sourceIssues.some(advancementAtDefinition)).toBe(true);
+      expect(result.sourceOnly.some(advancementAtDefinition)).toBe(false);
+    });
+
+    it.each([
+      { type: "submitButton" },
+      { type: "qualtrics", url: "https://example.com/survey" },
+      { type: "mediaPlayer", file: "clip.mp4", submitOnComplete: true },
+    ])(
+      "proves advancement through an imported element template: %j",
+      (element) => {
+        const source = JSON.stringify({
+          templates: [
+            {
+              name: "exitWrapper",
+              contentType: "exitSteps",
+              content: [
+                { name: "finish", elements: [{ template: "advance" }] },
+              ],
+            },
+          ],
+          treatments: [
+            {
+              name: "study",
+              playerCount: 1,
+              compatibleIntroSequences: [],
+              gameStages: [
+                {
+                  name: "game",
+                  duration: 10,
+                  elements: [{ type: "submitButton" }],
+                },
+              ],
+              exitSequence: [{ template: "exitWrapper" }],
+            },
+          ],
+        });
+        const result = runValidationDiff({
+          source,
+          importedTemplates: [
+            { name: "advance", contentType: "element", content: element },
+          ],
+        });
+        expect(result.hydrationError).toBeNull();
+        expect(result.sourceIssues).toEqual([
+          expect.objectContaining({
+            path: ["templates", 0, "content", 0, "elements"],
+          }),
+        ]);
+        expect(result.matched).toEqual([]);
+        expect(result.sourceOnly).toEqual([]);
+        expect(result.hydratedIssues).toEqual([]);
+      },
+    );
+
+    it.each([
+      [{ type: "separator" }],
+      [{ type: "mediaPlayer", file: "clip.mp4", submitOnComplete: false }],
+      [
+        {
+          type: "mediaPlayer",
+          file: "clip.mp4",
+          submitOnComplete: "${finish}",
+        },
+      ],
+      [{ template: "missing" }],
+      [{ template: "${chosen}" }],
+      [{ template: "advance" }],
+    ])(
+      "retains an unused definition whose advancement cannot be proven: %j",
+      (content) => {
+        const source = JSON.stringify({
+          templates: [
+            {
+              name: "unused",
+              contentType: "exitSteps",
+              content: [
+                { name: "finish", elements: [{ template: "advance" }] },
+              ],
+            },
+            { name: "advance", contentType: "elements", content: [content] },
+          ],
+        });
+        const result = runValidationDiff({ source });
+        expect(result.hydrationError).toBeNull();
+        expect(
+          result.sourceOnly.some(
+            (i) =>
+              Array.isArray(i.path) &&
+              i.path[0] === "templates" &&
+              i.message.toLowerCase().includes("advancement element"),
+          ),
+        ).toBe(true);
+      },
+    );
+
+    it.each(["before", "after"])(
+      "keeps a real matched error when a proven artifact comes %s it",
+      (order) => {
+        const good = {
+          name: "good",
+          contentType: "exitSteps",
+          content: [{ name: "finish", elements: [{ template: "advance" }] }],
+        };
+        const source = JSON.stringify({
+          templates: [
+            ...(order === "before" ? [good] : []),
+            {
+              name: "usedBroken",
+              contentType: "exitSteps",
+              content: [{ name: "bad", elements: [{ type: "separator" }] }],
+            },
+            {
+              name: "unusedBroken",
+              contentType: "exitSteps",
+              content: [{ name: "bad", elements: [{ type: "separator" }] }],
+            },
+            ...(order === "after" ? [good] : []),
+            {
+              name: "advance",
+              contentType: "elements",
+              content: [{ type: "submitButton" }],
+            },
+            {
+              name: "unrelated",
+              contentType: "element",
+              content: { type: "prompt", file: 12345 },
+            },
+          ],
+          treatments: [
+            {
+              name: "study",
+              playerCount: 1,
+              compatibleIntroSequences: [],
+              gameStages: [
+                {
+                  name: "game",
+                  duration: 10,
+                  elements: [{ type: "submitButton" }],
+                },
+              ],
+              exitSequence: [{ template: "usedBroken" }, { template: "good" }],
+            },
+          ],
+        });
+        const result = runValidationDiff({ source });
+        expect(result.hydrationError).toBeNull();
+        const advancement = (issue: { message: string }) =>
+          issue.message.includes("advancement element");
+        expect(
+          result.sourceIssues.filter(advancement).map((issue) => issue.path),
+        ).toEqual([
+          ["templates", 0, "content", 0, "elements"],
+          ["templates", 1, "content", 0, "elements"],
+          ["templates", 2, "content", 0, "elements"],
+        ]);
+        expect(
+          result.matched.filter(advancement).map((issue) => issue.path),
+        ).toEqual([
+          ["templates", order === "before" ? 1 : 0, "content", 0, "elements"],
+        ]);
+        expect(
+          result.sourceOnly.filter(advancement).map((issue) => issue.path),
+        ).toEqual([
+          ["templates", order === "before" ? 2 : 1, "content", 0, "elements"],
+        ]);
+        expect(result.hydratedOnly.filter(advancement)).toEqual([]);
+        expect(
+          result.hydratedIssues.filter(advancement).map((issue) => issue.path),
+        ).toEqual([["treatments", 0, "exitSequence", 0, "elements"]]);
+        expect(
+          result.sourceOnly.some(
+            (issue) => issue.path[0] === "templates" && issue.path[1] === 4,
+          ),
+        ).toBe(true);
+      },
+    );
+
+    it("retains a proven artifact in raw source issues when hydration fails", () => {
+      const source = JSON.stringify({
+        templates: [
+          {
+            name: "unused",
+            contentType: "exitSteps",
+            content: [{ name: "finish", elements: [{ template: "advance" }] }],
+          },
+          {
+            name: "advance",
+            contentType: "element",
+            content: { type: "submitButton" },
+          },
+        ],
+        introSequences: [
+          { name: "intro", introSteps: [{ template: "missing" }] },
+        ],
+      });
+      const result = runValidationDiff({ source });
+      expect(result.hydrationError).toContain("Template expansion failed");
+      expect(
+        result.sourceIssues
+          .filter((issue) => issue.message.includes("advancement element"))
+          .map((issue) => issue.path),
+      ).toEqual([["templates", 0, "content", 0, "elements"]]);
+      expect(result.matched).toEqual([]);
+      expect(result.sourceOnly).toEqual([]);
+      expect(result.hydratedIssues).toEqual([]);
+      expect(result.hydratedOnly).toEqual([]);
+    });
+
+    it.each([{}, { d0: "${rows}" }])(
+      "retains an unused definition when broadcast does not prove any output: %j",
+      (broadcast) => {
+        const source = JSON.stringify({
+          templates: [
+            {
+              name: "unused",
+              contentType: "exitSteps",
+              content: [
+                {
+                  name: "finish",
+                  elements: [{ template: "advance", broadcast }],
+                },
+              ],
+            },
+            {
+              name: "advance",
+              contentType: "element",
+              content: { type: "submitButton" },
+            },
+          ],
+        });
+        const result = runValidationDiff({ source });
+        expect(result.hydrationError).toBeNull();
+        expect(result.sourceOnly).toHaveLength(1);
+        expect(result.sourceOnly[0].path).toEqual([
+          "templates",
+          0,
+          "content",
+          0,
+          "elements",
+        ]);
+        expect(result.sourceOnly[0].message).toContain("advancement element");
+      },
+    );
+
+    it.each(["usage", "definition"])(
+      "keeps suppressing a proven %s warning with nonempty concrete broadcast axes",
+      (site) => {
+        const step = {
+          name: "finish",
+          elements: [
+            {
+              template: "advance",
+              broadcast: { d0: [{}], d1: [{ label: "Continue" }] },
+            },
+          ],
+        };
+        const source = JSON.stringify({
+          templates: [
+            { name: "wrapper", contentType: "exitSteps", content: [step] },
+            {
+              name: "advance",
+              contentType: "element",
+              content: { type: "submitButton" },
+            },
+          ],
+          treatments: [
+            {
+              name: "study",
+              playerCount: 1,
+              compatibleIntroSequences: [],
+              gameStages: [
+                {
+                  name: "game",
+                  duration: 10,
+                  elements: [{ type: "submitButton" }],
+                },
+              ],
+              exitSequence:
+                site === "usage" ? [step] : [{ template: "wrapper" }],
+            },
+          ],
+        });
+        const result = runValidationDiff({ source });
+        expect(result.hydrationError).toBeNull();
+        expect(
+          result.sourceIssues.some((issue) =>
+            issue.message.includes("advancement element"),
+          ),
+        ).toBe(true);
+        expect(result.sourceOnly).toEqual([]);
+        expect(result.hydratedIssues).toEqual([]);
+      },
+    );
+
+    it("does not count a broadcast entry that a nested invocation can remove", () => {
+      const source = JSON.stringify({
+        templates: [
+          {
+            name: "unused",
+            contentType: "exitSteps",
+            content: [
+              {
+                name: "finish",
+                elements: [
+                  {
+                    template: "advance",
+                    broadcast: { d0: [{ template: "emptyRows" }] },
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            name: "advance",
+            contentType: "element",
+            content: { type: "submitButton" },
+          },
+          {
+            name: "emptyRows",
+            contentType: "broadcastAxisValues",
+            content: [],
+          },
+        ],
+      });
+      const result = runValidationDiff({ source });
+      expect(result.hydrationError).toBeNull();
+      expect(
+        result.sourceOnly.filter((issue) =>
+          issue.message.includes("advancement element"),
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          path: ["templates", 0, "content", 0, "elements"],
+        }),
+      ]);
     });
   });
 

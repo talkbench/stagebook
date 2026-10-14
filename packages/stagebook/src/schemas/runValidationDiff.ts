@@ -32,14 +32,13 @@ import {
  *                    template's content has `contentType:
  *                    introExitStep` (or similar) and the inner
  *                    refinement fires on its own pre-fill view of
- *                    the elements list. NOTE: the usage-site form of
- *                    this artifact is now dropped from `sourceOnly`
- *                    when the invocation provably resolves one level
- *                    deep to an advancement element (see
- *                    `suppressResolvedAdvancementWarnings`, #347); the
- *                    instances that remain here are the non-provable
- *                    ones (parameterized name, deeper nesting) and the
- *                    prefixed template-content form.
+ *                    the elements list. Both usage-site and template-
+ *                    content forms are excluded before matching when
+ *                    the invocation provably resolves one level deep
+ *                    to an advancement element (see
+ *                    `suppressResolvedAdvancementWarnings`, #347, #784).
+ *                    Non-provable instances (parameterized names,
+ *                    deeper nesting) remain in this bucket.
  *
  *                  - real bugs that didn't survive hydration into a
  *                    matched pair. The most common: an unused
@@ -291,8 +290,16 @@ export function runValidationDiff({
     ? []
     : [...hydratedResult.error.issues];
 
-  const { matched, sourceOnly, hydratedOnly } = diffIssues(
+  // Remove proven source artifacts before the lossy multiset match: otherwise
+  // one can consume a genuine same-message error's hydrated counterpart.
+  // Keep the raw sourceIssues unchanged for callers and hydration fallback.
+  const sourceIssuesToMatch = suppressResolvedAdvancementWarnings(
     sourceIssues,
+    merged,
+    mergedTemplates ?? [],
+  );
+  const { matched, sourceOnly, hydratedOnly } = diffIssues(
+    sourceIssuesToMatch,
     hydratedIssues,
   );
 
@@ -302,49 +309,44 @@ export function runValidationDiff({
     hydratedIssues,
     hydrated: expanded,
     matched,
-    sourceOnly: suppressResolvedAdvancementWarnings(
-      sourceOnly,
-      merged,
-      mergedTemplates ?? [],
-    ),
+    sourceOnly,
     hydratedOnly,
   };
 }
 
 /**
- * #347: drop intro/exit "needs advancement element" warnings from the
- * source-only bucket when the offending step's element list contains a
+ * #347, #784: exclude intro/exit "needs advancement element" artifacts from
+ * source issues eligible for matching when the offending element list contains a
  * `template:` invocation that provably resolves — one level deep — to a
  * lexical advancement element.
  *
- * Such warnings reach `sourceOnly` precisely because the hydrated pass
- * did NOT re-fire them: after expansion the step gained an advancement
- * element. We still confirm the resolution statically (rather than
- * trusting bucket membership alone), because the multiset diff can
- * alias a genuine "step has no way to advance" bug into this bucket
- * when two steps carry the identical message — and that bug must not be
- * silently dropped.
+ * Positive static proof is required: after expansion the step gains an
+ * advancement element. Filter before the multiset diff so an artifact cannot
+ * consume a genuine "step has no way to advance" error with the same message.
+ * The raw source-pass issues remain available in the public result, including
+ * when hydration fails and callers must fall back to source-only validation.
  *
- * Scope is deliberately the bare `ADVANCEMENT_ELEMENT_MESSAGE` — the
- * usage-site form. The same rule firing while validating a template's
- * own `content:` carries the templateSchema's "Invalid content for
- * contentType '...': " prefix (see `stripTemplateContentPrefix`) and is
- * left untouched: a template definition is validated in isolation, and
- * its invocation sites get their own diagnosis.
+ * The same rule firing inside a template definition has the schema's
+ * "Invalid content for contentType '...': " prefix. Strip that known
+ * wrapper when identifying the rule, but retain the full source path:
+ * the exact offending elements list must supply the positive proof,
+ * using the same merged templates as hydration. Unused broken templates
+ * and unrelated source-only issues remain diagnosed.
  */
 function suppressResolvedAdvancementWarnings(
-  sourceOnly: ZodIssue[],
+  sourceIssues: ZodIssue[],
   merged: Record<string, unknown>,
   mergedTemplates: unknown[],
 ): ZodIssue[] {
   const isAdvancementWarning = (issue: ZodIssue) =>
-    issue.code === "custom" && issue.message === ADVANCEMENT_ELEMENT_MESSAGE;
+    issue.code === "custom" &&
+    stripTemplateContentPrefix(issue.message) === ADVANCEMENT_ELEMENT_MESSAGE;
 
-  if (!sourceOnly.some(isAdvancementWarning)) return sourceOnly;
+  if (!sourceIssues.some(isAdvancementWarning)) return sourceIssues;
 
   const templatesByName = indexTemplatesByName(mergedTemplates);
 
-  return sourceOnly.filter((issue) => {
+  return sourceIssues.filter((issue) => {
     if (!isAdvancementWarning(issue)) return true;
     // Keep the warning unless we can positively prove the step's
     // elements resolve to an advancement element via a template.
@@ -391,10 +393,40 @@ function templateInvocationResolvesToAdvancement(
   if (!element || typeof element !== "object" || Array.isArray(element)) {
     return false;
   }
-  const name = (element as Record<string, unknown>).template;
+  const invocation = element as Record<string, unknown>;
+  const name = invocation.template;
   // Only concrete, statically-known template names. A parameterized
   // name (`template: ${x}`) can't be resolved pre-fill — keep the warning.
   if (typeof name !== "string" || name.includes("${")) return false;
+
+  // A lexical button is not enough when broadcast might emit no copies.
+  // Prove only literal, nonempty dimensions of field maps: an invocation
+  // inside an array can expand away. Leave resolution/expansion to the normal
+  // template pipeline. Canonical axis names match flattenBroadcast.
+  if ("broadcast" in invocation) {
+    const broadcast = invocation.broadcast;
+    if (!broadcast || typeof broadcast !== "object" || Array.isArray(broadcast))
+      return false;
+    const dimensions = Object.entries(broadcast);
+    if (
+      dimensions.length === 0 ||
+      !dimensions.every(
+        ([axis, values]) =>
+          /^d(0|[1-9]\d*)$/.test(axis) &&
+          Number.isSafeInteger(Number(axis.slice(1))) &&
+          Array.isArray(values) &&
+          values.length > 0 &&
+          values.every(
+            (entry: unknown) =>
+              entry !== null &&
+              typeof entry === "object" &&
+              !Array.isArray(entry) &&
+              !("template" in entry),
+          ),
+      )
+    )
+      return false;
+  }
 
   const tmpl = templatesByName.get(name);
   if (!tmpl) return false;
