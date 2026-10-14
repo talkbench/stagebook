@@ -8,6 +8,9 @@
 // solo textarea, which is ~22-31px shorter), the placeholder clips rather than
 // growing the box, the chip/sentence match the runner verbatim, and the "not
 // the final rendering" signalling survives even at rows: 1.
+//
+// The discussion stand-in's settings list resolves unset flags to the runner's
+// defaults (#791), so a templated stage previews the call participants get.
 import { describe, it, expect, beforeAll } from "vitest";
 import React, { type ReactNode } from "react";
 import { act } from "react";
@@ -20,6 +23,7 @@ import {
   TEXTAREA_METRICS,
   TEXTAREA_FONT_FAMILY,
 } from "../../components/form/TextArea.js";
+import { discussionSchema } from "../../schemas/index.js";
 
 beforeAll(() => {
   (
@@ -271,4 +275,87 @@ describe("shared-notepad skeleton (#591)", () => {
     });
     expect(el.textContent).toContain("group_notes");
   });
+});
+
+function discussionLines(config: Record<string, unknown>): string[] {
+  const el = render(<>{createSkeletonRenderers().renderDiscussion(config)}</>);
+  return Array.from(el.querySelectorAll("li")).map((li) => li.textContent);
+}
+
+// The runner's defaults, transcribed verbatim from its `Discussion.jsx`
+// destructure — deliberately NOT read off `discussionSchema`, so the preview
+// is pinned to what the live study does rather than to a second copy of the
+// defaults on our side:
+//
+//   showNickname = true,
+//   showTitle,
+//   showSelfView = true,
+//   showReportMissing = true,
+//   showAudioMute = true,
+//   showVideoMute = true,
+describe("discussion skeleton (#791)", () => {
+  it("reports the runner's defaults for flags the author left unset", () => {
+    // A templated stage reaches the slot un-parsed: template `content` is
+    // `z.any()`, so zod's `.default(true)` never runs on it and the flags
+    // arrive `undefined`. Reading that as false previewed a call with no
+    // self-view and no mute buttons when the participant gets all of them.
+    // `showNickname` is schema-required, so only a host calling the renderer
+    // directly can omit it — left unset here to pin the runner's default too.
+    const lines = discussionLines({ chatType: "video", showTitle: false });
+    expect(lines).toEqual([
+      "Nicknames: shown",
+      "Self-view: shown",
+      "Report missing: available",
+      "Audio mute: available",
+      "Video mute: available",
+    ]);
+  });
+
+  it("previews a stage the same whether or not zod filled the defaults", () => {
+    // An inline stage reaches the slot schema-parsed (defaults filled); a
+    // templated one does not. The same discussion block must not preview
+    // differently depending on which of the two it was written as.
+    const raw = { chatType: "video", showNickname: true, showTitle: false };
+    expect(discussionLines(raw)).toEqual(
+      discussionLines(discussionSchema.parse(raw)),
+    );
+  });
+
+  it("still reports flags the author explicitly turned off", () => {
+    const lines = discussionLines({
+      chatType: "video",
+      showNickname: false,
+      showTitle: false,
+      showSelfView: false,
+      showReportMissing: false,
+      showAudioMute: false,
+      showVideoMute: false,
+    });
+    expect(lines).toEqual([
+      "Nicknames: hidden",
+      "Self-view: hidden",
+      "Report missing: unavailable",
+      "Audio mute: unavailable",
+      "Video mute: unavailable",
+    ]);
+  });
+
+  it.each([
+    ["text", ["Nicknames: shown"]],
+    // The runner renders nothing at all for `audio` (#792); this pins only
+    // that report-missing stays out of it, not that the list matches a host.
+    ["audio", ["Nicknames: shown", "Audio mute: available"]],
+  ] as const)(
+    "lists no report-missing control for a %s chat",
+    (chatType, expected) => {
+      // The runner only wires `showReportMissing` into `VideoCall`; `Chat` has
+      // no such button, so listing it would preview a control that isn't there.
+      const lines = discussionLines({
+        chatType,
+        showNickname: true,
+        showTitle: false,
+      });
+      expect(lines).toEqual(expected);
+    },
+  );
 });
