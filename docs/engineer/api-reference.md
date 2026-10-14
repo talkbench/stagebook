@@ -679,6 +679,12 @@ The `stagebook/viewer` subpath is the reusable preview harness — the code behi
 
 **Rule of thumb: components render, validate diagnoses, viewer harnesses.**
 
+Completing a consent, intro, or exit step advances directly to the next step,
+matching those phases' per-participant flow. The last step leads to the unit's
+existing transition page. Game-stage submission shows the simulated group wait
+until the researcher selects **Next**. Researchers can revisit completed async
+steps to inspect their saved responses or submit them again.
+
 ### `PreviewHost`
 
 Batteries-included harness: give it a parsed treatment file plus two content callbacks and it owns template expansion, unresolved-`${field}` prompting, the mock state store, and the full dev chrome.
