@@ -32,33 +32,60 @@ const chatTypeLabels: Record<string, string> = {
   text: "Text Chat",
 };
 
+type RunnerDefaultedFlag =
+  | "showNickname"
+  | "showSelfView"
+  | "showReportMissing"
+  | "showAudioMute"
+  | "showVideoMute";
+
+/**
+ * The discussion config as it actually reaches this slot. `DiscussionType` is
+ * zod's *output* type, which claims the four `.default(true)` flags are always
+ * set — but a stage written inside a template is never schema-parsed (template
+ * `content` is `z.any()`), so those flags can arrive `undefined`.
+ * `showNickname` is required by the schema, so only a host calling
+ * `createSkeletonRenderers()` directly can omit it; it is optional here so
+ * that case reads the way the runner reads it too.
+ */
+type PreviewDiscussionConfig = Omit<DiscussionType, RunnerDefaultedFlag> &
+  Partial<Pick<DiscussionType, RunnerDefaultedFlag>>;
+
 /**
  * Build a human-readable summary of discussion configuration options,
  * filtered to only those relevant to the chatType.
+ *
+ * Unset flags resolve the way the runner's `Discussion.jsx` resolves them —
+ * every one defaults to `true` — so the preview describes the call the
+ * participant will get rather than reading `undefined` as "off".
  */
-function describeDiscussionConfig(config: DiscussionType): string[] {
+function describeDiscussionConfig(config: PreviewDiscussionConfig): string[] {
   const lines: string[] = [];
+  const {
+    showNickname = true,
+    showSelfView = true,
+    showReportMissing = true,
+    showAudioMute = true,
+    showVideoMute = true,
+  } = config;
 
-  lines.push(`Nicknames: ${config.showNickname ? "shown" : "hidden"}`);
+  lines.push(`Nicknames: ${showNickname ? "shown" : "hidden"}`);
 
   if (config.chatType === "video") {
-    lines.push(`Self-view: ${config.showSelfView ? "shown" : "hidden"}`);
+    lines.push(`Self-view: ${showSelfView ? "shown" : "hidden"}`);
+    // Only the runner's VideoCall has a report-missing button; text chat
+    // never renders one, whatever the flag says.
+    lines.push(
+      `Report missing: ${showReportMissing ? "available" : "unavailable"}`,
+    );
   }
-
-  lines.push(
-    `Report missing: ${config.showReportMissing ? "available" : "unavailable"}`,
-  );
 
   if (config.chatType === "audio" || config.chatType === "video") {
-    lines.push(
-      `Audio mute: ${config.showAudioMute ? "available" : "unavailable"}`,
-    );
+    lines.push(`Audio mute: ${showAudioMute ? "available" : "unavailable"}`);
   }
 
   if (config.chatType === "video") {
-    lines.push(
-      `Video mute: ${config.showVideoMute ? "available" : "unavailable"}`,
-    );
+    lines.push(`Video mute: ${showVideoMute ? "available" : "unavailable"}`);
   }
 
   if (config.chatType === "text") {
@@ -356,7 +383,7 @@ export function SkeletonPlaceholder({
 
   // Discussion gets a rich, type-aware placeholder
   if (type === "discussion" && config) {
-    const discussion = config as unknown as DiscussionType;
+    const discussion = config as unknown as PreviewDiscussionConfig;
     const icon = chatTypeIcons[discussion.chatType];
     const label = chatTypeLabels[discussion.chatType] ?? "Discussion";
     const configLines = describeDiscussionConfig(discussion);
