@@ -194,6 +194,7 @@ Both forms parse to the same internal shape; either is accepted at every referen
 
 `self.prompt.<name>.isValid` reads the advisory validity flag on the most recent
 committed response. Use `equals` with `value: true` to wait for a passing answer.
+The validator knows this flag is Boolean; use `true` or `false`, not quoted text.
 For an optional answer, use `any` combining `doesNotExist` and `equals: true`;
 an untouched prompt has no flag. See [response validity](prompts.md#response-validity-and-conditions)
 for both complete idioms, timing and trust limits, hidden-prompt gates, and the

@@ -161,10 +161,10 @@ function lookupReferenceType(
     );
   }
   const path = reference.path ?? ["value"];
-  if (path[0] !== "value") {
+  if (path[0] !== "value" && path[0] !== "isValid") {
     return unknown(
       "unknownPromptField",
-      "only prompt .value has a declared expression type in this version",
+      "only prompt .value and .isValid have declared expression types in this version",
     );
   }
   if (!reference.name)
@@ -180,6 +180,20 @@ function lookupReferenceType(
       "missingProducer",
       "no prompt producer in this treatment or its compatible intro sequences provides a known type",
     );
+  if (path[0] === "isValid") {
+    // PromptRecord's present validity flag is always Boolean, regardless of
+    // the answer type. Missing records stay Missing at runtime. The separate
+    // loaded-prompt validator owns whether a shared prompt supports validity.
+    return withGroup(
+      path.length === 1
+        ? { type: "boolean" }
+        : {
+            type: "unknown",
+            error:
+              "the path cannot be traversed through the Boolean prompt validity flag",
+          },
+    );
+  }
   const types: ExpressionStaticType[] = [];
   const unreadable: string[] = [];
   for (const file of files) {
