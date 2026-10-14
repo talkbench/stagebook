@@ -392,7 +392,7 @@ describe("unit-switch state hygiene", () => {
     );
     const main = () => container.querySelector("main")!;
 
-    // Switch to the intro unit and submit its only step → waiting overlay.
+    // The intro completes directly at its transition, without a group wait.
     selectUnit(container, "intro:0");
     const submit = main().querySelector<HTMLButtonElement>(
       '[data-testid="submitButton"]',
@@ -401,7 +401,10 @@ describe("unit-switch state hygiene", () => {
     act(() => {
       submit!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    expect(main().textContent).toContain("Waiting for other participants");
+    expect(main().textContent).not.toContain("Waiting for other participants");
+    expect(
+      main().querySelector('[data-testid="viewer-transition"]'),
+    ).not.toBeNull();
 
     // Switch to the treatment: its first stage must render fresh, NOT inherit
     // the intro's submitted[0] (which would show the waiting overlay).

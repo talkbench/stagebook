@@ -172,7 +172,10 @@ export function Viewer({
   );
 
   const currentStep = steps[stageIndex];
-  const isSubmitted = store.getSubmitted(stageIndex);
+  // Consent/intro/exit advance independently, even when an exit step belongs
+  // to a multi-participant treatment. Only game steps simulate a group wait.
+  const waitForParticipants = currentStep?.phase === "game";
+  const isSubmitted = waitForParticipants && store.getSubmitted(stageIndex);
 
   // Each unit declares its own locale (intro sequences run before treatment
   // assignment, so they carry their own); shown in the header so it's explicit.
@@ -187,8 +190,19 @@ export function Viewer({
   const clampedPosition = Math.min(position, Math.max(0, playerCount - 1));
 
   const handleSubmit = useCallback(() => {
+    if (!currentStep || currentStep.isTransition) return;
     store.setSubmitted(stageIndex, true);
-  }, [store, stageIndex]);
+    if (currentStep.phase !== "game") {
+      // Keep the completion flag and responses for inspection, but advance
+      // only from the step that completed. Duplicate callbacks must not skip
+      // another step or pull the researcher back after manual navigation.
+      setStageIndex((index) =>
+        index === stageIndex
+          ? Math.min(stageIndex + 1, steps.length - 1)
+          : index,
+      );
+    }
+  }, [store, stageIndex, currentStep, steps.length]);
 
   const handleNext = useCallback(() => {
     if (stageIndex < steps.length - 1) {
@@ -280,8 +294,8 @@ export function Viewer({
   });
 
   const ctx = useMemo(
-    () =>
-      createViewerContext({
+    () => {
+      const context = createViewerContext({
         store,
         position: clampedPosition,
         stageIndex,
@@ -292,7 +306,12 @@ export function Viewer({
         getAssetURL,
         contentVersion,
         renderers: createSkeletonRenderers(),
-      }),
+      });
+      // Stage has its own submission renderer. Async completion flags are
+      // inspection metadata, so revisiting or toggling them must leave the
+      // step's contents visible rather than showing a spinner/group wait.
+      return waitForParticipants ? context : { ...context, isSubmitted: false };
+    },
     // Deps are curated by hand — the stagebook library does not run
     // react-hooks/exhaustive-deps (unlike the app this was lifted from).
     [
@@ -301,6 +320,7 @@ export function Viewer({
       clampedPosition,
       stageIndex,
       playerCount,
+      waitForParticipants,
       locale,
       handleSubmit,
       getTextContent,
