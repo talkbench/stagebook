@@ -183,6 +183,193 @@ for (const backend of ["native", "youtube"] as const) {
   const url =
     backend === "native" ? "/sample-video.mp4" : "https://youtu.be/QC8iQqtG0hg";
 
+  test(`${backend} once with autoplay false: first Space starts, both timelines lock, and help follows`, async ({
+    mount,
+    page,
+  }) => {
+    await installMedia(page, backend);
+    const component = await mount(
+      <MockWindowedTimeline
+        url={url}
+        playback="once"
+        autoplay={false}
+        startAt={2}
+        stopAt={6}
+        selectionType="point"
+        timelineCount={2}
+      />,
+    );
+    const button = component.getByTestId("mediaPlayer-playOnce");
+    await expect(button).toBeVisible();
+    expect((await snapshot(page)).plays).toBe(0);
+    const timelines = component.getByTestId("timeline");
+    await timelines.first().getByTestId("timeline-help-button").click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText("Space", { exact: true })).toBeVisible();
+    await expect(dialog.getByText("Play", { exact: true })).toBeVisible();
+    await expect(dialog).not.toContainText("Play / Pause");
+    await page.getByTestId("timeline-help-close").click();
+    await timelines.first().focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(() => marks(component)).toEqual([{ time: 2 }]);
+    await timelines.first().getByTestId("timeline-zoom-in").click();
+    await expect(timelines.first()).toHaveAttribute("data-zoom-level", "2");
+    const before = await snapshot(page);
+    await timelines.first().focus();
+    for (const key of ["ArrowLeft", "ArrowRight", ",", "."])
+      await page.keyboard.press(key);
+    await pointerSeek(timelines.first());
+    expect(await snapshot(page)).toEqual(before);
+    await timelines.first().focus();
+    await page.keyboard.press("Space");
+    await expect(button).not.toBeVisible();
+    await expect(timelines.first()).toBeFocused();
+    await expect(timelines.first()).toHaveAttribute("data-zoom-level", "2");
+    expect((await snapshot(page)).plays).toBe(1);
+    await tick(page, 4);
+    const playing = await snapshot(page);
+    for (let i = 0; i < 2; i++) {
+      const timeline = timelines.nth(i);
+      await timeline.focus();
+      await page.keyboard.press("Space");
+      await page.keyboard.press("ArrowLeft");
+      await page.keyboard.press("Enter");
+      await expect
+        .poll(() => marks(component, i === 0 ? "marks" : "marks2"))
+        .toEqual(i === 0 ? [{ time: 2 }, { time: 4 }] : [{ time: 4 }]);
+      await expect(timeline).toBeFocused();
+      await timeline.getByTestId("timeline-help-button").click();
+      await expect(
+        page.getByRole("dialog").getByText("Space", { exact: true }),
+      ).toHaveCount(0);
+      await page.getByTestId("timeline-help-close").click();
+    }
+    expect(await snapshot(page)).toEqual(playing);
+    await tick(page, 6);
+    await expect.poll(async () => (await snapshot(page)).paused).toBe(true);
+    const ended = await snapshot(page);
+    for (const timeline of await timelines.all()) {
+      await timeline.focus();
+      await page.keyboard.press("Space");
+      await pointerSeek(timeline);
+    }
+    expect(await snapshot(page)).toEqual(ended);
+  });
+
+  for (const playVideo of [true, false]) {
+    test(`${backend} once with autoplay false: ${playVideo ? "video" : "audio"} initial button preserves timeline focus`, async ({
+      mount,
+      page,
+    }) => {
+      await installMedia(page, backend);
+      const component = await mount(
+        <MockWindowedTimeline
+          url={url}
+          playback="once"
+          autoplay={false}
+          playVideo={playVideo}
+          startAt={2}
+          selectionType="point"
+        />,
+      );
+      const button = component.getByTestId("mediaPlayer-playOnce");
+      await expect(button).toBeVisible();
+      expect((await snapshot(page)).plays).toBe(0);
+      const accessibility = await new AxeBuilder({ page })
+        .include('[data-testid="mediaPlayer"]')
+        .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+        .analyze();
+      expect(accessibility.violations).toEqual([]);
+      const timeline = component.getByTestId("timeline");
+      await timeline.focus();
+      await button.click();
+      await expect(timeline).toBeFocused();
+      await expect(button).not.toBeVisible();
+      await tick(page, 4);
+      await page.keyboard.press("Enter");
+      await expect.poll(() => marks(component)).toEqual([{ time: 4 }]);
+      await page.evaluate(() => (window as TestWindow).__onceMedia.end());
+      await page.keyboard.press("Space");
+      expect((await snapshot(page)).plays).toBe(1);
+      await expect(button).not.toBeVisible();
+    });
+  }
+
+  test(`${backend} once with autoplay false: rejected first start remains available`, async ({
+    mount,
+    page,
+  }) => {
+    await installMedia(page, backend, true);
+    const component = await mount(
+      <MockWindowedTimeline
+        url={url}
+        playback="once"
+        autoplay={false}
+        selectionType="point"
+      />,
+    );
+    const button = component.getByTestId("mediaPlayer-playOnce");
+    await expect(button).toBeVisible();
+    const timeline = component.getByTestId("timeline");
+    await timeline.focus();
+    await page.keyboard.press("Space");
+    await expect.poll(async () => (await snapshot(page)).plays).toBe(1);
+    await expect(button).toBeVisible();
+    expect((await snapshot(page)).paused).toBe(true);
+    await page.keyboard.press("Space");
+    await expect(button).not.toBeVisible();
+    await expect.poll(async () => (await snapshot(page)).paused).toBe(false);
+    await page.keyboard.press("Space");
+    expect((await snapshot(page)).plays).toBe(2);
+    expect((await snapshot(page)).paused).toBe(false);
+  });
+
+  test(`${backend} manual with autoplay true: starts automatically and keeps transport`, async ({
+    mount,
+    page,
+  }) => {
+    await installMedia(page, backend);
+    const component = await mount(
+      <MockWindowedTimeline
+        url={url}
+        playback="manual"
+        autoplay={true}
+        selectionType="point"
+      />,
+    );
+    await expect.poll(async () => (await snapshot(page)).plays).toBe(1);
+    const timeline = component.getByTestId("timeline");
+    await timeline.focus();
+    await page.keyboard.press("Space");
+    expect((await snapshot(page)).paused).toBe(true);
+    await page.keyboard.press("Space");
+    expect((await snapshot(page)).plays).toBe(2);
+  });
+
+  for (const key of ["Enter", "Space"]) {
+    test(`${backend} manual with blocked autoplay: initial button supports ${key}`, async ({
+      mount,
+      page,
+    }) => {
+      await installMedia(page, backend, true);
+      const component = await mount(
+        <MockWindowedTimeline
+          url={url}
+          playback="manual"
+          autoplay={true}
+          selectionType="point"
+        />,
+      );
+      const button = component.getByTestId("mediaPlayer-playOnce");
+      await expect(button).toBeVisible();
+      await button.focus();
+      await page.keyboard.press(key);
+      await expect(button).not.toBeVisible();
+      expect((await snapshot(page)).plays).toBe(2);
+      expect((await snapshot(page)).paused).toBe(false);
+    });
+  }
+
   test(`${backend} once: two timelines cannot pause, seek, step or replay, and Enter still marks`, async ({
     mount,
     page,

@@ -169,6 +169,7 @@ const resolvedElementBaseSchema = z.object({
   // mediaPlayer fields
   syncToStageTime: z.boolean().optional(),
   submitOnComplete: z.boolean().optional(),
+  autoplay: z.boolean().optional(),
   playVideo: z.boolean().optional(),
   playAudio: z.boolean().optional(),
   captionsFile: z.string().optional(),

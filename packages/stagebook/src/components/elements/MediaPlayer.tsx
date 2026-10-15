@@ -61,6 +61,7 @@ export interface MediaPlayerProps {
   allowScrubOutsideBounds?: boolean;
   stepDuration?: number;
   playback?: "once" | "manual";
+  autoplay?: boolean;
   controls?: {
     playPause?: boolean;
     seek?: boolean;
@@ -109,6 +110,14 @@ function isInOtherPlayer(el: Element | null, own: HTMLElement | null) {
   return !!player && player !== own;
 }
 
+// Initial-start buttons keep native Enter/Space activation even in manual
+// mode, where the container otherwise suppresses Enter and toggles on Space.
+function keepInitialButtonActivation(
+  e: React.KeyboardEvent<HTMLButtonElement>,
+) {
+  if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+}
+
 export function MediaPlayer({
   name,
   url,
@@ -125,6 +134,7 @@ export function MediaPlayer({
   allowScrubOutsideBounds = false,
   stepDuration = 1,
   playback,
+  autoplay,
   controls,
 }: MediaPlayerProps) {
   const messages = useMessages();
@@ -142,6 +152,7 @@ export function MediaPlayer({
     (controls.playPause || controls.seek || controls.step || controls.speed);
   const effectivePlayback =
     playback ?? (hasAnyControls || syncToStageTime ? "manual" : "once");
+  const effectiveAutoplay = autoplay ?? effectivePlayback === "once";
 
   // Defense-in-depth: reject dangerous URL protocols. Element.tsx already
   // resolves relative paths via getAssetURL(), so this guards against
@@ -166,22 +177,40 @@ export function MediaPlayer({
   const containerRef = useRef<HTMLDivElement>(null);
   const effectivePlaybackRef = useRef(effectivePlayback);
   effectivePlaybackRef.current = effectivePlayback;
-  // Each source has its own one-time start. Promise callbacks retain this
+  const effectiveAutoplayRef = useRef(effectiveAutoplay);
+  effectiveAutoplayRef.current = effectiveAutoplay;
+  // Each source has its own initial start. Promise callbacks retain this
   // token, so a rejected start for an old URL cannot revive its button.
-  const onceStartRef = useRef({
+  const initialStartRef = useRef({
     url,
+    ready: false,
     attempted: false,
     pending: false,
     started: false,
   });
-  if (onceStartRef.current.url !== url) {
-    onceStartRef.current = {
+  if (initialStartRef.current.url !== url) {
+    initialStartRef.current = {
       url,
+      ready: false,
       attempted: false,
       pending: false,
       started: false,
     };
   }
+  // Re-register the participant handle after lifecycle transitions so its
+  // consumers redraw controls/help. Retained handles also read the live ref.
+  const [initialStartVersion, setInitialStartVersion] = useState(0);
+  const notifyInitialStart = useCallback(() => {
+    setInitialStartVersion((version) => version + 1);
+  }, []);
+  const initialStart = initialStartRef.current;
+  const showPlayOnce =
+    (effectivePlayback === "once" || effectiveAutoplay) &&
+    initialStart.ready &&
+    !initialStart.started &&
+    !initialStart.pending &&
+    (!effectiveAutoplay || initialStart.attempted);
+
   // Per-instance class for the container's `:focus` ring. Same useId
   // pattern as Timeline / Button / Slider — pairs with the Timeline
   // ring so the two stacked components feel visually coherent and the
@@ -235,7 +264,6 @@ export function MediaPlayer({
   // duration, so the end-of-clip check also trusts this (#684). HTML5 needs
   // no flag: at its natural end currentTime equals the duration exactly.
   const [ytEnded, setYtEnded] = useState(false);
-  const [showPlayOnce, setShowPlayOnce] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState<number>(0);
@@ -251,7 +279,6 @@ export function MediaPlayer({
   // Also reset autoplay state so a new URL gets a fresh attempt.
   useEffect(() => {
     setLoadError(null);
-    setShowPlayOnce(false);
     setYtEnded(false);
     stopAtReachedRef.current = false;
   }, [url]);
@@ -306,21 +333,22 @@ export function MediaPlayer({
   // Child effect cleanup invalidates the handle before the parent's queued
   // readiness effect runs; it must not start a player just destroyed.
   const liveYtHandleRef = useRef<PlaybackHandle | null>(null);
-  // Metadata belongs to a source token, not a duration: consecutive sources
-  // can have equal durations, and an old source's duration stays cached.
-  const [readyOnceStart, setReadyOnceStart] = useState<
-    typeof onceStartRef.current | null
-  >(null);
-
-  const markOnceStarted = useCallback(() => {
-    onceStartRef.current.started = true;
-    onceStartRef.current.pending = false;
-    setShowPlayOnce(false);
-  }, []);
-  const startOnce = useCallback(
+  const markInitialStarted = useCallback(() => {
+    const attempt = initialStartRef.current;
+    if (attempt.started && !attempt.pending) return;
+    attempt.started = true;
+    attempt.pending = false;
+    notifyInitialStart();
+  }, [notifyInitialStart]);
+  const startInitial = useCallback(
     (readyHandle?: PlaybackHandle) => {
-      const attempt = onceStartRef.current;
-      if (effectivePlayback !== "once" || attempt.started || attempt.pending)
+      const attempt = initialStartRef.current;
+      if (
+        !attempt.ready ||
+        attempt.started ||
+        attempt.pending ||
+        logClosedRef.current
+      )
         return;
       const target = readyHandle ?? ytHandle;
       const video = videoRef.current;
@@ -328,9 +356,11 @@ export function MediaPlayer({
         youtubeVideoId ? !target || target !== liveYtHandleRef.current : !video
       )
         return;
+      // Reserve synchronously: two presses before React renders still issue
+      // only one request. Success consumes the source; rejection allows retry.
       attempt.attempted = true;
       attempt.pending = true;
-      setShowPlayOnce(false);
+      notifyInitialStart();
       if (youtubeVideoId) {
         // YouTube has no play promise: PLAYING and onAutoplayBlocked settle it.
         target!.play();
@@ -338,39 +368,30 @@ export function MediaPlayer({
         void video!
           .play()
           .then(() => {
-            if (onceStartRef.current !== attempt || logClosedRef.current)
+            if (initialStartRef.current !== attempt || logClosedRef.current)
               return;
-            attempt.started = true;
-            attempt.pending = false;
-            setShowPlayOnce(false);
+            markInitialStarted();
           })
           .catch(() => {
             if (
-              onceStartRef.current !== attempt ||
+              initialStartRef.current !== attempt ||
               attempt.started ||
               logClosedRef.current
             )
               return;
             attempt.pending = false;
-            if (effectivePlaybackRef.current === "once") setShowPlayOnce(true);
+            notifyInitialStart();
           });
       }
     },
-    [effectivePlayback, youtubeVideoId, ytHandle],
+    [youtubeVideoId, ytHandle, notifyInitialStart, markInitialStarted],
   );
 
   useEffect(() => {
-    const attempt = onceStartRef.current;
-    if (effectivePlayback !== "once") {
-      setShowPlayOnce(false);
-    } else if (attempt.attempted && !attempt.started && !attempt.pending) {
-      // Returning to once after a blocked attempt restores the start button;
-      // changing modes alone must not retry blocked autoplay.
-      setShowPlayOnce(true);
-    } else if (readyOnceStart === attempt && !attempt.attempted) {
-      startOnce();
-    }
-  }, [effectivePlayback, readyOnceStart, startOnce]);
+    const attempt = initialStartRef.current;
+    if (effectiveAutoplay && attempt.ready && !attempt.attempted)
+      startInitial();
+  }, [effectiveAutoplay, initialStartVersion, startInitial, url]);
 
   // Track whether the video was playing when a scrub drag started, so we can
   // pause on grab and resume on release (records proper play/pause events for
@@ -619,8 +640,11 @@ export function MediaPlayer({
   // Siblings start playback through playRef too, so a Timeline's Space
   // replays the clip at its end just as the play button does (#684).
   const playRef = useRef<() => void>(() => {});
-  const transportAllowedRef = useRef(effectivePlayback !== "once");
-  transportAllowedRef.current = effectivePlayback !== "once";
+  const participantPlayRef = useRef<() => void>(() => {});
+  participantPlayRef.current = () => {
+    if (effectivePlaybackRef.current === "once") startInitial();
+    else playRef.current();
+  };
   // Their seeks are logged here: a Timeline's ruler, playhead drag, arrow
   // keys and mark edits all move the player without its own controls
   // (#682).
@@ -630,19 +654,36 @@ export function MediaPlayer({
       withSeekWindow(
         sourceHandle,
         () => seekWindow(seekBoundsRef.current, sourceHandle.getDuration()),
-        () => playRef.current(),
+        () => participantPlayRef.current(),
         (seconds) => {
           const fromTime = sourceHandle.getCurrentTime();
           sourceHandle.seekTo(seconds);
           recordSeek(fromTime, seconds);
         },
-        () => ({
-          play: transportAllowedRef.current,
-          pause: transportAllowedRef.current,
-          seek: transportAllowedRef.current,
-        }),
+        () => {
+          const manual = effectivePlaybackRef.current === "manual";
+          const attempt = initialStartRef.current;
+          return {
+            play:
+              manual ||
+              (!effectiveAutoplayRef.current &&
+                attempt.ready &&
+                !attempt.started &&
+                !attempt.pending &&
+                !logClosedRef.current),
+            pause: manual,
+            seek: manual,
+          };
+        },
       ),
-    [sourceHandle, recordSeek, effectivePlayback],
+    [
+      sourceHandle,
+      recordSeek,
+      effectivePlayback,
+      effectiveAutoplay,
+      initialStartVersion,
+      url,
+    ],
   );
   useRegisterPlayback(name, registeredHandle);
 
@@ -771,7 +812,8 @@ export function MediaPlayer({
 
   const handlePlay = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
-      markOnceStarted();
+      // `play` can precede buffering and a rejected play promise. Keep its
+      // log semantics; only `playing`/promise success consumes the start.
       setIsPaused(false);
       // A stopAt or scrub pause that never produced its "pause" event must
       // not misclassify a later, real one.
@@ -779,7 +821,7 @@ export function MediaPlayer({
       scrubPauseRef.current = false;
       recordEvent({ type: "play", videoTime: e.currentTarget.currentTime });
     },
-    [recordEvent, markOnceStarted],
+    [recordEvent],
   );
 
   const handlePause = useCallback(
@@ -811,6 +853,7 @@ export function MediaPlayer({
 
   const handleEnded = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      markInitialStarted();
       setIsPaused(true);
       setCurrentTime(e.currentTarget.currentTime);
       recordEvent({ type: "ended", videoTime: e.currentTarget.currentTime });
@@ -818,13 +861,14 @@ export function MediaPlayer({
         onCompleteRef.current?.();
       }
     },
-    [recordEvent, submitOnComplete],
+    [recordEvent, submitOnComplete, markInitialStarted],
   );
 
   const handleLoadedMetadata = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
       const v = e.currentTarget;
-      setReadyOnceStart(onceStartRef.current);
+      initialStartRef.current.ready = true;
+      notifyInitialStart();
       setDuration(v.duration);
       durationVersionRef.current += 1;
 
@@ -857,7 +901,7 @@ export function MediaPlayer({
         );
       }
     },
-    [],
+    [notifyInitialStart],
   );
 
   const handleError = useCallback(
@@ -1506,34 +1550,36 @@ export function MediaPlayer({
             hideNativeControls={hasControls || effectivePlayback === "once"}
             onHandleReady={(h) => {
               liveYtHandleRef.current = h;
-              setReadyOnceStart(onceStartRef.current);
+              initialStartRef.current.ready = true;
+              notifyInitialStart();
               setYtHandle(h);
               setDuration(h.getDuration());
-              if (!onceStartRef.current.attempted) startOnce(h);
+              if (effectiveAutoplay && !initialStartRef.current.attempted)
+                startInitial(h);
             }}
             // A destroyed player's handle must stop being polled and stop
             // standing in for this player (the source changed or remounted).
             onHandleGone={() => {
               liveYtHandleRef.current = null;
-              setReadyOnceStart(null);
               setYtHandle(null);
-              const attempt = onceStartRef.current;
+              const attempt = initialStartRef.current;
+              attempt.ready = false;
               // Creation settings can replace YouTube's player before it
               // starts. Its old pending attempt will never settle now.
               if (!attempt.started) {
                 attempt.attempted = false;
                 attempt.pending = false;
-                setShowPlayOnce(false);
               }
+              notifyInitialStart();
             }}
             onAutoplayBlocked={() => {
-              const attempt = onceStartRef.current;
+              const attempt = initialStartRef.current;
               if (attempt.started) return;
               attempt.pending = false;
-              if (effectivePlayback === "once") setShowPlayOnce(true);
+              notifyInitialStart();
             }}
             onPlay={(t) => {
-              markOnceStarted();
+              markInitialStarted();
               setIsPaused(false);
               setYtEnded(false);
               stopAtReachedRef.current = false;
@@ -1571,6 +1617,7 @@ export function MediaPlayer({
               recordEvent({ type: "pause", videoTime: t });
             }}
             onEnded={(t) => {
+              markInitialStarted();
               setIsPaused(true);
               setYtEnded(true);
               setCurrentTime(t);
@@ -1595,14 +1642,15 @@ export function MediaPlayer({
               style={{ position: "absolute", inset: 0 }}
             />
           )}
-          {effectivePlayback === "once" && showPlayOnce && (
+          {showPlayOnce && (
             <button
               type="button"
               data-testid="mediaPlayer-playOnce"
               aria-label={messages.mediaPlayVideo}
               tabIndex={0}
               onMouseDown={keepFocusOnPress}
-              onClick={() => startOnce()}
+              onKeyDown={keepInitialButtonActivation}
+              onClick={() => startInitial()}
               style={{
                 position: "absolute",
                 top: "50%",
@@ -1717,6 +1765,7 @@ export function MediaPlayer({
           // is unaffected.
           crossOrigin="anonymous"
           onPlay={handlePlay}
+          onPlaying={markInitialStarted}
           onPause={handlePause}
           onEnded={handleEnded}
           onLoadedMetadata={handleLoadedMetadata}
@@ -1740,6 +1789,7 @@ export function MediaPlayer({
             // See above — required for waveform capture. Same-origin no-op.
             crossOrigin="anonymous"
             onPlay={handlePlay}
+            onPlaying={markInitialStarted}
             onPause={handlePause}
             onEnded={handleEnded}
             onLoadedMetadata={handleLoadedMetadata}
@@ -1837,14 +1887,15 @@ export function MediaPlayer({
             </div>
           )}
 
-          {effectivePlayback === "once" && showPlayOnce && (
+          {showPlayOnce && (
             <button
               type="button"
               data-testid="mediaPlayer-playOnce"
               aria-label={messages.mediaPlayVideo}
               tabIndex={0}
               onMouseDown={keepFocusOnPress}
-              onClick={() => startOnce()}
+              onKeyDown={keepInitialButtonActivation}
+              onClick={() => startInitial()}
               style={{
                 position: "absolute",
                 top: "50%",
@@ -1876,8 +1927,8 @@ export function MediaPlayer({
         </div>
       )}
 
-      {/* Audio-only: play-once fallback button */}
-      {!playVideo && effectivePlayback === "once" && showPlayOnce && (
+      {/* Audio-only: initial play or blocked-autoplay fallback button */}
+      {!playVideo && showPlayOnce && (
         <button
           type="button"
           data-testid="mediaPlayer-playOnce"
@@ -1885,7 +1936,8 @@ export function MediaPlayer({
           dir={localeDir}
           tabIndex={0}
           onMouseDown={keepFocusOnPress}
-          onClick={() => startOnce()}
+          onKeyDown={keepInitialButtonActivation}
+          onClick={() => startInitial()}
           style={{
             background: "rgba(28,28,30,0.96)",
             border: "1px solid rgba(255,255,255,0.2)",

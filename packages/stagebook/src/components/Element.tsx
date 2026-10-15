@@ -430,6 +430,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           }
           stepDuration={element.stepDuration as number | undefined}
           playback={element.playback as "once" | "manual" | undefined}
+          autoplay={element.autoplay as boolean | undefined}
           controls={
             element.controls as
               | {

@@ -1217,6 +1217,7 @@ export const mediaPlayerSchema = elementBaseSchema
     syncToStageTime: z.boolean().optional(),
     submitOnComplete: z.boolean().optional(),
     playback: z.enum(["once", "manual"]).optional(),
+    autoplay: z.boolean().optional(),
     controls: mediaPlayerControlsSchema,
   })
   .strict();

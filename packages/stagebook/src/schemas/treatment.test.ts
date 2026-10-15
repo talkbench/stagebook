@@ -654,6 +654,55 @@ test("discussion with invalid condition is invalid", () => {
 
 // ----------- mediaPlayerSchema ------------
 
+describe("mediaPlayer autoplay is independent of playback policy (#798)", () => {
+  const modes = [
+    {},
+    { playback: "once" },
+    { playback: "manual" },
+    { controls: { playPause: true } },
+    { syncToStageTime: true },
+    { syncToStageTime: true, playback: "manual" },
+  ];
+
+  for (const autoplay of [true, false]) {
+    test.each(modes)(`accepts autoplay=${String(autoplay)} with %j`, (mode) => {
+      const result = elementSchema.safeParse({
+        type: "mediaPlayer",
+        file: "shared/footage.mp4",
+        ...mode,
+        autoplay,
+      });
+      expect(result.success).toBe(true);
+      if (result.success)
+        expect(result.data).toHaveProperty("autoplay", autoplay);
+    });
+  }
+
+  test.each([null, "false", "true", 0, 1, {}, []])(
+    "rejects non-boolean autoplay %j",
+    (autoplay) => {
+      const result = mediaPlayerSchema.safeParse({
+        type: "mediaPlayer",
+        file: "shared/footage.mp4",
+        autoplay,
+      });
+      expect(result.success).toBe(false);
+    },
+  );
+
+  test.each(modes)(
+    "omission stays absent for component mode defaults: %j",
+    (mode) => {
+      const result = mediaPlayerSchema.parse({
+        type: "mediaPlayer",
+        file: "shared/footage.mp4",
+        ...mode,
+      });
+      expect(result).not.toHaveProperty("autoplay");
+    },
+  );
+});
+
 test("mediaPlayer: minimal valid config (url only)", () => {
   const result = mediaPlayerSchema.safeParse({
     type: "mediaPlayer",
