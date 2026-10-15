@@ -175,7 +175,7 @@ By default the video autoplays once with no participant controls. If the browser
 
 Attached timelines respect the same restriction: `Space`, seek/step keys, ruler clicks and playhead drags cannot pause, seek or replay the clip. Participants can still focus the timeline, press `Enter` to mark the current moment, and create or edit annotations. If autoplay is blocked, use the player’s play button to start; clicking it preserves existing timeline focus.
 
-The restriction lasts for this mounted player. Reloading or remounting starts a new viewing attempt; once mode does not make annotations append-only or persist viewing attempts across reloads.
+The restriction lasts for this mounted player and media source. Changing the source, reloading or remounting starts a new viewing attempt; once mode does not make annotations append-only or persist viewing attempts across reloads.
 
 ```yaml
 - type: mediaPlayer
@@ -192,9 +192,34 @@ You can also set this explicitly:
   playback: once
 ```
 
+### Participant-started once playback
+
+Set `autoplay: false` with `playback: once` when the participant should choose when the single viewing starts. This separates the initial start from the transport restriction: an initial play button lets them start when the media is ready, and `Space` on a focused linked timeline can also start it. Neither route permits pausing, seeking or replaying after playback begins.
+
+```yaml
+- type: mediaPlayer
+  name: coding_clip
+  file: https://example.com/clips/scene1.mp4
+  playback: once
+  autoplay: false
+- type: timeline
+  source: coding_clip
+  name: coding_marks
+  selectionType: point
+  multiSelect: true
+```
+
+Click or Tab to the timeline, press `Space` to start, then press `Enter` to mark moments while watching. The timeline stays focused; it does not receive focus automatically. The player's initial play button is also keyboard accessible, and clicking it preserves existing timeline focus.
+
+Only one start request can be pending at a time. If the browser rejects the request, the participant can retry. Once playback starts, the initial-start route closes for that viewing, including after `stopAt` or the end of the file. Once mode does not support pause and resume.
+
+Omitting `autoplay` keeps the existing behavior: once mode attempts autoplay, and a blocked attempt must be started with the player's fallback button. Timeline `Space` is available for the initial start only when `autoplay: false` is explicit.
+
 ### Manual mode (with controls)
 
 When you add `controls`, the playback mode automatically switches to `manual` — the participant controls their own playback. You can also set `playback: manual` explicitly.
+
+Manual mode waits for participant input by default. Set `autoplay: true` to attempt playback when the player is ready; if the browser blocks it, a play button allows a retry. After that initial attempt, the configured manual controls keep their usual pause, seek and replay behavior.
 
 ```yaml
 - type: mediaPlayer
@@ -216,13 +241,18 @@ When you add `controls`, the playback mode automatically switches to `manual` �
 
 ### Synchronized mode
 
-Ties video time to stage elapsed time so all participants stay in sync. Hides all controls — only useful when you also set `submitOnComplete`.
+For native audio/video, positions the clip once using stage elapsed time when the player loads. This is an initial seek, not continuous synchronization: waiting, buffering or pausing can let playback drift from the stage clock. The schema disallows `controls` and explicit `playback: once` with `syncToStageTime`.
+
+YouTube currently uses `startAt` without applying the stage-time offset.
+
+Both `autoplay` values are allowed. This configuration uses effective manual mode, so omitted `autoplay` is `false`; set `autoplay: true` to request an automatic start after the initial positioning.
 
 ```yaml
 - type: mediaPlayer
   name: group_video
-  file: https://youtu.be/QC8iQqtG0hg
+  file: https://example.com/clips/group.mp4
   syncToStageTime: true
+  autoplay: true
   submitOnComplete: true # stage advances when video ends
 ```
 
@@ -231,7 +261,8 @@ Ties video time to stage elapsed time so all participants stay in sync. Hides al
 | Field                     | Type                   | Default  | Description                                                                                                                                    |
 | ------------------------- | ---------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `file`                    | string                 | required | Direct media URL, YouTube URL, asset:// URI, or relative path to a local file                                                                  |
-| `playback`                | `"once"` or `"manual"` | `"once"` | `"once"`: autoplay with no controls; `"manual"`: participant uses controls. Defaults to `"once"` unless `controls` or `syncToStageTime` is set |
+| `playback`                | `"once"` or `"manual"` | `"once"` | `"once"`: one viewing with no pause, seek or replay; `"manual"`: participant transport. Defaults to `"once"` unless `controls` or `syncToStageTime` is set |
+| `autoplay`                | boolean                | mode-dependent | Attempt an automatic initial start. Defaults to `true` in effective once mode and `false` in effective manual mode; `once` + `false` allows a participant-started single viewing |
 | `playVideo`               | boolean                | `true`   | Show the video track (set `false` for audio-only)                                                                                              |
 | `playAudio`               | boolean                | `true`   | Unmute audio                                                                                                                                   |
 | `captionsFile`            | string                 | —        | Path to a `.vtt` captions file                                                                                                                 |
@@ -239,7 +270,7 @@ Ties video time to stage elapsed time so all participants stay in sync. Hides al
 | `stopAt`                  | number                 | —        | Pause and record a `stopAt` event when playback reaches this timestamp                                                                         |
 | `allowScrubOutsideBounds` | boolean                | `false`  | Let participants scrub outside `startAt`/`stopAt` window                                                                                       |
 | `stepDuration`            | number                 | `1`      | Seconds per step button / `,` `.` key press                                                                                                    |
-| `syncToStageTime`         | boolean                | `false`  | Lock video time to stage elapsed time; hides all controls                                                                                      |
+| `syncToStageTime`         | boolean                | `false`  | Position native media once at `startAt` + stage elapsed time; cannot be combined with `controls` or explicit `playback: once` |
 | `submitOnComplete`        | boolean                | `false`  | Auto-submit the stage when the video ends                                                                                                      |
 | `controls.playPause`      | boolean                | —        | Show play/pause button                                                                                                                         |
 | `controls.seek`           | boolean                | —        | Show ±1s seek buttons and scrub bar                                                                                                            |
@@ -318,7 +349,7 @@ Event types:
 
 A form input for marking ranges (intervals) or points (moments) on a media player's timeline. Like a slider saves a number or a radio group saves a choice, the timeline saves a list of time-stamped selections. Use it for annotation and coding tasks — e.g., "mark every segment where Speaker A interrupts Speaker B" or "mark each time the participant nods."
 
-The timeline links to a sibling `mediaPlayer` element by name via the `source` field. It is always a consumer: it reads playback state and sends transport actions through the player, so the player's playback mode and window apply. With `playback: manual`, `Space` plays or pauses and can replay at the clip's end. With `playback: once`, transport actions are unavailable, while annotation input remains available.
+The timeline links to a sibling `mediaPlayer` element by name via the `source` field. It is always a consumer: it reads playback state and sends transport actions through the player, so the player's playback mode and window apply. With `playback: manual`, `Space` plays or pauses and can replay at the clip's end. With `playback: once` and explicit `autoplay: false`, focused timeline `Space` can request the initial start when the player is ready. Once playback starts, transport actions are unavailable, while annotation input remains available. Default once playback still starts automatically or through the player's fallback button.
 
 ```yaml
 - type: mediaPlayer
@@ -427,13 +458,13 @@ In both selection modes, click or drag the time ruler (or drag the playhead) to 
 
 ### Keyboard shortcuts
 
-These keys work while the timeline has focus (click it or Tab to it). For `playback: once`, `Space` and playhead seek/step shortcuts are disabled and omitted from the timeline’s help. Annotation shortcuts, including `Enter`, still work. Editing a selected annotation changes its saved time without seeking the video in once mode.
+These keys work while the timeline has focus (click it or Tab to it). For `playback: once`, playhead seek/step shortcuts are disabled. `Space` is available only for the initial start with explicit `autoplay: false`, while the player is ready and no start request is pending. The help shows only currently available shortcuts. Annotation shortcuts, including `Enter`, still work. Editing a selected annotation changes its saved time without seeking the video in once mode.
 
 **Nothing selected:**
 
 | Key                | Action                                                         |
 | ------------------ | -------------------------------------------------------------- |
-| `Space`            | Play / pause                                                   |
+| `Space`            | Manual mode: play / pause; participant-started once mode: initial start only |
 | `Left` / `Right`   | Move the playhead +-1 second                                   |
 | `,` / `.`          | Move the playhead +-1 frame (~0.033s)                          |
 | `Enter`            | Point mode: place a point at the playhead                      |
@@ -441,13 +472,13 @@ These keys work while the timeline has focus (click it or Tab to it). For `playb
 | `[` / `]`          | Select the previous / next annotation (the playhead stays put) |
 | `Ctrl+Z` / `Cmd+Z` | Undo last action                                               |
 
-A mark made with `Enter` isn't selected, so the arrow keys keep moving the playhead while you mark in real time. To adjust one, select it with `[` / `]` or a click. Marks made by clicking or dragging are selected, so the keys below apply to them right away.
+A mark made with `Enter` isn't selected, so the arrow keys keep moving the playhead while you mark in real time when seeking is allowed. To adjust a mark, select it with `[` / `]` or a click. Marks made by clicking or dragging are selected, so the keys below apply to them right away.
 
 **Range mode (handle active):**
 
 | Key                    | Action                                                          |
 | ---------------------- | --------------------------------------------------------------- |
-| `Left` / `Right`       | Adjust active handle +-1 second (video seeks to show the frame) |
+| `Left` / `Right`       | Adjust active handle +-1 second (video seeks to show the frame only when seeking is allowed) |
 | `,` / `.`              | Adjust active handle +-1 frame (~0.033s)                        |
 | `Tab`                  | Switch active handle (start / end)                              |
 | `Delete` / `Backspace` | Remove the selected range                                       |
@@ -724,7 +755,7 @@ Lengths of intervals, not points in time — they have no reference frame.
 
 ### Bridging the two frames: `syncToStageTime`
 
-When `mediaPlayer.syncToStageTime: true` is set, the player performs a one-time seek on mount: the clip is positioned at `startAt + (current stage elapsed time)` so that, if the participant lets the clip play through, a stage-second corresponds to a media-second from that moment forward. There's no continuous re-sync after mount — if the clip pauses or buffers, the alignment drifts. The schema enforces that `controls` cannot be set when `syncToStageTime: true`, since participant scrubbing would also break alignment.
+For native audio/video, when `mediaPlayer.syncToStageTime: true` is set, the player performs a one-time seek on mount: the clip is positioned at `startAt + (current stage elapsed time)` so that, if the participant lets the clip play through, a stage-second corresponds to a media-second from that moment forward. There's no continuous re-sync after mount — if the clip waits to start, pauses or buffers, the alignment drifts. `autoplay: true` requests a start after that positioning; `false` waits for participant input. Omitting it preserves the effective manual mode's default of `false`. The schema enforces that `controls` cannot be set when `syncToStageTime: true`, since participant scrubbing would also break alignment.
 
 ### Combining frames on one element
 
@@ -739,7 +770,7 @@ A `mediaPlayer` element using both frames at once:
   stopAt: 90 # media time: pause 60s of clip later
 ```
 
-Reading top to bottom: the player appears 5s after the stage begins and hides 55s of stage time later. While visible, the clip plays from media-time 30s toward media-time 90s — that's 60 seconds of clip targeted in only 55 seconds of stage time, so the element hides before `stopAt` is reached. Widening the visibility window (e.g. `hideTime: 65`) lets the clip reach `stopAt`. Setting `syncToStageTime: true` instead would have the clip mount at media-time `(stage elapsed at mount) + 30 = 35` and play through to media-time 90 right as the element hides at stage-time 60 — but only if the participant lets it play through uninterrupted.
+Reading top to bottom: the player appears 5s after the stage begins and hides 55s of stage time later. While visible, the clip plays from media-time 30s toward media-time 90s — that's 60 seconds of clip targeted in only 55 seconds of stage time, so the element hides before `stopAt` is reached. Widening the visibility window (e.g. `hideTime: 65`) lets the clip reach `stopAt`. Setting `syncToStageTime: true` and `autoplay: true` instead would have the clip mount at media-time `(stage elapsed at mount) + 30 = 35` and request playback through to media-time 90 as the element hides at stage-time 60 — provided playback starts promptly and runs uninterrupted.
 
 ## Timing and Visibility Examples
 

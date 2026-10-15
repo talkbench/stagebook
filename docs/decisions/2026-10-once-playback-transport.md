@@ -2,6 +2,13 @@
 
 Status: implements [#779](https://github.com/talkbench/stagebook/issues/779).
 
+The initial-start portion of this decision is extended by
+[Initial playback is independent of transport policy](2026-10-manual-once-start.md)
+([#798](https://github.com/talkbench/stagebook/issues/798)): explicit
+`autoplay: false` permits one participant-started viewing through the player
+or a focused Timeline. The default autoplay behavior and the prohibition on
+pause, seek and replay in once mode remain as described below.
+
 A MediaPlayer in `playback: once` mode exposes a participant-facing handle
 that rejects play, pause and seek. Previously only the player's own controls
 were restricted; a Timeline could pause, rewind and replay through its

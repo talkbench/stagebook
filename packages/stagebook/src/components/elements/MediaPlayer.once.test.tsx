@@ -348,3 +348,210 @@ describe("play-once participant transport (#779)", () => {
     expect(player.seekTo).toHaveBeenCalledWith(5, true);
   });
 });
+
+// Autoplay chooses who initiates playback; once still controls transport.
+describe("independent initial start (#798)", () => {
+  for (const backend of ["HTML5", "YouTube"] as const) {
+    const url =
+      backend === "HTML5"
+        ? "https://example.com/clip.mp4"
+        : "https://youtu.be/QC8iQqtG0hg";
+    function ready() {
+      if (backend === "HTML5") return metadata();
+      act(() => players.at(-1)!.events.onReady?.());
+      return null;
+    }
+    function plays() {
+      return backend === "HTML5" ? htmlPlay : players.at(-1)!.player.playVideo;
+    }
+    function started(video: HTMLVideoElement | null) {
+      act(() => {
+        if (video) video.dispatchEvent(new Event("play"));
+        else players.at(-1)!.events.onStateChange?.({ data: 1 });
+      });
+    }
+
+    it.each([true, false])(
+      `${backend} once without autoplay exposes one ready start (video=%s)`,
+      async (playVideo) => {
+        let resolve!: () => void;
+        htmlPlay.mockReturnValue(
+          new Promise<void>((r) => {
+            resolve = r;
+          }),
+        );
+        render({ url, playback: "once", autoplay: false, playVideo });
+        const beforeReady = currentHandle!;
+        expect(beforeReady.getTransportCapabilities?.()).toEqual({
+          play: false,
+          pause: false,
+          seek: false,
+        });
+        expect(fallback()).toBeNull();
+        const video = ready();
+        expect(plays()).not.toHaveBeenCalled();
+        expect(fallback()).not.toBeNull();
+        expect(currentHandle).not.toBe(beforeReady);
+        const retained = currentHandle!;
+        expect(retained.getTransportCapabilities?.()).toEqual({
+          play: true,
+          pause: false,
+          seek: false,
+        });
+        act(() => {
+          retained.play();
+          retained.play();
+          retained.pause();
+          retained.seekTo(5);
+        });
+        expect(plays()).toHaveBeenCalledOnce();
+        expect(retained.getTransportCapabilities?.().play).toBe(false);
+        expect(currentHandle).not.toBe(retained);
+        expect(fallback()).toBeNull();
+        if (video) expect(video.currentTime).toBe(4);
+        else expect(players.at(-1)!.player.seekTo).not.toHaveBeenCalled();
+        started(video);
+        if (video)
+          await act(async () => {
+            resolve();
+            await Promise.resolve();
+          });
+        act(() => {
+          if (video) video.dispatchEvent(new Event("ended"));
+          else players.at(-1)!.events.onStateChange?.({ data: 0 });
+        });
+        render({ url, playback: "once", autoplay: true, playVideo });
+        render({ url, playback: "once", autoplay: false, playVideo });
+        act(() => retained.play());
+        expect(plays()).toHaveBeenCalledOnce();
+        expect(fallback()).toBeNull();
+        expect(currentHandle!.getTransportCapabilities?.().play).toBe(false);
+      },
+    );
+
+    it(`${backend} rejected user start restores live capabilities and the button`, async () => {
+      htmlPlay.mockRejectedValueOnce(new Error("blocked"));
+      render({ url, playback: "once", autoplay: false });
+      ready();
+      const retained = currentHandle!;
+      act(() => {
+        retained.play();
+        retained.play();
+      });
+      expect(plays()).toHaveBeenCalledOnce();
+      expect(retained.getTransportCapabilities?.().play).toBe(false);
+      if (backend === "HTML5") await flush();
+      else act(() => players.at(-1)!.events.onAutoplayBlocked?.());
+      expect(retained.getTransportCapabilities?.().play).toBe(true);
+      expect(fallback()).not.toBeNull();
+      act(() => fallback()!.click());
+      await flush();
+      expect(plays()).toHaveBeenCalledTimes(2);
+    });
+
+    it(`${backend} explicit manual autoplay starts once and preserves fallback and transport`, async () => {
+      htmlPlay.mockRejectedValueOnce(new Error("blocked"));
+      render({
+        url,
+        playback: "manual",
+        autoplay: true,
+        controls: { playPause: true },
+      });
+      const video = ready();
+      expect(plays()).toHaveBeenCalledOnce();
+      if (backend === "HTML5") await flush();
+      else act(() => players.at(-1)!.events.onAutoplayBlocked?.());
+      expect(fallback()).not.toBeNull();
+      expect(currentHandle!.getTransportCapabilities?.()).toEqual({
+        play: true,
+        pause: true,
+        seek: true,
+      });
+      act(() => fallback()!.click());
+      started(video);
+      await flush();
+      expect(plays()).toHaveBeenCalledTimes(2);
+      act(() => currentHandle!.play());
+      await flush();
+      expect(plays()).toHaveBeenCalledTimes(3);
+      expect(fallback()).toBeNull();
+    });
+  }
+
+  it("a native play event before buffering completes does not consume a rejected start", async () => {
+    let reject!: (reason: Error) => void;
+    htmlPlay.mockReturnValueOnce(
+      new Promise((_resolve, r) => {
+        reject = r;
+      }),
+    );
+    render({ playback: "once", autoplay: false });
+    const video = metadata();
+    act(() => {
+      currentHandle!.play();
+      video.dispatchEvent(new Event("play"));
+      video.dispatchEvent(new Event("waiting"));
+    });
+    expect(currentHandle!.getTransportCapabilities?.().play).toBe(false);
+    await act(async () => {
+      reject(new Error("play interrupted while buffering"));
+      await Promise.resolve();
+    });
+    expect(currentHandle!.getTransportCapabilities?.().play).toBe(true);
+    expect(fallback()).not.toBeNull();
+  });
+
+  it.each([true, false])(
+    "successful native manual playback consumes later once start (video=%s)",
+    (playVideo) => {
+      render({ playback: "manual", playVideo });
+      const video = metadata();
+      act(() => {
+        video.dispatchEvent(new Event("playing"));
+      });
+      render({ playback: "once", autoplay: false, playVideo });
+      expect(currentHandle!.getTransportCapabilities?.().play).toBe(false);
+      expect(fallback()).toBeNull();
+    },
+  );
+
+  it("native stage-time positioning precedes explicit autoplay", async () => {
+    const positions: number[] = [];
+    htmlPlay.mockImplementation(() => {
+      positions.push(container.querySelector("video")!.currentTime);
+      return Promise.resolve();
+    });
+    render({ syncToStageTime: true, autoplay: true, getElapsedTime: () => 3 });
+    metadata();
+    await flush();
+    expect(positions).toEqual([7]);
+  });
+
+  it("a new native source waits for its own readiness and ignores the old user-start rejection", async () => {
+    let reject!: (reason: Error) => void;
+    htmlPlay.mockReturnValueOnce(
+      new Promise((_resolve, r) => {
+        reject = r;
+      }),
+    );
+    render({ playback: "once", autoplay: false });
+    metadata();
+    act(() => currentHandle!.play());
+    expect(htmlPlay).toHaveBeenCalledOnce();
+    render({
+      url: "https://example.com/next.mp4",
+      playback: "once",
+      autoplay: false,
+    });
+    await act(async () => {
+      reject(new Error("old blocked"));
+      await Promise.resolve();
+    });
+    expect(currentHandle!.getTransportCapabilities?.().play).toBe(false);
+    expect(fallback()).toBeNull();
+    metadata();
+    expect(currentHandle!.getTransportCapabilities?.().play).toBe(true);
+    expect(fallback()).not.toBeNull();
+    expect(htmlPlay).toHaveBeenCalledOnce();
+  });
+});

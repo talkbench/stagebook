@@ -17,6 +17,36 @@ import {
 import { fillTemplates } from "../templates/fillTemplates.js";
 import { promptFileSchema } from "./promptFile.js";
 
+describe("resolved MediaPlayer autoplay (#798)", () => {
+  test.each([true, false])("retains explicit autoplay=%s", (autoplay) => {
+    const result = resolvedElementSchema.parse({
+      type: "mediaPlayer",
+      file: "clip.mp4",
+      autoplay,
+    });
+    expect(result).toHaveProperty("autoplay", autoplay);
+  });
+
+  test.each([null, "false", "true", 0, 1, {}, []])(
+    "rejects non-boolean autoplay %j after resolution",
+    (autoplay) => {
+      expect(
+        resolvedElementSchema.safeParse({
+          type: "mediaPlayer",
+          file: "clip.mp4",
+          autoplay,
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  test("does not materialize a default autoplay value", () => {
+    expect(
+      resolvedElementSchema.parse({ type: "mediaPlayer", file: "clip.mp4" }),
+    ).not.toHaveProperty("autoplay");
+  });
+});
+
 describe("resolved expression grammar", () => {
   test("accepts a computed Boolean condition", () => {
     expect(

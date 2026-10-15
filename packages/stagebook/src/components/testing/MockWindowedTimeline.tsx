@@ -21,6 +21,7 @@ export interface MockWindowedTimelineProps {
   controls?: MediaPlayerProps["controls"];
   playVideo?: boolean;
   playback?: MediaPlayerProps["playback"];
+  autoplay?: boolean;
   timelineCount?: number;
 }
 
@@ -35,6 +36,7 @@ export function MockWindowedTimeline({
   controls = { playPause: true, seek: true, step: true },
   playVideo,
   playback = "manual",
+  autoplay,
   timelineCount = 1,
 }: MockWindowedTimelineProps) {
   const [saves, setSaves] = useState<Array<{ key: string; value: unknown }>>(
@@ -53,6 +55,7 @@ export function MockWindowedTimeline({
           stopAt={stopAt}
           allowScrubOutsideBounds={allowScrubOutsideBounds}
           playback={playback}
+          autoplay={autoplay}
           controls={playback === "once" ? undefined : controls}
           playVideo={playVideo}
           save={save}
