@@ -17,7 +17,8 @@ const videoEventBaseSchema = z
 export const videoEventSchema = z.discriminatedUnion("type", [
   videoEventBaseSchema.extend({
     // `removed`: playback closed when the player left the page (#677).
-    type: z.enum(["play", "pause", "ended", "stopAt", "removed"]),
+    // `restored`: a new session starts; any unclosed playback is discarded (#728).
+    type: z.enum(["play", "pause", "ended", "stopAt", "removed", "restored"]),
   }),
   videoEventBaseSchema.extend({
     type: z.literal("seek"),
@@ -34,12 +35,20 @@ export const mediaPlayerRecordSchema = z
   .object({
     name: z.string(),
     url: z.string(),
+    /** Stable authored asset identity, independent of resolved/signed URLs. */
+    sourceId: z.string().optional(),
     startAt: finiteNumber.optional(),
     stopAt: finiteNumber.optional(),
+    /** Full media duration, absent until known. */
+    duration: finiteNumber.nonnegative().optional(),
     events: z.array(videoEventSchema),
     lastVideoTime: finiteNumber,
     /** Merged closed intervals [startSeconds, endSeconds] from the event log. */
     watchedRanges: z.array(z.tuple([finiteNumber, finiteNumber])),
+    /** Unique watched media seconds inside the authored playback window. */
+    watchedSeconds: finiteNumber.nonnegative().optional(),
+    /** Window coverage, absent until its duration is known and positive. */
+    watchedFraction: finiteNumber.min(0).max(1).optional(),
     /** Absent until playback starts (#710). */
     firstPlay: videoEventBaseSchema
       .extend({ type: z.literal("play") })

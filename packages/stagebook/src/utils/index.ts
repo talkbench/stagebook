@@ -1,5 +1,8 @@
 export { compare, type Comparator } from "./compare.js";
-export { computeWatchedRanges } from "./watchedRanges.js";
+export {
+  computeWatchedRanges,
+  computeWatchedCoverage,
+} from "./watchedRanges.js";
 export {
   getReferenceKeyAndPath,
   getNestedValueByPath,

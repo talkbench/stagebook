@@ -67,6 +67,28 @@ describe("createSeekCoalescer (#682)", () => {
     ]);
   });
 
+  it("cancels a pending stream without logging or leaving a timer", () => {
+    seeks.seek(3, 7, 1);
+    seeks.seek(7, 9, 1.1);
+    seeks.cancel();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(logged).toEqual([]);
+    vi.advanceTimersByTime(1000);
+    seeks.flush();
+    expect(logged).toEqual([]);
+  });
+
+  it("starts a fresh stream after cancellation", () => {
+    seeks.seek(3, 7, 1);
+    seeks.cancel();
+    seeks.cancel(); // Cancelling an empty stream is harmless.
+    seeks.seek(0, 2, 4);
+    vi.advanceTimersByTime(500);
+    expect(logged).toEqual([
+      { fromTime: 0, videoTime: 2, stageTimeElapsed: 4 },
+    ]);
+  });
+
   it("drops a stream that returns to where it started", () => {
     seeks.seek(4, 6, 0);
     seeks.seek(6, 4, 0);

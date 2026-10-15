@@ -34,20 +34,23 @@ none, so it doesn't count. A source that stalls after an accepted request
 does count. Using `playing` instead would change what the log records, and
 the watched ranges built from it.
 
-**Rejected for now: coverage amounts.** Gates such as "watched 75%" need
+**Coverage follow-up.** Gates such as "watched 75%" need
 `watchedSeconds` / `watchedFraction`. Those come from closed ranges, so without
 saves during playback they lag until a pause or the end. Making them current
 raises questions about how often to save and about the log's semantics; they
-are deferred to [#719](https://github.com/talkbench/stagebook/issues/719).
+are tracked in [#719](https://github.com/talkbench/stagebook/issues/719).
+The [coverage and restoration decision](2026-10-media-coverage-restore.md)
+adds amounts to existing event saves as a first slice; it does not add live
+progress saves or promise that a 75% gate opens during uninterrupted playback.
 Thresholds stay in conditions, not on the player. A completion setting on the
 player was rejected because each kind of criterion would need its own setting,
 and it allows one threshold per player.
 
-**Known gaps.** The player doesn't read its saved record back on mount. After
-a remount (a reload, or a condition hiding the player and showing it again),
-its next event overwrites the record with a new log, which drops a milestone
-set before. A restored record still gates correctly until that next event
-([#728](https://github.com/talkbench/stagebook/issues/728)). Firefox and Safari
+**Restoration and remaining gaps.** The
+[coverage and restoration decision](2026-10-media-coverage-restore.md)
+addresses [#728](https://github.com/talkbench/stagebook/issues/728) for media
+players: a matching record supplied before mount preserves milestones and
+closed ranges across reloads and conditional remounts. Firefox and Safari
 fire `ended` when a paused video is seeked to the file's end, so there `firstEnd`
 (and `submitOnComplete`) can fire without playback
 ([#729](https://github.com/talkbench/stagebook/issues/729)). A misspelled field,

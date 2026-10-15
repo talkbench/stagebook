@@ -21,6 +21,10 @@ type Logged = {
 };
 
 type Saved = {
+  url: string;
+  duration?: number;
+  watchedSeconds?: number;
+  watchedFraction?: number;
   events: Logged[];
   lastVideoTime: number;
   watchedRanges: [number, number][];
@@ -46,6 +50,10 @@ function mount(props: Partial<MediaPlayerProps> & { url?: string }) {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
+  render(props);
+}
+
+function render(props: Partial<MediaPlayerProps>) {
   act(() =>
     root!.render(
       <PlaybackProvider>
@@ -178,6 +186,54 @@ describe("HTML5", () => {
     expect(record()?.events).toEqual([
       expect.objectContaining({ type: "seek", fromTime: 0, videoTime: 30 }),
     ]);
+  });
+
+  it("keeps measured coverage and duration when playback closes on unmount", () => {
+    const video = setup({ startAt: 10, stopAt: 14 });
+    act(() => handle().play());
+    moveTo(video, 13);
+    unmount();
+    expect(record()).toMatchObject({
+      duration: 100,
+      watchedSeconds: 3,
+      watchedFraction: 0.75,
+      watchedRanges: [[10, 13]],
+    });
+  });
+
+  it("discards a pending seek when a different source replaces the clip", () => {
+    setup();
+    act(() => handle().seekTo(30));
+    render({ url: "https://example.com/other.mp4" });
+    settle();
+    expect(saves).toHaveLength(0);
+
+    act(() => handle().seekTo(5));
+    settle();
+    expect(record()?.url).toBe("https://example.com/other.mp4");
+    expect(record()?.events).toEqual([
+      expect.objectContaining({ type: "seek", videoTime: 5 }),
+    ]);
+  });
+
+  it("closes a pending seek before restoring the same asset at a new URL", () => {
+    const video = setup({ sourceId: "clip.mp4" });
+    act(() => handle().play());
+    moveTo(video, 10);
+    act(() => handle().seekTo(30));
+    render({ sourceId: "clip.mp4", url: "https://example.com/clip.mp4?v=2" });
+    settle();
+    expect(types()).toEqual(["play", "seek"]);
+    expect(record()?.watchedRanges).toEqual([[0, 10]]);
+
+    // The refreshed transport starts at a different position. Only its new
+    // play event may open another interval, after the restored boundary.
+    moveTo(video, 0);
+    act(() => handle().play());
+    moveTo(video, 5);
+    act(() => handle().pause());
+    expect(types()).toEqual(["play", "seek", "restored", "play", "pause"]);
+    expect(record()?.watchedRanges).toEqual([[0, 10]]);
   });
 
   it("logs the time a seek was clamped to by the player's window", () => {
@@ -601,14 +657,38 @@ describe("YouTube", () => {
     delete (window as unknown as { YT?: unknown }).YT;
   });
 
-  async function setup() {
-    mount({ url: "https://youtu.be/QC8iQqtG0hg" });
+  async function setup(props: Partial<MediaPlayerProps> = {}) {
+    mount({ url: "https://youtu.be/QC8iQqtG0hg", ...props });
     await act(async () => {
       await Promise.resolve();
     });
     // Ready: the registered handle is now the YouTube one.
     expect(handle().isYouTube).toBe(true);
   }
+
+  it("saves distinct bounded coverage from pause fragments and keeps it on removal", async () => {
+    await setup({ startAt: 10, stopAt: 14 });
+    stub.time = 10;
+    act(() => handle().play());
+    stub.time = 11.6;
+    act(() => handle().pause());
+    stub.time = 11.603;
+    act(() => handle().play());
+    stub.time = 14;
+    act(() => handle().pause());
+    expect(record()).toMatchObject({ duration: 100 });
+    expect(record()?.watchedSeconds).toBeCloseTo(3.997);
+    expect(record()?.watchedFraction).toBeCloseTo(3.997 / 4);
+    stub.time = 10;
+    act(() => handle().play());
+    stub.time = 12;
+    unmount();
+    expect(record()).toMatchObject({
+      duration: 100,
+      watchedSeconds: 4,
+      watchedFraction: 1,
+    });
+  });
 
   it("logs one seek for a stream made while paused, despite PAUSED reports", async () => {
     await setup();
