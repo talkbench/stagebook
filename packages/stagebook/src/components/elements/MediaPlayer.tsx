@@ -588,12 +588,42 @@ export function MediaPlayer({
     return () => clearInterval(id);
   }, [ytHandle, isPaused, stopAt]);
 
+  // A pause (including a browser power-saving pause), seek or new load can
+  // reject an outstanding play request. Observe it without undoing the pause
+  // or changing the event log: native media events remain authoritative.
+  const playRequestRef = useRef(0);
+  const playHTML5 = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || logClosedRef.current) return;
+    const source = initialStartRef.current;
+    const request = ++playRequestRef.current;
+    void video.play().catch((error: unknown) => {
+      if (
+        logClosedRef.current ||
+        videoRef.current !== video ||
+        initialStartRef.current !== source ||
+        playRequestRef.current !== request
+      )
+        return;
+      setIsPaused(video.paused);
+      // Check the name rather than the browser-specific message or realm.
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "name" in error &&
+        error.name === "AbortError"
+      )
+        return;
+      // Keep genuine failures diagnosable and leave transport available for
+      // a user retry. Native media errors still use the load-error overlay.
+      console.error("[MediaPlayer] Unable to start playback:", error);
+    });
+  }, []);
+
   // HTML5 PlaybackHandle — exposes this player to sibling components via PlaybackProvider
   const handle = useMemo<PlaybackHandle>(
     () => ({
-      play: () => {
-        void videoRef.current?.play();
-      },
+      play: playHTML5,
       pause: () => videoRef.current?.pause(),
       seekTo: (s: number) => {
         if (videoRef.current) videoRef.current.currentTime = s;
@@ -624,7 +654,7 @@ export function MediaPlayer({
       isChannelMuted: (channel: number) =>
         mutedStateRef.current[channel] ?? false,
     }),
-    [channelCount, startWaveformCapture], // re-create when channelCount changes so consumers see the update
+    [channelCount, startWaveformCapture, playHTML5], // re-create when channelCount changes so consumers see the update
   );
   // Use the YouTube handle when available, fall back to the HTML5 handle.
   // Register nothing while the URL is unsafe: no <video> is mounted, so the
@@ -1273,10 +1303,10 @@ export function MediaPlayer({
       setCurrentTime(t);
       if (scrubWasPlayingRef.current) {
         scrubWasPlayingRef.current = false;
-        void v.play();
+        playHTML5();
       }
     },
-    [recordSeek],
+    [recordSeek, playHTML5],
   );
 
   // YouTube-specific scrub callbacks
