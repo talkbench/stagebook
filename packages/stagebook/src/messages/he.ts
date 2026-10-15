@@ -81,12 +81,33 @@ export const he: StagebookMessages = {
   timelineShortcutsTitle: "קיצורי מקלדת",
   timelineShortcutsLabel: "קיצורי מקלדת של ציר הזמן",
   timelineCloseShortcuts: "סגירת קיצורי המקלדת",
-  timelineShortcutRowsRange: () => [
+  timelineShortcutRowsRange: (
+    transport = { play: true, pause: true, seek: true },
+  ) => [
     { keys: "[ / ]", description: "הסימון הקודם / הבא (בלי הזזת ראש הניגון)" },
-    { keys: "Space", description: "ניגון / השהיה" },
-    { keys: "לחיצה / גרירה על סרגל הזמן", description: "הזזת ראש הניגון" },
-    { keys: "←  → (ללא בחירה)", description: "גלילת ראש הניגון ±1 שנ׳" },
-    { keys: ", . (ללא בחירה)", description: "גלילה ±1 פריים" },
+    ...(transport.play || transport.pause
+      ? [
+          {
+            keys: "Space",
+            description:
+              transport.play && transport.pause
+                ? "ניגון / השהיה"
+                : transport.play
+                  ? "ניגון"
+                  : "השהיה",
+          },
+        ]
+      : []),
+    ...(transport.seek
+      ? [
+          {
+            keys: "לחיצה / גרירה על סרגל הזמן",
+            description: "הזזת ראש הניגון",
+          },
+          { keys: "←  → (ללא בחירה)", description: "גלילת ראש הניגון ±1 שנ׳" },
+          { keys: ", . (ללא בחירה)", description: "גלילה ±1 פריים" },
+        ]
+      : []),
     { keys: "לחיצה על שטח ריק", description: "יצירת טווח קצר" },
     { keys: "לחיצה וגרירה", description: "יצירת טווח" },
     { keys: "Enter (לחיצה ממושכת)", description: "סימון טווח תוך כדי צפייה" },
@@ -99,13 +120,31 @@ export const he: StagebookMessages = {
     { keys: "Ctrl+Z / Cmd+Z", description: "ביטול פעולה" },
     { keys: "Escape", description: "ביטול בחירה" },
   ],
-  timelineShortcutRowsPoint: () => [
+  timelineShortcutRowsPoint: (
+    transport = { play: true, pause: true, seek: true },
+  ) => [
     { keys: "[ / ]", description: "הסימון הקודם / הבא (בלי הזזת ראש הניגון)" },
-    { keys: "Space", description: "ניגון / השהיה" },
+    ...(transport.play || transport.pause
+      ? [
+          {
+            keys: "Space",
+            description:
+              transport.play && transport.pause
+                ? "ניגון / השהיה"
+                : transport.play
+                  ? "ניגון"
+                  : "השהיה",
+          },
+        ]
+      : []),
     { keys: "לחיצה על שטח ריק", description: "הצבת נקודה" },
     { keys: "Enter", description: "הצבת נקודה בראש הניגון" },
-    { keys: "←  → (ללא בחירה)", description: "גלילת ראש הניגון ±1 שנ׳" },
-    { keys: ", . (ללא בחירה)", description: "גלילה ±1 פריים" },
+    ...(transport.seek
+      ? [
+          { keys: "←  → (ללא בחירה)", description: "גלילת ראש הניגון ±1 שנ׳" },
+          { keys: ", . (ללא בחירה)", description: "גלילה ±1 פריים" },
+        ]
+      : []),
     { keys: "לחיצה על נקודה", description: "בחירת הנקודה" },
     { keys: "גרירת נקודה", description: "מיקום מחדש" },
     { keys: "←  →", description: "מיקום מחדש ±1 שנ׳" },

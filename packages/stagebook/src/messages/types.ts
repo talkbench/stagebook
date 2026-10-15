@@ -24,6 +24,13 @@
  *  consumers. */
 export type RegisteredLocale = "en" | "he";
 
+/** Available participant transport when describing Timeline shortcuts. */
+export interface TimelineShortcutTransport {
+  play: boolean;
+  pause: boolean;
+  seek: boolean;
+}
+
 /** Study-selected separators. Numeric parsing never consults browser Intl. */
 export interface NumberFormat {
   decimal: string;
@@ -128,10 +135,15 @@ export interface StagebookMessages {
    * functions (not per-row keys) so a locale translates the table wholesale —
    * including instruction-style "keys" like "Click and drag". Physical key
    * names (Space, Tab, Delete, …) may stay untranslated at the translator's
-   * discretion.
+   * discretion. Omitted transport capabilities mean all transport is allowed;
+   * overrides should omit instructions for unavailable transport actions.
    */
-  timelineShortcutRowsRange: () => { keys: string; description: string }[];
-  timelineShortcutRowsPoint: () => { keys: string; description: string }[];
+  timelineShortcutRowsRange: (
+    transport?: TimelineShortcutTransport,
+  ) => { keys: string; description: string }[];
+  timelineShortcutRowsPoint: (
+    transport?: TimelineShortcutTransport,
+  ) => { keys: string; description: string }[];
 
   // --- MediaPlayer ---
   mediaPlayerLabel: string;

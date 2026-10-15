@@ -44,16 +44,27 @@ function makeRefBackedHandle(refs: {
   peaksVersion: { current: number };
   durationVersion: { current: number };
   muted: { current: boolean[] };
+  transport: {
+    current: { play: boolean; pause: boolean; seek: boolean } | undefined;
+  };
+  onTransportCall: (call: string) => void;
 }): PlaybackHandle {
   return {
     play() {
+      refs.onTransportCall("play");
       refs.paused.current = false;
     },
     pause() {
+      refs.onTransportCall("pause");
       refs.paused.current = true;
     },
     seekTo(s: number) {
+      refs.onTransportCall(`seek:${String(s)}`);
       refs.currentTime.current = s;
+    },
+    get getTransportCapabilities() {
+      const capabilities = refs.transport.current;
+      return capabilities ? () => capabilities : undefined;
     },
     getCurrentTime: () => refs.currentTime.current,
     getDuration: () => refs.duration.current,
@@ -115,6 +126,12 @@ export interface MockTimelineProps extends Omit<TimelineProps, "save"> {
   mockBounds?: { start: number; end: number };
   mockCurrentTime?: number;
   mockPaused?: boolean;
+  /** Omit to exercise legacy handles without a transport policy. */
+  mockTransportCapabilities?: {
+    play: boolean;
+    pause: boolean;
+    seek: boolean;
+  };
   mockChannelCount?: number;
   /**
    * Per-channel interleaved min/max peaks. Accepts plain number[][] so
@@ -132,6 +149,7 @@ export function MockTimeline({
   mockBounds,
   mockCurrentTime,
   mockPaused,
+  mockTransportCapabilities,
   mockChannelCount,
   mockPeaks,
   ...props
@@ -147,6 +165,9 @@ export function MockTimeline({
   const boundsRef = useRef(mockBounds ?? null);
   const currentTimeRef = useRef(mockCurrentTime ?? 0);
   const pausedRef = useRef(mockPaused ?? true);
+  const transportRef = useRef(mockTransportCapabilities);
+  transportRef.current = mockTransportCapabilities;
+  const [transportCalls, setTransportCalls] = useState<string[]>([]);
   const channelCountRef = useRef(mockChannelCount ?? 0);
   // Counts how many times Timeline called requestWaveformCapture, so tests
   // can verify that showWaveform=false suppresses it.
@@ -206,6 +227,9 @@ export function MockTimeline({
         peaksVersion: peaksVersionRef,
         durationVersion: durationVersionRef,
         muted: mutedRef,
+        transport: transportRef,
+        onTransportCall: (call) =>
+          setTransportCalls((previous) => [...previous, call]),
       }),
     // Refs only — handle is stable for the lifetime of the mock.
     [],
@@ -260,6 +284,9 @@ export function MockTimeline({
       </div>
       <div data-testid="capture-call-count" style={{ display: "none" }}>
         {String(captureCallCount)}
+      </div>
+      <div data-testid="transport-calls" style={{ display: "none" }}>
+        {JSON.stringify(transportCalls)}
       </div>
       <div data-testid="mute-state" style={{ display: "none" }}>
         {JSON.stringify(muteSnapshot)}

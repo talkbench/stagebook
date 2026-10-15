@@ -96,9 +96,9 @@ describe("YouTube native controls (#699)", () => {
     expect(playerVars()).toEqual({ ...UNCHANGED, controls: 0, disablekb: 1 });
   });
 
-  it("leaves the player variables unchanged in play-once mode", () => {
+  it("turns native controls off in play-once mode", () => {
     mount({});
-    expect(playerVars()).toEqual(UNCHANGED);
+    expect(playerVars()).toEqual({ ...UNCHANGED, controls: 0, disablekb: 1 });
   });
 
   it("leaves them unchanged when every configured control is off", () => {
@@ -151,8 +151,8 @@ describe("YouTube iframe tab order (#724)", () => {
     expect(iframe().getAttribute("tabindex")).toBe("-1");
   });
 
-  it("leaves the iframe's tab order alone without stagebook controls", () => {
-    mount({});
+  it("leaves the iframe's tab order alone in manual mode without stagebook controls", () => {
+    mount({ playback: "manual" });
     expect(iframe().hasAttribute("tabindex")).toBe(false);
   });
 

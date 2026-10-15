@@ -171,7 +171,11 @@ Use a direct URL for any video/audio file, or a YouTube URL for embedded YouTube
 
 ### Play-once mode (default)
 
-By default the video autoplays once with no participant controls. If the browser blocks autoplay (no prior user interaction on the page), a one-time play button appears and disappears after the participant clicks it. This is the right mode when participants should watch a video exactly once without pausing or rewinding.
+By default the video autoplays once with no participant controls. If the browser blocks autoplay (no prior user interaction on the page), a play button appears for the first viewing. Once playback starts, it cannot be started again through Stagebook. This applies to uploaded files and YouTube videos.
+
+Attached timelines respect the same restriction: `Space`, seek/step keys, ruler clicks and playhead drags cannot pause, seek or replay the clip. Participants can still focus the timeline, press `Enter` to mark the current moment, and create or edit annotations. If autoplay is blocked, use the player’s play button to start; clicking it preserves existing timeline focus.
+
+The restriction lasts for this mounted player. Reloading or remounting starts a new viewing attempt; once mode does not make annotations append-only or persist viewing attempts across reloads.
 
 ```yaml
 - type: mediaPlayer
@@ -301,7 +305,7 @@ Event types:
 - `ended`: the file played to its natural end
 - `stopAt`: playback reached `stopAt`
 - `removed`: the player was removed from the page during playback — usually because the stage ended (the participant submitted, or the stage timed out), but also if `hideTime` or a condition hides the player mid-stage. Logged at the position playback had reached, so the last stretch still counts as watched.
-- `seek`: includes `fromTime`, the position before the seek. Logged for every seek made through stagebook: the player's seek buttons and keys, its scrub bar, an attached timeline (ruler, playhead drag, arrow keys, mark edits), and play replaying the clip from the end. A continuous seek (a drag, held keys on the timeline, or holding the player's arrow keys or seek buttons) is logged once it settles, as one seek from where it started to where it landed. A held arrow key's first step is logged at once. When `controls` turns on any of stagebook's controls, a YouTube video's own in-frame controls and keyboard shortcuts are turned off; without them, YouTube's own controls stay on and seeks made with them aren't logged.
+- `seek`: includes `fromTime`, the position before the seek. Logged for every seek made through stagebook: the player's seek buttons and keys, its scrub bar, an attached timeline (ruler, playhead drag, arrow keys, mark edits), and play replaying the clip from the end. A continuous seek (a drag, held keys on the timeline, or holding the player's arrow keys or seek buttons) is logged once it settles, as one seek from where it started to where it landed. A held arrow key's first step is logged at once. When `controls` turns on any of stagebook's controls, a YouTube video's own in-frame controls and keyboard shortcuts are turned off; in manual mode without Stagebook controls, YouTube's own controls stay on and seeks made with them aren't logged. Once mode disables YouTube's native controls and keyboard as well.
 - `speed`: includes `playbackRate`. Logged for the speed button and the `<` / `>` keys.
 
 `lastVideoTime` is the position at the last event.
@@ -314,7 +318,7 @@ Event types:
 
 A form input for marking ranges (intervals) or points (moments) on a media player's timeline. Like a slider saves a number or a radio group saves a choice, the timeline saves a list of time-stamped selections. Use it for annotation and coding tasks — e.g., "mark every segment where Speaker A interrupts Speaker B" or "mark each time the participant nods."
 
-The timeline links to a sibling `mediaPlayer` element by name via the `source` field. It is always a consumer: it reads playback state, seeks, and plays or pauses the player with `Space`, all through the player — so the player's window and end-of-clip replay apply.
+The timeline links to a sibling `mediaPlayer` element by name via the `source` field. It is always a consumer: it reads playback state and sends transport actions through the player, so the player's playback mode and window apply. With `playback: manual`, `Space` plays or pauses and can replay at the clip's end. With `playback: once`, transport actions are unavailable, while annotation input remains available.
 
 ```yaml
 - type: mediaPlayer
@@ -419,11 +423,11 @@ When `trackLabels` is omitted, tracks are labeled by index: "Track 0", "Track 1"
 | Click on an existing point | Select it                                  |
 | Drag a selected point      | Reposition it                              |
 
-In both modes, click or drag the time ruler (or drag the playhead) to seek.
+In both selection modes, click or drag the time ruler (or drag the playhead) to seek when the source player allows seeking. These gestures are disabled for `playback: once`.
 
 ### Keyboard shortcuts
 
-These keys work while the timeline has focus (click it or Tab to it).
+These keys work while the timeline has focus (click it or Tab to it). For `playback: once`, `Space` and playhead seek/step shortcuts are disabled and omitted from the timeline’s help. Annotation shortcuts, including `Enter`, still work. Editing a selected annotation changes its saved time without seeking the video in once mode.
 
 **Nothing selected:**
 

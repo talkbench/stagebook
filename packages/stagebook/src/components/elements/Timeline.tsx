@@ -161,6 +161,11 @@ export function Timeline({
 }: TimelineProps) {
   const messages = useMessages();
   const handle = usePlayback(source);
+  const transport = handle?.getTransportCapabilities?.() ?? {
+    play: true,
+    pause: true,
+    seek: true,
+  };
   const tracksAreaRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -797,7 +802,9 @@ export function Timeline({
           time: t,
         });
         // Sync video to the new handle position so the user sees the frame
-        handleRef.current?.seekTo(t);
+        if (handleRef.current?.getTransportCapabilities?.().seek !== false) {
+          handleRef.current?.seekTo(t);
+        }
         break;
       }
       case "repositionPoint": {
@@ -810,7 +817,9 @@ export function Timeline({
           index: action.index,
           time: t,
         });
-        handleRef.current?.seekTo(t);
+        if (handleRef.current?.getTransportCapabilities?.().seek !== false) {
+          handleRef.current?.seekTo(t);
+        }
         break;
       }
       case "switchHandle":
@@ -827,12 +836,19 @@ export function Timeline({
         break;
       case "togglePlayPause":
         if (handleRef.current?.isPaused()) {
-          handleRef.current.play();
-        } else {
+          if (handleRef.current.getTransportCapabilities?.().play !== false) {
+            handleRef.current.play();
+          }
+        } else if (
+          handleRef.current?.getTransportCapabilities?.().pause !== false
+        ) {
           handleRef.current?.pause();
         }
         break;
       case "seekPlayhead": {
+        if (handleRef.current?.getTransportCapabilities?.().seek === false) {
+          break;
+        }
         const current = handleRef.current?.getCurrentTime() ?? 0;
         const t = clampToMedia(current + action.delta);
         handleRef.current?.seekTo(t);
@@ -1163,10 +1179,16 @@ export function Timeline({
           width={waveformWidth}
           zoomLevel={zoomLevel}
           viewportStart={viewportStart}
-          onSeek={(t) => {
-            browsedAnnotationRef.current = null;
-            handle.seekTo(t);
-          }}
+          onSeek={
+            transport.seek
+              ? (t) => {
+                  if (handle.getTransportCapabilities?.().seek === false)
+                    return;
+                  browsedAnnotationRef.current = null;
+                  handle.seekTo(t);
+                }
+              : undefined
+          }
           onDragStart={() => {
             playheadDraggingRef.current = true;
           }}
@@ -1286,10 +1308,16 @@ export function Timeline({
             rulerHeight={RULER_HEIGHT}
             zoomLevel={zoomLevel}
             viewportStart={viewportStart}
-            onSeek={(t) => {
-              browsedAnnotationRef.current = null;
-              handle.seekTo(t);
-            }}
+            onSeek={
+              transport.seek
+                ? (t) => {
+                    if (handle.getTransportCapabilities?.().seek === false)
+                      return;
+                    browsedAnnotationRef.current = null;
+                    handle.seekTo(t);
+                  }
+                : undefined
+            }
             onDragStart={() => {
               playheadDraggingRef.current = true;
             }}
@@ -1323,6 +1351,7 @@ export function Timeline({
         <HelpPopover
           id={`${safeId}-help`}
           selectionType={selectionType}
+          transport={transport}
           onClose={() => setHelpOpen(false)}
           buttonRef={helpButtonRef}
         />

@@ -39,6 +39,7 @@ describe("MediaPlayer's registered handle follows its window (#675)", () => {
       root!.render(
         <PlaybackProvider>
           <MediaPlayer
+            playback="manual"
             name="clip"
             url="https://example.com/clip.mp4"
             save={() => {}}

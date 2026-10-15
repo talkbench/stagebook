@@ -20,6 +20,8 @@ export interface MockWindowedTimelineProps {
   width?: number;
   controls?: MediaPlayerProps["controls"];
   playVideo?: boolean;
+  playback?: MediaPlayerProps["playback"];
+  timelineCount?: number;
 }
 
 export function MockWindowedTimeline({
@@ -32,6 +34,8 @@ export function MockWindowedTimeline({
   width = 800,
   controls = { playPause: true, seek: true, step: true },
   playVideo,
+  playback = "manual",
+  timelineCount = 1,
 }: MockWindowedTimelineProps) {
   const [saves, setSaves] = useState<Array<{ key: string; value: unknown }>>(
     [],
@@ -48,20 +52,23 @@ export function MockWindowedTimeline({
           startAt={startAt}
           stopAt={stopAt}
           allowScrubOutsideBounds={allowScrubOutsideBounds}
-          playback="manual"
-          controls={controls}
+          playback={playback}
+          controls={playback === "once" ? undefined : controls}
           playVideo={playVideo}
           save={save}
           getElapsedTime={() => 0}
         />
-        <Timeline
-          source="clip"
-          name="marks"
-          selectionType={selectionType}
-          multiSelect={multiSelect}
-          showWaveform={false}
-          save={save}
-        />
+        {Array.from({ length: timelineCount }, (_, index) => (
+          <Timeline
+            key={index}
+            source="clip"
+            name={index === 0 ? "marks" : `marks${index + 1}`}
+            selectionType={selectionType}
+            multiSelect={multiSelect}
+            showWaveform={false}
+            save={save}
+          />
+        ))}
       </div>
       <div data-testid="save-log" style={{ display: "none" }}>
         {JSON.stringify(saves)}
