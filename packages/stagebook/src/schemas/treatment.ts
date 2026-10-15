@@ -490,11 +490,12 @@ const layoutBySeatSchema = z
   .superRefine((value, ctx) => {
     Object.keys(value).forEach((key) => {
       const seat = Number(key);
-      if (!Number.isInteger(seat) || seat < 0) {
+      if (!/^(?:0|[1-9]\d*)$/.test(key) || !Number.isInteger(seat)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: [key],
-          message: "Layout keys must be zero-based nonnegative integers.",
+          message:
+            "Layout keys must be zero-based nonnegative integers in canonical decimal notation (0, 1, 2, ...).",
         });
       }
     });
@@ -2122,8 +2123,25 @@ export const treatmentSchema = altTemplateContext(
               }
             });
 
-            const { rooms, showToPositions, hideFromPositions } =
+            const { layout, rooms, showToPositions, hideFromPositions } =
               discussion || {};
+            if (layout && typeof layout === "object") {
+              Object.keys(layout).forEach((key) => {
+                if (Number(key) >= playerCount) {
+                  ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: [
+                      "gameStages",
+                      stageIndex,
+                      "discussion",
+                      "layout",
+                      key,
+                    ],
+                    message: `layout index ${key} in discussion of stage "${stage.name}" exceeds playerCount of ${playerCount}.`,
+                  });
+                }
+              });
+            }
             if (Array.isArray(rooms) && rooms.length > 0) {
               const allPositions: number[] = Array.from(
                 { length: playerCount },
