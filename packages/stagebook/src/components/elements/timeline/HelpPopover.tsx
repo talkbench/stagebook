@@ -3,12 +3,14 @@ import { createPortal } from "react-dom";
 import { Button } from "../../form/Button.js";
 import { focusRingCss } from "../../focusRing.js";
 import { useMessages, useIsRTL } from "../../StagebookProvider.js";
+import type { TimelineShortcutTransport } from "../../../messages/types.js";
 
 export interface HelpPopoverProps {
   id?: string;
   selectionType: "range" | "point";
   onClose: () => void;
   buttonRef: React.RefObject<HTMLButtonElement | null>;
+  transport?: TimelineShortcutTransport;
 }
 
 export function HelpPopover({
@@ -16,6 +18,7 @@ export function HelpPopover({
   selectionType,
   onClose,
   buttonRef,
+  transport,
 }: HelpPopoverProps) {
   const messages = useMessages();
   const isRTL = useIsRTL();
@@ -27,8 +30,8 @@ export function HelpPopover({
   // "Click and drag".
   const rawShortcuts =
     selectionType === "range"
-      ? messages.timelineShortcutRowsRange()
-      : messages.timelineShortcutRowsPoint();
+      ? messages.timelineShortcutRowsRange(transport)
+      : messages.timelineShortcutRowsPoint(transport);
   // Robustness (not a security boundary — `messages` is trusted host input):
   // a malformed host override returning a non-array would otherwise crash the
   // whole popover at .map(); degrade to an empty table instead.

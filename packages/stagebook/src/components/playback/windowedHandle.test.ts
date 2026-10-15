@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { seekWindow, withSeekWindow } from "./windowedHandle.js";
 import type { PlaybackHandle } from "./PlaybackHandle.js";
 
@@ -86,6 +86,56 @@ describe("withSeekWindow (#675)", () => {
     windowed.seekTo(10);
     expect(custom).toEqual([90, 60]);
     expect(seeks).toEqual([]);
+  });
+
+  it("allows every transport action on a legacy handle", () => {
+    const { handle, seeks } = recordingHandle();
+    const play = vi.fn();
+    const pause = vi.fn();
+    handle.play = play;
+    handle.pause = pause;
+    const windowed = withSeekWindow(handle, () => ({ start: 0, end: 100 }));
+    expect(windowed.getTransportCapabilities?.()).toEqual({
+      play: true,
+      pause: true,
+      seek: true,
+    });
+    windowed.play();
+    windowed.pause();
+    windowed.seekTo(25);
+    expect(play).toHaveBeenCalledOnce();
+    expect(pause).toHaveBeenCalledOnce();
+    expect(seeks).toEqual([25]);
+  });
+
+  it("reads the inner policy dynamically and rejects actions before custom callbacks", () => {
+    const { handle } = recordingHandle();
+    let capabilities = { play: false, pause: false, seek: false };
+    handle.getTransportCapabilities = () => capabilities;
+    const play = vi.fn();
+    const pause = vi.fn();
+    const seek = vi.fn();
+    handle.pause = pause;
+    const windowed = withSeekWindow(
+      handle,
+      () => ({ start: 4, end: 6 }),
+      play,
+      seek,
+    );
+    windowed.play();
+    windowed.pause();
+    windowed.seekTo(100);
+    expect(play).not.toHaveBeenCalled();
+    expect(pause).not.toHaveBeenCalled();
+    expect(seek).not.toHaveBeenCalled();
+    capabilities = { play: true, pause: false, seek: true };
+    expect(windowed.getTransportCapabilities?.()).toEqual(capabilities);
+    windowed.play();
+    windowed.pause();
+    windowed.seekTo(100);
+    expect(play).toHaveBeenCalledOnce();
+    expect(pause).not.toHaveBeenCalled();
+    expect(seek).toHaveBeenCalledWith(6);
   });
 
   it("reports the window", () => {

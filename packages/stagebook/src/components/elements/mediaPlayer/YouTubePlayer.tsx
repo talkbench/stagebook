@@ -35,6 +35,7 @@ interface YTPlayerOptions {
   };
   events?: {
     onReady?: () => void;
+    onAutoplayBlocked?: () => void;
     onStateChange?: (event: { data: number }) => void;
   };
 }
@@ -145,6 +146,7 @@ export interface CreateYouTubePlayerOptions {
   onPlay: (currentTime: number) => void;
   onPause: (currentTime: number) => void;
   onEnded: (currentTime: number) => void;
+  onAutoplayBlocked?: () => void;
 }
 
 export interface YouTubePlayerController {
@@ -176,6 +178,9 @@ export function createYouTubePlayer(
         onReady: () => {
           if (destroyed || !player) return;
           opts.onHandleReady(buildYouTubeHandle(player));
+        },
+        onAutoplayBlocked: () => {
+          if (!destroyed) opts.onAutoplayBlocked?.();
         },
         onStateChange: (event) => {
           if (destroyed || !player) return;
@@ -224,6 +229,7 @@ export interface YouTubePlayerProps {
   onPlay: (currentTime: number) => void;
   onPause: (currentTime: number) => void;
   onEnded: (currentTime: number) => void;
+  onAutoplayBlocked?: () => void;
 }
 
 /**
@@ -239,6 +245,7 @@ export function YouTubePlayer({
   onPlay,
   onPause,
   onEnded,
+  onAutoplayBlocked,
 }: YouTubePlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -249,11 +256,13 @@ export function YouTubePlayer({
   const onPlayRef = useRef(onPlay);
   const onPauseRef = useRef(onPause);
   const onEndedRef = useRef(onEnded);
+  const onAutoplayBlockedRef = useRef(onAutoplayBlocked);
   onHandleReadyRef.current = onHandleReady;
   onHandleGoneRef.current = onHandleGone;
   onPlayRef.current = onPlay;
   onPauseRef.current = onPause;
   onEndedRef.current = onEnded;
+  onAutoplayBlockedRef.current = onAutoplayBlocked;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -266,6 +275,7 @@ export function YouTubePlayer({
       onPlay: (t) => onPlayRef.current(t),
       onPause: (t) => onPauseRef.current(t),
       onEnded: (t) => onEndedRef.current(t),
+      onAutoplayBlocked: () => onAutoplayBlockedRef.current?.(),
     });
     return () => {
       destroy();

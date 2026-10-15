@@ -32,7 +32,7 @@ export interface PlayheadProps {
   /** Left edge of the visible region in seconds. */
   viewportStart: number;
   /** Called during drag to seek to a new time. */
-  onSeek: (time: number) => void;
+  onSeek?: (time: number) => void;
   /** Called on pointerdown when a drag starts. Lets the parent suppress
    *  auto-scroll while the user is in manual control of the playhead. */
   onDragStart?: () => void;
@@ -71,7 +71,7 @@ export function Playhead({
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || !onSeek) return;
       e.stopPropagation();
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -81,12 +81,12 @@ export function Playhead({
       isDragging.current = true;
       onDragStart?.();
     },
-    [onDragStart],
+    [onDragStart, onSeek],
   );
 
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
-      if (!isDragging.current) return;
+      if (!isDragging.current || !onSeek) return;
       // Convert pointer position to time using the tracks container's rect.
       // The playhead's parent is the same container as the SelectionOverlay,
       // offset by GUTTER_WIDTH — so we use the parent's bounding rect.
@@ -176,7 +176,7 @@ export function Playhead({
           transform: "translateX(-50%)",
           pointerEvents: "auto",
           background: "var(--stagebook-playhead, #be123c)",
-          cursor: "ew-resize",
+          cursor: onSeek ? "ew-resize" : "default",
           userSelect: "none",
         }}
       >
@@ -196,7 +196,7 @@ export function Playhead({
             borderTop: "5px solid var(--stagebook-playhead, #be123c)",
             // Inherit auto pointer events so clicks bubble up to the box.
             pointerEvents: "auto",
-            cursor: "ew-resize",
+            cursor: onSeek ? "ew-resize" : "default",
           }}
         />
       </div>

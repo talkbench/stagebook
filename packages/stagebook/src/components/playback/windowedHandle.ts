@@ -1,4 +1,7 @@
-import type { PlaybackHandle } from "./PlaybackHandle.js";
+import type {
+  PlaybackHandle,
+  TransportCapabilities,
+} from "./PlaybackHandle.js";
 
 type Bounds = { start: number; end: number };
 
@@ -48,11 +51,25 @@ export function withSeekWindow(
   /** How to seek to an in-window time; defaults to the inner handle's own
    *  seekTo. A MediaPlayer passes one that also logs the seek (#682). */
   seekTo: (seconds: number) => void = (seconds) => inner.seekTo(seconds),
+  /** Current participant policy. Read on every call so retained handles
+   *  obey mode changes too (#779). Legacy handles allow every action. */
+  getTransportCapabilities: () => TransportCapabilities = () =>
+    inner.getTransportCapabilities?.() ?? {
+      play: true,
+      pause: true,
+      seek: true,
+    },
 ): PlaybackHandle {
   return {
-    play,
-    pause: () => inner.pause(),
+    getTransportCapabilities,
+    play: () => {
+      if (getTransportCapabilities().play) play();
+    },
+    pause: () => {
+      if (getTransportCapabilities().pause) inner.pause();
+    },
     seekTo: (seconds: number) => {
+      if (!getTransportCapabilities().seek) return;
       const { start, end } = getBounds();
       seekTo(Math.max(start, Math.min(end, seconds)));
     },

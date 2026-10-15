@@ -3217,11 +3217,15 @@ test("YouTube without stagebook controls: no layer, and the iframe keeps its tab
   mount,
   page,
 }) => {
-  // YouTube's own controls are the interface here.
+  // YouTube's own controls are the interface in explicit manual mode.
   await installYTMock(page);
   await ytStubActsLikeTheFrame(page);
   const component = await mount(
-    <MockMediaPlayer url="https://youtu.be/QC8iQqtG0hg" name="test" />,
+    <MockMediaPlayer
+      url="https://youtu.be/QC8iQqtG0hg"
+      name="test"
+      playback="manual"
+    />,
   );
   await fireYTOnReady(page);
   await expect(component.locator("iframe")).toBeAttached();

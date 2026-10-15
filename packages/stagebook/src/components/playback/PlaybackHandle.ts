@@ -1,5 +1,16 @@
+/** Transport actions a participant may request through a shared handle. */
+export interface TransportCapabilities {
+  play: boolean;
+  pause: boolean;
+  seek: boolean;
+}
+
 /** Unified playback interface. Both HTML5 VideoCore and YouTubePlayer expose this via ref. */
 export interface PlaybackHandle {
+  /** Missing on legacy handles means all transport actions are allowed.
+   *  These capabilities describe participant controls; internal autoplay and
+   *  clip-boundary enforcement use the underlying player directly. */
+  getTransportCapabilities?(): TransportCapabilities;
   play(): void;
   pause(): void;
   seekTo(seconds: number): void;

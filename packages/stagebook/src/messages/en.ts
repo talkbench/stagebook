@@ -80,12 +80,30 @@ export const en: StagebookMessages = {
   timelineShortcutsTitle: "Keyboard shortcuts",
   timelineShortcutsLabel: "Timeline keyboard shortcuts",
   timelineCloseShortcuts: "Close keyboard shortcuts",
-  timelineShortcutRowsRange: () => [
+  timelineShortcutRowsRange: (
+    transport = { play: true, pause: true, seek: true },
+  ) => [
     { keys: "[ / ]", description: "Previous / next annotation (no seek)" },
-    { keys: "Space", description: "Play / Pause" },
-    { keys: "Click / drag the ruler", description: "Seek playhead" },
-    { keys: "←  → (no selection)", description: "Scrub playhead ±1s" },
-    { keys: ", . (no selection)", description: "Scrub ±1 frame" },
+    ...(transport.play || transport.pause
+      ? [
+          {
+            keys: "Space",
+            description:
+              transport.play && transport.pause
+                ? "Play / Pause"
+                : transport.play
+                  ? "Play"
+                  : "Pause",
+          },
+        ]
+      : []),
+    ...(transport.seek
+      ? [
+          { keys: "Click / drag the ruler", description: "Seek playhead" },
+          { keys: "←  → (no selection)", description: "Scrub playhead ±1s" },
+          { keys: ", . (no selection)", description: "Scrub ±1 frame" },
+        ]
+      : []),
     { keys: "Click empty space", description: "Create short range" },
     { keys: "Click and drag", description: "Create range" },
     {
@@ -101,13 +119,31 @@ export const en: StagebookMessages = {
     { keys: "Ctrl+Z / Cmd+Z", description: "Undo" },
     { keys: "Escape", description: "Deselect" },
   ],
-  timelineShortcutRowsPoint: () => [
+  timelineShortcutRowsPoint: (
+    transport = { play: true, pause: true, seek: true },
+  ) => [
     { keys: "[ / ]", description: "Previous / next annotation (no seek)" },
-    { keys: "Space", description: "Play / Pause" },
+    ...(transport.play || transport.pause
+      ? [
+          {
+            keys: "Space",
+            description:
+              transport.play && transport.pause
+                ? "Play / Pause"
+                : transport.play
+                  ? "Play"
+                  : "Pause",
+          },
+        ]
+      : []),
     { keys: "Click empty space", description: "Place point" },
     { keys: "Enter", description: "Place point at playhead" },
-    { keys: "←  → (no selection)", description: "Scrub playhead ±1s" },
-    { keys: ", . (no selection)", description: "Scrub ±1 frame" },
+    ...(transport.seek
+      ? [
+          { keys: "←  → (no selection)", description: "Scrub playhead ±1s" },
+          { keys: ", . (no selection)", description: "Scrub ±1 frame" },
+        ]
+      : []),
     { keys: "Click point", description: "Select it" },
     { keys: "Drag point", description: "Reposition" },
     { keys: "←  →", description: "Reposition ±1s" },
