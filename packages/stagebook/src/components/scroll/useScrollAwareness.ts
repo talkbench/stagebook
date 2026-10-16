@@ -1,195 +1,275 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useLayoutEffect, useCallback, useRef } from "react";
 import { isAtBottom } from "./scrollUtils.js";
 
-/**
- * Detects when new content appears below the viewport and either:
- * - Auto-scrolls to "peek" the content if user is near bottom
- * - Shows an indicator if user is not near bottom
- */
+interface Attachment {
+  container: HTMLElement;
+  threshold: number;
+  resetKey: string | number | undefined;
+  cleanup: () => void;
+}
+
+/** Indicates new content below the viewport, peeking only while the reader
+ * stays near the bottom. Explicit navigation and input take precedence. */
 export function useScrollAwareness(
   containerRef: React.RefObject<HTMLElement | null>,
-  options: { threshold?: number } = {},
+  options: {
+    threshold?: number;
+    /** Stable stage identity. Changes cancel pending work and start at the
+     * top; ordinary response/content updates must keep the same key. */
+    resetKey?: string | number;
+  } = {},
 ): { showIndicator: boolean; dismissIndicator: () => void } {
-  const { threshold = 120 } = options;
+  const { threshold = 120, resetKey } = options;
   const [showIndicator, setShowIndicator] = useState(false);
-  const prevScrollHeightRef = useRef(0);
-  const wasAtBottomRef = useRef(true);
-  const isInitializedRef = useRef(false);
-  // Auto-peek scrolling is meant to keep an *engaged* user oriented when
-  // new content arrives — e.g., a participant who scrolled to the
-  // bottom of a discussion to read the latest, then sees a new message.
-  // It should NOT fire on fresh page load, when the user hasn't read the
-  // top yet but the container is technically "at bottom" because content
-  // happens to fit in the viewport (or hasn't fully loaded). This flag
-  // gates peek on actual user scroll engagement; the indicator branch
-  // is unaffected.
-  const hasUserScrolledRef = useRef(false);
+  const indicatorRef = useRef(false);
+  const attachmentRef = useRef<Attachment | null>(null);
+  const updateIndicator = useCallback((visible: boolean) => {
+    indicatorRef.current = visible;
+    setShowIndicator(visible);
+  }, []);
 
-  const checkAtBottom = useCallback(() => {
+  // A ref's DOM node can change without its object or the stage key changing
+  // (waiting screens, conditional discussion layouts). Check each commit,
+  // keeping the existing subscription and animation when nothing changed.
+  useLayoutEffect(() => {
     const container = containerRef.current;
-    if (!container) return true;
-    return isAtBottom(
-      container.scrollHeight,
-      container.scrollTop,
-      container.clientHeight,
-      threshold,
-    );
-  }, [containerRef, threshold]);
+    const previous = attachmentRef.current;
+    if (
+      previous?.container === container &&
+      previous.threshold === threshold &&
+      previous.resetKey === resetKey
+    )
+      return;
+    previous?.cleanup();
+    attachmentRef.current = null;
+    if (!container) return;
 
-  // Handle scroll events — dismiss indicator when user scrolls down
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return undefined;
+    if (
+      resetKey !== undefined &&
+      (previous?.resetKey !== resetKey || previous.container !== container)
+    ) {
+      // "auto" would inherit CSS scroll-behavior:smooth in discussion mode.
+      container.scrollTo({ top: 0, behavior: "instant" });
+      updateIndicator(false);
+    }
 
+    let disposed = false;
+    let prevScrollHeight = container.scrollHeight;
+    let initialized = false;
+    let hasUserScrolled = container.scrollTop > 0;
+    const atBottom = () =>
+      isAtBottom(
+        container.scrollHeight,
+        container.scrollTop,
+        container.clientHeight,
+        threshold,
+      );
+    let wasAtBottom = atBottom();
+    let inputVersion = 0;
+    let pointerDown = false;
+    let delay: ReturnType<typeof setTimeout> | undefined;
+    let animationFrame: number | undefined;
+    let mutationFrame: number | undefined;
+    // Track observed/written position even while idle: an external scroll can
+    // precede the mutation check that would schedule the first peek. Read back
+    // animation writes so browser rounding/clamping is not mistaken for input.
+    let lastScrollTop = container.scrollTop;
+    let clampedFrom: number | undefined;
+    let peeking = false;
+
+    const cancelPeek = () => {
+      clearTimeout(delay);
+      if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
+      delay = undefined;
+      animationFrame = undefined;
+      peeking = false;
+    };
+    const indicateRemaining = () => updateIndicator(!atBottom());
+    const interrupt = () => {
+      const hadPeek = peeking;
+      inputVersion++;
+      clampedFrom = undefined;
+      cancelPeek();
+      if (hadPeek) indicateRemaining();
+    };
+    const externallyMoved = () => {
+      const top = container.scrollTop;
+      const max = Math.max(0, container.scrollHeight - container.clientHeight);
+      if (Math.abs(top - lastScrollTop) <= 1) return false;
+      // Removing content (including our indicator) can clamp the position.
+      // Chromium may restore the pre-clamp position on later growth; other
+      // browsers keep the clamped position. Neither is new scrolling intent.
+      if (Math.abs(top - Math.min(lastScrollTop, max)) <= 1) {
+        clampedFrom = Math.max(clampedFrom ?? lastScrollTop, lastScrollTop);
+        lastScrollTop = top;
+        return false;
+      }
+      if (
+        clampedFrom !== undefined &&
+        Math.abs(top - Math.min(clampedFrom, max)) <= 1
+      ) {
+        lastScrollTop = top;
+        if (Math.abs(top - clampedFrom) <= 1) clampedFrom = undefined;
+        return false;
+      }
+      return true;
+    };
     const handleScroll = () => {
-      // Tie engagement to the actual scroll position, not "any scroll
-      // event has fired." In host-mode the scroll container outlives
-      // every stage, so a sticky engagement flag would stay true for
-      // the whole session — and after the first stage where the user
-      // scrolled, every subsequent stage's overflow would auto-peek
-      // even from scrollTop=0. Anchoring to `scrollTop > 0` lets the
-      // standard stage-transition reset (scrollTop -> 0) also reset
-      // engagement. (#294)
-      hasUserScrolledRef.current = container.scrollTop > 0;
-      wasAtBottomRef.current = checkAtBottom();
-      if (showIndicator && wasAtBottomRef.current) {
-        setShowIndicator(false);
-      }
+      if (externallyMoved()) interrupt();
+      lastScrollTop = container.scrollTop;
+      hasUserScrolled = container.scrollTop > 0;
+      wasAtBottom = atBottom();
+      if (wasAtBottom) updateIndicator(false);
+    };
+    const handlePointerDown = () => {
+      pointerDown = true;
+      interrupt();
+    };
+    const handlePointerUp = () => {
+      pointerDown = false;
     };
 
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    wasAtBottomRef.current = checkAtBottom();
-    prevScrollHeightRef.current = container.scrollHeight;
-
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, [containerRef, checkAtBottom, showIndicator]);
-
-  // MutationObserver detects when React renders new content; a
-  // ResizeObserver catches viewport-size changes that bring content
-  // into fit. Both feed into the same "is there content to scroll to?"
-  // calculation so the indicator can be dismissed whenever that becomes
-  // false (#291).
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return undefined;
-
-    const dismissIfFits = () => {
-      if (container.scrollHeight <= container.clientHeight) {
-        setShowIndicator(false);
-      }
-    };
-
-    const checkForNewContent = () => {
+    const checkForNewContent = (scheduledInputVersion: number) => {
+      if (disposed) return;
+      // A host reset can run earlier in this same frame, before its scroll
+      // event. Do not replace the old animation and lose that evidence.
+      if (externallyMoved()) handleScroll();
       const currentScrollHeight = container.scrollHeight;
       const scrollTop = container.scrollTop;
-      const prevScrollHeight = prevScrollHeightRef.current;
-
-      // Dismiss whenever everything fits — covers stage transitions
-      // where a previously-overflowing stage left the indicator on,
-      // then the new stage's content is short enough that there's
-      // nothing to scroll to. (#291)
-      dismissIfFits();
+      if (currentScrollHeight < prevScrollHeight) cancelPeek();
+      if (currentScrollHeight <= container.clientHeight) updateIndicator(false);
 
       if (currentScrollHeight > prevScrollHeight && prevScrollHeight > 0) {
-        if (!isInitializedRef.current) {
-          isInitializedRef.current = true;
-          prevScrollHeightRef.current = currentScrollHeight;
-          return;
-        }
-
-        // Nothing to peek or indicate if everything still fits in the
-        // viewport. Spares us from cueing on growths that don't push
-        // content below the fold (e.g. a header reflow inside short
-        // content).
-        if (currentScrollHeight <= container.clientHeight) {
-          prevScrollHeightRef.current = currentScrollHeight;
-          return;
-        }
-
-        const wasAtBottomNow =
-          wasAtBottomRef.current ||
-          isAtBottom(
-            prevScrollHeight,
-            scrollTop,
-            container.clientHeight,
-            threshold,
-          );
-        const heightDelta = currentScrollHeight - prevScrollHeight;
-
-        if (wasAtBottomNow && hasUserScrolledRef.current) {
-          // User was near bottom AND has scrolled at least once — a
-          // meaningful "I've read this and want to keep up with new
-          // content" signal. Peek the new content into view.
-          //
-          // Without the engagement gate, async content arriving on
-          // first paint triggers a peek before the user has read the
-          // top — disorienting and unwanted. (Reported observation
-          // from the viewer migration.)
-          const peekAmount = Math.min(heightDelta, 150);
-          const startScrollTop = scrollTop;
-          const duration = 900;
-          const startTime = performance.now();
-
-          const animateScroll = (currentTime: number) => {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / duration, 1);
-            const easeInOut =
-              progress < 0.5
-                ? 4 * progress * progress * progress
-                : 1 - Math.pow(-2 * progress + 2, 3) / 2;
-            container.scrollTop = startScrollTop + peekAmount * easeInOut;
-            if (progress < 1) {
-              requestAnimationFrame(animateScroll);
-            }
-          };
-
-          setTimeout(() => requestAnimationFrame(animateScroll), 50);
-        } else {
-          // Either user isn't near the bottom, or they haven't engaged
-          // yet (no peek without engagement). Either way, content now
-          // overflows — surface the "more below" indicator so it's
-          // discoverable.
-          setShowIndicator(true);
+        // Absorb initial async content; never treat first load as engagement.
+        if (!initialized) {
+          initialized = true;
+        } else if (currentScrollHeight > container.clientHeight) {
+          const nearOldBottom =
+            wasAtBottom ||
+            isAtBottom(
+              prevScrollHeight,
+              scrollTop,
+              container.clientHeight,
+              threshold,
+            );
+          if (
+            nearOldBottom &&
+            hasUserScrolled &&
+            !pointerDown &&
+            scheduledInputVersion === inputVersion &&
+            !indicatorRef.current
+          ) {
+            const peekAmount = Math.min(
+              currentScrollHeight - prevScrollHeight,
+              150,
+            );
+            cancelPeek();
+            peeking = true;
+            const startTime = performance.now();
+            const animateScroll = (currentTime: number) => {
+              animationFrame = undefined;
+              if (disposed) return;
+              if (externallyMoved()) {
+                interrupt();
+                return;
+              }
+              const progress = Math.min((currentTime - startTime) / 900, 1);
+              const easeInOut =
+                progress < 0.5
+                  ? 4 * progress * progress * progress
+                  : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+              container.scrollTo({
+                top: scrollTop + peekAmount * easeInOut,
+                behavior: "instant",
+              });
+              lastScrollTop = container.scrollTop;
+              clampedFrom = undefined;
+              if (progress < 1)
+                animationFrame = requestAnimationFrame(animateScroll);
+              else peeking = false;
+            };
+            delay = setTimeout(() => {
+              delay = undefined;
+              animationFrame = requestAnimationFrame(animateScroll);
+            }, 50);
+          } else {
+            // A visible indicator itself adds height. Keep indicating rather
+            // than letting that mutation resurrect a canceled animation.
+            updateIndicator(true);
+          }
         }
       }
-
-      prevScrollHeightRef.current = currentScrollHeight;
+      prevScrollHeight = currentScrollHeight;
     };
 
     const mutationObserver = new MutationObserver(() => {
-      requestAnimationFrame(() => checkForNewContent());
+      if (mutationFrame !== undefined) return;
+      const scheduledInputVersion = inputVersion;
+      mutationFrame = requestAnimationFrame(() => {
+        mutationFrame = undefined;
+        checkForNewContent(scheduledInputVersion);
+      });
     });
-
     mutationObserver.observe(container, {
       childList: true,
       subtree: true,
       characterData: true,
     });
-
-    // ResizeObserver covers the case where the viewport grows (or the
-    // container shrinks) enough to bring overflowing content into fit
-    // without any DOM mutation. Guard the constructor — older browsers,
-    // some embedded webviews, and test environments without the API
-    // would otherwise throw at hook setup.
     const resizeObserver =
       typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(() => {
-            dismissIfFits();
+            if (!disposed && container.scrollHeight <= container.clientHeight)
+              updateIndicator(false);
           })
         : null;
     resizeObserver?.observe(container);
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    container.addEventListener("pointerdown", handlePointerDown, {
+      capture: true,
+      passive: true,
+    });
+    for (const type of ["wheel", "touchstart", "keydown", "focusin"]) {
+      container.addEventListener(type, interrupt, {
+        capture: true,
+        passive: true,
+      });
+    }
+    const document = container.ownerDocument;
+    document.addEventListener("pointerup", handlePointerUp, true);
+    document.addEventListener("pointercancel", handlePointerUp, true);
 
-    prevScrollHeightRef.current = container.scrollHeight;
-
-    return () => {
-      mutationObserver.disconnect();
-      resizeObserver?.disconnect();
+    attachmentRef.current = {
+      container,
+      threshold,
+      resetKey,
+      cleanup: () => {
+        disposed = true;
+        cancelPeek();
+        if (mutationFrame !== undefined) cancelAnimationFrame(mutationFrame);
+        mutationObserver.disconnect();
+        resizeObserver?.disconnect();
+        container.removeEventListener("scroll", handleScroll);
+        container.removeEventListener("pointerdown", handlePointerDown, true);
+        for (const type of ["wheel", "touchstart", "keydown", "focusin"]) {
+          container.removeEventListener(type, interrupt, true);
+        }
+        document.removeEventListener("pointerup", handlePointerUp, true);
+        document.removeEventListener("pointercancel", handlePointerUp, true);
+      },
     };
-  }, [containerRef, threshold]);
+  });
 
-  const dismissIndicator = useCallback(() => {
-    setShowIndicator(false);
-  }, []);
+  useLayoutEffect(
+    () => () => {
+      attachmentRef.current?.cleanup();
+      attachmentRef.current = null;
+    },
+    [],
+  );
 
+  const dismissIndicator = useCallback(
+    () => updateIndicator(false),
+    [updateIndicator],
+  );
   return { showIndicator, dismissIndicator };
 }

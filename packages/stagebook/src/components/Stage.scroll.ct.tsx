@@ -109,6 +109,180 @@ async function scrollToBottom(container: Locator): Promise<void> {
   });
 }
 
+function longStage(name: string, discussion: boolean): StageConfig {
+  return {
+    name,
+    elements: Array.from({ length: 80 }, (_, i) => ({
+      type: "separator",
+      name: `line_${i}`,
+    })),
+    ...(discussion && {
+      discussion: {
+        chatType: "video" as const,
+        showNickname: true,
+        showTitle: true,
+      },
+    }),
+  };
+}
+
+for (const discussion of [false, true]) {
+  const layout = discussion ? "discussion" : "single-column";
+
+  test(`${layout} resets a preserved internal container for a new stage instance`, async ({
+    mount,
+  }) => {
+    const stage = longStage("RepeatedStage", discussion);
+    const component = await mount(
+      <div style={WRAPPER_STYLE}>
+        <MockStageRenderer stage={stage} stageId="round-1" />
+      </div>,
+    );
+    const container = component.locator('[data-testid="stageContent"]');
+    await expect(container).toBeVisible();
+    await container.evaluate((el) => {
+      el.setAttribute("data-preserved-container", "true");
+      el.scrollTo({ top: 300, behavior: "instant" });
+    });
+    await expect(container).toHaveJSProperty("scrollTop", 300);
+
+    // Response/context updates recreate the stage object without advancing
+    // the participant. Their reading position must survive the rerender.
+    await component.update(
+      <div style={WRAPPER_STYLE}>
+        <MockStageRenderer
+          stage={{ ...stage, elements: [...stage.elements] }}
+          stageId="round-1"
+          elapsedTime={10}
+          stateValues={{ "self.prompt.answer.value": "yes" }}
+        />
+      </div>,
+    );
+    await expect(container).toHaveAttribute("data-preserved-container", "true");
+    expect(await container.evaluate((el) => el.scrollTop)).toBe(300);
+
+    // Same authored name, distinct host stage instance. Both stages overflow,
+    // so this cannot pass through browser clamping on shorter content.
+    await component.update(
+      <div style={WRAPPER_STYLE}>
+        <MockStageRenderer
+          stage={longStage("RepeatedStage", discussion)}
+          stageId="round-2"
+        />
+      </div>,
+    );
+    await expect(container).toHaveAttribute("data-preserved-container", "true");
+    // The discussion column uses CSS smooth scrolling. Reset must already be
+    // at zero when the update completes, rather than animating from round 1.
+    expect(await container.evaluate((el) => el.scrollTop)).toBe(0);
+    await settleHook(component.page());
+    expect(await container.evaluate((el) => el.scrollTop)).toBe(0);
+  });
+
+  test(`${layout} uses the stage name when the host has no stage id`, async ({
+    mount,
+  }) => {
+    const component = await mount(
+      <div style={WRAPPER_STYLE}>
+        <MockStageRenderer stage={longStage("FirstStage", discussion)} />
+      </div>,
+    );
+    const container = component.locator('[data-testid="stageContent"]');
+    await container.evaluate((el) => {
+      el.setAttribute("data-preserved-container", "true");
+      el.scrollTo({ top: 300, behavior: "instant" });
+    });
+    await expect(container).toHaveJSProperty("scrollTop", 300);
+    await component.update(
+      <div style={WRAPPER_STYLE}>
+        <MockStageRenderer stage={longStage("SecondStage", discussion)} />
+      </div>,
+    );
+    await expect(container).toHaveAttribute("data-preserved-container", "true");
+    expect(await container.evaluate((el) => el.scrollTop)).toBe(0);
+  });
+}
+
+const conditionalDiscussion = {
+  chatType: "video" as const,
+  showNickname: true,
+  showTitle: true,
+  conditions: [
+    {
+      reference: "self.attributes.discussionVisible",
+      comparator: "equals" as const,
+      value: true,
+    },
+  ],
+};
+
+test("discussion fallback resets its internal scroll for a new stage", async ({
+  mount,
+}) => {
+  const stage = {
+    ...longStage("ConditionalDiscussion", false),
+    discussion: conditionalDiscussion,
+  };
+  const component = await mount(
+    <div style={WRAPPER_STYLE}>
+      <MockStageRenderer
+        stage={stage}
+        stageId="round-1"
+        stateValues={{ "self.attributes.discussionVisible": false }}
+      />
+    </div>,
+  );
+  const container = component.locator('[data-testid="stageContent"]');
+  await expect(component.getByTestId("discussion")).toHaveCount(0);
+  await container.evaluate((el) => {
+    el.setAttribute("data-preserved-container", "true");
+    el.scrollTo({ top: 300, behavior: "instant" });
+  });
+  await expect(container).toHaveJSProperty("scrollTop", 300);
+  await component.update(
+    <div style={WRAPPER_STYLE}>
+      <MockStageRenderer
+        stage={stage}
+        stageId="round-2"
+        stateValues={{ "self.attributes.discussionVisible": false }}
+      />
+    </div>,
+  );
+  await expect(container).toHaveAttribute("data-preserved-container", "true");
+  expect(await container.evaluate((el) => el.scrollTop)).toBe(0);
+});
+
+test("discussion fallback attaches scroll awareness when conditions replace the layout", async ({
+  mount,
+}) => {
+  const stage = { ...staticStage, discussion: conditionalDiscussion };
+  const component = await mount(
+    <div style={WRAPPER_STYLE}>
+      <MockStageRenderer
+        stage={stage}
+        stageId="same-stage"
+        stateValues={{ "self.attributes.discussionVisible": true }}
+      />
+    </div>,
+  );
+  await expect(component.getByTestId("discussion")).toBeVisible();
+  await component.update(
+    <div style={WRAPPER_STYLE}>
+      <MockStageRenderer
+        stage={stage}
+        stageId="same-stage"
+        stateValues={{ "self.attributes.discussionVisible": false }}
+      />
+    </div>,
+  );
+  await expect(component.getByTestId("discussion")).toHaveCount(0);
+  const container = component.locator('[data-testid="stageContent"]');
+  await primeScrollState(container, "top");
+  await settleHook(component.page());
+  await growContent(container);
+  await expect(component.getByTestId("scroll-indicator")).toBeVisible();
+});
+
 test("indicator appears when content grows while user is scrolled up", async ({
   mount,
 }) => {

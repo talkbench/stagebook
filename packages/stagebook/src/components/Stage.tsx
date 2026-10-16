@@ -249,12 +249,17 @@ export function Stage({
   // order stays stable (they no-op on null refs); the refs just don't
   // get attached in host mode.
   const isHostScroll = scrollMode === "host";
+  const scrollResetKey = ctx.stageId ?? stage.name;
   const discussionContentRef = useRef<HTMLDivElement>(null);
   const singleColumnRef = useRef<HTMLDivElement>(null);
-  const { showIndicator: showDiscussionScrollIndicator } =
-    useScrollAwareness(discussionContentRef);
-  const { showIndicator: showSingleColumnScrollIndicator } =
-    useScrollAwareness(singleColumnRef);
+  const { showIndicator: showDiscussionScrollIndicator } = useScrollAwareness(
+    discussionContentRef,
+    { resetKey: scrollResetKey },
+  );
+  const { showIndicator: showSingleColumnScrollIndicator } = useScrollAwareness(
+    singleColumnRef,
+    { resetKey: scrollResetKey },
+  );
 
   const elementsColumn = (
     <ElementsColumn
@@ -387,6 +392,7 @@ export function Stage({
                 violationKeys={violationKeys}
                 fallback={
                   <div
+                    ref={isHostScroll ? null : singleColumnRef}
                     data-testid="stageContent"
                     dir={stageDir}
                     style={{
@@ -395,6 +401,11 @@ export function Stage({
                     }}
                   >
                     {elementsColumn}
+                    {!isHostScroll && (
+                      <ScrollIndicator
+                        visible={showSingleColumnScrollIndicator}
+                      />
+                    )}
                   </div>
                 }
               >
