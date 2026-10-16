@@ -230,7 +230,10 @@ describe("Next gated on a player's playback (#710)", () => {
 
     // The participant starts it with the fallback button.
     stubPlay(playing);
-    act(() => playOnce!.click());
+    await act(async () => {
+      playOnce!.click();
+      await Promise.resolve();
+    });
     expect(nextShown()).toBe(true);
   });
 
@@ -259,5 +262,127 @@ describe("Next gated on reaching the end (#710)", () => {
     expect(nextShown()).toBe(false);
     moveTo("clip", 5.1);
     expect(nextShown()).toBe(true);
+  });
+});
+
+function coverageNext(threshold: number) {
+  return {
+    type: "submitButton",
+    name: "next",
+    conditions: [
+      {
+        reference: "self.mediaPlayer.clip.watchedFraction",
+        comparator: "isAtLeast",
+        value: threshold,
+      },
+    ],
+  };
+}
+
+describe("Next gated on distinct clip coverage (#719)", () => {
+  it.each([0, 40])(
+    "opens after the playable clip ends when stopAt exceeds duration (startAt: %s)",
+    (startAt) => {
+      // The fixture is a 100-second file; an authored stop at 200 cannot
+      // require watching beyond its natural end to satisfy a coverage gate.
+      render([player("clip", { startAt, stopAt: 200 }), coverageNext(0.98)]);
+      playPause("clip");
+      moveTo("clip", 50);
+      playPause("clip");
+      expect(nextShown()).toBe(false);
+      playPause("clip");
+      moveTo("clip", 100);
+      const video = within("clip").querySelector("video")!;
+      act(() => {
+        video.dispatchEvent(new Event("ended"));
+      });
+      expect(nextShown()).toBe(true);
+    },
+  );
+
+  it("aggregates pause/resume fragments and stays open through replay", () => {
+    render([player("clip", { stopAt: 4 }), coverageNext(0.98)]);
+    playPause("clip");
+    moveTo("clip", 1.6);
+    playPause("clip");
+    moveTo("clip", 1.603);
+    playPause("clip");
+    moveTo("clip", 2);
+    playPause("clip");
+    expect(nextShown()).toBe(false);
+    moveTo("clip", 2.003);
+    playPause("clip");
+    moveTo("clip", 4.01);
+    expect(nextShown()).toBe(true);
+    playPause("clip"); // replay cannot erase previously verified coverage
+    expect(nextShown()).toBe(true);
+    moveTo("clip", 1);
+    playPause("clip");
+    expect(nextShown()).toBe(true);
+  });
+
+  it("does not mistake first/last endpoints for coverage across a seek", () => {
+    render([
+      player("clip", { stopAt: 4, stepDuration: 2 }),
+      coverageNext(0.98),
+      { ...next("self.mediaPlayer.clip.firstEnd"), name: "ended" },
+    ]);
+    playPause("clip");
+    moveTo("clip", 1);
+    press("clip", "ArrowRight"); // skip 1–3
+    moveTo("clip", 4.01);
+    expect(shown("ended")).toBe(true);
+    expect(nextShown()).toBe(false);
+    playPause("clip");
+    moveTo("clip", 3.1); // replay fills the previously skipped interval
+    playPause("clip");
+    expect(nextShown()).toBe(true);
+  });
+
+  it("uses the authored window, including nonzero start and out-of-window playback", () => {
+    render([
+      player("clip", {
+        startAt: 10,
+        stopAt: 14,
+        stepDuration: 10,
+        allowScrubOutsideBounds: true,
+      }),
+      coverageNext(0.98),
+    ]);
+    press("clip", "ArrowLeft"); // start playback at 0, outside the clip
+    playPause("clip");
+    moveTo("clip", 10);
+    playPause("clip");
+    expect(nextShown()).toBe(false);
+    playPause("clip");
+    moveTo("clip", 14.2);
+    expect(nextShown()).toBe(true);
+  });
+
+  it("counts media seconds at a different speed and updates on existing saves", () => {
+    render([player("clip", { stopAt: 4 }), coverageNext(0.75)]);
+    press("clip", ">");
+    expect(nextShown()).toBe(false);
+    playPause("clip");
+    moveTo("clip", 3);
+    // This first slice saves on events, not periodic playback progress.
+    expect(nextShown()).toBe(false);
+    playPause("clip");
+    expect(nextShown()).toBe(true);
+  });
+
+  it("does not expose a fraction when the media duration is unknown", () => {
+    render([player("clip", { stopAt: 4 }), coverageNext(0.75)]);
+    const video = within("clip").querySelector("video")!;
+    Object.defineProperty(video, "duration", {
+      configurable: true,
+      get: () => Infinity,
+    });
+    act(() => {
+      video.dispatchEvent(new Event("loadedmetadata"));
+    });
+    playPause("clip");
+    moveTo("clip", 4.01);
+    expect(nextShown()).toBe(false);
   });
 });

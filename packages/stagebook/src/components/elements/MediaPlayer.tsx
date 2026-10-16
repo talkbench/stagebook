@@ -3,6 +3,7 @@ import React, {
   useRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useId,
   useMemo,
   useState,
@@ -17,6 +18,7 @@ import { seekWindow, withSeekWindow } from "../playback/windowedHandle.js";
 import { atClipEnd, clipWindow } from "./mediaPlayer/clipEnd.js";
 import { createSeekCoalescer } from "./mediaPlayer/seekCoalescer.js";
 import {
+  computeWatchedCoverage,
   computeWatchedRanges,
   endsMidPlayback,
   playbackMilestones,
@@ -39,6 +41,7 @@ export type {
   VideoEvent,
   VideoPlaybackRecord,
 } from "../../schemas/mediaPlayerRecord.js";
+import { mediaPlayerRecordSchema } from "../../schemas/mediaPlayerRecord.js";
 
 // Preserve each event's required payload while recordEvent adds stage time.
 type VideoEventDetails<Event = VideoEvent> = Event extends VideoEvent
@@ -48,6 +51,10 @@ type VideoEventDetails<Event = VideoEvent> = Event extends VideoEvent
 export interface MediaPlayerProps {
   name: string;
   url: string;
+  /** Stable authored asset identity when the resolved URL can expire/change. */
+  sourceId?: string;
+  /** Host-restored record, consumed once on mount for the same media/window. */
+  initialRecord?: VideoPlaybackRecord;
   save: (key: string, value: unknown) => void;
   getElapsedTime: () => number;
   onComplete?: () => void;
@@ -118,9 +125,37 @@ function keepInitialButtonActivation(
   if (e.key === "Enter" || e.key === " ") e.stopPropagation();
 }
 
+function matchingRecord({
+  initialRecord,
+  name,
+  url,
+  sourceId,
+  startAt,
+  stopAt,
+}: Pick<
+  MediaPlayerProps,
+  "initialRecord" | "name" | "url" | "sourceId" | "startAt" | "stopAt"
+>): VideoPlaybackRecord | undefined {
+  const parsed = mediaPlayerRecordSchema.safeParse(initialRecord);
+  if (!parsed.success) return undefined;
+  const record = parsed.data;
+  const sameSource =
+    sourceId !== undefined && record.sourceId !== undefined
+      ? sourceId === record.sourceId
+      : url === record.url;
+  return record.name === name &&
+    sameSource &&
+    (record.startAt ?? 0) === (startAt ?? 0) &&
+    record.stopAt === stopAt
+    ? record
+    : undefined;
+}
+
 export function MediaPlayer({
   name,
   url,
+  sourceId,
+  initialRecord,
   save,
   getElapsedTime,
   onComplete,
@@ -165,7 +200,17 @@ export function MediaPlayer({
   // return never lets an unsafe URL be fetched.
   const urlIsUnsafe = !youtubeVideoId && !isSafeURL(url);
 
-  const eventsRef = useRef<VideoEvent[]>([]);
+  // Validate only the initial seed, not ongoing host reads/saves. Never merge
+  // a malformed or different source's history into this measurement. Parsing
+  // clones the host's record; appends below also leave earlier saves immutable.
+  const [restoredRecord] = useState(() =>
+    matchingRecord({ initialRecord, name, url, sourceId, startAt, stopAt }),
+  );
+  const eventsRef = useRef<VideoEvent[]>(restoredRecord?.events ?? []);
+  // A restored open interval is unverified. The first local event records the
+  // session break before appending; merely opening a page makes no host write.
+  const pendingRestoreRef = useRef(eventsRef.current.length > 0);
+  const logIdentityRef = useRef({ name, source: sourceId ?? url, url });
   const videoRef = useRef<HTMLVideoElement>(null);
   // The <video> as last mounted. React clears videoRef before unmount
   // cleanups run, and the stage-end close still reads its position (#677).
@@ -267,6 +312,38 @@ export function MediaPlayer({
   const [isHovered, setIsHovered] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState<number>(0);
+  // Keep metadata available after the media node/API is torn down, so the
+  // final `removed` save retains the same coverage denominator.
+  const measuredDurationRef = useRef<number | undefined>(
+    restoredRecord?.duration,
+  );
+  useLayoutEffect(() => {
+    const previous = logIdentityRef.current;
+    if (previous.name !== name || previous.source !== (sourceId ?? url)) {
+      // Another measurement must not inherit this source's observations.
+      seekLog.cancel();
+      const seed = matchingRecord({
+        initialRecord,
+        name,
+        url,
+        sourceId,
+        startAt,
+        stopAt,
+      });
+      eventsRef.current = seed?.events ?? [];
+      measuredDurationRef.current = seed?.duration;
+      pendingRestoreRef.current = eventsRef.current.length > 0;
+    } else if (previous.url !== url) {
+      // Rotating a signed URL reloads the backend for the same authored asset.
+      // Retain closed ranges but don't extend its old, unverified interval
+      // from a new playhead. Record the boundary with the next event.
+      seekLog.flush();
+      pendingRestoreRef.current = eventsRef.current.length > 0;
+    }
+    logIdentityRef.current = { name, source: sourceId ?? url, url };
+    // Layout timing precedes the new backend's ready/play. Window updates
+    // keep the existing handle and re-clip the raw history on its next save.
+  }, [name, url, sourceId, initialRecord, startAt, stopAt, seekLog]);
   const [bufferedEnd, setBufferedEnd] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [cues, setCues] = useState<CaptionCue[]>([]);
@@ -578,7 +655,9 @@ export function MediaPlayer({
     const id = setInterval(() => {
       const t = ytHandle.getCurrentTime();
       setCurrentTime(t);
-      setDuration(ytHandle.getDuration());
+      const mediaDuration = ytHandle.getDuration();
+      if (mediaDuration > 0) measuredDurationRef.current = mediaDuration;
+      setDuration(mediaDuration);
       if (!isPaused && stopAt !== undefined && t >= stopAt) {
         // Signal that the upcoming onPause is from stopAt, not a user action.
         stopAtReachedRef.current = true;
@@ -777,20 +856,62 @@ export function MediaPlayer({
   const appendEvent = useCallback(
     (event: VideoEvent) => {
       if (logClosedRef.current) return;
+      if (pendingRestoreRef.current) {
+        pendingRestoreRef.current = false;
+        eventsRef.current = [
+          ...eventsRef.current,
+          {
+            type: "restored",
+            videoTime: event.type === "seek" ? event.fromTime : event.videoTime,
+            stageTimeElapsed: event.stageTimeElapsed,
+          },
+        ];
+      }
       eventsRef.current = [...eventsRef.current, event];
+      let observedDuration: number | undefined;
+      try {
+        observedDuration =
+          liveYtHandleRef.current?.getDuration() ??
+          lastVideoElRef.current?.duration;
+      } catch {
+        // A destroyed YouTube iframe can no longer answer metadata queries.
+      }
+      // Metadata may not have arrived on this mount yet. Keep the last known
+      // duration in that case; an explicitly infinite stream has no fraction.
+      const measuredDuration =
+        observedDuration === undefined ||
+        Number.isNaN(observedDuration) ||
+        observedDuration === 0
+          ? measuredDurationRef.current
+          : observedDuration;
+      measuredDurationRef.current = measuredDuration;
+      const knownDuration =
+        measuredDuration !== undefined &&
+        Number.isFinite(measuredDuration) &&
+        measuredDuration > 0
+          ? measuredDuration
+          : undefined;
+      const watchedRanges = computeWatchedRanges(eventsRef.current);
       const record: VideoPlaybackRecord = {
         name,
         url,
+        ...(sourceId !== undefined && { sourceId }),
         ...(startAt !== undefined && { startAt }),
         ...(stopAt !== undefined && { stopAt }),
+        ...(knownDuration !== undefined && { duration: knownDuration }),
         events: eventsRef.current,
         lastVideoTime: event.videoTime,
-        watchedRanges: computeWatchedRanges(eventsRef.current),
+        watchedRanges,
+        ...computeWatchedCoverage(watchedRanges, {
+          startAt,
+          stopAt,
+          duration: knownDuration,
+        }),
         ...playbackMilestones(eventsRef.current),
       };
       saveRef.current(saveKey, record);
     },
-    [name, url, startAt, stopAt, saveKey],
+    [name, url, sourceId, startAt, stopAt, saveKey],
   );
   appendEventRef.current = appendEvent;
 
@@ -829,7 +950,7 @@ export function MediaPlayer({
     logClosedRef.current = false;
     return () => {
       seekLog.flush();
-      if (endsMidPlayback(eventsRef.current)) {
+      if (!pendingRestoreRef.current && endsMidPlayback(eventsRef.current)) {
         appendEventRef.current({
           type: "removed",
           videoTime: positionRef.current(),
@@ -900,6 +1021,7 @@ export function MediaPlayer({
       initialStartRef.current.ready = true;
       notifyInitialStart();
       setDuration(v.duration);
+      measuredDurationRef.current = v.duration;
       durationVersionRef.current += 1;
 
       // Detect likely server-side range-request misconfiguration for
@@ -1583,13 +1705,24 @@ export function MediaPlayer({
               initialStartRef.current.ready = true;
               notifyInitialStart();
               setYtHandle(h);
-              setDuration(h.getDuration());
+              const mediaDuration = h.getDuration();
+              if (mediaDuration > 0)
+                measuredDurationRef.current = mediaDuration;
+              setDuration(mediaDuration);
               if (effectiveAutoplay && !initialStartRef.current.attempted)
                 startInitial(h);
             }}
             // A destroyed player's handle must stop being polled and stop
             // standing in for this player (the source changed or remounted).
             onHandleGone={() => {
+              if (!logClosedRef.current) {
+                // Creation settings (startAt/native controls) can replace
+                // YouTube's backend while this component remains mounted.
+                // Finish any verified seek, then keep the old open interval
+                // from swallowing or bridging playback in the new backend.
+                seekLog.flush();
+                pendingRestoreRef.current = eventsRef.current.length > 0;
+              }
               liveYtHandleRef.current = null;
               setYtHandle(null);
               const attempt = initialStartRef.current;
@@ -1618,7 +1751,11 @@ export function MediaPlayer({
               // YouTube reports PLAYING again once a seek during playback
               // has buffered. Nothing changed; logging it would also split
               // a Timeline drag into a seek per report (#682).
-              if (endsMidPlayback(eventsRef.current)) return;
+              if (
+                !pendingRestoreRef.current &&
+                endsMidPlayback(eventsRef.current)
+              )
+                return;
               recordEvent({ type: "play", videoTime: t });
             }}
             onPause={(t) => {
@@ -1643,7 +1780,11 @@ export function MediaPlayer({
               }
               // YouTube also reports PAUSED after a seek made while paused;
               // log only a pause that ends playback (#682).
-              if (!endsMidPlayback(eventsRef.current)) return;
+              if (
+                pendingRestoreRef.current ||
+                !endsMidPlayback(eventsRef.current)
+              )
+                return;
               recordEvent({ type: "pause", videoTime: t });
             }}
             onEnded={(t) => {

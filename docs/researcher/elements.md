@@ -302,6 +302,7 @@ Each interaction is appended to an event list under the element's name:
   "url": "https://example.com/clips/scene1.mp4",
   "startAt": 30,
   "stopAt": 90,
+  "duration": 120,
   "lastVideoTime": 90.0,
   "events": [
     { "type": "play", "videoTime": 30.0, "stageTimeElapsed": 4.1 },
@@ -325,6 +326,8 @@ Each interaction is appended to an event list under the element's name:
     [30.0, 37.9],
     [50.0, 90.0]
   ],
+  "watchedSeconds": 47.9,
+  "watchedFraction": 0.7983333333333333,
   "firstPlay": { "type": "play", "videoTime": 30.0, "stageTimeElapsed": 4.1 },
   "firstEnd": { "type": "stopAt", "videoTime": 90.0, "stageTimeElapsed": 42.3 }
 }
@@ -336,14 +339,33 @@ Event types:
 - `ended`: the file played to its natural end
 - `stopAt`: playback reached `stopAt`
 - `removed`: the player was removed from the page during playback — usually because the stage ended (the participant submitted, or the stage timed out), but also if `hideTime` or a condition hides the player mid-stage. Logged at the position playback had reached, so the last stretch still counts as watched.
+- `restored`: the player continued a matching saved log after a reload or remount, or the same authored source's backend reloaded (a refreshed playback URL or a YouTube creation-setting change). Added immediately before the next playback event, in that event's save; mounting alone does not save. It discards any unclosed range from before the break, because playback after its last saved event cannot be established. Earlier closed ranges remain.
 - `seek`: includes `fromTime`, the position before the seek. Logged for every seek made through stagebook: the player's seek buttons and keys, its scrub bar, an attached timeline (ruler, playhead drag, arrow keys, mark edits), and play replaying the clip from the end. A continuous seek (a drag, held keys on the timeline, or holding the player's arrow keys or seek buttons) is logged once it settles, as one seek from where it started to where it landed. A held arrow key's first step is logged at once. When `controls` turns on any of stagebook's controls, a YouTube video's own in-frame controls and keyboard shortcuts are turned off; in manual mode without Stagebook controls, YouTube's own controls stay on and seeks made with them aren't logged. Once mode disables YouTube's native controls and keyboard as well.
 - `speed`: includes `playbackRate`. Logged for the speed button and the `<` / `>` keys.
 
 `lastVideoTime` is the position at the last event.
 
-`watchedRanges` is derived from the event log: closed `[start, end]` intervals (in video seconds) of the portions the participant actually watched, with overlapping or touching intervals merged. A range runs from a `play` to the next `pause`, `ended`, `stopAt` or `removed`. A seek during playback ends the range where the seek left and starts a new one where it landed, so skipped footage never counts as watched. Open intervals (a `play` with no closing event — e.g. a mid-playback disconnect) are excluded.
+`watchedRanges` is derived from the event log: closed `[start, end]` intervals (in video seconds) of the portions the participant actually watched, with overlapping or touching intervals merged. A range runs from a `play` to the next `pause`, `ended`, `stopAt` or `removed`. A seek during playback ends the range where the seek left and starts a new one where it landed, so skipped footage never counts as watched. Open intervals (a `play` with no closing event — e.g. a mid-playback disconnect) are excluded. A `restored` marker discards a pending open interval instead of joining it to playback in the new mount.
 
-`firstPlay` and `firstEnd` are playback milestones, copied from the event log: the first `play`, and the first `ended` or `stopAt`. Each is absent until it happens and doesn't change after, except that a remounted player replaces its record ([#728](https://github.com/talkbench/stagebook/issues/728)). They exist so [conditions](conditions.md#media-player-playback) can gate on them, e.g. showing **Next** once the video has started: `self.mediaPlayer.<name>.firstPlay` with `exists`.
+The record also carries coverage amounts for [conditions](conditions.md#media-player-playback) and analysis:
+
+| Field | Meaning |
+| ----- | ------- |
+| `duration` | The media's duration, when known and finite; this is the full media length, not the clip-window length. |
+| `watchedSeconds` | Length of the union of closed watched ranges, clipped to `[startAt ?? 0, min(stopAt ?? duration, duration)]` when duration is known and positive. With unknown duration, an explicit `stopAt` still bounds seconds; without it, only the lower bound applies. |
+| `watchedFraction` | `watchedSeconds` divided by the clip-window length. Absent until the media duration is finite and positive and the window has positive length. |
+
+The coverage window ends at the known media duration even if the authored `stopAt` is later. A ten-second file with `stopAt: 20` therefore reaches a fraction of `1` after all ten seconds play.
+
+These fields are calculated on existing playback-event saves for both HTML5 and YouTube. There is no extra interval that saves progress. While playback continues uninterrupted, an open range does not contribute until a pause, seek, end, or removal closes it. A threshold such as 75% can therefore open later than the instant that much footage has played. Metadata arriving alone does not save a record. Older records may omit the new fields until another playback event saves them.
+
+Raw `watchedRanges` remain unchanged by the coverage calculation: with `allowScrubOutsideBounds`, they can include footage outside the clip window, while the amounts exclude it. Rewatching overlapping footage doesn't increase the amounts twice. Coverage counts video seconds, regardless of speed: 30 seconds played at 2× counts as 30, not 15. No endpoint or interior-gap tolerance is applied. A threshold of `0.98`, for example, accepts up to 2% missing footage in total; choose it as a study policy, not as proof that every interior frame played.
+
+`firstPlay` and `firstEnd` are playback milestones, copied from the event log: the first `play`, and the first `ended` or `stopAt`. Each is absent until it happens and doesn't change afterwards. They let conditions gate on starting or reaching the end, e.g. `self.mediaPlayer.<name>.firstPlay` with `exists`. Reaching the end alone does not establish full coverage. [Migrating a watched-range gate](conditions.md#migrating-a-watched-range-gate) shows how to replace `watchedRanges.0` with a fraction threshold, optionally combined with `firstEnd`.
+
+**Restoring a player.** When the host supplies a saved record before the player mounts, the player seeds its log once from a record with the same name, source, and clip bounds. Authored elements save their `file` path or asset URI as `sourceId`, so a host can rotate a signed playback URL while keeping the same source. If either side lacks `sourceId` (including older records), the media URL must still match. Conditional hide/show and page reload can then preserve earlier closed ranges and milestones. The next saved event appends `restored` followed by the new event; an interrupted open range is discarded. No save occurs merely because the player mounts, and later host updates don't replace a running player's log.
+
+Restoring the log does not seek to `lastVideoTime`, resume playback, or persist the `playback: once` attempt restriction. `startAt`, `syncToStageTime`, and `autoplay` retain their existing behavior; once mode still applies to each mounted player and source. Hosts must load restored participant data before mounting the player. See the [coverage and restoration decision](../decisions/2026-10-media-coverage-restore.md) for the host contract and deferred live-progress work.
 
 ## Timeline
 

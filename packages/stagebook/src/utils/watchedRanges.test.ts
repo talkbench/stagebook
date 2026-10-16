@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  computeWatchedCoverage,
   computeWatchedRanges,
   endsMidPlayback,
   playbackMilestones,
@@ -197,6 +198,23 @@ describe("computeWatchedRanges", () => {
     ).toEqual([[15.28, 24.5]]);
   });
 
+  it("drops an unfinished range at restoration without losing closed ranges", () => {
+    expect(
+      computeWatchedRanges([
+        ev("play", 0),
+        ev("pause", 5),
+        ev("play", 10),
+        ev("restored", 20),
+        ev("pause", 22),
+        ev("play", 30),
+        ev("pause", 35),
+      ]),
+    ).toEqual([
+      [0, 5],
+      [30, 35],
+    ]);
+  });
+
   it("returns intervals sorted by start time", () => {
     // Events arrive out of order (e.g. after scrub)
     expect(
@@ -210,6 +228,159 @@ describe("computeWatchedRanges", () => {
       [10, 20],
       [50, 60],
     ]);
+  });
+});
+
+describe("computeWatchedCoverage (#719)", () => {
+  it("totals all ranges without filling even a small pause gap", () => {
+    const coverage = computeWatchedCoverage(
+      [
+        [0, 1.8],
+        [1.806, 4],
+      ],
+      { duration: 4 },
+    );
+    expect(coverage.watchedSeconds).toBeCloseTo(3.994);
+    expect(coverage.watchedFraction).toBeCloseTo(3.994 / 4);
+    expect(coverage.watchedFraction).toBeLessThan(1);
+  });
+
+  it("counts replayed footage once even with overlapping unsorted input", () => {
+    const ranges: [number, number][] = [
+      [6, 10],
+      [0, 8],
+      [2, 4],
+      [10, 12],
+    ];
+    const original = structuredClone(ranges);
+    expect(computeWatchedCoverage(ranges, { duration: 12 })).toEqual({
+      watchedSeconds: 12,
+      watchedFraction: 1,
+    });
+    expect(ranges).toEqual(original);
+  });
+
+  it("does not count footage skipped by a meaningful forward seek", () => {
+    const ranges = computeWatchedRanges([
+      ev("play", 0),
+      { type: "seek", videoTime: 50, fromTime: 5, stageTimeElapsed: 0 },
+      ev("ended", 60),
+    ]);
+    expect(computeWatchedCoverage(ranges, { duration: 60 })).toEqual({
+      watchedSeconds: 15,
+      watchedFraction: 0.25,
+    });
+  });
+
+  it("clips coverage to a nonzero authored window", () => {
+    expect(
+      computeWatchedCoverage(
+        [
+          [0, 15],
+          [18, 40],
+        ],
+        { startAt: 10, stopAt: 20, duration: 100 },
+      ),
+    ).toEqual({ watchedSeconds: 7, watchedFraction: 0.7 });
+  });
+
+  it("ignores ranges outside the authored window", () => {
+    expect(
+      computeWatchedCoverage(
+        [
+          [0, 5],
+          [30, 40],
+        ],
+        { startAt: 10, stopAt: 20, duration: 100 },
+      ),
+    ).toEqual({ watchedSeconds: 0, watchedFraction: 0 });
+  });
+
+  it("uses the media duration when stopAt is absent", () => {
+    expect(
+      computeWatchedCoverage([[5, 25]], { startAt: 10, duration: 20 }),
+    ).toEqual({ watchedSeconds: 10, watchedFraction: 1 });
+  });
+
+  it("caps an authored stop beyond the file at its known duration", () => {
+    expect(
+      computeWatchedCoverage([[0, 10]], { stopAt: 20, duration: 10 }),
+    ).toEqual({ watchedSeconds: 10, watchedFraction: 1 });
+  });
+
+  it("clips both seconds and fraction to the playable part of a nonzero window", () => {
+    const options = { startAt: 4, stopAt: 20, duration: 10 };
+    expect(computeWatchedCoverage([[4, 7]], options)).toEqual({
+      watchedSeconds: 3,
+      watchedFraction: 0.5,
+    });
+    expect(computeWatchedCoverage([[0, 20]], options)).toEqual({
+      watchedSeconds: 6,
+      watchedFraction: 1,
+    });
+  });
+
+  it("clips negative footage and playback past the end", () => {
+    expect(computeWatchedCoverage([[-5, 30]], { duration: 20 })).toEqual({
+      watchedSeconds: 20,
+      watchedFraction: 1,
+    });
+  });
+
+  it.each([undefined, NaN, Infinity, -Infinity, 0, -10])(
+    "omits the fraction when duration is unavailable (%s)",
+    (duration) => {
+      expect(
+        computeWatchedCoverage(
+          [
+            [0, 5],
+            [10, 20],
+          ],
+          { duration },
+        ),
+      ).toEqual({ watchedSeconds: 15 });
+    },
+  );
+
+  it("can count seconds inside an explicit window before duration is known", () => {
+    expect(
+      computeWatchedCoverage([[0, 30]], { startAt: 10, stopAt: 20 }),
+    ).toEqual({ watchedSeconds: 10 });
+  });
+
+  it.each([
+    { startAt: 20, stopAt: 10, duration: 30 },
+    { startAt: 10, stopAt: 10, duration: 30 },
+    { startAt: 30, duration: 20 },
+    { startAt: 30, stopAt: 40, duration: 20 },
+  ])("omits the fraction for an empty or inverted window: %j", (options) => {
+    expect(computeWatchedCoverage([[0, 40]], options)).toEqual({
+      watchedSeconds: 0,
+    });
+  });
+
+  it("reports zero coverage for an empty log with a known window", () => {
+    expect(computeWatchedCoverage([], { duration: 20 })).toEqual({
+      watchedSeconds: 0,
+      watchedFraction: 0,
+    });
+  });
+
+  it("measures media seconds independently of playback speed", () => {
+    const ranges = computeWatchedRanges([
+      ev("play", 0),
+      {
+        type: "speed",
+        videoTime: 5,
+        playbackRate: 2,
+        stageTimeElapsed: 5,
+      },
+      { type: "pause", videoTime: 15, stageTimeElapsed: 10 },
+    ]);
+    expect(computeWatchedCoverage(ranges, { duration: 20 })).toEqual({
+      watchedSeconds: 15,
+      watchedFraction: 0.75,
+    });
   });
 });
 
@@ -236,7 +407,13 @@ describe("endsMidPlayback (#677)", () => {
   it("is false before playback starts and once it is closed", () => {
     expect(endsMidPlayback([])).toBe(false);
     expect(endsMidPlayback([seek])).toBe(false);
-    for (const type of ["pause", "ended", "stopAt", "removed"] as const) {
+    for (const type of [
+      "pause",
+      "ended",
+      "stopAt",
+      "removed",
+      "restored",
+    ] as const) {
       expect(endsMidPlayback([ev("play", 0), ev(type, 5)])).toBe(false);
     }
   });
@@ -285,5 +462,20 @@ describe("playbackMilestones (#710)", () => {
     expect(
       playbackMilestones([ev("play", 0), ev("removed", 30)]),
     ).not.toHaveProperty("firstEnd");
+  });
+
+  it("preserves first milestones across a restored playback session", () => {
+    const firstPlay = ev("play", 0);
+    const firstEnd = ev("ended", 30);
+    expect(
+      playbackMilestones([
+        firstPlay,
+        firstEnd,
+        ev("restored", 30),
+        ev("play", 0),
+        ev("ended", 30),
+      ]),
+    ).toEqual({ firstPlay, firstEnd });
+    expect(playbackMilestones([ev("restored", 30)])).toEqual({});
   });
 });

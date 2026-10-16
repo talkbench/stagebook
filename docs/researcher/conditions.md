@@ -284,9 +284,11 @@ conditions:
 ```
 <position>.mediaPlayer.<name>.firstPlay
 <position>.mediaPlayer.<name>.firstEnd
+<position>.mediaPlayer.<name>.watchedSeconds
+<position>.mediaPlayer.<name>.watchedFraction
 ```
 
-A [`mediaPlayer`](elements.md#saved-data) saves its event log, and with it two playback milestones. `firstPlay` is the first `play` event: playback started. `firstEnd` is the first `ended` or `stopAt` event: playback reached the end of the clip, the moment `submitOnComplete` advances on. Each is absent until it happens and never changes after, so gate on it with `exists`. Pausing, replaying or seeking afterwards doesn't take it away. One exception: when the player remounts — a page reload, or a condition hiding the player and showing it again — it doesn't read its saved record back, so its next event replaces the record, milestones included ([#728](https://github.com/talkbench/stagebook/issues/728)).
+A [`mediaPlayer`](elements.md#saved-data) saves its event log, and with it two playback milestones. `firstPlay` is the first `play` event: playback started. `firstEnd` is the first `ended` or `stopAt` event: playback reached the end of the clip, the moment `submitOnComplete` advances on. Each is absent until it happens and never changes after, so gate on it with `exists`. Pausing, replaying or seeking afterwards doesn't take it away. After a reload or conditional remount, the player preserves these milestones and earlier closed watched ranges when the host restores the matching saved record before mounting it.
 
 To show **Next** once the participant has started the video:
 
@@ -306,7 +308,50 @@ To show **Next** once the participant has started the video:
 
 To wait until playback reaches the end instead, use `self.mediaPlayer.example_nod.firstEnd`. Reaching the end is not watching all of it: a participant who seeks close to the end and plays from there reaches it too. In Firefox and Safari, seeking to the file's very end while paused also counts, because the browser reports the end ([#729](https://github.com/talkbench/stagebook/issues/729)); a `stopAt` is only reached by playback.
 
-Don't gate on the record itself (`self.mediaPlayer.example_nod`) or on its `events`: seeks and speed changes save the record before anything plays. Neither milestone shows that someone watched attentively; use `watchedRanges` in analysis for how much they played.
+Don't gate on the record itself (`self.mediaPlayer.example_nod`) or on its `events`: seeks and speed changes save the record before anything plays. Playback records measure what played, not whether someone watched attentively.
+
+To gate on how much of the clip played, use `watchedSeconds` or `watchedFraction`. When the media duration is known and positive, they count distinct video seconds within `[startAt ?? 0, min(stopAt ?? duration, duration)]`: the window ends at the media's end even if `stopAt` is later. Repeated footage counts once, skipped footage doesn't count, and footage outside the window doesn't count. Playing 30 seconds of footage at 2× still counts as 30 watched seconds. `watchedFraction` is absent until the player knows a finite positive media duration and the clip window has positive length. With unknown duration, an explicit `stopAt` still bounds `watchedSeconds`; without it, only the lower bound applies.
+
+**These amounts update on playback events, not continuously.** During uninterrupted playback, the current open range is not counted until a pause, seek, end, or removal closes it. A `watchedFraction >= 0.75` condition therefore does not reveal Next at the instant playback crosses 75%; it waits for a closing event. There is no additional progress-save interval. Live threshold gates remain follow-up work in [#719](https://github.com/talkbench/stagebook/issues/719).
+
+For a near-complete viewing requirement, choose a threshold explicitly. `0.98` permits a total of 2% missing footage, whether at the endpoints or in interior gaps; it is not an endpoint-only allowance. There is no built-in rounding or tolerance that fills gaps. For a four-second clip, watched ranges `[0, 1]` and `[3, 4]` cover only 50%, even though playback reached the end.
+
+#### Migrating a watched-range gate
+
+Checking that the first range's endpoints span the clip can block a participant
+who paused and resumed: later ranges may cover the rest. Aggregate coverage
+handles any number of fragments without accepting the footage between them.
+
+A condition such as this only requires one closed range of any length:
+
+```yaml
+conditions:
+  - reference: self.mediaPlayer.example_nod.watchedRanges.0
+    comparator: exists
+```
+
+Replace it with a fraction threshold. Add `firstEnd` if the task also requires reaching the clip's end:
+
+```yaml
+- type: mediaPlayer
+  name: example_nod
+  file: https://example.com/clips/nod.mp4
+  startAt: 0
+  stopAt: 4
+  controls:
+    playPause: true
+    seek: true
+- type: submitButton
+  name: next
+  conditions:
+    - reference: self.mediaPlayer.example_nod.watchedFraction
+      comparator: isAtLeast
+      value: 0.98
+    - reference: self.mediaPlayer.example_nod.firstEnd
+      comparator: exists
+```
+
+Older saved records may have `watchedRanges` but no coverage amounts. The next saved playback event computes the amounts from the restored log; mounting alone does not rewrite the record. For genuinely unknown-duration media, use a `watchedSeconds` threshold instead of a fraction. See [saved data](elements.md#saved-data) for restoration and open-range behavior.
 
 ### URL Parameters
 

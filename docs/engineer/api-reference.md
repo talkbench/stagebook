@@ -116,6 +116,31 @@ getNestedValueByPath({ a: 1 }, ["x"]); // undefined
 getNestedValueByPath({ a: 1 }); // { a: 1 }
 ```
 
+### `computeWatchedCoverage(ranges, options?)`
+
+Compute distinct video seconds from closed `[start, end]` intervals. This pure
+root export accepts `options: { startAt?: number; stopAt?: number; duration?: number }`
+and returns `{ watchedSeconds: number; watchedFraction?: number }`.
+
+```ts
+import { computeWatchedCoverage } from "stagebook";
+
+computeWatchedCoverage([[0, 1], [3, 4]], { duration: 4 });
+// { watchedSeconds: 2, watchedFraction: 0.5 }
+```
+
+With known positive finite duration, the function clips to
+`[startAt ?? 0, min(stopAt ?? duration, duration)]`, merges overlaps, and
+preserves gaps. The end never exceeds the media duration, even if the authored
+`stopAt` does. Without known positive finite duration, it returns seconds only:
+an explicit `stopAt` still bounds the window, otherwise its upper bound is
+open. The fraction also requires a positive window length. Inputs are not
+mutated. Pass the result of
+`computeWatchedRanges(events)` when reconstructing coverage from a saved log;
+that walk understands `restored` boundaries. See [MediaPlayer records and
+restoration](#mediaplayer-records-and-restoration) for save timing and host
+integration.
+
 ### `fillTemplates({ obj, templates })`
 
 Expand all template references in a structure.
@@ -630,6 +655,7 @@ Peaks helpers exported alongside it: `createPeaksArrays(channelCount, bucketCoun
 | `KitchenTimer`  | `startTime`, `endTime`, `getElapsedTime`, `warnTimeRemaining?`                                                                  |
 | `TrackedLink`   | `name`, `url`, `displayText`, `save`, `getElapsedTime`, `progressLabel`, `resolvedParams?`                                      |
 | `TrainingVideo` | `url`, `getElapsedTime`, `onComplete`                                                                                           |
+| `MediaPlayer`   | `name`, `url`, `save`, `getElapsedTime`, `initialRecord?`, `sourceId?`, `startAt?`, `stopAt?`, `playback?`, `autoplay?`, `controls?`, `onComplete?` |
 | `Qualtrics`     | `url`, `resolvedParams?`, `stableParticipantId?`, `sampleId?`, `onContractViolation?`, `save`, `onComplete`                     |
 
 `Display.values` remains an array of display entries. Wrap a single-position
@@ -650,6 +676,53 @@ there is no parsed value; `value` remains a required Prompt prop. `Element`
 forwards the stored value, entry, and format. It reuses a saved format only when
 the complete pair satisfies the catalog separator rules; malformed pairs fall
 back to the active catalog, including host overrides.
+
+#### MediaPlayer records and restoration
+
+`MediaPlayer.initialRecord` seeds the playback log once for the mounted media
+source. `Element` supplies the participant's saved `mediaPlayer_<name>` record
+automatically. Direct component consumers pass the saved record themselves.
+The record must match the player's name, source, and clip bounds. `sourceId?`
+is a stable source identity saved on the record. `Element` sets it to the
+authored `file` path or asset URI, allowing `getAssetURL` to rotate signed
+playback URLs without losing the log. When the player and record both have
+`sourceId`, those identities must match; when either lacks it, the media URLs
+must match instead. Legacy records therefore restore only while their URL
+still matches. Direct callers can supply `sourceId` themselves. A record for
+another source or window does not seed this log. Host data must be restored
+before mounting. Subsequent prop updates are not a mechanism for replacing a
+running log or merging another client's history.
+
+The first subsequent playback-event save appends a `restored` marker before
+the new event. In the range walk, that marker discards a pending open interval
+from the previous mount; it does not close it at the new playhead position.
+Earlier closed ranges and `firstPlay` / `firstEnd` are preserved. Mounting
+alone causes no save. Reloading the same source's URL or recreating its
+YouTube backend also starts a new segment at the next event. The log is
+restored independently of transport:
+`lastVideoTime` does not become a resume position, and `startAt`,
+`syncToStageTime`, and `autoplay` retain their behavior. `playback: once`
+continues to restrict one mounted player/source, not attempts across reloads.
+
+`mediaPlayerRecordSchema` and `VideoPlaybackRecord` are root `stagebook`
+exports. Records support optional `duration`, `watchedSeconds`, and
+`watchedFraction` fields so older saved data remains readable. The current
+player computes coverage on each existing event save, without extra progress
+saves: distinct closed ranges in video seconds, clipped to
+`[startAt ?? 0, min(stopAt ?? duration, duration)]` when duration is known and
+positive. `duration` is included only when finite;
+`watchedFraction` additionally needs positive duration and positive window
+length. Unknown-duration media can have seconds without a fraction: an
+explicit `stopAt` bounds those seconds, otherwise only the lower bound applies.
+`watchedRanges` remains the raw merged log-derived intervals, including any
+out-of-window playback. Preserve the `restored` event when persisting or
+exporting logs so downstream reconstruction does not bridge mount boundaries.
+
+Hosts must not treat the fraction as a live playback ticker: uninterrupted
+playback contributes only when a closing event is saved. No implicit endpoint
+or gap tolerance is applied. See [saved data](../researcher/elements.md#saved-data)
+for record examples and [the ADR](../decisions/2026-10-media-coverage-restore.md)
+for the first-slice scope of #719 and media-player portion of #728.
 
 ### Render Slots (platform-provided)
 

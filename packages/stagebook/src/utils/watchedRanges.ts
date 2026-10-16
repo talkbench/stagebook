@@ -7,8 +7,9 @@ import type {
  * Walks a VideoEvent log. A "play" opens a range. A "pause", "ended",
  * "stopAt" or "removed" closes it. A "seek" during playback closes it at the
  * seek's `fromTime` and opens a new one at its target, so skipped footage
- * never counts as watched (#682); seeks while paused change nothing. Empty or
- * backwards ranges are dropped.
+ * never counts as watched (#682); seeks while paused change nothing. A
+ * "restored" discards an open range: the preceding session never confirmed
+ * its end (#728). Empty or backwards ranges are dropped.
  *
  * Returns the closed ranges, unsorted, and the start of the range still open
  * at the end of the log, if any.
@@ -47,6 +48,9 @@ function walk(events: VideoEvent[]): {
         break;
       case "speed":
         break;
+      case "restored":
+        openStart = null;
+        break;
     }
   }
   return { closed, openStart };
@@ -84,6 +88,52 @@ export function computeWatchedRanges(events: VideoEvent[]): [number, number][] {
   }
 
   return merged;
+}
+
+/**
+ * Unique watched media seconds inside the authored window, capped at the
+ * known media duration even when stopAt extends beyond the file.
+ * Overlaps count once; gaps remain unwatched, however small. The fraction is
+ * absent until the media duration and the resulting window are finite and
+ * positive. An explicit stopAt still bounds seconds before duration is known.
+ */
+export function computeWatchedCoverage(
+  ranges: [number, number][],
+  options: { startAt?: number; stopAt?: number; duration?: number } = {},
+): { watchedSeconds: number; watchedFraction?: number } {
+  const start = options.startAt ?? 0;
+  const duration = options.duration;
+  const knownDuration =
+    duration !== undefined && Number.isFinite(duration) && duration > 0;
+  const end = knownDuration
+    ? Math.min(options.stopAt ?? duration, duration)
+    : options.stopAt;
+  if (
+    !Number.isFinite(start) ||
+    (end !== undefined && (!Number.isFinite(end) || end <= start))
+  ) {
+    return { watchedSeconds: 0 };
+  }
+
+  const clipped = ranges
+    .map(([from, to]): [number, number] => [
+      Math.max(start, from),
+      Math.min(end ?? Infinity, to),
+    ])
+    .filter(([from, to]) => to > from)
+    .sort((a, b) => a[0] - b[0]);
+  let watchedSeconds = 0;
+  let previousEnd = start;
+  for (const [from, to] of clipped) {
+    watchedSeconds += Math.max(0, to - Math.max(previousEnd, from));
+    previousEnd = Math.max(previousEnd, to);
+  }
+
+  if (!knownDuration || end === undefined) return { watchedSeconds };
+  return {
+    watchedSeconds,
+    watchedFraction: Math.min(1, Math.max(0, watchedSeconds / (end - start))),
+  };
 }
 
 /**

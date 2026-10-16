@@ -9,6 +9,7 @@ import {
 } from "./StagebookProvider.js";
 import { isNumberFormat } from "../messages/numberFormat.js";
 import { promptFileSchema } from "../schemas/promptFile.js";
+import type { VideoPlaybackRecord } from "../schemas/mediaPlayerRecord.js";
 import {
   formatReference,
   parseDottedReference,
@@ -400,8 +401,18 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
         resolvedCaptionsRaw && isUnresolvedAsset(resolvedCaptionsRaw)
           ? undefined
           : resolvedCaptionsRaw;
+      const mediaName =
+        element.name ?? deriveStorageKeyName(`${progressLabel}_${rawURL}`);
+      const savedRecord = readReference(`self.mediaPlayer.${mediaName}`);
       return (
         <MediaPlayer
+          key={JSON.stringify([
+            ctx.playerId,
+            stageId,
+            progressLabel,
+            mediaName,
+            rawURL,
+          ])}
           // Position-based fallback when `name:` is omitted — same
           // intent as the audio case above: distinct storage keys
           // for the same media used in different stages.
@@ -411,10 +422,14 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           // contains `://` and slashes — same regex problem). Either
           // way the helper produces a reference-name-valid identifier
           // (#359).
-          name={
-            element.name ?? deriveStorageKeyName(`${progressLabel}_${rawURL}`)
-          }
+          name={mediaName}
           url={resolvedURL}
+          sourceId={rawURL}
+          initialRecord={
+            savedRecord === Missing
+              ? undefined
+              : (savedRecord as VideoPlaybackRecord)
+          }
           save={wrappedSave}
           getElapsedTime={getElapsedTime}
           onComplete={onSubmit}

@@ -26,6 +26,10 @@ describe("mediaPlayerRecordSchema", () => {
         stopAt: 12,
         firstEnd: { type: "stopAt", videoTime: 12, stageTimeElapsed: 14 },
         watchedRanges: [[0, 12]],
+        duration: 30,
+        sourceId: "clips/example.mp4",
+        watchedSeconds: 12,
+        watchedFraction: 1,
         step: "watch",
         stageTimeElapsed: 14,
         hostExtension: true,
@@ -58,11 +62,13 @@ describe("mediaPlayerRecordSchema", () => {
     ["firstPlay", "speed"],
     ["firstPlay", "stopAt"],
     ["firstPlay", "removed"],
+    ["firstPlay", "restored"],
     ["firstEnd", "play"],
     ["firstEnd", "pause"],
     ["firstEnd", "seek"],
     ["firstEnd", "speed"],
     ["firstEnd", "removed"],
+    ["firstEnd", "restored"],
   ])("rejects %s containing a %s event", (milestone, type) => {
     const result = checkHostRecord("mediaPlayer", {
       ...record,
@@ -76,19 +82,25 @@ describe("mediaPlayerRecordSchema", () => {
     }
   });
 
-  it.each(["play", "pause", "ended", "seek", "speed", "stopAt", "removed"])(
-    "accepts the %s event type",
-    (type) => {
-      expect(
-        videoEventSchema.safeParse({
-          ...play,
-          type,
-          fromTime: 2,
-          playbackRate: 1,
-        }).success,
-      ).toBe(true);
-    },
-  );
+  it.each([
+    "play",
+    "pause",
+    "ended",
+    "seek",
+    "speed",
+    "stopAt",
+    "removed",
+    "restored",
+  ])("accepts the %s event type", (type) => {
+    expect(
+      videoEventSchema.safeParse({
+        ...play,
+        type,
+        fromTime: 2,
+        playbackRate: 1,
+      }).success,
+    ).toBe(true);
+  });
 
   it.each([
     ["seek", "fromTime"],
@@ -116,12 +128,45 @@ describe("mediaPlayerRecordSchema", () => {
     expect(videoEventSchema.parse(event)).toEqual(event);
   });
 
-  it.each(["play", "pause", "ended", "stopAt", "removed"])(
+  it.each(["play", "pause", "ended", "stopAt", "removed", "restored"])(
     "does not require seek or speed payloads on %s events",
     (type) => {
       expect(videoEventSchema.safeParse({ ...play, type }).success).toBe(true);
     },
   );
+
+  it("accepts zero coverage and unknown duration without rejecting legacy records", () => {
+    expect(mediaPlayerRecordSchema.safeParse(record).success).toBe(true);
+    expect(
+      mediaPlayerRecordSchema.safeParse({
+        ...record,
+        duration: 0,
+        watchedSeconds: 0,
+        watchedFraction: 0,
+      }).success,
+    ).toBe(true);
+  });
+
+  it.each([
+    { duration: -1 },
+    { duration: Infinity },
+    { duration: NaN },
+    { duration: "12" },
+    { sourceId: 12 },
+    { watchedSeconds: -1 },
+    { watchedSeconds: Infinity },
+    { watchedSeconds: NaN },
+    { watchedSeconds: "12" },
+    { watchedFraction: -0.01 },
+    { watchedFraction: 1.01 },
+    { watchedFraction: Infinity },
+    { watchedFraction: NaN },
+    { watchedFraction: "0.5" },
+  ])("rejects malformed coverage fields: %j", (fields) => {
+    expect(
+      mediaPlayerRecordSchema.safeParse({ ...record, ...fields }).success,
+    ).toBe(false);
+  });
 
   it.each([
     { type: "seek", fromTime: undefined },

@@ -11,6 +11,8 @@ export interface SeekCoalescer {
   seek(fromTime: number, videoTime: number, stageTimeElapsed: number): void;
   /** Log the pending seek now, if there is one. */
   flush(): void;
+  /** Discard a pending seek when its source is replaced. */
+  cancel(): void;
 }
 
 /**
@@ -28,13 +30,17 @@ export function createSeekCoalescer(
   let pending: CoalescedSeek | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
-  const flush = () => {
+  const cancel = () => {
     if (timer !== null) {
       clearTimeout(timer);
       timer = null;
     }
-    const seek = pending;
     pending = null;
+  };
+
+  const flush = () => {
+    const seek = pending;
+    cancel();
     if (seek && seek.videoTime !== seek.fromTime) log(seek);
   };
 
@@ -48,5 +54,6 @@ export function createSeekCoalescer(
       timer = setTimeout(flush, settleMs);
     },
     flush,
+    cancel,
   };
 }
