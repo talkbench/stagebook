@@ -532,7 +532,9 @@ Requires StagebookProvider. Renders a complete stage: lays out elements with con
 import { useScrollAwareness, ScrollIndicator } from "stagebook/components";
 
 const scrollRef = useRef<HTMLElement>(null);
-const { showIndicator, dismissIndicator } = useScrollAwareness(scrollRef);
+const { showIndicator, dismissIndicator } = useScrollAwareness(scrollRef, {
+  resetKey: stageId,
+});
 
 return (
   <main ref={scrollRef} style={{ overflow: "auto" }}>
@@ -542,7 +544,9 @@ return (
 );
 ```
 
-`useScrollAwareness(containerRef, { threshold? })` watches the container for new content appearing below the viewport. If the user is near the bottom (within `threshold` px, default 120) it auto-"peeks" the new content into view; otherwise it sets `showIndicator` to `true` and clears it when the user scrolls to the bottom.
+`useScrollAwareness(containerRef, { threshold?, resetKey? })` watches the container for new content appearing below the viewport. If the user has scrolled and is near the bottom (within `threshold` px, default 120), it auto-"peeks" the new content into view; otherwise it sets `showIndicator` to `true` and clears it when the user scrolls to the bottom. Pointer, keyboard, touch, wheel, focus, and external scroll changes interrupt the animation; remaining content can still be indicated.
+
+`resetKey` is an optional string or number identifying the current stage instance. A new key cancels pending work, immediately returns the container to the top, and clears the previous stage's scroll engagement. Keep it stable across response updates. Without a key, the hook leaves navigation positioning to the host. In internal scroll mode, `Stage` supplies `StagebookContext.stageId`, falling back to `stage.name`; hosts that reuse stage names should supply a distinct `stageId` for each instance.
 
 `<ScrollIndicator visible>` is a `position: sticky; bottom: 0` chevron that pulses to draw attention. It auto-renders nothing when `visible` is false, so you can leave it mounted unconditionally.
 

@@ -128,8 +128,13 @@ export function Viewer({
   // observes it for content growth and produces the indicator visibility
   // — same UX as Stage's old internal scroll, just hosted by us.
   const mainScrollRef = useRef<HTMLElement | null>(null);
-  const { showIndicator: showScrollIndicator } =
-    useScrollAwareness(mainScrollRef);
+  // Reset the host scroller on the same navigation/reset boundaries as the
+  // Stage remount. Answer, time, and position updates keep the current scroll.
+  const stageKey = `stage-${selectedUnitKey}-${String(stageIndex)}-${String(stageResetVersion)}`;
+  const { showIndicator: showScrollIndicator } = useScrollAwareness(
+    mainScrollRef,
+    { resetKey: stageKey },
+  );
 
   // Clamp stageIndex if the treatment was edited to have fewer stages
   // (e.g. researcher deleted a stage while the preview was open). Without
@@ -536,7 +541,7 @@ export function Viewer({
                     // cleared store. (setStageIndex(0) used to force this
                     // incidentally; now that we preserve the stage index for
                     // cross-treatment comparison, we key on the unit explicitly.)
-                    key={`stage-${selectedUnitKey}-${String(stageIndex)}-${String(stageResetVersion)}`}
+                    key={stageKey}
                     stage={stageConfig}
                     onSubmit={handleSubmit}
                     scrollMode="host"

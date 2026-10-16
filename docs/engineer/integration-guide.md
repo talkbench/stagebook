@@ -449,7 +449,9 @@ function HostedStage({ stageConfig, context, onSubmit }) {
   // window (pass `null`/document.scrollingElement), or a custom shell.
   // Match `useScrollAwareness`'s `RefObject<HTMLElement | null>` param.
   const scrollRef = useRef<HTMLElement | null>(null);
-  const { showIndicator } = useScrollAwareness(scrollRef);
+  const { showIndicator } = useScrollAwareness(scrollRef, {
+    resetKey: context.stageId ?? stageConfig.name,
+  });
 
   return (
     <main ref={scrollRef} style={{ overflow: "auto" }}>
@@ -473,6 +475,8 @@ function HostedStage({ stageConfig, context, onSubmit }) {
 ```
 
 `scrollMode` defaults to `"internal"`, so existing integrations are unaffected. Migrate at your own pace: add a host-side scroll container + spacer + `<ScrollIndicator>`, then flip the prop.
+
+Pass a stable stage-instance identifier as `resetKey` when the host scroll container survives navigation. Changing it cancels any pending auto-peek and starts the new stage at the top, even when the container has CSS smooth scrolling. Response updates within the same stage should retain the key and the reader's position. If a study repeats stage names, use the host's unique stage ID rather than the name. Internal scroll mode applies this contract using `context.stageId ?? stageConfig.name` automatically.
 
 ### Resource resolution (`getAssetURL` and `getTextContent`)
 
