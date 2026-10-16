@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Prompt } from "./Prompt.js";
 import { SubmitButton } from "./SubmitButton.js";
 import { TextArea } from "../form/TextArea.js";
+import type { DebugMessage } from "../../utils/promptTelemetry.js";
 import {
   openResponse,
   multipleChoiceSingle,
@@ -66,6 +67,20 @@ function edit(value: string) {
 function savedValue() {
   return (save.mock.calls.at(-1)?.[1] as { value: string } | undefined)?.value;
 }
+function savedMessages() {
+  return (save.mock.calls.at(-1)![1] as { debugMessages: DebugMessage[] })
+    .debugMessages;
+}
+function paste(text: string) {
+  const event = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "clipboardData", {
+    value: { getData: () => text },
+  });
+  act(() => {
+    dom.querySelector("textarea")!.dispatchEvent(event);
+  });
+  expect(event.defaultPrevented).toBe(true);
+}
 
 test("one 2s quiet period saves the latest text and cancels the maximum timer", () => {
   render();
@@ -77,6 +92,16 @@ test("one 2s quiet period saves the latest text and cancels the maximum timer", 
   advance(1);
   expect(save).toHaveBeenCalledTimes(1);
   expect(savedValue()).toBe("ab");
+  expect(savedMessages()).toEqual([
+    expect.objectContaining({
+      type: "typingStats",
+      totalKeystrokes: 2,
+      focusCount: 1,
+      blurCount: 0,
+      focusedDurationMs: 3500,
+      totalTypingTimeMs: 1500,
+    }),
+  ]);
   advance(15000);
   expect(save).toHaveBeenCalledTimes(1);
 });
@@ -92,6 +117,16 @@ test("5s checkpoints run only while edits are pending, without resetting on each
     }
     expect(save).toHaveBeenCalledTimes(batch + 1);
     expect(savedValue()).toBe(`${batch}:4`);
+    expect(savedMessages()).toEqual([
+      expect.objectContaining({
+        type: "typingStats",
+        totalKeystrokes: (batch + 1) * 5,
+        focusCount: 1,
+        blurCount: 0,
+        focusedDurationMs: (batch + 1) * 5000,
+        totalTypingTimeMs: (batch + 1) * 5000 - 1000,
+      }),
+    ]);
   }
   advance(20000);
   expect(save).toHaveBeenCalledTimes(2);
@@ -146,10 +181,123 @@ test("blur still records new focus telemetry after text was checkpointed", () =>
   expect(save).toHaveBeenCalledTimes(2);
 });
 
+test("checkpoints replace the current summary while preserving blur history and paste attempts", () => {
+  render();
+  edit("first visit");
+  advance(100);
+  act(() => dom.querySelector("textarea")!.blur());
+  expect(save).toHaveBeenCalledTimes(1);
+  const firstVisit = structuredClone(savedMessages()[0]);
+  expect(firstVisit).toMatchObject({
+    type: "typingStats",
+    totalKeystrokes: 1,
+    focusCount: 1,
+    blurCount: 1,
+    focusedDurationMs: 100,
+  });
+
+  advance(400);
+  edit("second visit");
+  const firstPasteAt = Date.now();
+  paste("first paste");
+  advance(2000);
+  expect(save).toHaveBeenCalledTimes(2);
+  const earlierCheckpoint = savedMessages();
+  const earlierCheckpointCopy = structuredClone(earlierCheckpoint);
+  expect(
+    earlierCheckpoint.filter(({ type }) => type === "typingStats"),
+  ).toEqual([
+    firstVisit,
+    expect.objectContaining({
+      totalKeystrokes: 2,
+      focusCount: 2,
+      blurCount: 1,
+      focusedDurationMs: 2100,
+    }),
+  ]);
+
+  edit("second visit continued");
+  const secondPasteAt = Date.now();
+  paste("second paste");
+  advance(2000);
+  expect(save).toHaveBeenCalledTimes(3);
+  edit("second visit finished");
+  advance(2000);
+  expect(save).toHaveBeenCalledTimes(4);
+  expect(savedMessages().filter(({ type }) => type === "typingStats")).toEqual([
+    firstVisit,
+    expect.objectContaining({
+      totalKeystrokes: 4,
+      focusCount: 2,
+      blurCount: 1,
+      focusedDurationMs: 6100,
+    }),
+  ]);
+  const expectedPastes = [
+    { type: "pasteAttempt", length: 11, timestamp: firstPasteAt },
+    { type: "pasteAttempt", length: 12, timestamp: secondPasteAt },
+  ];
+  expect(savedMessages().filter(({ type }) => type === "pasteAttempt")).toEqual(
+    expectedPastes,
+  );
+  expect(savedMessages()).toHaveLength(4);
+
+  advance(300);
+  act(() => dom.querySelector("textarea")!.blur());
+  expect(save).toHaveBeenCalledTimes(5);
+  expect(savedMessages().filter(({ type }) => type === "typingStats")).toEqual([
+    firstVisit,
+    expect.objectContaining({
+      totalKeystrokes: 4,
+      focusCount: 2,
+      blurCount: 2,
+      focusedDurationMs: 6400,
+    }),
+  ]);
+  expect(savedMessages().filter(({ type }) => type === "pasteAttempt")).toEqual(
+    expectedPastes,
+  );
+  expect(savedMessages()).toHaveLength(4);
+  // Updating the current summary must not mutate an already saved record.
+  expect(earlierCheckpoint).toEqual(earlierCheckpointCopy);
+  advance(10000);
+  expect(save).toHaveBeenCalledTimes(5);
+});
+
 test("unmount cancels pending work without saving the partial response", () => {
   render();
   edit("unfinished");
   advance(750);
+  render(<div>Next stage</div>);
+  advance(10000);
+  expect(save).not.toHaveBeenCalled();
+});
+
+test("cutoff keeps the last checkpoint without flushing later text or telemetry", () => {
+  render();
+  edit("checkpointed");
+  advance(2000);
+  expect(save).toHaveBeenCalledTimes(1);
+  const checkpoint = structuredClone(savedMessages());
+  expect(checkpoint).toEqual([
+    expect.objectContaining({ totalKeystrokes: 1, blurCount: 0 }),
+  ]);
+  edit("unfinished tail");
+  paste("unsaved paste");
+  advance(100);
+  render(<div>Next stage</div>);
+  advance(10000);
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(savedValue()).toBe("checkpointed");
+  expect(savedMessages()).toEqual(checkpoint);
+});
+
+test("focus and paste without an edit do not schedule a new checkpoint", () => {
+  render();
+  act(() => dom.querySelector("textarea")!.focus());
+  paste("blocked paste");
+  advance(10000);
+  expect(save).not.toHaveBeenCalled();
   render(<div>Next stage</div>);
   advance(10000);
   expect(save).not.toHaveBeenCalled();
@@ -187,10 +335,18 @@ for (const pendingText of ["Latest typed response", ""]) {
         value: pendingText,
         debugMessages: [
           { type: "pasteAttempt", length: droppedText.length, timestamp },
+          expect.objectContaining({
+            type: "typingStats",
+            totalKeystrokes: 1,
+            focusCount: 1,
+            blurCount: 0,
+            focusedDurationMs: 1000,
+          }),
         ],
       }),
       "player",
     );
+    expect(savedMessages()).toHaveLength(2);
     advance(10000);
     expect(save).toHaveBeenCalledTimes(1);
 
@@ -203,6 +359,62 @@ for (const pendingText of ["Latest typed response", ""]) {
     expect(savedValue()).toBe("Continued typing");
   });
 }
+
+test("first-focus checkpoint replaces an unfocused drop summary and keeps paste order", () => {
+  render();
+  const textarea = dom.querySelector("textarea")!;
+  expect(document.activeElement).not.toBe(textarea);
+  const dropTimestamp = Date.now();
+  const droppedText = "outside text";
+  const drop = new Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(drop, "dataTransfer", {
+    value: { getData: () => droppedText },
+  });
+  act(() => {
+    textarea.dispatchEvent(drop);
+  });
+  expect(drop.defaultPrevented).toBe(true);
+  expect(document.activeElement).not.toBe(textarea);
+  expect(save).toHaveBeenCalledTimes(1);
+  const dropAttempt = {
+    type: "pasteAttempt",
+    length: droppedText.length,
+    timestamp: dropTimestamp,
+  };
+  expect(savedMessages()).toEqual([
+    dropAttempt,
+    expect.objectContaining({
+      type: "typingStats",
+      totalKeystrokes: 0,
+      focusCount: 0,
+      blurCount: 0,
+      focusedDurationMs: 0,
+    }),
+  ]);
+
+  advance(500);
+  edit("first typed response");
+  const pasteTimestamp = Date.now();
+  paste("later paste");
+  advance(1999);
+  expect(save).toHaveBeenCalledTimes(1);
+  advance(1);
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(savedValue()).toBe("first typed response");
+  expect(savedMessages()).toEqual([
+    dropAttempt,
+    { type: "pasteAttempt", length: 11, timestamp: pasteTimestamp },
+    expect.objectContaining({
+      type: "typingStats",
+      totalKeystrokes: 1,
+      focusCount: 1,
+      blurCount: 0,
+      focusedDurationMs: 2000,
+    }),
+  ]);
+  advance(10000);
+  expect(save).toHaveBeenCalledTimes(2);
+});
 
 test("pending text uses the latest callback after a harmless rerender", () => {
   render();

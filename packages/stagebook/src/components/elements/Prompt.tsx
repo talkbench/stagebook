@@ -112,9 +112,11 @@ function PromptContent({
   // its corresponding numeric value (#282 — without this, a shuffled
   // numeric multipleChoice records the wrong number for the chosen label).
   const [shuffleOrder, setShuffleOrder] = useState<number[]>([]);
-  // TextArea emits blur telemetry and the response in one event. Read the
-  // ref at commit time, without waiting for a React state update.
+  // Controls emit telemetry before the response. Read the ref at commit
+  // time, without waiting for a React state update.
   const debugMessagesRef = useRef<DebugMessage[]>([]);
+  const typingSnapshotIndexRef = useRef<number | undefined>(undefined);
+  const finalizingTypingVisitRef = useRef(false);
 
   // Stable id for the wrapper around the rendered prompt body. The
   // dropdown's `<select>` points its `aria-labelledby` here so the
@@ -386,7 +388,26 @@ function PromptContent({
           maxWait={5000}
           onChange={(val) => saveData(val, record)}
           onDebugMessage={(message) => {
-            debugMessagesRef.current = [...debugMessagesRef.current, message];
+            if (message.type === "typingStats") {
+              // The real blur event precedes its commit snapshot. Finalize
+              // that snapshot once, without appending a duplicate summary.
+              finalizingTypingVisitRef.current = true;
+            } else {
+              debugMessagesRef.current = [...debugMessagesRef.current, message];
+            }
+          }}
+          onTypingSnapshot={(snapshot) => {
+            // One provisional snapshot until a real blur. Move replacements
+            // to the end so intervening paste events retain their ordering;
+            // never mutate arrays/objects already handed to a host save.
+            const history = debugMessagesRef.current.filter(
+              (_, index) => index !== typingSnapshotIndexRef.current,
+            );
+            debugMessagesRef.current = [...history, snapshot];
+            typingSnapshotIndexRef.current = finalizingTypingVisitRef.current
+              ? undefined
+              : history.length;
+            finalizingTypingVisitRef.current = false;
           }}
           value={value as string | undefined}
           rows={rows}

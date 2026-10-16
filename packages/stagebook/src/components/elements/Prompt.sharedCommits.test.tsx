@@ -379,7 +379,28 @@ for (const shared of [false, true]) {
         body: parsed.body,
         responses: parsed.responseItems,
         value: "committed answer",
-        debugMessages: [],
+        // The synthetic solo input has no key/focus events, but its answer
+        // checkpoint still carries a zero-count snapshot. Shared fields do
+        // not collect participant typing telemetry.
+        debugMessages: shared
+          ? []
+          : [
+              {
+                type: "typingStats",
+                totalKeystrokes: 0,
+                editingKeyCount: 0,
+                arrowKeyCount: 0,
+                mouseClickCount: 0,
+                focusCount: 0,
+                blurCount: 0,
+                avgInterval: 0,
+                stdDev: 0,
+                intervalQuantiles: null,
+                firstKeystrokeDelayMs: null,
+                totalTypingTimeMs: null,
+                focusedDurationMs: 0,
+              },
+            ],
         step: "game_1_answer",
         stageTimeElapsed: 58,
       }),
