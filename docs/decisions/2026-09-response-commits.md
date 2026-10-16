@@ -11,8 +11,12 @@ completed responses behind a second timer.
 Open-response prompts configure TextArea for a two-second quiet period and a
 five-second maximum wait. The first pending edit starts both timers; further
 edits restart only the quiet timer. Saving clears both, and idle controls do
-not checkpoint. Blur emits current typing statistics before the response so
-the synchronous Prompt save includes them. Standalone TextArea keeps its
+not checkpoint. Current typing statistics accompany each existing response
+commit, including quiet-period and maximum-wait checkpoints ([#703](https://github.com/talkbench/stagebook/issues/703)).
+Snapshots do not count as blurs or end the current focus interval. Prompt
+replaces the current visit's snapshot instead of appending redundant totals;
+real blur finalizes that visit's summary, and earlier blur summaries and paste
+attempts remain in the history. Standalone TextArea keeps its
 configurable quiet period (500ms by default) and maximum wait (5 seconds by
 default). Unmount cancels pending timers, without flushing.
 
@@ -20,7 +24,7 @@ Blocked text drops also commit the current response immediately, including any
 pending typed edits, after recording the `pasteAttempt`
 ([#691](https://github.com/talkbench/stagebook/issues/691)). Canceling a drop can
 leave the field unfocused, so persistence cannot rely on a later blur or edit.
-This commit clears both timers without adding focus or blur statistics.
+This commit clears both timers without incrementing `focusCount` or `blurCount`.
 
 Slider previews pointer and held-key changes locally and commits on pointer
 release or completion of the held adjustment keys. Click-to-jump completes
@@ -46,6 +50,11 @@ discard the text tail since the last checkpoint, nominally within five seconds
 under normal foreground scheduling. That tradeoff is accepted. Unfinished
 manipulation gestures must not become answers just because the stage ended.
 A normal text-field blur before Continue issues the response immediately.
+
+Typing telemetry follows those same save boundaries; it does not add saves,
+timers, or teardown work. Idle focus time, cursor activity, and paste attempts
+after the last answer save can remain unsaved for longer than five seconds.
+A focus-only visit that ends at cutoff can still have no saved summary.
 
 The host's void-returning save API does not acknowledge network delivery or
 server persistence. These component changes do not establish server mutation

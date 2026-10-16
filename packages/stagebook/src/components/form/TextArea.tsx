@@ -5,7 +5,7 @@ import { useTypingTelemetry } from "../hooks/useTypingTelemetry.js";
 import { useMessages, useIsRTL } from "../StagebookProvider.js";
 import { focusRingCss } from "../focusRing.js";
 
-import type { DebugMessage } from "../../utils/promptTelemetry.js";
+import type { DebugMessage, TypingStats } from "../../utils/promptTelemetry.js";
 
 // Preserve the existing component entry point for host type imports.
 export type {
@@ -18,6 +18,9 @@ export interface TextAreaProps {
   defaultText?: string;
   onChange?: (value: string) => void;
   onDebugMessage?: (message: DebugMessage) => void;
+  /** Current cumulative stats immediately before each existing onChange.
+   * Sampling does not end focus or count a blur. */
+  onTypingSnapshot?: (stats: TypingStats) => void;
   value?: string;
   rows?: number;
   showCharacterCount?: boolean;
@@ -74,6 +77,7 @@ export function TextArea({
   defaultText,
   onChange,
   onDebugMessage,
+  onTypingSnapshot,
   value,
   rows = 5,
   showCharacterCount,
@@ -107,15 +111,17 @@ export function TextArea({
   // would not retrigger the keyframe (the animation prop string is
   // unchanged, so the browser doesn't restart).
   const [overflowPulseId, setOverflowPulseId] = useState(0);
+  const telemetry = useTypingTelemetry();
   const responseCommit = useResponseCommit({
-    onCommit: onChange,
+    onCommit: (nextValue: string) => {
+      onTypingSnapshot?.(telemetry.snapshot());
+      onChange?.(nextValue);
+    },
     debounceDelay,
     maxWait,
   });
   const { hasPending } = responseCommit;
   const overflowTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const telemetry = useTypingTelemetry();
 
   // Sync with external value only when not actively debouncing
   useEffect(() => {

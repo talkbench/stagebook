@@ -254,6 +254,12 @@ test.describe("Open Response", () => {
                   length: droppedText.length,
                   timestamp: now.getTime(),
                 },
+                expect.objectContaining({
+                  type: "typingStats",
+                  totalKeystrokes: 0,
+                  focusCount: 0,
+                  blurCount: 0,
+                }),
               ],
             }),
             scope: "player",
@@ -261,6 +267,52 @@ test.describe("Open Response", () => {
         ]);
     });
   }
+
+  test("focused typing is checkpointed with statistics before cutoff (#703)", async ({
+    mount,
+    page,
+  }) => {
+    const now = new Date("2026-10-16T12:00:00Z");
+    await page.clock.install({ time: now });
+    await page.clock.pauseAt(now);
+    const saved: unknown[] = [];
+    const component = await mount(
+      <Prompt
+        {...openResponse}
+        name="checkpoint"
+        value=""
+        save={(_key, record) => saved.push(record)}
+      />,
+    );
+    const textarea = component.locator("textarea");
+    await textarea.pressSequentially("abc");
+    await page.clock.runFor(2000);
+    await expect(textarea).toBeFocused();
+    await expect
+      .poll(() => saved)
+      .toEqual([
+        expect.objectContaining({
+          value: "abc",
+          debugMessages: [
+            expect.objectContaining({
+              type: "typingStats",
+              totalKeystrokes: 3,
+              focusCount: 1,
+              blurCount: 0,
+            }),
+          ],
+        }),
+      ]);
+
+    await textarea.pressSequentially("d");
+    await component.unmount();
+    await page.clock.runFor(10000);
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({
+      value: "abc",
+      debugMessages: [expect.objectContaining({ totalKeystrokes: 3 })],
+    });
+  });
 
   test("shows character counter with min/max limits", async ({ mount }) => {
     const component = await mount(

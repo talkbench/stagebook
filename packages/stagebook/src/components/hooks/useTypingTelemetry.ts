@@ -133,5 +133,5 @@ export function useTypingTelemetry() {
     mouseClickCount.current += 1;
   };
 
-  return { onFocus, onBlur, onKeyDown, onClick };
+  return { onFocus, onBlur, onKeyDown, onClick, snapshot: computeTypingStats };
 }
