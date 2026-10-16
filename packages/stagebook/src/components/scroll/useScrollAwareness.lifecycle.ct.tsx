@@ -62,7 +62,7 @@ for (const [phase, elapsed] of [
     await expect(scroller).toHaveJSProperty("scrollTop", before);
   });
 
-  test(`one pointer activation submits while a peek is ${phase}`, async ({
+  test(`scrolling Complete into view preserves one pointer submission with a ${phase} peek`, async ({
     mount,
     page,
   }) => {
@@ -156,3 +156,32 @@ test("content growth cannot supersede an external reset in the same frame", asyn
   await page.clock.runFor(1000);
   await expect(scroller).toHaveJSProperty("scrollTop", 0);
 });
+
+for (const destination of [0, 400]) {
+  test(`external scroll to ${destination} before the first peek takes precedence`, async ({
+    mount,
+    page,
+  }) => {
+    await pauseClock(page);
+    const component = await mount(<ScrollLifecycleHarness />);
+    await component
+      .getByRole("button", { name: "Warm up", exact: true })
+      .click();
+    await page.clock.runFor(32);
+    const scroller = component.getByTestId("scroller");
+    await scroller.evaluate((el) => {
+      el.scrollTo({ top: 520, behavior: "instant" });
+      el.dispatchEvent(new Event("scroll"));
+    });
+    await scroller.evaluate((el, top) => {
+      // No peek exists yet. The host scroll runs before the mutation check
+      // in the next frame, while the hook still remembers the old position.
+      requestAnimationFrame(() => el.scrollTo({ top, behavior: "instant" }));
+      const content = document.createElement("div");
+      content.style.height = "300px";
+      el.append(content);
+    }, destination);
+    await page.clock.runFor(1000);
+    await expect(scroller).toHaveJSProperty("scrollTop", destination);
+  });
+}

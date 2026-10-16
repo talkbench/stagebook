@@ -70,29 +70,53 @@ export function useScrollAwareness(
     let delay: ReturnType<typeof setTimeout> | undefined;
     let animationFrame: number | undefined;
     let mutationFrame: number | undefined;
-    // The last actual (rounded/clamped) position written by this animation.
-    // Any other movement, including scrollIntoView or a host reset, wins.
-    let peekPosition: number | undefined;
+    // Track observed/written position even while idle: an external scroll can
+    // precede the mutation check that would schedule the first peek. Read back
+    // animation writes so browser rounding/clamping is not mistaken for input.
+    let lastScrollTop = container.scrollTop;
+    let clampedFrom: number | undefined;
+    let peeking = false;
 
     const cancelPeek = () => {
       clearTimeout(delay);
       if (animationFrame !== undefined) cancelAnimationFrame(animationFrame);
       delay = undefined;
       animationFrame = undefined;
-      peekPosition = undefined;
+      peeking = false;
     };
     const indicateRemaining = () => updateIndicator(!atBottom());
     const interrupt = () => {
-      const hadPeek = peekPosition !== undefined;
+      const hadPeek = peeking;
       inputVersion++;
+      clampedFrom = undefined;
       cancelPeek();
       if (hadPeek) indicateRemaining();
     };
-    const externallyMoved = () =>
-      peekPosition !== undefined &&
-      Math.abs(container.scrollTop - peekPosition) > 1;
+    const externallyMoved = () => {
+      const top = container.scrollTop;
+      const max = Math.max(0, container.scrollHeight - container.clientHeight);
+      if (Math.abs(top - lastScrollTop) <= 1) return false;
+      // Removing content (including our indicator) can clamp the position.
+      // Chromium may restore the pre-clamp position on later growth; other
+      // browsers keep the clamped position. Neither is new scrolling intent.
+      if (Math.abs(top - Math.min(lastScrollTop, max)) <= 1) {
+        clampedFrom = Math.max(clampedFrom ?? lastScrollTop, lastScrollTop);
+        lastScrollTop = top;
+        return false;
+      }
+      if (
+        clampedFrom !== undefined &&
+        Math.abs(top - Math.min(clampedFrom, max)) <= 1
+      ) {
+        lastScrollTop = top;
+        if (Math.abs(top - clampedFrom) <= 1) clampedFrom = undefined;
+        return false;
+      }
+      return true;
+    };
     const handleScroll = () => {
       if (externallyMoved()) interrupt();
+      lastScrollTop = container.scrollTop;
       hasUserScrolled = container.scrollTop > 0;
       wasAtBottom = atBottom();
       if (wasAtBottom) updateIndicator(false);
@@ -140,7 +164,7 @@ export function useScrollAwareness(
               150,
             );
             cancelPeek();
-            peekPosition = scrollTop;
+            peeking = true;
             const startTime = performance.now();
             const animateScroll = (currentTime: number) => {
               animationFrame = undefined;
@@ -158,10 +182,11 @@ export function useScrollAwareness(
                 top: scrollTop + peekAmount * easeInOut,
                 behavior: "instant",
               });
-              peekPosition = container.scrollTop;
+              lastScrollTop = container.scrollTop;
+              clampedFrom = undefined;
               if (progress < 1)
                 animationFrame = requestAnimationFrame(animateScroll);
-              else peekPosition = undefined;
+              else peeking = false;
             };
             delay = setTimeout(() => {
               delay = undefined;
