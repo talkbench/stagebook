@@ -29,11 +29,17 @@ save computes the amounts for HTML5 and YouTube:
 
 - `duration` is the full media duration when known and finite.
 - `watchedSeconds` is the length of the union of closed watched intervals,
-  clipped to `[startAt ?? 0, stopAt ?? duration]`. With unknown duration and
-  no `stopAt`, the upper bound is open. Rewatching never double-counts footage.
+  clipped to `[startAt ?? 0, min(stopAt ?? duration, duration)]` when duration
+  is known and positive. With unknown duration, an explicit `stopAt` still
+  bounds seconds; without it, the upper bound is open. Rewatching never
+  double-counts footage.
 - `watchedFraction` divides those seconds by the clip-window length. It is
   absent until duration is finite and positive and the window has positive
   length, even when an explicit `stopAt` supplies the upper bound.
+
+The end is capped at the known media duration, matching the player's playable
+window. A ten-second file with `stopAt: 20` has a ten-second coverage window;
+playing all ten seconds yields a fraction of `1`, not `0.5`.
 
 The existing `watchedRanges` field remains raw log-derived intervals; clipping
 for these amounts does not rewrite it. Playback outside the configured window

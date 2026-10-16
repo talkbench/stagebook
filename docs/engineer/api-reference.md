@@ -129,10 +129,13 @@ computeWatchedCoverage([[0, 1], [3, 4]], { duration: 4 });
 // { watchedSeconds: 2, watchedFraction: 0.5 }
 ```
 
-The function clips to `[startAt ?? 0, stopAt ?? duration]`, merges overlaps,
-and preserves gaps. Without a known positive finite duration, it returns
-seconds only, even if `stopAt` bounds the window. The fraction also requires a
-positive window length. Inputs are not mutated. Pass the result of
+With known positive finite duration, the function clips to
+`[startAt ?? 0, min(stopAt ?? duration, duration)]`, merges overlaps, and
+preserves gaps. The end never exceeds the media duration, even if the authored
+`stopAt` does. Without known positive finite duration, it returns seconds only:
+an explicit `stopAt` still bounds the window, otherwise its upper bound is
+open. The fraction also requires a positive window length. Inputs are not
+mutated. Pass the result of
 `computeWatchedRanges(events)` when reconstructing coverage from a saved log;
 that walk understands `restored` boundaries. See [MediaPlayer records and
 restoration](#mediaplayer-records-and-restoration) for save timing and host
@@ -705,10 +708,12 @@ continues to restrict one mounted player/source, not attempts across reloads.
 exports. Records support optional `duration`, `watchedSeconds`, and
 `watchedFraction` fields so older saved data remains readable. The current
 player computes coverage on each existing event save, without extra progress
-saves: distinct closed ranges clipped to `[startAt ?? 0, stopAt ?? duration]`,
-in video seconds. `duration` is included only when finite;
+saves: distinct closed ranges in video seconds, clipped to
+`[startAt ?? 0, min(stopAt ?? duration, duration)]` when duration is known and
+positive. `duration` is included only when finite;
 `watchedFraction` additionally needs positive duration and positive window
-length. Unknown-duration media can have seconds without a fraction.
+length. Unknown-duration media can have seconds without a fraction: an
+explicit `stopAt` bounds those seconds, otherwise only the lower bound applies.
 `watchedRanges` remains the raw merged log-derived intervals, including any
 out-of-window playback. Preserve the `restored` event when persisting or
 exporting logs so downstream reconstruction does not bridge mount boundaries.

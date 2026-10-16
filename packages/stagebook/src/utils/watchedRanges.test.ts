@@ -302,6 +302,24 @@ describe("computeWatchedCoverage (#719)", () => {
     ).toEqual({ watchedSeconds: 10, watchedFraction: 1 });
   });
 
+  it("caps an authored stop beyond the file at its known duration", () => {
+    expect(
+      computeWatchedCoverage([[0, 10]], { stopAt: 20, duration: 10 }),
+    ).toEqual({ watchedSeconds: 10, watchedFraction: 1 });
+  });
+
+  it("clips both seconds and fraction to the playable part of a nonzero window", () => {
+    const options = { startAt: 4, stopAt: 20, duration: 10 };
+    expect(computeWatchedCoverage([[4, 7]], options)).toEqual({
+      watchedSeconds: 3,
+      watchedFraction: 0.5,
+    });
+    expect(computeWatchedCoverage([[0, 20]], options)).toEqual({
+      watchedSeconds: 6,
+      watchedFraction: 1,
+    });
+  });
+
   it("clips negative footage and playback past the end", () => {
     expect(computeWatchedCoverage([[-5, 30]], { duration: 20 })).toEqual({
       watchedSeconds: 20,
@@ -334,6 +352,7 @@ describe("computeWatchedCoverage (#719)", () => {
     { startAt: 20, stopAt: 10, duration: 30 },
     { startAt: 10, stopAt: 10, duration: 30 },
     { startAt: 30, duration: 20 },
+    { startAt: 30, stopAt: 40, duration: 20 },
   ])("omits the fraction for an empty or inverted window: %j", (options) => {
     expect(computeWatchedCoverage([[0, 40]], options)).toEqual({
       watchedSeconds: 0,

@@ -352,8 +352,10 @@ The record also carries coverage amounts for [conditions](conditions.md#media-pl
 | Field | Meaning |
 | ----- | ------- |
 | `duration` | The media's duration, when known and finite; this is the full media length, not the clip-window length. |
-| `watchedSeconds` | Length of the union of closed watched ranges, clipped to `[startAt ?? 0, stopAt ?? duration]`. With unknown duration and no `stopAt`, only the lower bound applies. |
+| `watchedSeconds` | Length of the union of closed watched ranges, clipped to `[startAt ?? 0, min(stopAt ?? duration, duration)]` when duration is known and positive. With unknown duration, an explicit `stopAt` still bounds seconds; without it, only the lower bound applies. |
 | `watchedFraction` | `watchedSeconds` divided by the clip-window length. Absent until the media duration is finite and positive and the window has positive length. |
+
+The coverage window ends at the known media duration even if the authored `stopAt` is later. A ten-second file with `stopAt: 20` therefore reaches a fraction of `1` after all ten seconds play.
 
 These fields are calculated on existing playback-event saves for both HTML5 and YouTube. There is no extra interval that saves progress. While playback continues uninterrupted, an open range does not contribute until a pause, seek, end, or removal closes it. A threshold such as 75% can therefore open later than the instant that much footage has played. Metadata arriving alone does not save a record. Older records may omit the new fields until another playback event saves them.
 

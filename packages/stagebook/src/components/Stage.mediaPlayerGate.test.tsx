@@ -280,6 +280,26 @@ function coverageNext(threshold: number) {
 }
 
 describe("Next gated on distinct clip coverage (#719)", () => {
+  it.each([0, 40])(
+    "opens after the playable clip ends when stopAt exceeds duration (startAt: %s)",
+    (startAt) => {
+      // The fixture is a 100-second file; an authored stop at 200 cannot
+      // require watching beyond its natural end to satisfy a coverage gate.
+      render([player("clip", { startAt, stopAt: 200 }), coverageNext(0.98)]);
+      playPause("clip");
+      moveTo("clip", 50);
+      playPause("clip");
+      expect(nextShown()).toBe(false);
+      playPause("clip");
+      moveTo("clip", 100);
+      const video = within("clip").querySelector("video")!;
+      act(() => {
+        video.dispatchEvent(new Event("ended"));
+      });
+      expect(nextShown()).toBe(true);
+    },
+  );
+
   it("aggregates pause/resume fragments and stays open through replay", () => {
     render([player("clip", { stopAt: 4 }), coverageNext(0.98)]);
     playPause("clip");

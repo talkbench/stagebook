@@ -91,7 +91,8 @@ export function computeWatchedRanges(events: VideoEvent[]): [number, number][] {
 }
 
 /**
- * Unique watched media seconds inside [startAt ?? 0, stopAt ?? duration].
+ * Unique watched media seconds inside the authored window, capped at the
+ * known media duration even when stopAt extends beyond the file.
  * Overlaps count once; gaps remain unwatched, however small. The fraction is
  * absent until the media duration and the resulting window are finite and
  * positive. An explicit stopAt still bounds seconds before duration is known.
@@ -101,11 +102,12 @@ export function computeWatchedCoverage(
   options: { startAt?: number; stopAt?: number; duration?: number } = {},
 ): { watchedSeconds: number; watchedFraction?: number } {
   const start = options.startAt ?? 0;
+  const duration = options.duration;
   const knownDuration =
-    options.duration !== undefined &&
-    Number.isFinite(options.duration) &&
-    options.duration > 0;
-  const end = options.stopAt ?? (knownDuration ? options.duration : undefined);
+    duration !== undefined && Number.isFinite(duration) && duration > 0;
+  const end = knownDuration
+    ? Math.min(options.stopAt ?? duration, duration)
+    : options.stopAt;
   if (
     !Number.isFinite(start) ||
     (end !== undefined && (!Number.isFinite(end) || end <= start))
