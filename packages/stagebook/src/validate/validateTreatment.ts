@@ -2,6 +2,7 @@ import {
   safeParseTreatmentFile,
   collectMissingImageAltText,
   collectYouTubeUnsupportedControls,
+  collectLayoutOverridesSelfView,
 } from "../index.js";
 import { createPositionMapper, extractYamlErrors } from "./yamlPositionMap.js";
 import { newerThanValidatorWarning } from "./stagebookVersion.js";
@@ -129,6 +130,7 @@ export function validateTreatmentSource(
   for (const issue of [
     ...collectMissingImageAltText(parsedObj),
     ...collectYouTubeUnsupportedControls(parsedObj),
+    ...collectLayoutOverridesSelfView(parsedObj),
     ...hostFieldIssues,
   ]) {
     let range = mapper.resolve(issue.path);

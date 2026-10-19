@@ -162,6 +162,11 @@ export {
 } from "./youTubeUnsupportedControls.js";
 
 export {
+  collectLayoutOverridesSelfView,
+  type LayoutOverridesSelfView,
+} from "./layoutOverridesSelfView.js";
+
+export {
   collectReferencedPromptFiles,
   checkPromptLocaleConsistency,
   checkConsentLocaleCoverage,

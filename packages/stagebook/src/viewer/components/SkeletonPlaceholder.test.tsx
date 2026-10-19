@@ -340,6 +340,42 @@ describe("discussion skeleton (#791)", () => {
     ]);
   });
 
+  it.each([true, false, undefined])(
+    "qualifies self-view for custom layout seats (flag: %s)",
+    (showSelfView) => {
+      const seat = {
+        grid: { rows: 1, cols: 1 },
+        feeds: [
+          { source: { type: "self" }, displayRegion: { rows: 0, cols: 0 } },
+        ],
+      };
+      const lines = discussionLines({
+        chatType: "video",
+        showTitle: false,
+        showSelfView,
+        layout: { "0": seat, "1": seat },
+      });
+      expect(lines).toContain(
+        `Self-view: set by layout for seats 0, 1; ${showSelfView === false ? "hidden" : "shown"} for seats with no layout entry`,
+      );
+      expect(lines).toContain("Layout: custom layout configured");
+      expect(
+        lines.filter((line) => line.startsWith("Self-view:")),
+      ).toHaveLength(1);
+    },
+  );
+
+  it("uses the flag for all seats when the layout is empty", () => {
+    expect(
+      discussionLines({
+        chatType: "video",
+        showTitle: false,
+        showSelfView: false,
+        layout: {},
+      }),
+    ).toContain("Self-view: hidden");
+  });
+
   it.each([
     ["text", ["Nicknames: shown"]],
     // The runner renders nothing at all for `audio` (#792); this pins only

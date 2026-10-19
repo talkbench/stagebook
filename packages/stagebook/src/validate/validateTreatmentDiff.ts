@@ -6,6 +6,7 @@ import {
   checkConsentLocaleCoverage,
   collectMissingImageAltText,
   collectYouTubeUnsupportedControls,
+  collectLayoutOverridesSelfView,
   type PreHydrationIssue,
 } from "../index.js";
 import type { ZodIssue } from "zod";
@@ -141,6 +142,7 @@ export async function validateTreatmentWithDiff({
   for (const issue of [
     ...collectMissingImageAltText(parsedObj),
     ...collectYouTubeUnsupportedControls(parsedObj),
+    ...collectLayoutOverridesSelfView(parsedObj),
     ...hostFieldIssues,
   ]) {
     diagnostics.push({
