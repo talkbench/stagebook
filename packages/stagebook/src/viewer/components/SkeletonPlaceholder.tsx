@@ -72,7 +72,15 @@ function describeDiscussionConfig(config: PreviewDiscussionConfig): string[] {
   lines.push(`Nicknames: ${showNickname ? "shown" : "hidden"}`);
 
   if (config.chatType === "video") {
-    lines.push(`Self-view: ${showSelfView ? "shown" : "hidden"}`);
+    const layoutSeats = Object.keys(config.layout ?? {}).sort(
+      (a, b) => Number(a) - Number(b),
+    );
+    const selfView = showSelfView ? "shown" : "hidden";
+    lines.push(
+      layoutSeats.length
+        ? `Self-view: set by layout for seats ${layoutSeats.join(", ")}; ${selfView} for seats with no layout entry`
+        : `Self-view: ${selfView}`,
+    );
     // Only the runner's VideoCall has a report-missing button; text chat
     // never renders one, whatever the flag says.
     lines.push(

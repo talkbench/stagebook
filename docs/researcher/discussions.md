@@ -65,7 +65,7 @@ Video-only options:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `showSelfView` | boolean | true | Show participant's own video tile |
+| `showSelfView` | boolean | true | Show participant's own video tile. `layout` overrides this for the seats it defines. |
 | `showReportMissing` | boolean | true | Show "Report Missing Participant" button |
 | `showAudioMute` | boolean | true | Allow microphone muting |
 | `showVideoMute` | boolean | true | Allow camera toggling |
@@ -87,7 +87,9 @@ Every visible participant must appear in exactly one room. After applying `showT
 
 ## Custom Video Layouts
 
-For fine-grained control over what each participant sees, use `layout` instead of `rooms`. Each key is a position index, and the value defines a grid layout:
+For fine-grained control over what each participant sees, use `layout` instead of `rooms`. Each key is a position index, and the value defines a grid layout.
+
+`layout` overrides `showSelfView` for every seat it defines: those seats show their own tile only if their `feeds` include `source: { type: "self" }`. Seats with no layout entry use the computed layout and still honour `showSelfView`. Setting both is valid, but the validator warns when `showSelfView` is explicitly set alongside `layout` to make this precedence clear.
 
 ```yaml
 discussion:
