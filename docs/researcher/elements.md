@@ -113,10 +113,12 @@ Displays a progress bar tied to stage time. Turns red when time is running low.
 
 ```yaml
 - type: timer
-  startTime: 0 # when the bar starts counting (default: 0)
-  endTime: 600 # when the bar reaches 100% (default: stage duration)
+  startTime: 0 # when the bar starts counting (default: displayTime, or 0)
+  endTime: 600 # when the bar reaches 100% (default: hideTime, or stage duration)
   warnTimeRemaining: 60 # seconds before end when bar turns red
 ```
+
+`startTime` accepts zero or a positive number of seconds. If supplied, `endTime` and `warnTimeRemaining` must be strictly positive. All three fields must be finite numbers.
 
 ## Separator
 

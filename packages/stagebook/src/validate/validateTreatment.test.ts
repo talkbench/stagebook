@@ -140,6 +140,25 @@ treatments:
   });
 });
 
+describe("validateTreatmentSource — documented timer (#726)", () => {
+  it("accepts an explicit zero start time in authored YAML", () => {
+    const source = `treatments:
+  - name: study
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: timed
+        duration: 600
+        elements:
+          - type: timer
+            startTime: 0
+            endTime: 600
+            warnTimeRemaining: 60
+          - type: submitButton`;
+    expect(validateTreatmentSource(source).diagnostics).toEqual([]);
+  });
+});
+
 describe("validateTreatmentSource", () => {
   describe("valid treatment files", () => {
     it("returns no diagnostics for a minimal valid treatment", () => {

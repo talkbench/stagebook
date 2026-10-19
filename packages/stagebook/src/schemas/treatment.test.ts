@@ -1147,6 +1147,53 @@ test("mediaPlayer: startAt < stopAt is valid", () => {
   expect(result.success).toBe(true);
 });
 
+describe("timer start times (#726)", () => {
+  test.each([undefined, 0, 0.5, 60])(
+    "accepts an omitted or nonnegative startTime (%s)",
+    (startTime) => {
+      expect(
+        elementSchema.safeParse({
+          type: "timer",
+          ...(startTime === undefined ? {} : { startTime }),
+          endTime: 600,
+          warnTimeRemaining: 60,
+        }).success,
+      ).toBe(true);
+    },
+  );
+
+  test.each([-1, -0.5, Infinity, -Infinity, NaN])(
+    "rejects invalid startTime %s at the field",
+    (startTime) => {
+      const result = elementSchema.safeParse({ type: "timer", startTime });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues.map((issue) => issue.path)).toContainEqual([
+          "startTime",
+        ]);
+      }
+    },
+  );
+
+  test.each(["endTime", "warnTimeRemaining"])(
+    "%s still requires a strictly positive value",
+    (field) => {
+      for (const value of [0, -1]) {
+        const result = elementSchema.safeParse({
+          type: "timer",
+          [field]: value,
+        });
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.issues.map((issue) => issue.path)).toContainEqual(
+            [field],
+          );
+        }
+      }
+    },
+  );
+});
+
 // Infinite time values (#681). YAML's `.inf` parses to `Infinity`, which a
 // bare `z.number().positive()` accepts; the media element then throws when
 // it seeks to `currentTime = Infinity`. The sign checks already reject
