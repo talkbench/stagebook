@@ -1182,7 +1182,7 @@ export const finiteSecondsSchema = z.number({
 const timerSchema = elementBaseSchema
   .extend({
     type: z.literal("timer"),
-    startTime: finiteSecondsSchema.gt(0).optional(),
+    startTime: finiteSecondsSchema.nonnegative().optional(),
     endTime: finiteSecondsSchema.gt(0).optional(),
     warnTimeRemaining: finiteSecondsSchema.gt(0).optional(),
     // Todo: check that startTime < endTime
