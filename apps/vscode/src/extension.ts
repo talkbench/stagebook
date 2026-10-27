@@ -1136,6 +1136,11 @@ export function activate(context: vscode.ExtensionContext): void {
         .toString(),
       assetRoots,
       unmappedAssetPrefixes: unmapped,
+      // #813: the local folder behind EVERY mount, for the FieldForm's
+      // "Change…" rows. Deliberately not `splitAssetMounts().mounted`: a
+      // prefix typed into a `${field}` on that form can't be found by the
+      // static scan, and its mount must still be changeable there.
+      mountedAssetFolders: mountDirs,
     });
   };
 
@@ -1172,13 +1177,18 @@ export function activate(context: vscode.ExtensionContext): void {
   // and refresh the preview. Shared by the picker card and the configure
   // command. A cancelled dialog leaves the mount unchanged.
   const pickFolderForPrefix = async (prefix: string): Promise<void> => {
+    // Re-picking (#813) starts at the current folder, so the usual mistake —
+    // picking the parent of the right folder — is one step to fix.
+    const currentDir = getAssetMountDirs()[prefix];
     const picked = await vscode.window.showOpenDialog({
       canSelectFiles: false,
       canSelectFolders: true,
       canSelectMany: false,
       openLabel: "Mount as assets",
       title: `Choose the folder for asset://${prefix}/`,
-      defaultUri: currentTreatmentDir,
+      defaultUri: currentDir
+        ? vscode.Uri.file(currentDir)
+        : currentTreatmentDir,
     });
     if (!picked || picked.length === 0) return;
     const next = {

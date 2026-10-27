@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { PostFillIssue } from "../lib/previewResolution.js";
 
 interface FieldFormProps {
@@ -9,6 +9,8 @@ interface FieldFormProps {
   initialValues?: Record<string, string>;
   /** Post-fill validation errors to display in a summary panel. */
   errors?: PostFillIssue[];
+  /** Host-supplied content shown above the inputs (#813). */
+  notice?: ReactNode;
 }
 
 export function FieldForm({
@@ -16,6 +18,7 @@ export function FieldForm({
   onSubmit,
   initialValues,
   errors,
+  notice,
 }: FieldFormProps) {
   const [values, setValues] = useState<Record<string, string>>({
     ...Object.fromEntries(unresolvedFields.map((f) => [f, ""])),
@@ -37,6 +40,8 @@ export function FieldForm({
           These template fields weren't resolved during expansion. Provide
           values to continue.
         </p>
+
+        {notice}
 
         {errors && errors.length > 0 && (
           <div style={errorPanelStyle} role="alert">
