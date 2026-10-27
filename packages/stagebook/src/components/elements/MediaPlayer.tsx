@@ -42,6 +42,15 @@ export type {
   VideoPlaybackRecord,
 } from "../../schemas/mediaPlayerRecord.js";
 import { mediaPlayerRecordSchema } from "../../schemas/mediaPlayerRecord.js";
+import {
+  resolveChannelLayout,
+  ChannelLayoutError,
+  type ChannelMappingEntry,
+  type ParticipantAudioTrack,
+} from "../../audioProbe/channelLayout.js";
+import type { ChannelProbeResult } from "../../audioProbe/probe.js";
+import { ChannelLayoutFailure } from "./mediaPlayer/ChannelLayoutFailure.js";
+import { monitorChannelCount } from "./mediaPlayer/channelCountMonitor.js";
 
 // Preserve each event's required payload while recordEvent adds stage time.
 type VideoEventDetails<Event = VideoEvent> = Event extends VideoEvent
@@ -49,6 +58,9 @@ type VideoEventDetails<Event = VideoEvent> = Event extends VideoEvent
   : never;
 
 export interface MediaPlayerProps {
+  channelMapping?: readonly ChannelMappingEntry[];
+  channelProbe?: ChannelProbeResult;
+  onChannelError?: (error: ChannelLayoutError) => void;
   name: string;
   url: string;
   /** Stable authored asset identity when the resolved URL can expire/change. */
@@ -151,7 +163,74 @@ function matchingRecord({
     : undefined;
 }
 
-export function MediaPlayer({
+export function MediaPlayer(props: MediaPlayerProps) {
+  const youtube = Boolean(isYouTubeURL(props.url));
+  const layout = useMemo(() => {
+    if (props.channelMapping === undefined) return undefined;
+    try {
+      if (youtube)
+        throw new ChannelLayoutError([
+          {
+            code: "mapping",
+            message: "Group channel mappings require an HTML media recording.",
+          },
+        ]);
+      return resolveChannelLayout(props.channelMapping, props.channelProbe);
+    } catch (error) {
+      if (error instanceof ChannelLayoutError) return error;
+      throw error;
+    }
+  }, [props.channelMapping, props.channelProbe, youtube]);
+  if (layout instanceof ChannelLayoutError) {
+    return (
+      <ChannelLayoutFailure
+        name={props.name}
+        error={layout}
+        onError={props.onChannelError}
+      />
+    );
+  }
+  // A new group recording/layout needs a fresh media node/graph. Web Audio
+  // cannot bind the same element to a second source node, even after closing
+  // its context. Rotating a signed URL for the same authored asset keeps the
+  // graph and live playback history; the core records that transport boundary.
+  return (
+    <MediaPlayerSession
+      key={
+        layout
+          ? JSON.stringify([props.sourceId ?? props.url, layout])
+          : "ordinary"
+      }
+      {...props}
+      groupTracks={layout}
+    />
+  );
+}
+
+function MediaPlayerSession(
+  props: MediaPlayerProps & { groupTracks?: readonly ParticipantAudioTrack[] },
+) {
+  const [failure, setFailure] = useState<{
+    url: string;
+    error: ChannelLayoutError;
+  } | null>(null);
+  if (failure?.url === props.url)
+    return (
+      <ChannelLayoutFailure
+        name={props.name}
+        error={failure.error}
+        onError={props.onChannelError}
+      />
+    );
+  return (
+    <MediaPlayerCore
+      {...props}
+      onCaptureError={(error) => setFailure({ url: props.url, error })}
+    />
+  );
+}
+
+function MediaPlayerCore({
   name,
   url,
   sourceId,
@@ -171,7 +250,12 @@ export function MediaPlayer({
   playback,
   autoplay,
   controls,
-}: MediaPlayerProps) {
+  groupTracks,
+  onCaptureError,
+}: MediaPlayerProps & {
+  groupTracks?: readonly ParticipantAudioTrack[];
+  onCaptureError: (error: ChannelLayoutError) => void;
+}) {
   const messages = useMessages();
   // Text chrome (captions, error overlays, play-once) follows the locale
   // direction; the transport/scrub axis stays LTR via the component root.
@@ -212,6 +296,8 @@ export function MediaPlayer({
   const pendingRestoreRef = useRef(eventsRef.current.length > 0);
   const logIdentityRef = useRef({ name, source: sourceId ?? url, url });
   const videoRef = useRef<HTMLVideoElement>(null);
+  const channelCheckRequestedRef = useRef(false);
+  const startCaptureRef = useRef<(capturePeaks?: boolean) => void>(() => {});
   // The <video> as last mounted. React clears videoRef before unmount
   // cleanups run, and the stage-end close still reads its position (#677).
   const lastVideoElRef = useRef<HTMLVideoElement | null>(null);
@@ -442,6 +528,8 @@ export function MediaPlayer({
         // YouTube has no play promise: PLAYING and onAutoplayBlocked settle it.
         target!.play();
       } else {
+        if (channelCheckRequestedRef.current) startCaptureRef.current(false);
+        void audioCtxRef.current?.resume().catch(() => {});
         void video!
           .play()
           .then(() => {
@@ -487,6 +575,7 @@ export function MediaPlayer({
   // ── Waveform capture (lazy — only activated when a Timeline requests it) ──
   const BUCKETS_PER_SECOND = 10;
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const analysersRef = useRef<AnalyserNode[]>([]);
   // The lib.d.ts signature for getByteTimeDomainData expects the strict
   // Uint8Array<ArrayBuffer> variant, not Uint8Array<ArrayBufferLike>.
@@ -502,55 +591,157 @@ export function MediaPlayer({
   // re-run effects despite the array reference being stable.
   const peaksVersionRef = useRef(0);
   const durationVersionRef = useRef(0);
-  const [channelCount, setChannelCount] = useState(0);
+  const [channelCount, setChannelCount] = useState(groupTracks?.length ?? 0);
+  const captureErrorRef = useRef(onCaptureError);
+  captureErrorRef.current = onCaptureError;
+  const monitorCleanupRef = useRef<(() => void) | undefined>(undefined);
+  const monitorAbortRef = useRef<AbortController | undefined>(undefined);
+  const captureFailedRef = useRef(false);
+  const captureLifecycleRef = useRef<object | null>(null);
+  const failCapture = useCallback((error: ChannelLayoutError) => {
+    captureFailedRef.current = true;
+    videoRef.current?.pause();
+    captureErrorRef.current(error);
+  }, []);
   const waveformRafRef = useRef<number>(0);
   // Promote waveformActive to state so React effects (e.g., the RAF loop)
   // re-evaluate when capture is requested mid-playback.
   const [waveformActive, setWaveformActive] = useState(false);
 
-  const startWaveformCapture = useCallback(() => {
-    if (waveformActive) return; // already active
-    const v = videoRef.current;
-    if (!v) return;
+  const startWaveformCapture = useCallback(
+    (capturePeaks = true) => {
+      if (audioCtxRef.current && (!capturePeaks || analysersRef.current.length))
+        return;
+      const v = videoRef.current;
+      if (!v) return;
 
-    try {
-      const ctx = new AudioContext();
-      const source = ctx.createMediaElementSource(v);
-      const numChannels = source.channelCount || 1;
-      const { analysers, gains } = buildPlaybackGraph(ctx, source, numChannels);
-      const buffers = analysers.map(
-        (analyser) => new Uint8Array(analyser.frequencyBinCount),
-      );
+      try {
+        const isNew = audioCtxRef.current === null;
+        const ctx = audioCtxRef.current ?? new AudioContext();
+        audioCtxRef.current = ctx;
+        const source =
+          audioSourceRef.current ?? ctx.createMediaElementSource(v);
+        audioSourceRef.current = source;
+        // Ordinary mono/stereo retains the existing two-row presentation.
+        // A separate raw-source tap below catches unlabelled multichannel audio.
+        const numChannels = groupTracks?.length ?? 2;
+        if (capturePeaks) {
+          // A hidden-waveform Timeline may have started only the count tap.
+          // Replace that direct path once, without binding a second source.
+          if (!isNew) source.disconnect(ctx.destination);
+          const { analysers, gains } = buildPlaybackGraph(
+            ctx,
+            source,
+            numChannels,
+          );
+          const orderedAnalysers = groupTracks
+            ? groupTracks.map((t) => analysers[t.decodedChannel])
+            : analysers;
+          const orderedGains = groupTracks
+            ? groupTracks.map((t) => gains[t.decodedChannel])
+            : gains;
+          const buffers = orderedAnalysers.map(
+            (analyser) => new Uint8Array(analyser.frequencyBinCount),
+          );
 
-      audioCtxRef.current = ctx;
-      analysersRef.current = analysers;
-      analyserBuffersRef.current = buffers;
-      gainNodesRef.current = gains;
-      mutedStateRef.current = new Array<boolean>(numChannels).fill(false);
-      setChannelCount(numChannels);
-      setWaveformActive(true);
-    } catch (err) {
-      console.warn("[MediaPlayer] Waveform capture unavailable:", err);
-    }
-  }, [waveformActive]);
+          analysersRef.current = orderedAnalysers;
+          analyserBuffersRef.current = buffers;
+          gainNodesRef.current = orderedGains;
+          mutedStateRef.current = new Array<boolean>(numChannels).fill(false);
+          setChannelCount(numChannels);
+          setWaveformActive(true);
+        } else if (isNew) {
+          // Checking width must not change ordinary stereo/mono playback.
+          source.connect(ctx.destination);
+        }
+        if (!isNew) return;
+        const abort = new AbortController();
+        monitorAbortRef.current = abort;
+        void monitorChannelCount(
+          ctx,
+          source,
+          (count) => {
+            if (audioCtxRef.current !== ctx) return;
+            if (groupTracks ? count !== numChannels : count > 2) {
+              failCapture(
+                new ChannelLayoutError([
+                  {
+                    code: "count",
+                    message: groupTracks
+                      ? "Decoded channel count does not match this recording's mapping."
+                      : "Audio with more than two channels requires a participant channel mapping.",
+                  },
+                ]),
+              );
+            }
+          },
+          abort.signal,
+        )
+          .then((cleanup) => {
+            if (audioCtxRef.current !== ctx) cleanup();
+            else monitorCleanupRef.current = cleanup;
+          })
+          .catch(() => {
+            if (audioCtxRef.current !== ctx) return;
+            failCapture(
+              new ChannelLayoutError([
+                {
+                  code: "capture",
+                  message:
+                    "Unable to verify decoded audio channels. A secure context with AudioWorklet and blob script access is required.",
+                },
+              ]),
+            );
+          });
+      } catch (err) {
+        console.warn("[MediaPlayer] Waveform capture unavailable:", err);
+        failCapture(
+          new ChannelLayoutError([
+            {
+              code: "capture",
+              message: "Unable to initialize the recording's audio channels.",
+            },
+          ]),
+        );
+      }
+    },
+    [groupTracks, failCapture],
+  );
+  startCaptureRef.current = startWaveformCapture;
+
+  // Group playback always uses the discrete mono mix, even without Timeline.
+  useEffect(() => {
+    if (groupTracks) startWaveformCapture();
+  }, [groupTracks, startWaveformCapture]);
 
   // Close the AudioContext on unmount. Chrome enforces a hard limit of ~6
   // simultaneous AudioContexts per tab; without this, an experiment that
   // navigates through several stages each with a Timeline+MediaPlayer would
   // exhaust the limit and silently fail.
   useEffect(() => {
+    const lifetime = {};
+    captureLifecycleRef.current = lifetime;
     return () => {
-      const ctx = audioCtxRef.current;
-      if (ctx && ctx.state !== "closed") {
-        void ctx.close().catch(() => {
-          // Best-effort cleanup; ignore errors during teardown.
-        });
-      }
-      audioCtxRef.current = null;
-      analysersRef.current = [];
-      analyserBuffersRef.current = [];
-      gainNodesRef.current = [];
-      mutedStateRef.current = [];
+      // StrictMode replays effects on the same media node. Defer disposal
+      // one microtask so that replay keeps its single permitted source node.
+      queueMicrotask(() => {
+        if (captureLifecycleRef.current !== lifetime) return;
+        const ctx = audioCtxRef.current;
+        audioCtxRef.current = null;
+        audioSourceRef.current = null;
+        monitorAbortRef.current?.abort();
+        monitorCleanupRef.current?.();
+        monitorCleanupRef.current = undefined;
+        if (ctx && ctx.state !== "closed") {
+          void ctx.close().catch(() => {
+            // Best-effort cleanup; ignore errors during teardown.
+          });
+        }
+        analysersRef.current = [];
+        analyserBuffersRef.current = [];
+        gainNodesRef.current = [];
+        mutedStateRef.current = [];
+      });
     };
   }, []);
 
@@ -676,6 +867,8 @@ export function MediaPlayer({
     if (!video || logClosedRef.current) return;
     const source = initialStartRef.current;
     const request = ++playRequestRef.current;
+    if (channelCheckRequestedRef.current) startWaveformCapture(false);
+    void audioCtxRef.current?.resume().catch(() => {});
     void video.play().catch((error: unknown) => {
       if (
         logClosedRef.current ||
@@ -697,7 +890,7 @@ export function MediaPlayer({
       // a user retry. Native media errors still use the load-error overlay.
       console.error("[MediaPlayer] Unable to start playback:", error);
     });
-  }, []);
+  }, [startWaveformCapture]);
 
   // HTML5 PlaybackHandle — exposes this player to sibling components via PlaybackProvider
   const handle = useMemo<PlaybackHandle>(
@@ -711,6 +904,18 @@ export function MediaPlayer({
       getDuration: () => videoRef.current?.duration ?? 0,
       isPaused: () => videoRef.current?.paused ?? true,
       isYouTube: false,
+      participantTracks: groupTracks,
+      get annotationError() {
+        return captureFailedRef.current;
+      },
+      requestChannelCheck: () => {
+        channelCheckRequestedRef.current = true;
+        // Hidden waveforms need only a playback-time count check; leave
+        // paused ordinary video on its native path until then. Visible
+        // waveforms and group audio initialize separately.
+        if (videoRef.current && !videoRef.current.paused)
+          startWaveformCapture(false);
+      },
       get channelCount() {
         return channelCount;
       },
@@ -733,7 +938,7 @@ export function MediaPlayer({
       isChannelMuted: (channel: number) =>
         mutedStateRef.current[channel] ?? false,
     }),
-    [channelCount, startWaveformCapture, playHTML5], // re-create when channelCount changes so consumers see the update
+    [channelCount, startWaveformCapture, playHTML5, groupTracks], // re-create when channelCount changes so consumers see the update
   );
   // Use the YouTube handle when available, fall back to the HTML5 handle.
   // Register nothing while the URL is unsafe: no <video> is mounted, so the
@@ -966,13 +1171,15 @@ export function MediaPlayer({
       // `play` can precede buffering and a rejected play promise. Keep its
       // log semantics; only `playing`/promise success consumes the start.
       setIsPaused(false);
+      if (channelCheckRequestedRef.current) startWaveformCapture(false);
+      void audioCtxRef.current?.resume().catch(() => {});
       // A stopAt or scrub pause that never produced its "pause" event must
       // not misclassify a later, real one.
       stopAtReachedRef.current = false;
       scrubPauseRef.current = false;
       recordEvent({ type: "play", videoTime: e.currentTarget.currentTime });
     },
-    [recordEvent],
+    [recordEvent, startWaveformCapture],
   );
 
   const handlePause = useCallback(

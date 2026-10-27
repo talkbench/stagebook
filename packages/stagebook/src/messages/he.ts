@@ -165,6 +165,8 @@ export const he: StagebookMessages = {
   mediaErrorDecode: "פענוח הווידאו נכשל",
   mediaErrorFormat: "פורמט הווידאו אינו נתמך (או שלא ניתן היה לטעון את הקובץ)",
   mediaErrorUnknown: "שגיאה לא ידועה",
+  mediaChannelLayoutError:
+    "לא ניתן להציג באופן מהימן את רצועות הדוברים בהקלטה זו. יש לפנות לצוות המחקר.",
   mediaErrorCode: (code) => `קוד שגיאה ${ltr(code)}`,
   mediaSeekBack: "שנייה אחורה",
   mediaSeekForward: "שנייה קדימה",

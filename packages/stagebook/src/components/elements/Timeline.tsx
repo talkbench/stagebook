@@ -55,6 +55,12 @@ import {
   type TimeDomain,
 } from "./timeline/domain.js";
 import { focusRingCss } from "../focusRing.js";
+import { ErrorCallout } from "../ErrorCallout.js";
+import type { PlaybackHandle } from "../playback/PlaybackHandle.js";
+import {
+  restoreSelectionIdentity,
+  saveSelectionIdentity,
+} from "./timeline/selectionIdentity.js";
 
 const screenReaderOnly: React.CSSProperties = {
   position: "absolute",
@@ -148,7 +154,45 @@ function validateSavedSelections(
   return valid;
 }
 
-export function Timeline({
+export function Timeline(props: TimelineProps) {
+  const handle = usePlayback(props.source);
+  const messages = useMessages();
+  useEffect(() => {
+    handle?.requestChannelCheck?.();
+  }, [handle]);
+  if (handle?.annotationError)
+    return (
+      <ErrorCallout data-testid="timeline-error">
+        {messages.mediaChannelLayoutError}
+      </ErrorCallout>
+    );
+  if (!handle)
+    return (
+      <p
+        data-testid="timeline-error"
+        style={{
+          color: "var(--stagebook-danger, #b91c1c)",
+          fontSize: "0.875rem",
+        }}
+      >
+        Timeline: no media player found with name &quot;{props.source}&quot;
+      </p>
+    );
+  // Initialize restored selections only once participant identities are known.
+  // A different roster must not inherit the old recording's row indices.
+  return (
+    <TimelineEditor
+      key={JSON.stringify([
+        props.source,
+        handle.participantTracks?.map((t) => t.position),
+      ])}
+      {...props}
+      handle={handle}
+    />
+  );
+}
+
+function TimelineEditor({
   source,
   name,
   selectionType,
@@ -158,9 +202,9 @@ export function Timeline({
   trackLabels,
   initialSelections,
   save,
-}: TimelineProps) {
+  handle,
+}: TimelineProps & { handle: PlaybackHandle }) {
   const messages = useMessages();
-  const handle = usePlayback(source);
   const transport = handle?.getTransportCapabilities?.() ?? {
     play: true,
     pause: true,
@@ -293,7 +337,10 @@ export function Timeline({
     if (initialSelections === undefined) return base;
     return {
       ...base,
-      selections: validateSavedSelections(initialSelections, selectionType),
+      selections: validateSavedSelections(
+        restoreSelectionIdentity(initialSelections, handle.participantTracks),
+        selectionType,
+      ),
     };
   });
 
@@ -402,8 +449,12 @@ export function Timeline({
     if (serialized === lastSavedRef.current || isDragging || isKeyboardEditing)
       return;
     lastSavedRef.current = serialized;
-    saveRef.current(`timeline_${name}`, state.selections);
-  }, [state.selections, isDragging, isKeyboardEditing, name]);
+    if (!handle.annotationError)
+      saveRef.current(
+        `timeline_${name}`,
+        saveSelectionIdentity(state.selections, handle.participantTracks),
+      );
+  }, [state.selections, isDragging, isKeyboardEditing, name, handle]);
 
   // Measure container width. Read from getBoundingClientRect on every render
   // via a callback ref, and observe with ResizeObserver for ongoing updates.
@@ -1015,20 +1066,6 @@ export function Timeline({
     setMuteTick((t) => t + 1);
   }, []);
 
-  if (!handle) {
-    return (
-      <p
-        data-testid="timeline-error"
-        style={{
-          color: "var(--stagebook-danger, #b91c1c)",
-          fontSize: "0.875rem",
-        }}
-      >
-        Timeline: no media player found with name &quot;{source}&quot;
-      </p>
-    );
-  }
-
   // durationVersion (polled in the RAF loop above) triggers a re-render
   // when loadedmetadata fires, so getDuration() — and the domain derived
   // from it — returns the real value instead of 0. Without this, saved
@@ -1058,7 +1095,12 @@ export function Timeline({
   // Build track labels
   const labels: string[] = [];
   for (let i = 0; i < channelCount; i++) {
-    labels.push(trackLabels?.[i] ?? messages.timelineTrackFallback(i));
+    labels.push(
+      handle.participantTracks
+        ? (handle.participantTracks[i]?.label ??
+            messages.timelineTrackFallback(i + 1))
+        : (trackLabels?.[i] ?? messages.timelineTrackFallback(i)),
+    );
   }
 
   const tracksHeight = channelCount * TRACK_HEIGHT;

@@ -33,6 +33,16 @@ export interface PlaybackHandle {
   /** Number of audio channels in the media. 0 until waveform capture starts. */
   readonly channelCount: number;
 
+  /** Group rows in display order; positions are storage identities, not labels. */
+  readonly participantTracks?: readonly {
+    readonly position: number;
+    readonly label?: string;
+  }[];
+  /** Invalid channel layout: Timeline must not present or save annotations. */
+  readonly annotationError?: boolean;
+  /** Run the missing-mapping backstop even when waveforms are hidden. */
+  requestChannelCheck?(): void;
+
   /**
    * Per-channel waveform peaks. One Float32Array per channel, containing
    * interleaved min/max pairs per time bucket. Empty until capture starts.

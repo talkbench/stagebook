@@ -464,7 +464,11 @@ By default (`selectionScope: all`), selections span all audio channels. In `trac
     - "Participant"
 ```
 
-When `trackLabels` is omitted, tracks are labeled by index: "Track 0", "Track 1", etc. (matching the channel order in the composed video). If there are more audio channels than labels, extra channels fall back to "Track N".
+For **ordinary media**, `trackLabels` controls the row labels; omitted labels fall back to “Track 0”, “Track 1”, etc.
+
+For **group recordings**, the platform supplies the recording's participant mapping and browser calibration. Stagebook displays one row per participant, sorted by study position. The platform can supply neutral speaker labels; otherwise the labels are “Track 1…N”. `trackLabels` is ignored, and study positions are not revealed in the default labels. A breakout room containing positions 0 and 5 has two rows; the second row belongs to position 5.
+
+Group recordings must use the new participant-only audio layout. Legacy recordings containing extra mix channels need to be re-composed. If the platform supplies invalid mapping/calibration, the player and Timeline show an error and no annotations can be saved. Playback mixes all participants into both ears; muting a row removes only that participant.
 
 ### Use case examples
 
@@ -487,7 +491,7 @@ When `trackLabels` is omitted, tracks are labeled by index: "Track 0", "Track 1"
 | `selectionScope` | `"all"` or `"track"`   | `"all"`  | Whether selections span all tracks or belong to a specific speaker track                    |
 | `multiSelect`    | boolean                | `false`  | Allow multiple selections. When `false`, creating a new selection replaces the previous one |
 | `showWaveform`   | boolean                | `true`   | Show the audio waveform visualization (fills in as the clip plays)                          |
-| `trackLabels`    | string[]               | —        | Custom labels for the track gutter. Falls back to "Position N"                              |
+| `trackLabels`    | string[]               | —        | Ordinary-media row labels; ignored for mapped group recordings                              |
 
 ### Mouse interactions
 
@@ -573,6 +577,8 @@ While the waveform is captured, the tracks shown play mixed together in both ear
 ### Saved data
 
 Saved under `timeline_<name>`. The value is always a chronologically sorted array — even when `multiSelect: false` (the array has at most one item). Times are seconds from the start of the media file, even when the player shows a `startAt`/`stopAt` window.
+
+**Group recordings:** per-track selections use `position` instead of `track`. For example, a point on the second row of a room containing positions 0 and 5 saves `[{ "time": 12.5, "position": 5 }]`. Range selections use the same identity field. Selections spanning all tracks have neither field. The `track` examples below apply to ordinary media.
 
 **Range mode, `selectionScope: "all"`:**
 

@@ -429,6 +429,16 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           name={mediaName}
           url={resolvedURL}
           sourceId={rawURL}
+          channelMapping={ctx.getChannelMapping?.(rawURL)}
+          channelProbe={ctx.channelProbe}
+          onChannelError={(error) =>
+            ctx.onElementError?.({
+              elementType: "mediaPlayer",
+              elementName: mediaName,
+              error,
+              errorInfo: { componentStack: "" },
+            })
+          }
           initialRecord={
             savedRecord === Missing
               ? undefined
