@@ -5,6 +5,7 @@ import {
 } from "@playwright/experimental-ct-react";
 import { GroupRecordingHarness } from "../testing/GroupRecordingHarness.js";
 import { invalidMappings } from "../../audioProbe/testing/invalidMappings.js";
+import type { ChannelProbeResult } from "../../audioProbe/probe.js";
 
 test.setTimeout(60_000);
 test("hidden waveforms preserve ordinary mono playback level", async ({
@@ -68,21 +69,40 @@ async function measure(component: MountResult): Promise<Measurement> {
   ) as Measurement;
 }
 
+async function startCalibratedSession(
+  component: MountResult,
+  browserName: string,
+): Promise<boolean> {
+  await component.getByRole("button", { name: "Start session" }).click();
+  const result = component.getByTestId("session-probe");
+  await expect(result).not.toBeEmpty({ timeout: 35_000 });
+  const probe = JSON.parse((await result.textContent())!) as ChannelProbeResult;
+  // Chromium/Firefox must pass. WebKit can refuse on either OS: macOS
+  // selects the AAC fallback; Linux CI can truncate calibration captures.
+  // Follow the measured verdict, as the production admission gate does.
+  if (browserName !== "webkit") expect(probe.verdict).toBe("pass");
+  if (probe.verdict === "pass") return true;
+  expect(probe.verdict).toBe("fail");
+  await expect(
+    component.getByTestId("mediaPlayer-channel-error"),
+  ).toBeVisible();
+  await expect(component.getByTestId("timeline-error")).toBeVisible();
+  await expect(component.getByTestId("mediaPlayer-video")).toHaveCount(0);
+  await expect(component.getByTestId("timeline")).toHaveCount(0);
+  await expect(component.getByTestId("group-errors")).toContainText(
+    '"code":"probe"',
+  );
+  await expect(component.getByTestId("group-saves")).toHaveText("[]");
+  return false;
+}
+
 test("real breakout audio, per-speaker mute, position selections and restoration", async ({
   mount,
   browserName,
   page,
 }) => {
   const c = await mount(<GroupRecordingHarness />);
-  await c.getByRole("button", { name: "Start session" }).click();
-  await expect(c.getByTestId("session-probe")).not.toBeEmpty({
-    timeout: 35_000,
-  });
-  if (browserName === "webkit" && process.platform === "darwin") {
-    await expect(c.getByTestId("mediaPlayer-channel-error")).toBeVisible();
-    await expect(c.getByTestId("timeline")).toHaveCount(0);
-    return;
-  }
+  if (!(await startCalibratedSession(c, browserName))) return;
   await expect(c.getByTestId("track-label")).toHaveText(["Track 1", "Track 2"]);
   await c.getByRole("button", { name: "Play recording", exact: true }).click();
   await expect
@@ -126,14 +146,7 @@ test("one session uses its own calibration at 3, 6 and 8 channels", async ({
   browserName,
 }) => {
   const c = await mount(<GroupRecordingHarness count={3} />);
-  await c.getByRole("button", { name: "Start session" }).click();
-  await expect(c.getByTestId("session-probe")).not.toBeEmpty({
-    timeout: 35_000,
-  });
-  if (browserName === "webkit" && process.platform === "darwin") {
-    await expect(c.getByTestId("mediaPlayer-channel-error")).toBeVisible();
-    return;
-  }
+  if (!(await startCalibratedSession(c, browserName))) return;
   for (const count of [3, 6, 8]) {
     await c.getByRole("button", { name: `Load ${count} channels` }).click();
     await expect(c.getByTestId("track-label")).toHaveCount(count);
