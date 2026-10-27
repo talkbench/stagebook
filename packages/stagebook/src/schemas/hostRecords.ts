@@ -17,15 +17,25 @@ export const timelineRangeSchema = z
     start: finiteNumber,
     end: finiteNumber,
     track: finiteNumber.optional(),
+    position: z.number().int().nonnegative().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .refine(
+    (s) => s.track === undefined || s.position === undefined,
+    "A selection cannot contain both track and position.",
+  );
 
 export const timelinePointSchema = z
   .object({
     time: finiteNumber,
     track: finiteNumber.optional(),
+    position: z.number().int().nonnegative().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .refine(
+    (s) => s.track === undefined || s.position === undefined,
+    "A selection cannot contain both track and position.",
+  );
 
 /** One selection mode per timeline; an empty array is a saved empty answer. */
 export const timelineRecordSchema = z.union([

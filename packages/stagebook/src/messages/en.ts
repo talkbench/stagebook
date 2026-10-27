@@ -165,6 +165,8 @@ export const en: StagebookMessages = {
   mediaErrorFormat:
     "Video format is not supported (or the file could not be loaded)",
   mediaErrorUnknown: "Unknown error",
+  mediaChannelLayoutError:
+    "This recording’s speaker tracks cannot be presented reliably. Please contact the study team.",
   mediaErrorCode: (code) => `Error code ${code}`,
   mediaSeekBack: "Back 1s",
   mediaSeekForward: "Forward 1s",

@@ -13,4 +13,4 @@
 export const CAPABILITIES: Readonly<{
   channelProbe: boolean;
   perSpeakerTracks: boolean;
-}> = Object.freeze({ channelProbe: true, perSpeakerTracks: false });
+}> = Object.freeze({ channelProbe: true, perSpeakerTracks: true });

@@ -107,7 +107,7 @@ describe("probeChannelOrder without Web Audio", () => {
 });
 
 test("Release A capabilities: the probe, not yet per-speaker tracks", () => {
-  expect(CAPABILITIES).toEqual({ channelProbe: true, perSpeakerTracks: false });
+  expect(CAPABILITIES).toEqual({ channelProbe: true, perSpeakerTracks: true });
   // Frozen, so no script on the page can change what the host gates on.
   expect(Object.isFrozen(CAPABILITIES)).toBe(true);
 });
