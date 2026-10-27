@@ -1136,6 +1136,9 @@ export function activate(context: vscode.ExtensionContext): void {
         .toString(),
       assetRoots,
       unmappedAssetPrefixes: unmapped,
+      // #813: the local folder behind each mapped prefix, for the FieldForm's
+      // "Change…" rows.
+      mountedAssetFolders: mountDirs,
     });
   };
 

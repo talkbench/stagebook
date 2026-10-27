@@ -30,13 +30,16 @@ To see the real media while authoring, **mount each prefix to a local folder**:
 
 - When a preview references an unmapped prefix, a banner appears above it with a
   **Choose folder…** button per prefix. Pick the folder that contains that
-  prefix's files and the media loads in place — no reload needed for folders
-  inside your workspace.
+  prefix's files (for `asset://media/a/b.mp4`, the folder holding `a/b.mp4`)
+  and the media loads in place — no reload needed for folders inside your
+  workspace.
 - Your choices are remembered **per workspace** (in VS Code's storage) and are
   **never written to the study** — `asset://` stays platform-resolved and the
   `.stagebook.yaml` stays portable.
-- To re-point a folder you picked by mistake, or to clear all mounts, run
-  **`Stagebook: Configure Asset Folders`** from the Command Palette.
+- To re-point a folder you picked by mistake, use **Change…** next to it on the
+  **Fill in remaining fields** screen (shown when the treatment has `${field}`
+  placeholders), or run **`Stagebook: Configure Asset Folders`** from the
+  Command Palette, which can also clear all mounts.
 
 A mounted prefix resolves everywhere it's used: `<video>`/`<img>`/`<audio>`,
 caption tracks, `asset://` prompt files, and `asset://` images inside a prompt

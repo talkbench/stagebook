@@ -52,6 +52,13 @@ export interface PreviewHostProps {
    * — not during the FieldForm gate or an error screen.
    */
   hostNotice?: ReactNode;
+  /**
+   * An optional host-supplied notice rendered on the FieldForm gate, above the
+   * inputs. The VS Code extension uses it to show its asset folders, mapped
+   * and unmapped, so a wrong pick can be changed before fields like
+   * `${clipUrl}` are filled (#813). Not shown once the Viewer renders.
+   */
+  hostFormNotice?: ReactNode;
 }
 
 /**
@@ -77,6 +84,7 @@ export function PreviewHost({
   onTreatmentIndexChange,
   onIntroIndexChange,
   hostNotice,
+  hostFormNotice,
 }: PreviewHostProps) {
   const [userValues, setUserValues] = useState<Record<string, string> | null>(
     null,
@@ -176,6 +184,7 @@ export function PreviewHost({
         unresolvedFields={previewState.formFields}
         initialValues={previewState.initialValues}
         errors={previewState.errors}
+        notice={hostFormNotice}
         onSubmit={(values) => {
           setUserValues(values);
           onFieldsResolved?.(values);

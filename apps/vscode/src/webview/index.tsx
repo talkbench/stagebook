@@ -4,6 +4,7 @@ import type { TreatmentFileType } from "stagebook";
 import { PreviewHost } from "stagebook/viewer";
 import stagebookStyles from "stagebook/styles";
 import { buildAssetURL } from "./resolveAsset.js";
+import { AssetMountCard } from "./AssetMountCard.js";
 
 // Declare the VS Code API injected by the webview
 declare function acquireVsCodeApi(): {
@@ -92,6 +93,11 @@ function App() {
   const [unmappedAssetPrefixes, setUnmappedAssetPrefixes] = useState<string[]>(
     [],
   );
+  // #813: prefix → local folder for every mapped prefix, so the FieldForm can
+  // show a "Change…" row for a folder picked by mistake.
+  const [mountedAssetFolders, setMountedAssetFolders] = useState<
+    Record<string, string>
+  >({});
   const [error, setError] = useState<string | null>(null);
   // Bumped on each treatment message so that `contentFns` is recreated
   // with a fresh cache, forcing prompt files to re-fetch from disk.
@@ -145,6 +151,9 @@ function App() {
         setUnmappedAssetPrefixes(
           (msg.unmappedAssetPrefixes as string[] | undefined) ?? [],
         );
+        setMountedAssetFolders(
+          (msg.mountedAssetFolders as Record<string, string> | undefined) ?? {},
+        );
         setContentVersion((v) => v + 1);
         setError(null);
       } else if (msg.type === "error") {
@@ -166,6 +175,9 @@ function App() {
     () => createWebviewContentFns(webviewBaseUri, assetRoots),
     [webviewBaseUri, assetRoots, contentVersion],
   );
+
+  const pickFolder = (prefix: string) =>
+    vscode.postMessage({ type: "pickAssetFolder", prefix });
 
   if (error) {
     return (
@@ -198,133 +210,22 @@ function App() {
       hostNotice={
         unmappedAssetPrefixes.length > 0 ? (
           <AssetMountCard
-            prefixes={unmappedAssetPrefixes}
-            onPick={(prefix) =>
-              vscode.postMessage({ type: "pickAssetFolder", prefix })
-            }
+            unmapped={unmappedAssetPrefixes}
+            onPick={pickFolder}
           />
         ) : undefined
+      }
+      hostFormNotice={
+        <AssetMountCard
+          unmapped={unmappedAssetPrefixes}
+          mounted={mountedAssetFolders}
+          onPick={pickFolder}
+          inline
+        />
       }
     />
   );
 }
-
-// --- Asset-mount picker card (#192) ---
-//
-// A NON-BLOCKING notice rendered above the live preview (via PreviewHost's
-// `hostNotice` → Viewer's `notice` slot) listing every `asset://<prefix>/…`
-// reference with no local mount yet. Each row's button asks the extension to
-// open a folder picker for that prefix; the preview keeps rendering (unmapped
-// assets show the #191 placeholder) rather than gating on the pick.
-//
-// vscode-webview-only: local mounting is meaningless in the browser viewer or
-// TalkBench, so this lives here, not in the shared harness. Colors match the
-// preview's light chrome (cf. the locale-mismatch banner) rather than the
-// editor theme, since the preview emulates the participant experience.
-function AssetMountCard({
-  prefixes,
-  onPick,
-}: {
-  prefixes: string[];
-  onPick: (prefix: string) => void;
-}) {
-  return (
-    <div data-testid="asset-mount-card" role="region" style={cardWrapStyle}>
-      <strong style={cardTitleStyle}>
-        {prefixes.length === 1
-          ? "1 asset folder isn't mapped"
-          : `${prefixes.length} asset folders aren't mapped`}
-      </strong>
-      <p style={cardSubtitleStyle}>
-        These <code style={codeChipStyle}>asset://</code> references point at
-        files on your machine. Choose a local folder for each prefix to preview
-        its media — until then a placeholder is shown. Your choice is remembered
-        for this workspace and is never written to the study.
-      </p>
-      <ul style={cardListStyle}>
-        {prefixes.map((prefix) => (
-          <li key={prefix} style={cardRowStyle}>
-            <code style={cardPrefixStyle}>asset://{prefix}/</code>
-            <button
-              type="button"
-              style={cardButtonStyle}
-              onClick={() => onPick(prefix)}
-            >
-              Choose folder…
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-const cardWrapStyle: React.CSSProperties = {
-  padding: "0.75rem 1rem",
-  borderBottom: "1px solid #bfdbfe",
-  backgroundColor: "#eff6ff",
-  color: "#1e3a8a",
-  fontFamily: "system-ui, sans-serif",
-  fontSize: "0.875rem",
-};
-
-const cardTitleStyle: React.CSSProperties = {
-  fontWeight: 600,
-};
-
-const cardSubtitleStyle: React.CSSProperties = {
-  margin: "0.25rem 0 0.5rem",
-  color: "#1e40af",
-};
-
-const cardListStyle: React.CSSProperties = {
-  listStyle: "none",
-  margin: 0,
-  padding: 0,
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.5rem",
-};
-
-const cardRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "0.75rem",
-  flexWrap: "wrap",
-};
-
-// `<code>` chips in the webview's own chrome. The extension used to style bare
-// `<code>` globally; that rule was removed with the hand-copied CSS (#560), and
-// styles.css has no bare `code` rule (library code styling is inline in the
-// Markdown component), so this chrome must style its own chips.
-const codeChipStyle: React.CSSProperties = {
-  fontFamily: "monospace",
-  backgroundColor: "rgba(0, 0, 0, 0.06)",
-  // Inherit the card's text color rather than VS Code's amber `code` default.
-  color: "inherit",
-  padding: "0.125rem 0.25rem",
-  borderRadius: "0.25rem",
-};
-
-const cardPrefixStyle: React.CSSProperties = {
-  ...codeChipStyle,
-  fontSize: "0.8125rem",
-};
-
-const cardButtonStyle: React.CSSProperties = {
-  padding: "0.375rem 0.75rem",
-  borderRadius: "0.375rem",
-  border: "none",
-  // Accent token (fallback = blue-600) so this webview chrome tracks the
-  // palette instead of pinning the retired blue-500.
-  backgroundColor: "var(--stagebook-primary, #2563eb)",
-  color: "#ffffff",
-  cursor: "pointer",
-  fontSize: "0.8125rem",
-  fontWeight: 500,
-  whiteSpace: "nowrap",
-};
 
 // Render previewed components with stagebook's REAL stylesheet: inject the
 // library's styles.css (bundled as text) so every token + reset comes from the

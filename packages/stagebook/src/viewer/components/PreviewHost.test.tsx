@@ -335,6 +335,61 @@ describe("PreviewHost hostNotice pass-through (#192)", () => {
   });
 });
 
+describe("PreviewHost hostFormNotice on the FieldForm gate (#813)", () => {
+  const hostFormNotice = (
+    <div data-testid="host-form-notice">asset folders</div>
+  );
+  const findFormNotice = (c: HTMLElement) =>
+    c.querySelector('[data-testid="host-form-notice"]');
+
+  it("renders the form notice inside the FieldForm card", async () => {
+    const getText = vi.fn(() => Promise.resolve(UNTAGGED_PROMPT));
+    const { container, unmount } = render(
+      <PreviewHost
+        treatmentFile={fieldBoundLocaleTreatment()}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        hostFormNotice={hostFormNotice}
+      />,
+    );
+    await flush();
+
+    // `lang` is unbound → the FieldForm gate is up and carries the notice,
+    // above the inputs.
+    const notice = findFormNotice(container);
+    const input = container.querySelector("#field-lang");
+    expect(notice).not.toBeNull();
+    expect(input).not.toBeNull();
+    expect(
+      notice!.compareDocumentPosition(input!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    unmount();
+  });
+
+  it("does not render the form notice once the Viewer renders", async () => {
+    // All fields bound → no gate; the form notice belongs to the form only.
+    const getText = vi.fn(() => Promise.resolve(HE_PROMPT));
+    const { container, unmount } = render(
+      <PreviewHost
+        treatmentFile={fieldBoundLocaleTreatment()}
+        additionalFields={{ lang: "he" }}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        hostFormNotice={hostFormNotice}
+      />,
+    );
+    await flush();
+
+    expect(findFormNotice(container)).toBeNull();
+    unmount();
+  });
+});
+
 describe("PreviewHost post-fill shared prompt constraints (#668)", () => {
   const source = `treatments:
   - name: study1
