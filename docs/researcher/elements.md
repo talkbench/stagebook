@@ -11,9 +11,9 @@ A few element types look superficially redundant but encode distinct intents —
 | `audio`       | Non-interactive audio (chimes, alerts, ambient sound). One-shot; no participant controls expected. `audio` ≠ `mediaPlayer with playVideo: false`. |
 | `image`       | Non-interactive image display. Static picture; conceptually parallel to `audio`, not `display`. `image` ≠ `display`.                              |
 | `mediaPlayer` | Interactive audio/video with playback controls (play, pause, scrub, speed). Participant interacts with the clip.                                  |
-| `display`     | Shows a value looked up by reference from elsewhere in the study (e.g., `prompt.foo`'s response). Reactive to stored data, not a static resource. |
+| `display`     | Shows stored or supplied data as a plain-text blockquote: a referenced response or task-specific `text`.                                          |
 
-Use `audio` for a chime, `mediaPlayer` for a video, `image` for a picture, `display` to show a stored value. The four types are intentionally separate — a sequence of `if (playVideo) ... else ...` configuration on a single type would conflate "fire-and-forget asset" with "controllable surface" and "live data view."
+Use `audio` for a chime, `mediaPlayer` for a video, `image` for a picture, and `display` to show a data value. The four types are intentionally separate. A display's data can come from a stored response or an external task field; both use the same presentation. General instructions that stay consistent across participants belong in `prompt` files.
 
 ## Common fields
 
@@ -86,7 +86,18 @@ See [Prompt Files](prompts.md) for the Markdown format.
 
 ## Display
 
-Shows a previously captured value (usually a prompt response) as a styled blockquote. Use this to show one participant what another wrote.
+Shows stored or supplied data as a styled plain-text blockquote. Specify exactly one of `text` and `reference`.
+
+For an annotation task, the host can supply a different transcript for each clip without generating a prompt file per task:
+
+```yaml
+- type: display
+  text: ${transcript}
+```
+
+The host binds `transcript` through the existing `fillTemplates` / `substituteFields` mechanism. Use `text` for data that changes from task to task, especially text being annotated. Keep stable participant instructions in Markdown prompt files.
+
+To show one participant what another wrote, use a reference:
 
 ```yaml
 - type: display
@@ -94,6 +105,26 @@ Shows a previously captured value (usually a prompt response) as a styled blockq
 ```
 
 The position selector is the first segment of the reference: a numeric index (`0`, `1`, …), `self` (current participant — the default behavior pre-#298), `shared`, or `all`.
+
+| Field       | Type             | Description                                                         |
+| ----------- | ---------------- | ------------------------------------------------------------------- |
+| `text`      | string or number | Literal or task-supplied data. Mutually exclusive with `reference`. |
+| `reference` | reference        | A stored value to read. Mutually exclusive with `text`.             |
+
+Both sources use the same blockquote styling and locale direction. Markdown and HTML characters render literally: `text: "*oh* <b>no</b>"` shows exactly those characters. Line breaks and whitespace are preserved; use a YAML block scalar for multiline text:
+
+```yaml
+- type: display
+  text: |-
+    mm-hmm
+    oh no
+```
+
+Numbers (including zero) render as text. A whole-field placeholder preserves the supplied type even when quoted in YAML, so a numeric `transcript` is also valid. Booleans, objects, arrays, and `null` are not valid `text` values.
+
+An explicit `text: ""` is valid and retains an empty blockquote; it does not hide the element. An unbound `${transcript}` is an unresolved placeholder, not an empty transcript. The usual visibility fields (`conditions`, `displayTime`, and so on) apply to either source. Displays save no response; task-supplied text remains part of the resolved treatment.
+
+Optional formatting and opt-in Markdown rendering are planned separately in [#672](https://github.com/talkbench/stagebook/issues/672); displays currently render plain text.
 
 ## Submit Button
 

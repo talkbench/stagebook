@@ -6,8 +6,9 @@ export interface DisplayProps {
   /** Dotted-string representation of the reference, rendered into
    *  `data-reference` for downstream tooling. The caller (`Element.tsx`)
    *  routes both the dotted-string and the structured form through
-   *  `formatReference` so consumers always see the dotted shape. */
-  reference: string;
+   *  `formatReference` so consumers always see the dotted shape.
+   *  Omitted for task-supplied text, which does not read a reference. */
+  reference?: string;
   position?: string;
   values: unknown[];
 }

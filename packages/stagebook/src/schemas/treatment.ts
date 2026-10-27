@@ -1121,9 +1121,25 @@ const displaySchema = elementBaseSchema
     // (e.g. `everyone.prompt.recall.value` to render every participant's
     // value, `0.prompt.notes.value` to render position 0's). The
     // pre-#298 sibling `position:` field is removed.
-    reference: referenceSchema,
+    reference: referenceSchema.optional(),
+    text: z.union([z.string(), z.number()]).optional(),
   })
   .strict();
+
+/** Shared by authoring and post-fill validation: empty text and zero are
+ * supplied values, so source selection must not use truthiness. */
+export function checkDisplaySource(
+  data: { text?: unknown; reference?: unknown },
+  ctx: z.RefinementCtx,
+): void {
+  if ((data.text !== undefined) === (data.reference !== undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["text"],
+      message: "A display requires exactly one of text or reference.",
+    });
+  }
+}
 
 export const promptSchema = elementBaseSchema
   .extend({
@@ -1538,6 +1554,9 @@ export const elementSchema = altTemplateContext(
       // inside the discriminated union, so we never reach here for it.
       if (data.type === "mediaPlayer") {
         checkMediaPlayerCrossFields(data, ctx);
+      }
+      if (data.type === "display") {
+        checkDisplaySource(data, ctx);
       }
     }),
 );

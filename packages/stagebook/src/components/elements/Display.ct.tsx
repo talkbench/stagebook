@@ -26,6 +26,34 @@ test("handles non-string values via JSON serialization", async ({ mount }) => {
   await expect(component).toContainText("true");
 });
 
+test("task text keeps literal markup and visible line breaks", async ({
+  mount,
+}) => {
+  const text = "*oh* <b>no</b>\nmm-hmm";
+  const component = await mount(<Display values={[text]} />);
+  expect(await component.textContent()).toBe(text);
+  await expect(component.locator("b, em")).toHaveCount(0);
+  await expect(component).toHaveCSS("white-space", "pre-wrap");
+  expect(await component.getAttribute("data-reference")).toBeNull();
+  const lines = await component.evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return new Set(Array.from(range.getClientRects(), (rect) => rect.top)).size;
+  });
+  expect(lines).toBe(2);
+});
+
+for (const text of ["", 0]) {
+  test(`task text ${JSON.stringify(text)} retains its blockquote`, async ({
+    mount,
+  }) => {
+    const component = await mount(<Display values={[text]} />);
+    await expect(component).toBeVisible();
+    expect(await component.evaluate((el) => el.tagName)).toBe("BLOCKQUOTE");
+    expect(await component.textContent()).toBe(String(text));
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Inline blockquote styling — issue #33
 // ---------------------------------------------------------------------------
