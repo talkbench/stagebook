@@ -103,6 +103,7 @@ export interface ElementConfig {
   // (which handles both) and stringifies for the `data-reference` attribute
   // on Display.
   reference?: string | ReferenceType;
+  text?: string | number;
   position?: string;
   shared?: boolean;
   buttonText?: string;
@@ -214,6 +215,9 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
     }
 
     case "display": {
+      if (element.text !== undefined) {
+        return <Display values={[element.text]} />;
+      }
       // Per #298, the position is part of the reference itself —
       // `0.prompt.foo.value`, `everyone.prompt.recall.value`, etc. The
       // Display element no longer takes a sibling `position:` field;

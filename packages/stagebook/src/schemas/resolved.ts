@@ -35,6 +35,7 @@ import {
   type LayoutDefinitionType,
   SURVEY_ELEMENT_REMOVED_MESSAGE,
   finiteSecondsSchema,
+  checkDisplaySource,
 } from "./treatment.js";
 
 // Detects `${field}` placeholders that survived `fillTemplates` —
@@ -146,6 +147,7 @@ const resolvedElementBaseSchema = z.object({
   displayText: z.string().optional(),
   helperText: z.string().optional(),
   reference: z.string().optional(),
+  text: z.union([z.string(), z.number()]).optional(),
   // Timer time fields are checked for finiteness only. The mediaPlayer time
   // fields (below) also mirror the authoring sign checks, because a filled
   // `${field}` placeholder skips them — so hosts that run only this schema
@@ -203,6 +205,9 @@ const resolvedElementBaseSchema = z.object({
 // to those is a follow-up sweep once the pattern is proven.
 export const resolvedElementSchema = resolvedElementBaseSchema.superRefine(
   (data, ctx) => {
+    if (data.type === "display") {
+      checkDisplaySource(data, ctx);
+    }
     if (data.type === "prompt" && typeof data.file === "string") {
       if (FIELD_PLACEHOLDER_RE.test(data.file)) {
         ctx.addIssue({

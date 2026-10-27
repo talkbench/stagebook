@@ -130,6 +130,29 @@ describe("Element canonical reference reads (#757)", () => {
   });
 });
 
+describe("task-supplied Display text (#810)", () => {
+  test.each(["mm-hmm", "", 0, 42, '*oh* <b>no</b>\n"really"'])(
+    "renders %j literally without reading or saving study data",
+    (text) => {
+      const get = vi.fn(() => []);
+      const save = vi.fn();
+      const { container } = mount(
+        <Element element={{ type: "display", text }} onSubmit={() => {}} />,
+        { get, save, locale: "he" },
+      );
+      const quote = container.querySelector("blockquote");
+      expect(quote).not.toBeNull();
+      expect(quote?.textContent).toBe(String(text));
+      expect(quote?.children).toHaveLength(0);
+      expect(quote?.style.whiteSpace).toBe("pre-wrap");
+      expect(quote?.getAttribute("dir")).toBe("rtl");
+      expect(quote?.hasAttribute("data-reference")).toBe(false);
+      expect(get).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+    },
+  );
+});
+
 function DuplicateConditions() {
   const { readReference, onContractViolation, violationKeys } =
     useStagebookContext();
