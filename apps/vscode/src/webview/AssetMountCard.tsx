@@ -142,6 +142,7 @@ const cardRowStyle: React.CSSProperties = {
 const cardMountStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
+  alignItems: "flex-start",
   gap: "0.125rem",
   flex: "1 1 12rem",
   minWidth: 0,
@@ -170,7 +171,6 @@ const codeChipStyle: React.CSSProperties = {
 const cardPrefixStyle: React.CSSProperties = {
   ...codeChipStyle,
   fontSize: "0.8125rem",
-  alignSelf: "flex-start",
 };
 
 const cardButtonStyle: React.CSSProperties = {

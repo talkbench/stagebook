@@ -32,6 +32,7 @@ function render(node: ReactNode): {
 }
 
 const buttons = (c: HTMLElement) => [...c.querySelectorAll("button")];
+const title = (c: HTMLElement) => c.querySelector("strong")?.textContent;
 
 describe("AssetMountCard (#192, #813)", () => {
   it("offers Choose folder… for each unmapped prefix", () => {
@@ -40,10 +41,10 @@ describe("AssetMountCard (#192, #813)", () => {
       <AssetMountCard unmapped={["recordings", "diagrams"]} onPick={onPick} />,
     );
 
-    expect(container.textContent).toContain("2 asset folders aren't mapped");
-    expect(container.textContent).toContain(
-      "on your machine — until a prefix has one, its media shows a placeholder.",
-    );
+    expect(title(container)).toBe("2 asset folders aren't mapped");
+    expect(container.textContent).toContain("placeholder");
+    // The live preview's banner: no mapped rows.
+    expect(buttons(container)).toHaveLength(2);
     const [first, second] = buttons(container);
     expect(first.textContent).toBe("Choose folder…");
     expect(first.getAttribute("aria-label")).toBe(
@@ -64,10 +65,9 @@ describe("AssetMountCard (#192, #813)", () => {
       />,
     );
 
-    expect(container.textContent).toContain("Asset folders");
-    expect(container.textContent).not.toContain("mapped");
+    expect(title(container)).toBe("Asset folders");
     // Nothing is unmapped, so no placeholder caveat.
-    expect(container.textContent).toContain("on your machine. Choose");
+    expect(container.textContent).not.toContain("placeholder");
     expect(container.textContent).toContain("asset://annotation/");
     expect(container.textContent).toContain("/Volumes/media/preview");
     const [change] = buttons(container);
@@ -89,7 +89,7 @@ describe("AssetMountCard (#192, #813)", () => {
       />,
     );
 
-    expect(container.textContent).toContain("1 asset folder isn't mapped");
+    expect(title(container)).toBe("1 asset folder isn't mapped");
     expect(buttons(container).map((b) => b.textContent)).toEqual([
       "Choose folder…",
       "Change…",

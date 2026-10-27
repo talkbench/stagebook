@@ -342,7 +342,7 @@ describe("PreviewHost hostFormNotice on the FieldForm gate (#813)", () => {
   const findFormNotice = (c: HTMLElement) =>
     c.querySelector('[data-testid="host-form-notice"]');
 
-  it("renders the form notice inside the FieldForm card", async () => {
+  it("renders the form notice on the FieldForm gate, above the inputs", async () => {
     const getText = vi.fn(() => Promise.resolve(UNTAGGED_PROMPT));
     const { container, unmount } = render(
       <PreviewHost
@@ -366,6 +366,46 @@ describe("PreviewHost hostFormNotice on the FieldForm gate (#813)", () => {
       notice!.compareDocumentPosition(input!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    unmount();
+  });
+
+  it("keeps the form notice when the form re-shows after a post-fill failure", async () => {
+    // A host-bound prompt path without the .prompt.md suffix expands but fails
+    // post-fill validation, so the (keyed, remounted) form re-shows with an
+    // error panel. The notice must still be there.
+    const treatment = {
+      treatments: [
+        {
+          name: "study1",
+          playerCount: 1,
+          compatibleIntroSequences: [],
+          gameStages: [
+            {
+              name: "s1",
+              duration: 60,
+              elements: [{ type: "prompt", file: "${promptFile}" }],
+            },
+          ],
+        },
+      ],
+    } as unknown as TreatmentFileType;
+    const getText = vi.fn(() => Promise.resolve(UNTAGGED_PROMPT));
+    const { container, unmount } = render(
+      <PreviewHost
+        treatmentFile={treatment}
+        additionalFields={{ promptFile: "prompts/q1.md" }}
+        selectedIntroIndex={0}
+        selectedTreatmentIndex={0}
+        getTextContent={getText}
+        getAssetURL={getAsset}
+        hostFormNotice={hostFormNotice}
+      />,
+    );
+    await flush();
+
+    expect(container.querySelector('[role="alert"]')).not.toBeNull();
+    expect(container.querySelector("#field-promptFile")).not.toBeNull();
+    expect(findFormNotice(container)).not.toBeNull();
     unmount();
   });
 
