@@ -1,0 +1,41 @@
+# A parameterized annotation workflow: every `${field}` is filled per task
+# from tasks.json, the same task file Annotator takes. Preview a task with
+# "Load parameters…" — see README.md.
+treatments:
+  # Rate one listener response, shown with its transcript.
+  - name: clip_review
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: review
+        duration: 120
+        elements:
+          - type: mediaPlayer
+            name: clip
+            file: ${clipUrl}
+            startAt: ${clipStartAt}
+            stopAt: ${clipStopAt}
+          - type: display
+            text: ${transcript}
+          - type: prompt
+            file: prompts/rate_response.prompt.md
+          - type: submitButton
+            buttonText: Next
+
+  # Judge the same response in the context of the wider conversation.
+  - name: context_review
+    playerCount: 1
+    compatibleIntroSequences: []
+    gameStages:
+      - name: context
+        duration: 180
+        elements:
+          - type: mediaPlayer
+            name: context
+            file: ${contextClipUrl}
+            startAt: ${contextClipStartAt}
+            stopAt: ${contextClipStopAt}
+          - type: prompt
+            file: prompts/rate_response.prompt.md
+          - type: submitButton
+            buttonText: Next

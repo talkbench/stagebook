@@ -35,6 +35,7 @@ import {
   splitAssetMounts,
   extraAssetRoots,
   parseMountedAsset,
+  collectTaskParameterAssetPrefixes,
 } from "./lib/assetMounts";
 
 const diagnosticCollection =
@@ -1057,6 +1058,53 @@ export function activate(context: vscode.ExtensionContext): void {
   let currentTreatmentDir: vscode.Uri | undefined;
   let currentWorkspaceRootFsPath: string | undefined;
 
+  // --- #815: task parameter file ---
+  //
+  // The JSON task file (Annotator's format) the researcher loaded into the
+  // preview, re-read on every refresh, and the entry they chose. Held here
+  // rather than in the webview so a webview reload (e.g. a new out-of-workspace
+  // asset mount) restores both. The file is one the researcher picked with the
+  // open dialog; the webview can't name a path to read. Reset when the preview
+  // closes or switches to another treatment.
+  type TaskParameterSource =
+    | { name: string; text: string }
+    | { name: string; readError: string };
+  let currentParameterUri: vscode.Uri | undefined;
+  let currentParameterSource: TaskParameterSource | null = null;
+  let currentParameterTaskKey: string | null = null;
+  // The file's asset:// prefixes, found once per read rather than per post.
+  let currentParameterAssetPrefixes: string[] = [];
+
+  const clearTaskParameters = (): void => {
+    currentParameterUri = undefined;
+    currentParameterSource = null;
+    currentParameterTaskKey = null;
+    currentParameterAssetPrefixes = [];
+  };
+
+  // Re-read the loaded parameter file from disk (refresh picks up edits). A
+  // read failure is shown in the preview, not thrown.
+  const rereadTaskParameters = async (): Promise<void> => {
+    const uri = currentParameterUri;
+    if (!uri) return;
+    const name = vscode.workspace.asRelativePath(uri);
+    let source: TaskParameterSource;
+    try {
+      const bytes = await vscode.workspace.fs.readFile(uri);
+      source = { name, text: new TextDecoder().decode(bytes) };
+    } catch (err) {
+      source = {
+        name,
+        readError: err instanceof Error ? err.message : String(err),
+      };
+    }
+    // Cleared or replaced while reading — drop the stale result.
+    if (currentParameterUri !== uri) return;
+    currentParameterSource = source;
+    currentParameterAssetPrefixes =
+      "text" in source ? collectTaskParameterAssetPrefixes(source.text) : [];
+  };
+
   // --- #192: asset:// local mount resolution ---
   //
   // Merge the `stagebook.assetRoots` setting (a committable shared convention;
@@ -1122,10 +1170,13 @@ export function activate(context: vscode.ExtensionContext): void {
     // aren't mounted yet. (A prefix appearing only in a field value or a prompt
     // body can't be discovered host-side, but a configured mount still resolves
     // it via the map above.)
-    const { unmapped } = splitAssetMounts(
-      collectAssetPrefixes(currentTreatment),
-      mountDirs,
-    );
+    // A task file's field values (#815) are where per-task `asset://` clips
+    // live, so its prefixes are offered too.
+    const referencedPrefixes = new Set([
+      ...collectAssetPrefixes(currentTreatment),
+      ...currentParameterAssetPrefixes,
+    ]);
+    const { unmapped } = splitAssetMounts([...referencedPrefixes], mountDirs);
     panel.webview.postMessage({
       type: "treatment",
       treatmentFile: currentTreatment,
@@ -1136,6 +1187,8 @@ export function activate(context: vscode.ExtensionContext): void {
         .toString(),
       assetRoots,
       unmappedAssetPrefixes: unmapped,
+      taskParameters: currentParameterSource,
+      taskParameterKey: currentParameterTaskKey,
     });
   };
 
@@ -1192,6 +1245,30 @@ export function activate(context: vscode.ExtensionContext): void {
     if (previewPanel) syncAssetRoots(previewPanel);
   };
 
+  // #815: choose a task parameter file for the preview. Choosing a different
+  // file resets the selected task; re-choosing the same one keeps it (and
+  // re-reads the file). A cancelled dialog changes nothing.
+  const pickTaskParameterFile = async (): Promise<void> => {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFiles: true,
+      canSelectFolders: false,
+      canSelectMany: false,
+      filters: { "Task parameters (JSON)": ["json"] },
+      openLabel: "Load parameters",
+      title: "Choose a task parameter file",
+      defaultUri: currentParameterUri ?? currentTreatmentDir,
+    });
+    // Closing the preview while the dialog is open ends the session; don't
+    // revive the file for the next one.
+    if (!picked || picked.length === 0 || !previewPanel) return;
+    if (picked[0].toString() !== currentParameterUri?.toString()) {
+      currentParameterTaskKey = null;
+    }
+    currentParameterUri = picked[0];
+    await rereadTaskParameters();
+    if (previewPanel) postTreatment(previewPanel);
+  };
+
   context.subscriptions.push(
     vscode.commands.registerCommand("stagebook.previewStage", async () => {
       const editor = vscode.window.activeTextEditor;
@@ -1213,6 +1290,14 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       currentTreatment = parseResult.data;
+
+      // #815: a task file belongs to the treatment it was loaded for; for the
+      // same treatment, re-read it like a refresh.
+      if (currentTreatmentUri?.toString() !== editor.document.uri.toString()) {
+        clearTaskParameters();
+      } else {
+        await rereadTaskParameters();
+      }
 
       const workspaceFolder =
         vscode.workspace.getWorkspaceFolder(editor.document.uri) ??
@@ -1256,6 +1341,7 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         previewPanel.onDidDispose(() => {
           previewPanel = undefined;
+          clearTaskParameters();
         });
 
         // Handle messages from the webview
@@ -1288,6 +1374,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 return;
               }
               currentTreatment = refreshResult.data;
+              await rereadTaskParameters();
               // Panel may have been disposed while we were awaiting above.
               if (!previewPanel) return;
               // syncAssetRoots (not postTreatment) so a settings edit that
@@ -1397,6 +1484,20 @@ export function activate(context: vscode.ExtensionContext): void {
             // #192: the picker card asked to mount a local folder at this
             // asset prefix. Prompt, persist, and refresh the preview.
             await pickFolderForPrefix(msg.prefix);
+          } else if (msg.type === "pickTaskParameterFile") {
+            await pickTaskParameterFile();
+          } else if (
+            msg.type === "selectTaskParameter" &&
+            typeof msg.key === "string"
+          ) {
+            // Remember the choice so a refresh or webview reload keeps it,
+            // and echo the state back: a treatment message already in flight
+            // carries the old choice and would otherwise undo it.
+            currentParameterTaskKey = msg.key;
+            if (previewPanel) postTreatment(previewPanel);
+          } else if (msg.type === "clearTaskParameterFile") {
+            clearTaskParameters();
+            if (previewPanel) postTreatment(previewPanel);
           }
         });
       }

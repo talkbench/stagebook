@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  validateResolvedTreatmentFile,
   promptFileSchema,
   parseTreatmentYaml as parseStagebookYaml,
   resolveImportPath,
@@ -11,7 +12,11 @@ import {
   type ParsedFile,
 } from "stagebook";
 import { parseTreatmentYaml } from "./lib/treatment";
-import { expandTreatmentFile } from "stagebook/viewer";
+import {
+  expandTreatmentFile,
+  parseTaskParameters,
+  resolveTaskParameterEntry,
+} from "stagebook/viewer";
 
 const examplesRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -126,4 +131,37 @@ describe.each(EXAMPLES)("$name example", ({ treatmentFile }) => {
       }
     }
   });
+});
+
+// The task-parameters example leaves its `${field}`s for a task file to fill
+// (#815), so instead of expanding cleanly on its own, every entry in its
+// tasks.json must resolve against it and pass post-fill validation.
+describe("task-parameters example", () => {
+  const exampleDir = resolve(examplesRoot, "task-parameters");
+  const workflow = parseTreatmentYaml(
+    readFileSync(resolve(exampleDir, "clip-review.stagebook.yaml"), "utf8"),
+  );
+  const parsed = parseTaskParameters(
+    readFileSync(resolve(exampleDir, "tasks.json"), "utf8"),
+  );
+
+  it("has a valid task file", () => {
+    expect(parsed.ok && parsed.entries.length).toBeGreaterThan(0);
+  });
+
+  const entries = parsed.ok ? parsed.entries : [];
+  it.each(entries.map((entry) => [entry.label, entry] as const))(
+    "task %s resolves to a valid preview",
+    (_label, entry) => {
+      const resolution = resolveTaskParameterEntry(workflow, entry);
+      if (!resolution.ok) throw new Error(resolution.errors.join("\n"));
+      expect(resolution.warnings).toEqual([]);
+      const { result, unresolvedFields } = expandTreatmentFile(
+        resolution.treatmentFile,
+        resolution.fields,
+      );
+      expect(unresolvedFields).toEqual([]);
+      expect(validateResolvedTreatmentFile(result).issues).toEqual([]);
+    },
+  );
 });

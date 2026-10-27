@@ -18,6 +18,9 @@ Validation, syntax highlighting, and live preview for Stagebook treatment
   Stagebook file in the folder at once.
 - **Local asset mounts** — preview media referenced by `asset://` URIs by
   pointing each prefix at a folder on your machine (see below).
+- **Task parameter files** — preview a parameterized workflow as a specific
+  task, with its `${field}`s filled from the JSON task file you give Annotator
+  (see below).
 
 ## Previewing local assets (`asset://`)
 
@@ -57,9 +60,42 @@ rejected.
 
 ### Settings
 
-| Setting | Description |
-| --- | --- |
+| Setting                | Description                                                                                                                                                                                                                                                            |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `stagebook.assetRoots` | An object mapping each `asset://` prefix to a local folder (absolute, or relative to the workspace root), e.g. `{ "group_recordings": "/Users/me/pilot_videos", "diagrams": "./media/diagrams" }`. Preview-only; an interactive pick for the same prefix overrides it. |
+
+## Previewing a task from a task file
+
+A workflow with `${field}` placeholders (a clip URL, playback boundaries, a
+transcript) gets its values per task. To preview it as one task:
+
+1. Open the `.stagebook.yaml` and run **`Stagebook: Preview Treatment`**.
+2. Choose **Load parameters…** in the bar above the preview and pick the JSON
+   task file — the same array of `{ "callerTaskId", "treatment", "fields" }`
+   entries you upload to Annotator (an `/api/v1` `{ "tasks": [...] }` body
+   works too).
+3. Choose a task. The preview runs that task's treatment with its fields bound,
+   keeping their JSON types (`15.82` is a number, `"15.82"` is text).
+
+Edit the workflow, its prompts, or the task file and press refresh (↻, or
+**Refresh** in the bar when a problem is shown): all three are re-read and the
+chosen task stays selected. Choosing another task starts the preview over, so
+responses, media progress, and any values you typed by hand don't carry over.
+So does a refresh that changes the chosen task's values: the file's new values
+replace anything you typed. Refreshing after editing only the workflow or its
+prompts keeps your place. The bar shows the file and task; **Clear** returns to
+typing fields by hand.
+
+If the chosen task names a treatment the workflow doesn't define, leaves out a
+field, or disappears from the file, the preview says which task and field
+rather than showing a different one. A field the treatment doesn't use is shown
+as a warning, since Annotator rejects it on upload. `asset://` clips in the task
+file resolve through your [asset mounts](#previewing-local-assets-asset), and
+their prefixes are offered on the mount banner. Loading a task file only reads
+it — nothing is written to it or sent to Annotator.
+
+See [`examples/task-parameters`](../../examples/task-parameters/) for a small
+workflow and task file to try.
 
 ## Install
 
