@@ -7,7 +7,18 @@ import {
   type PostFillIssue,
 } from "../lib/previewResolution.js";
 import { FieldForm } from "./FieldForm.js";
+import { IssueLocation } from "./IssueLocation.js";
+import {
+  TaskParameterPreview,
+  type TaskParametersControl,
+  type ToolbarRender,
+} from "./TaskParameterPreview.js";
 import { Viewer } from "./Viewer.js";
+
+export type {
+  TaskParametersControl,
+  TaskParameterSource,
+} from "./TaskParameterPreview.js";
 
 export interface PreviewHostProps {
   treatmentFile: TreatmentFileType;
@@ -52,6 +63,18 @@ export interface PreviewHostProps {
    * — not during the FieldForm gate or an error screen.
    */
   hostNotice?: ReactNode;
+  /**
+   * Opt in to previewing the workflow against a task parameter file — the
+   * JSON task file Annotator takes (#815). PreviewHost parses the file, lets
+   * the researcher choose an entry, narrows the workflow to that entry's
+   * treatment, and binds the entry's fields with their JSON types. The host
+   * owns the file I/O (`onLoad` opens its file picker; `source` carries the
+   * text, re-read on refresh) and persists the selection (`selectedKey`).
+   * Switching entries starts the preview over; a refresh keeps the preview's
+   * state unless the entry's treatment or field values changed. Omit to keep
+   * manual field entry only.
+   */
+  taskParameters?: TaskParametersControl;
 }
 
 /**
@@ -63,7 +86,46 @@ export interface PreviewHostProps {
  * prompts the user for any remaining unresolved fields via FieldForm, and
  * only hands a fully-resolved treatment to the Viewer.
  */
-export function PreviewHost({
+export function PreviewHost({ taskParameters, ...props }: PreviewHostProps) {
+  if (taskParameters === undefined) return <PreviewBody {...props} />;
+  return (
+    <TaskParameterPreview
+      control={taskParameters}
+      treatmentFile={props.treatmentFile}
+      additionalFields={props.additionalFields}
+      onRefresh={props.onRefresh}
+      renderPreview={(key, preview) =>
+        preview.task ? (
+          // The narrowed workflow holds only the task's treatment, and its
+          // fields come from the file: don't move the host's treatment
+          // selection or report the task's values as user-entered ones.
+          <PreviewBody
+            key={key}
+            {...props}
+            treatmentFile={preview.treatmentFile}
+            additionalFields={preview.additionalFields}
+            selectedTreatmentIndex={0}
+            onTreatmentIndexChange={undefined}
+            onFieldsResolved={undefined}
+            toolbar={preview.toolbar}
+          />
+        ) : (
+          <PreviewBody key={key} {...props} toolbar={preview.toolbar} />
+        )
+      }
+    />
+  );
+}
+
+interface PreviewBodyProps extends Omit<PreviewHostProps, "taskParameters"> {
+  /**
+   * Controls shown in every mode: first in the Viewer's notice slot once it
+   * renders, otherwise above the FieldForm or error panel.
+   */
+  toolbar?: ToolbarRender;
+}
+
+function PreviewBody({
   treatmentFile,
   additionalFields,
   selectedIntroIndex,
@@ -77,7 +139,8 @@ export function PreviewHost({
   onTreatmentIndexChange,
   onIntroIndexChange,
   hostNotice,
-}: PreviewHostProps) {
+  toolbar,
+}: PreviewBodyProps) {
   const [userValues, setUserValues] = useState<Record<string, string> | null>(
     null,
   );
@@ -171,16 +234,19 @@ export function PreviewHost({
     // everything the user typed is in `userValues` and comes back via
     // initialValues.
     return (
-      <FieldForm
-        key={previewState.formFields.join(" ")}
-        unresolvedFields={previewState.formFields}
-        initialValues={previewState.initialValues}
-        errors={previewState.errors}
-        onSubmit={(values) => {
-          setUserValues(values);
-          onFieldsResolved?.(values);
-        }}
-      />
+      <>
+        {toolbar?.("page")}
+        <FieldForm
+          key={previewState.formFields.join(" ")}
+          unresolvedFields={previewState.formFields}
+          initialValues={previewState.initialValues}
+          errors={previewState.errors}
+          onSubmit={(values) => {
+            setUserValues(values);
+            onFieldsResolved?.(values);
+          }}
+        />
+      </>
     );
   }
 
@@ -191,32 +257,32 @@ export function PreviewHost({
     // pre-fill issues, so a future unification can route both
     // through the same UI surface.
     return (
-      <div
-        style={{
-          padding: "1.5rem",
-          maxWidth: "48rem",
-          margin: "2rem auto",
-          fontFamily: "system-ui, sans-serif",
-          color: "var(--stagebook-text, #1f2937)",
-        }}
-      >
-        <h2 style={{ marginTop: 0 }}>Post-fill validation failed</h2>
-        <p>
-          The treatment file expanded successfully, but the filled tree contains
-          issues that would surface to participants. Fix these before
-          continuing.
-        </p>
-        <ul>
-          {previewState.errors.map((issue, i) => (
-            <li key={i}>
-              {/* Inherit rather than a host `code` default (VS Code's webview
-                  tints bare <code> amber). */}
-              <code style={{ color: "inherit" }}>{issue.path}</code>:{" "}
-              {issue.message}
-            </li>
-          ))}
-        </ul>
-      </div>
+      <>
+        {toolbar?.("page")}
+        <div
+          style={{
+            padding: "1.5rem",
+            maxWidth: "48rem",
+            margin: "2rem auto",
+            fontFamily: "system-ui, sans-serif",
+            color: "var(--stagebook-text, #1f2937)",
+          }}
+        >
+          <h2 style={{ marginTop: 0 }}>Post-fill validation failed</h2>
+          <p>
+            The treatment file expanded successfully, but the filled tree
+            contains issues that would surface to participants. Fix these before
+            continuing.
+          </p>
+          <ul>
+            {previewState.errors.map((issue, i) => (
+              <li key={i}>
+                <IssueLocation issue={issue} />: {issue.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </>
     );
   }
 
@@ -271,8 +337,9 @@ export function PreviewHost({
       onTreatmentIndexChange={onTreatmentIndexChange}
       onIntroIndexChange={onIntroIndexChange}
       notice={
-        hostNotice || localeBanner || sharedConstraintBanner ? (
+        toolbar || hostNotice || localeBanner || sharedConstraintBanner ? (
           <>
+            {toolbar?.("viewer")}
             {hostNotice}
             {localeBanner}
             {sharedConstraintBanner}

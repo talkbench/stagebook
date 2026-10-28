@@ -1,6 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { TreatmentFileType } from "stagebook";
-import { PreviewHost, createUrlContentFns } from "stagebook/viewer";
+import {
+  PreviewHost,
+  createUrlContentFns,
+  type TaskParameterSource,
+} from "stagebook/viewer";
 import { loadTreatmentFromUrl } from "./lib/loader";
 import type { ViewerDiagnostic } from "./lib/diagnostics";
 import { needsOverviewPicker } from "./lib/selection";
@@ -28,6 +32,7 @@ type AppState =
       contentFns: ContentFns;
       readmeContent: string | null;
       diagnostics: ViewerDiagnostic[];
+      taskParameters: TaskParameterSource | null;
     }
   | {
       phase: "viewing";
@@ -36,6 +41,8 @@ type AppState =
       selectedIntroIndex: number;
       selectedTreatmentIndex: number;
       diagnostics: ViewerDiagnostic[];
+      // A task file the example ships (#815), preloaded into the preview.
+      taskParameters: TaskParameterSource | null;
     }
   | {
       // File has errors that prevent rendering — show a placeholder plus the
@@ -63,6 +70,7 @@ export function App() {
       contentFns: ContentFns,
       seq: number,
       diagnostics: ViewerDiagnostic[],
+      taskParameters: TaskParameterSource | null = null,
     ) => {
       const readmeContent = await contentFns
         .getTextContent("README.md")
@@ -79,6 +87,7 @@ export function App() {
           contentFns,
           readmeContent,
           diagnostics,
+          taskParameters,
         });
       } else {
         setState({
@@ -88,6 +97,7 @@ export function App() {
           selectedIntroIndex: 0,
           selectedTreatmentIndex: 0,
           diagnostics,
+          taskParameters,
         });
       }
     },
@@ -136,6 +146,9 @@ export function App() {
           createExampleContentFns(entry),
           seq,
           [],
+          entry.taskParameters === undefined
+            ? null
+            : { name: "tasks.json", text: entry.taskParameters },
         );
       } catch (err) {
         if (seq !== loadSeqRef.current) return;
@@ -189,7 +202,13 @@ export function App() {
       );
 
     case "overview": {
-      const { treatmentFile, contentFns, readmeContent, diagnostics } = state;
+      const {
+        treatmentFile,
+        contentFns,
+        readmeContent,
+        diagnostics,
+        taskParameters,
+      } = state;
       return (
         <>
           <OverviewPage
@@ -204,6 +223,7 @@ export function App() {
                 selectedIntroIndex: introIndex,
                 selectedTreatmentIndex: treatmentIndex,
                 diagnostics,
+                taskParameters,
               });
             }}
           />
@@ -220,6 +240,7 @@ export function App() {
             contentFns={state.contentFns}
             selectedIntroIndex={state.selectedIntroIndex}
             selectedTreatmentIndex={state.selectedTreatmentIndex}
+            initialTaskParameters={state.taskParameters}
             onBack={() => setState({ phase: "landing" })}
           />
           <DiagnosticsDrawer diagnostics={state.diagnostics} />
@@ -231,29 +252,81 @@ export function App() {
 /**
  * Wrapper component for the viewing phase — enables useMemo for
  * stable content function references (can't use hooks in switch cases).
+ *
+ * Also holds the local task parameter file (#815). A browser can't re-read a
+ * picked file after it changes on disk, so choosing the file again is how its
+ * edits come in: that keeps the selected task, while choosing a file with a
+ * different name starts over.
  */
 function ViewingPhase({
   treatmentFile,
   contentFns,
   selectedIntroIndex,
   selectedTreatmentIndex,
+  initialTaskParameters,
   onBack,
 }: {
   treatmentFile: TreatmentFileType;
   contentFns: ContentFns;
   selectedIntroIndex: number;
   selectedTreatmentIndex: number;
+  initialTaskParameters: TaskParameterSource | null;
   onBack: () => void;
 }) {
+  const [taskParameterSource, setTaskParameterSource] =
+    useState<TaskParameterSource | null>(initialTaskParameters);
+  const [taskParameterKey, setTaskParameterKey] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadTaskParameterFile = async (file: File) => {
+    let source: TaskParameterSource;
+    try {
+      source = { name: file.name, text: await file.text() };
+    } catch (err) {
+      source = {
+        name: file.name,
+        readError: err instanceof Error ? err.message : String(err),
+      };
+    }
+    if (source.name !== taskParameterSource?.name) setTaskParameterKey(null);
+    setTaskParameterSource(source);
+  };
+
   return (
-    <PreviewHost
-      treatmentFile={treatmentFile}
-      getTextContent={contentFns.getTextContent}
-      getAssetURL={contentFns.getAssetURL}
-      selectedIntroIndex={selectedIntroIndex}
-      selectedTreatmentIndex={selectedTreatmentIndex}
-      onBack={onBack}
-    />
+    <>
+      <PreviewHost
+        treatmentFile={treatmentFile}
+        getTextContent={contentFns.getTextContent}
+        getAssetURL={contentFns.getAssetURL}
+        selectedIntroIndex={selectedIntroIndex}
+        selectedTreatmentIndex={selectedTreatmentIndex}
+        onBack={onBack}
+        taskParameters={{
+          source: taskParameterSource,
+          selectedKey: taskParameterKey,
+          onSelect: setTaskParameterKey,
+          onLoad: () => fileInputRef.current?.click(),
+          onClear: () => {
+            setTaskParameterSource(null);
+            setTaskParameterKey(null);
+          },
+        }}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json,application/json"
+        hidden
+        data-testid="task-parameter-file-input"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          // Reset so choosing the same file again (after editing it) fires
+          // another change.
+          e.target.value = "";
+          if (file) void loadTaskParameterFile(file);
+        }}
+      />
+    </>
   );
 }
 

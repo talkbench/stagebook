@@ -125,7 +125,13 @@ and returns `{ watchedSeconds: number; watchedFraction?: number }`.
 ```ts
 import { computeWatchedCoverage } from "stagebook";
 
-computeWatchedCoverage([[0, 1], [3, 4]], { duration: 4 });
+computeWatchedCoverage(
+  [
+    [0, 1],
+    [3, 4],
+  ],
+  { duration: 4 },
+);
 // { watchedSeconds: 2, watchedFraction: 0.5 }
 ```
 
@@ -519,13 +525,13 @@ if (answer !== Missing) {
 
 ### Hooks
 
-| Hook                          | Returns                                   | Requires Provider |
-| ----------------------------- | ----------------------------------------- | ----------------- |
+| Hook                          | Returns                                                                         | Requires Provider |
+| ----------------------------- | ------------------------------------------------------------------------------- | ----------------- |
 | `useStagebookContext()`       | Host context plus bound `readReference`, `violationKeys`, and resolved messages | yes               |
-| `useReadReference(reference)` | `unknown` (scalar, Missing, or seat list) | yes               |
-| `useSave()`                   | `save` function                           | yes               |
-| `useElapsedTime()`            | `number` (seconds)                        | yes               |
-| `useTextContent(path)`        | `{ data, isLoading, error }`              | yes               |
+| `useReadReference(reference)` | `unknown` (scalar, Missing, or seat list)                                       | yes               |
+| `useSave()`                   | `save` function                                                                 | yes               |
+| `useElapsedTime()`            | `number` (seconds)                                                              | yes               |
+| `useTextContent(path)`        | `{ data, isLoading, error }`                                                    | yes               |
 
 ### Stage
 
@@ -619,18 +625,18 @@ associations and the localized `promptRequired` marker automatically.
 top margin and start indent that set the options under a question; Prompt sets
 it for `body: none` prompts.
 
-| Component       | Key Props                                                                                                                                                          |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Button`        | `onClick`, `children`, `primary?`, `disabled?`, `icon?`, `aria-label?` (required with `icon`), `title?`                                                            |
-| `Separator`     | `style?` (`"thin"`, `"regular"`, `"thick"`)                                                                                                                        |
-| `RadioGroup`    | `options`, `value`, `onChange`, `label?`, `layout?`, `flush?`                                                                                                      |
-| `CheckboxGroup` | `options`, `value`, `onChange`, `label?`, `layout?`, `flush?`                                                                                                      |
-| `Select`        | `options`, `value`, `onChange`, `label?`, `placeholder?`, `disabled?`                                                                                              |
-| `TextArea`      | `value`, `onChange`, `rows?`, `minLength?`, `maxLength?`, `showCharacterCount?`, `onDebugMessage?`, `onTypingSnapshot?`                                                                 |
-| `NumericInput` | `entry?`, `numberFormat?`, `nextEditNumberFormat?`, `constraints?`, `prefix?`, `suffix?`, `onChange?`, `onDebugMessage?`, `ariaLabel?`, `ariaLabelledBy?`, `ariaRequired?` |
-| `Slider`        | `min`, `max`, `interval`, `value?`, `onChange`, `labelPts?` (parallel to `labels?`, sourced from `promptFileSchema.parse(...).sliderPoints` after #243), `labels?` |
-| `ListSorter`    | `items`, `onChange`                                                                                                                                                |
-| `Markdown`      | `text`, `resolveURL?`                                                                                                                                              |
+| Component       | Key Props                                                                                                                                                                  |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Button`        | `onClick`, `children`, `primary?`, `disabled?`, `icon?`, `aria-label?` (required with `icon`), `title?`                                                                    |
+| `Separator`     | `style?` (`"thin"`, `"regular"`, `"thick"`)                                                                                                                                |
+| `RadioGroup`    | `options`, `value`, `onChange`, `label?`, `layout?`, `flush?`                                                                                                              |
+| `CheckboxGroup` | `options`, `value`, `onChange`, `label?`, `layout?`, `flush?`                                                                                                              |
+| `Select`        | `options`, `value`, `onChange`, `label?`, `placeholder?`, `disabled?`                                                                                                      |
+| `TextArea`      | `value`, `onChange`, `rows?`, `minLength?`, `maxLength?`, `showCharacterCount?`, `onDebugMessage?`, `onTypingSnapshot?`                                                    |
+| `NumericInput`  | `entry?`, `numberFormat?`, `nextEditNumberFormat?`, `constraints?`, `prefix?`, `suffix?`, `onChange?`, `onDebugMessage?`, `ariaLabel?`, `ariaLabelledBy?`, `ariaRequired?` |
+| `Slider`        | `min`, `max`, `interval`, `value?`, `onChange`, `labelPts?` (parallel to `labels?`, sourced from `promptFileSchema.parse(...).sliderPoints` after #243), `labels?`         |
+| `ListSorter`    | `items`, `onChange`                                                                                                                                                        |
+| `Markdown`      | `text`, `resolveURL?`                                                                                                                                                      |
 
 **Native control themes.** Select, TextArea and Slider pin `color-scheme: light` on their native controls, including when `stagebook/styles` is omitted or a parent advertises a dark scheme. Forced-colors accessibility settings remain available. Select’s disclosure arrow uses `--stagebook-select-chevron` (`#6b7280`), independently of its text and border. The native select still owns keyboard and pointer interaction.
 
@@ -668,18 +674,18 @@ Peaks helpers exported alongside it: `createPeaksArrays(channelCount, bucketCoun
 
 ### Element Components (pure props)
 
-| Component       | Key Props                                                                                                                       |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `Prompt`        | `metadata`, `body`, `responseItems`, `name`, `save`, `value`, `entry?`, `numberFormat?`, `step?`, `getElapsedTime?`, `stageId?` |
-| `Display`       | `reference`, `values`, `position?`                                                                                              |
-| `SubmitButton`  | `onSubmit`, `name`, `save`, `getElapsedTime`, `buttonText?`                                                                     |
-| `AudioElement`  | `src`                                                                                                                           |
-| `ImageElement`  | `src`, `width?`                                                                                                                 |
-| `KitchenTimer`  | `startTime`, `endTime`, `getElapsedTime`, `warnTimeRemaining?`                                                                  |
-| `TrackedLink`   | `name`, `url`, `displayText`, `save`, `getElapsedTime`, `progressLabel`, `resolvedParams?`                                      |
-| `TrainingVideo` | `url`, `getElapsedTime`, `onComplete`                                                                                           |
+| Component       | Key Props                                                                                                                                           |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Prompt`        | `metadata`, `body`, `responseItems`, `name`, `save`, `value`, `entry?`, `numberFormat?`, `step?`, `getElapsedTime?`, `stageId?`                     |
+| `Display`       | `reference`, `values`, `position?`                                                                                                                  |
+| `SubmitButton`  | `onSubmit`, `name`, `save`, `getElapsedTime`, `buttonText?`                                                                                         |
+| `AudioElement`  | `src`                                                                                                                                               |
+| `ImageElement`  | `src`, `width?`                                                                                                                                     |
+| `KitchenTimer`  | `startTime`, `endTime`, `getElapsedTime`, `warnTimeRemaining?`                                                                                      |
+| `TrackedLink`   | `name`, `url`, `displayText`, `save`, `getElapsedTime`, `progressLabel`, `resolvedParams?`                                                          |
+| `TrainingVideo` | `url`, `getElapsedTime`, `onComplete`                                                                                                               |
 | `MediaPlayer`   | `name`, `url`, `save`, `getElapsedTime`, `initialRecord?`, `sourceId?`, `startAt?`, `stopAt?`, `playback?`, `autoplay?`, `controls?`, `onComplete?` |
-| `Qualtrics`     | `url`, `resolvedParams?`, `stableParticipantId?`, `sampleId?`, `onContractViolation?`, `save`, `onComplete`                     |
+| `Qualtrics`     | `url`, `resolvedParams?`, `stableParticipantId?`, `sampleId?`, `onContractViolation?`, `save`, `onComplete`                                         |
 
 `Display.values` remains an array of display entries. Wrap a single-position
 `readReference` result in `[value]`, including when that participant's answer is
@@ -749,20 +755,20 @@ for the first-slice scope of #719 and media-player portion of #728.
 
 ### Render Slots (platform-provided)
 
-| Slot                  | Config                                                                  | When Used                                                                                                                                                                                                                                                                                                 |
-| --------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `renderDiscussion`    | Full `DiscussionType` config                                            | Stage with `discussion` block                                                                                                                                                                                                                                                                             |
-| `renderSharedNotepad` | `{ padName, defaultText?, rows?, ariaLabelledBy, onLocalEdit, onRemoteChange, onBlur }` | `shared: true` open-response prompt. Each callback takes the latest merged text. `defaultText` is placeholder-only: hint text, never seeded into the shared document or saved value. Set `ariaLabelledBy` as the editor's `aria-labelledby`. See the [shared editor contract](integration-guide.md#shared-notepad) for timing and own-transaction classification. |
-| `renderSharedNumericResponse` | `SharedNumericResponseConfig` (exported from `stagebook/components`) | `shared: true` numeric prompt. Its own optional slot; missing support renders an error and reports a contract violation. See [Shared numeric responses](integration-guide.md#shared-numeric-responses). |
+| Slot                          | Config                                                                                  | When Used                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `renderDiscussion`            | Full `DiscussionType` config                                                            | Stage with `discussion` block                                                                                                                                                                                                                                                                                                                                     |
+| `renderSharedNotepad`         | `{ padName, defaultText?, rows?, ariaLabelledBy, onLocalEdit, onRemoteChange, onBlur }` | `shared: true` open-response prompt. Each callback takes the latest merged text. `defaultText` is placeholder-only: hint text, never seeded into the shared document or saved value. Set `ariaLabelledBy` as the editor's `aria-labelledby`. See the [shared editor contract](integration-guide.md#shared-notepad) for timing and own-transaction classification. |
+| `renderSharedNumericResponse` | `SharedNumericResponseConfig` (exported from `stagebook/components`)                    | `shared: true` numeric prompt. Its own optional slot; missing support renders an error and reports a contract violation. See [Shared numeric responses](integration-guide.md#shared-numeric-responses).                                                                                                                                                           |
 
 ### Conditional Components
 
-| Component                     | Key Props                                                        |
-| ----------------------------- | ---------------------------------------------------------------- |
-| `TimeConditionalRender`       | `displayTime?`, `hideTime?`, `getElapsedTime`, `children`        |
-| `PositionConditionalRender`   | `showToPositions?`, `hideFromPositions?`, `position`, `children` |
+| Component                     | Key Props                                                                                |
+| ----------------------------- | ---------------------------------------------------------------------------------------- |
+| `TimeConditionalRender`       | `displayTime?`, `hideTime?`, `getElapsedTime`, `children`                                |
+| `PositionConditionalRender`   | `showToPositions?`, `hideFromPositions?`, `position`, `children`                         |
 | `ConditionsConditionalRender` | `conditions`, `readReference`, `children`, `fallback?`, `onViolation?`, `violationKeys?` |
-| `SubmissionConditionalRender` | `isSubmitted`, `playerCount`, `children`                         |
+| `SubmissionConditionalRender` | `isSubmitted`, `playerCount`, `children`                                                 |
 
 For custom condition wrappers inside a provider, pass its bound `readReference`,
 `onContractViolation` as `onViolation`, and `violationKeys` from
@@ -803,6 +809,31 @@ const { getTextContent, getAssetURL } = createStaticContentFns({
 
 `getTextContent`/`getAssetURL` **must be referentially stable** (memoize them) or the harness re-fetches on every render.
 
+#### Task parameter files
+
+Pass `taskParameters` to let researchers preview a parameterized workflow against an Annotator task file: a **Load parameters…** bar appears above the preview, the researcher chooses a task, and `PreviewHost` previews the workflow narrowed to that task's treatment with its `fields` bound — JSON types intact, so `15.82` binds a number and `"15.82"` a string. The host owns the file I/O and the selection:
+
+```tsx
+<PreviewHost
+  {/* …the props above… */}
+  taskParameters={{
+    source, // { name, text } | { name, readError } | null — re-read on refresh
+    selectedKey, // the chosen entry's key, or null
+    onSelect: setSelectedKey, // persist it so a refresh keeps the selection
+    onLoad: openFilePicker, // read the chosen file into `source`
+    onClear: () => { setSource(null); setSelectedKey(null); },
+  }}
+/>
+```
+
+- **Accepted files:** a JSON array of task entries (Annotator's task-file upload) or `{ "tasks": [...] }` (its `/api/v1` submission body). Each entry needs `treatment` and a `fields` object; `callerTaskId` identifies it. Deployment-only keys (`targetReplications`, `exportPath`, `metadata`, `_comment`) are ignored and never become bindings.
+- **Selection keys:** `id:<callerTaskId>`, or `entry:<n>` (1-based position) for an entry without one, or for every copy of a repeated `callerTaskId` (each copy is flagged). Keep `selectedKey` across refreshes of the same file and reset it when a different file loads. When the selected entry is gone, the preview says so rather than showing another one.
+- **Checks:** malformed JSON, a malformed entry, an unknown treatment, and a missing field are reported by entry and field; a field the treatment doesn't use is a non-blocking warning (Annotator rejects it on upload). Post-fill validation issues name the `${field}` that supplied the failing value.
+- **Isolation:** switching tasks remounts the preview, so responses, media state, and manual field overrides never carry from one task to another. A refresh that leaves the task unchanged keeps its state, like a workflow refresh; one that changes the task's treatment or field values remounts too, so a manual override never outlives the value it replaced. When `onRefresh` is passed, the parameter bar offers it on screens that don't show the Viewer header (task problems, the task list, the field form).
+- `source` should be referentially stable — a new object re-parses the file.
+
+`parseTaskParameters(text)` and `resolveTaskParameterEntry(file, entry, hostFields?)` expose the same parsing and checks for hosts building their own UI.
+
 ### Content-fn helpers
 
 | Helper                        | For                                                                                                                                                                     |
@@ -812,11 +843,12 @@ const { getTextContent, getAssetURL } = createStaticContentFns({
 
 ### Other exports
 
-| Export                                                                                              | Purpose                                                                                      |
-| --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `Viewer`                                                                                            | The rendering component `PreviewHost` wraps — for hosts that resolve `${field}`s themselves. |
-| `ViewerStateStore` / `createViewerStateStore()`                                                     | The simulated response store (resettable), for custom harnesses.                             |
-| `createViewerContext(opts)`                                                                         | Builds the mock `StagebookContext` bridging the store to `stagebook/components`.             |
-| `flattenSteps`, `extractStageReferences`, `extractTimeBreakpoints`                                  | Structural introspection over a treatment (steps, references, timeline breakpoints).         |
-| `expandTreatmentFile(file, fields?)`                                                                | Expand `templates:` and report unresolved `${field}`s (no import merge, no js-yaml).         |
-| `StageNav`, `StateInspector`, `TimeScrubber`, `TreatmentPicker`, `FieldForm`, `SkeletonPlaceholder` | The individual dev-chrome components, for hosts assembling bespoke chrome.                   |
+| Export                                                                                              | Purpose                                                                                        |
+| --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `Viewer`                                                                                            | The rendering component `PreviewHost` wraps — for hosts that resolve `${field}`s themselves.   |
+| `ViewerStateStore` / `createViewerStateStore()`                                                     | The simulated response store (resettable), for custom harnesses.                               |
+| `createViewerContext(opts)`                                                                         | Builds the mock `StagebookContext` bridging the store to `stagebook/components`.               |
+| `flattenSteps`, `extractStageReferences`, `extractTimeBreakpoints`                                  | Structural introspection over a treatment (steps, references, timeline breakpoints).           |
+| `expandTreatmentFile(file, fields?)`                                                                | Expand `templates:` and report unresolved `${field}`s (no import merge, no js-yaml).           |
+| `parseTaskParameters(text)`, `resolveTaskParameterEntry(file, entry, hostFields?)`                  | Parse an Annotator task file; narrow a workflow to one entry's treatment and check its fields. |
+| `StageNav`, `StateInspector`, `TimeScrubber`, `TreatmentPicker`, `FieldForm`, `SkeletonPlaceholder` | The individual dev-chrome components, for hosts assembling bespoke chrome.                     |

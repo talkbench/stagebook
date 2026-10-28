@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import type { TreatmentFileType } from "stagebook";
-import { PreviewHost } from "stagebook/viewer";
+import { PreviewHost, type TaskParameterSource } from "stagebook/viewer";
 import stagebookStyles from "stagebook/styles";
 import { buildAssetURL } from "./resolveAsset.js";
 
@@ -92,6 +92,12 @@ function App() {
   const [unmappedAssetPrefixes, setUnmappedAssetPrefixes] = useState<string[]>(
     [],
   );
+  // #815: the task parameter file the extension host loaded (re-read on each
+  // refresh) and the chosen entry. The host owns both, so they survive a
+  // webview reload; this copy updates on each treatment message.
+  const [taskParameterSource, setTaskParameterSource] =
+    useState<TaskParameterSource | null>(null);
+  const [taskParameterKey, setTaskParameterKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Bumped on each treatment message so that `contentFns` is recreated
   // with a fresh cache, forcing prompt files to re-fetch from disk.
@@ -145,6 +151,13 @@ function App() {
         setUnmappedAssetPrefixes(
           (msg.unmappedAssetPrefixes as string[] | undefined) ?? [],
         );
+        setTaskParameterSource(
+          (msg.taskParameters as TaskParameterSource | null | undefined) ??
+            null,
+        );
+        setTaskParameterKey(
+          (msg.taskParameterKey as string | null | undefined) ?? null,
+        );
         setContentVersion((v) => v + 1);
         setError(null);
       } else if (msg.type === "error") {
@@ -195,6 +208,20 @@ function App() {
       onIntroIndexChange={setIntroIndex}
       onRefresh={() => vscode.postMessage({ type: "refresh" })}
       contentVersion={contentVersion}
+      taskParameters={{
+        source: taskParameterSource,
+        selectedKey: taskParameterKey,
+        onSelect: (key) => {
+          setTaskParameterKey(key);
+          vscode.postMessage({ type: "selectTaskParameter", key });
+        },
+        onLoad: () => vscode.postMessage({ type: "pickTaskParameterFile" }),
+        onClear: () => {
+          setTaskParameterSource(null);
+          setTaskParameterKey(null);
+          vscode.postMessage({ type: "clearTaskParameterFile" });
+        },
+      }}
       hostNotice={
         unmappedAssetPrefixes.length > 0 ? (
           <AssetMountCard

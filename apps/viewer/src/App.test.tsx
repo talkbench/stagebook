@@ -5,7 +5,15 @@
 // network/import error (→ plain error screen). Uses the same jsdom +
 // react-dom/client + act harness as the other viewer .test.tsx files, and mocks
 // the loader so the routing is exercised without any network.
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  vi,
+} from "vitest";
 import React, { type ReactNode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -112,6 +120,132 @@ describe("App load routing (#440)", () => {
     expect(text).toContain("Failed to fetch imported file");
     // The diagnostics placeholder must NOT be used for hard failures.
     expect(text).not.toContain("can’t be previewed");
+    unmount();
+  });
+});
+
+describe("App task parameters (#815)", () => {
+  // The preview mounts the Viewer, which needs browser APIs jsdom lacks.
+  beforeAll(() => {
+    if (!("ResizeObserver" in globalThis)) {
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      };
+    }
+    if (!window.matchMedia) {
+      window.matchMedia = (() => ({
+        matches: false,
+        addEventListener() {},
+        removeEventListener() {},
+      })) as unknown as typeof window.matchMedia;
+    }
+    if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("loads a local task file and previews the chosen task", async () => {
+    mockLoad.mockResolvedValue({
+      treatmentFile: {
+        treatments: [
+          {
+            name: "rate",
+            playerCount: 1,
+            compatibleIntroSequences: [],
+            gameStages: [
+              {
+                name: "only",
+                duration: "${seconds}",
+                elements: [{ type: "submitButton", buttonText: "Done" }],
+              },
+            ],
+          },
+        ],
+      } as unknown as NonNullable<LoadResult["treatmentFile"]>,
+      diagnostics: [],
+      unresolvedFields: ["seconds"],
+      rawBaseUrl: "https://raw.example/",
+    } satisfies LoadResult);
+    // No README: the viewer goes straight to the preview.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response("", { status: 404 }))),
+    );
+
+    const { container, unmount } = await render(<App />);
+    const bar = () =>
+      container.querySelector('[data-testid="task-parameter-bar"]');
+    expect(bar()?.textContent).toContain("Load parameters");
+
+    const chooseFile = async (name: string, tasks: unknown) => {
+      const input = container.querySelector<HTMLInputElement>(
+        '[data-testid="task-parameter-file-input"]',
+      )!;
+      const file = new File([JSON.stringify(tasks)], name, {
+        type: "application/json",
+      });
+      await act(async () => {
+        Object.defineProperty(input, "files", {
+          value: [file],
+          configurable: true,
+        });
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      await act(async () => {});
+    };
+    const task = (seconds: number) => [
+      { callerTaskId: "clip-01", treatment: "rate", fields: { seconds } },
+    ];
+    const selectedTask = () =>
+      bar()?.querySelector<HTMLSelectElement>("select")?.value;
+
+    await chooseFile("tasks.json", task(30));
+    expect(bar()?.textContent).toContain("tasks.json");
+
+    const choose = Array.from(container.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("clip-01"),
+    )!;
+    await act(async () => choose.click());
+    await act(async () => {});
+    expect(container.querySelector("main")).not.toBeNull();
+    expect(container.querySelector("#field-seconds")).toBeNull();
+
+    // A browser can't re-read the file, so choosing it again is the
+    // refresh: the task stays selected.
+    await chooseFile("tasks.json", task(40));
+    expect(selectedTask()).toBe("id:clip-01");
+    expect(container.querySelector("main")).not.toBeNull();
+
+    // A different file starts over.
+    await chooseFile("other.json", task(40));
+    expect(container.textContent).toContain("Choose a task to preview");
+    expect(container.querySelector("main")).toBeNull();
+    unmount();
+  });
+
+  it("preloads the task file a bundled example ships", async () => {
+    window.history.replaceState({}, "", "/");
+    const { container, unmount } = await render(<App />);
+    const example = Array.from(container.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("clip_review"),
+    );
+    expect(example).toBeDefined();
+    await act(async () => example!.click());
+    await act(async () => {});
+    // The example has a README, so it opens on its overview first.
+    await act(async () =>
+      container
+        .querySelector<HTMLButtonElement>(
+          '[data-testid="overview-view-button"]',
+        )!
+        .click(),
+    );
+    const bar = container.querySelector('[data-testid="task-parameter-bar"]');
+    expect(bar?.textContent).toContain("tasks.json");
+    expect(container.textContent).toContain("Choose a task to preview");
     unmount();
   });
 });

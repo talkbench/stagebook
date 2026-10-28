@@ -319,6 +319,66 @@ describe("computePreviewState", () => {
     expect(state.errors[0].message).toMatch(/\.prompt\.md/);
   });
 
+  it("names the field whose value failed post-fill validation", () => {
+    // The field is passed through a template's own field, so the issue's
+    // path only reaches `${userPromptFile}` in the bindings-free expansion.
+    const parsed = parseTreatmentYaml(TEMPLATED_FILE_YAML);
+    const state = computePreviewState(parsed, undefined, {
+      userPromptFile: "prompts/q1.md",
+    });
+    expect(state.mode).toBe("form");
+    if (state.mode !== "form") return;
+    expect(state.errors[0].fields).toEqual(["userPromptFile"]);
+  });
+
+  it("names the field when a structured value fails below its slot", () => {
+    const parsed = parseTreatmentYaml(NO_TEMPLATE_YAML);
+    const treatments = parsed.treatments as TreatmentsWalk;
+    treatments[0].gameStages[0].elements[0] = {
+      ...treatments[0].gameStages[0].elements[0],
+      showToPositions: "${positions}",
+    };
+    // A list with a non-integer fails at `showToPositions.0`, inside the
+    // value the field supplied.
+    const state = computePreviewState(parsed, { positions: ["first"] });
+    expect(state.mode).toBe("error");
+    if (state.mode !== "error") return;
+    expect(state.errors[0].path).toMatch(/showToPositions\.0$/);
+    expect(state.errors[0].fields).toEqual(["positions"]);
+  });
+
+  it("names no field for an issue in literal content", () => {
+    const parsed = parseTreatmentYaml(NO_TEMPLATE_YAML);
+    const treatments = parsed.treatments as TreatmentsWalk;
+    treatments[0].gameStages[0].elements[0] = {
+      ...treatments[0].gameStages[0].elements[0],
+      file: "prompts/q1.md",
+    };
+    const state = computePreviewState(parsed);
+    expect(state.mode).toBe("error");
+    if (state.mode !== "error") return;
+    expect(state.errors[0].fields).toBeUndefined();
+  });
+
+  it("reports a value that can't be filled in instead of throwing", () => {
+    // Filling a placeholder inside a longer string splices the value into
+    // serialized JSON, so a quote breaks the fill. The preview must show
+    // the problem, and offer the field again, rather than crash.
+    const parsed = parseTreatmentYaml(NO_TEMPLATE_YAML);
+    const treatments = parsed.treatments as TreatmentsWalk;
+    treatments[0].gameStages[0].elements[0] = {
+      ...treatments[0].gameStages[0].elements[0],
+      file: "prompts/${topic}.prompt.md",
+    };
+    const state = computePreviewState(parsed, undefined, { topic: 'a"b' });
+    expect(state.mode).toBe("form");
+    if (state.mode !== "form") return;
+    expect(state.formFields).toEqual(["topic"]);
+    expect(state.initialValues).toEqual({ topic: 'a"b' });
+    expect(state.errors).toHaveLength(1);
+    expect(state.errors[0].message).toMatch(/^Couldn't fill in the fields: /);
+  });
+
   it("returns ready for a clean file with no template fields", () => {
     const parsed = parseTreatmentYaml(NO_TEMPLATE_YAML);
     const state = computePreviewState(parsed);

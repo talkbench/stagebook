@@ -1,0 +1,37 @@
+[
+  {
+    "callerTaskId": "clip-01",
+    "treatment": "clip_review",
+    "fields": {
+      "clipUrl": "asset://solo_recordings/session_01_listener.mp4",
+      "clipStartAt": 15.82,
+      "clipStopAt": 16.436,
+      "transcript": "Mhm"
+    },
+    "targetReplications": 1,
+    "metadata": { "session": "session_01" }
+  },
+  {
+    "callerTaskId": "clip-02",
+    "treatment": "clip_review",
+    "fields": {
+      "clipUrl": "asset://solo_recordings/session_02_listener.mp4",
+      "clipStartAt": 42,
+      "clipStopAt": 43.25,
+      "transcript": "100"
+    },
+    "targetReplications": 1,
+    "metadata": { "session": "session_02" }
+  },
+  {
+    "callerTaskId": "clip-01-context",
+    "treatment": "context_review",
+    "fields": {
+      "contextClipUrl": "asset://group_recordings/session_01.mp4",
+      "contextClipStartAt": 11.97,
+      "contextClipStopAt": 17.286
+    },
+    "targetReplications": 1,
+    "metadata": { "session": "session_01" }
+  }
+]
