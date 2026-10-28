@@ -83,6 +83,13 @@ export function withSeekWindow(
     get channelCount() {
       return inner.channelCount;
     },
+    get participantTracks() {
+      return inner.participantTracks;
+    },
+    get annotationError() {
+      return inner.annotationError;
+    },
+    requestChannelCheck: () => inner.requestChannelCheck?.(),
     get peaks() {
       return inner.peaks;
     },

@@ -492,6 +492,21 @@ import { StagebookProvider, type StagebookContext } from "stagebook/components";
 <StagebookProvider value={context}>{children}</StagebookProvider>;
 ```
 
+### Group-recording audio
+
+The main `stagebook` entry exports `ChannelMappingEntry`, `ChannelLayoutDiagnostic`,
+`ChannelLayoutError`, `ChannelProbeResult`, and
+`checkChannelLayout({ mapping, probe? }): ChannelLayoutDiagnostic[]`.
+Omit `probe` for server-side mapping validation; include it to check session
+calibration as well. An empty array means the supplied layout is valid.
+
+`StagebookContext.getChannelMapping?(file)` supplies the sidecar mapping for an
+authored media file; `channelProbe?` supplies this session's calibration result.
+The player uses these to order and label participant tracks and save group
+Timeline selections by `position`. Ordinary media retains `track` row numbers.
+See the [integration contract](integration-guide.md#supplying-participant-tracks-release-b)
+for validation, refusal, restoration and rollout requirements.
+
 ### Pure reference reads
 
 ```ts

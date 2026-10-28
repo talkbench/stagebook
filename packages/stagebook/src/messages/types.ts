@@ -160,6 +160,7 @@ export interface StagebookMessages {
   mediaErrorDecode: string;
   mediaErrorFormat: string;
   mediaErrorUnknown: string;
+  mediaChannelLayoutError: string;
   mediaErrorCode: (code: number) => string;
   /** Transport controls — aria-labels and (keyboard-hint-bearing) titles.
    *  "Full" titles belong to the native video controls (hold-to-scrub

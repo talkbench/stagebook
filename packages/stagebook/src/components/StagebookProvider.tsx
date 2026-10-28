@@ -28,6 +28,8 @@ import type {
 import type { NumericFeedback } from "../utils/numericFeedback.js";
 import type { NumberFormat } from "../messages/types.js";
 import type { StagebookMessages, DeepPartial } from "../messages/index.js";
+import type { ChannelMappingEntry } from "../audioProbe/channelLayout.js";
+import type { ChannelProbeResult } from "../audioProbe/probe.js";
 
 // --------------- StagebookContext Interface ---------------
 
@@ -115,6 +117,15 @@ export interface StagebookContext {
   //   labeled placeholder instead of a broken element (#191).
   getAssetURL(path: string): string;
   getTextContent(path: string): Promise<string>;
+
+  /** Mapping from the served recording's sidecar, keyed by the authored
+   * mediaPlayer file. Undefined means ordinary media, not a group recording.
+   * The host must reject group tasks whose sidecar is missing. */
+  getChannelMapping?: (
+    file: string,
+  ) => readonly ChannelMappingEntry[] | undefined;
+  /** Result of probeChannelOrder() from this session's start click. */
+  channelProbe?: ChannelProbeResult;
 
   /**
    * Monotonically increasing counter that signals cached content is stale.
@@ -204,10 +215,12 @@ export interface StagebookContext {
   // removed in #669. Survey instruments are prompt elements (imported
   // module templates) that stagebook renders itself.
 
-  // Optional crash-reporting hook — called once per element render crash
+  // Optional error-reporting hook — called once per element render crash
   // caught by ElementErrorBoundary, with a structured payload. This is a
   // notification only; console.error and window.onerror still fire
   // regardless of whether this is provided.
+  // Channel-layout refusals also report here, as ChannelLayoutError with
+  // structured diagnostics and an empty componentStack (no render crash).
   onElementError?: (info: {
     elementType: string;
     elementName?: string;
