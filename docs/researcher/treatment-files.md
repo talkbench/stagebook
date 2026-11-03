@@ -346,7 +346,9 @@ Intro and exit steps have `name` and `elements` but no `duration` (they are unti
 
 ## Notes
 
-Any treatment, stage, intro/exit step, element, template, or introSequence can carry a `notes` field. Notes are **researcher-facing only** — they're visible in the viewer and to authoring tools, but the platform runtime strips them before any data reaches participants.
+Any treatment, stage, intro/exit step, element, template, consent arm, or introSequence can carry a `notes` field. Notes are **researcher-facing metadata** — they're visible in the viewer and to authoring tools. Platforms must publish the sanitized output from Stagebook's [runtime parsing API](../engineer/integration-guide.md#treatment-hydration-pipeline) to remove notes from the study data sent to participants. Validation alone does not remove notes from the original object.
+
+This does not make the source files private: a study file hosted at a public URL can still be read directly, including its notes and YAML comments.
 
 Use YAML's block scalar syntax (`|`) for multi-line markdown:
 
