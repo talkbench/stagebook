@@ -2,7 +2,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { DebugMessage } from "../../utils/promptTelemetry.js";
+import type { DebugMessage, TypingStats } from "../../utils/promptTelemetry.js";
 import type { NumberFormat } from "../../messages/types.js";
 import { NumericInput } from "./NumericInput.js";
 import { LocaleProvider } from "../testing/LocaleProvider.js";
@@ -157,6 +157,122 @@ test("blur saves empty raw text and fresh typing telemetry before the response",
   );
 });
 
+test("every existing commit receives a fresh snapshot before its response", () => {
+  const snapshot = vi.fn<(stats: TypingStats) => void>();
+  render({ onTypingSnapshot: snapshot });
+  insert("1");
+  advance(2000);
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(snapshot).toHaveBeenCalledTimes(1);
+  expect(snapshot).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      focusCount: 1,
+      blurCount: 0,
+      focusedDurationMs: 2000,
+    }),
+  );
+
+  // Continuous edits retain the existing five-second maximum wait.
+  for (let i = 0; i < 5; i++) {
+    insert("2");
+    advance(1000);
+  }
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(snapshot).toHaveBeenCalledTimes(2);
+  expect(snapshot).toHaveBeenLastCalledWith(
+    expect.objectContaining({ blurCount: 0, focusedDurationMs: 7000 }),
+  );
+
+  const drop = new Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(drop, "dataTransfer", {
+    value: { getData: () => "99" },
+  });
+  act(() => {
+    input().dispatchEvent(drop);
+  });
+  expect(save).toHaveBeenCalledTimes(3);
+  expect(snapshot).toHaveBeenCalledTimes(3);
+  advance(100);
+  act(() => input().blur());
+  expect(save).toHaveBeenCalledTimes(4);
+  expect(snapshot).toHaveBeenCalledTimes(4);
+  expect(snapshot).toHaveBeenLastCalledWith(
+    expect.objectContaining({ blurCount: 1, focusedDurationMs: 7100 }),
+  );
+  for (let i = 0; i < 4; i++) {
+    expect(snapshot.mock.invocationCallOrder[i]).toBeLessThan(
+      save.mock.invocationCallOrder[i],
+    );
+  }
+  advance(10000);
+  expect(save).toHaveBeenCalledTimes(4);
+  expect(snapshot).toHaveBeenCalledTimes(4);
+});
+
+test("canceled beforeinput is an attempt, not a native insertion or context for a later input", () => {
+  const snapshot = vi.fn<(stats: TypingStats) => void>();
+  render({ onTypingSnapshot: snapshot });
+  insert("x");
+  advance(1000);
+  expect(save).not.toHaveBeenCalled();
+  fallbackEdit("4");
+  advance(2000);
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(snapshot).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      beforeInputEventCount: 1,
+      inputEventCount: 1,
+      inputEventsWithoutBeforeInput: 1,
+      charsInsertedTotal: 1,
+      charsDeletedTotal: 0,
+    }),
+  );
+});
+
+test("native input telemetry observes raw edits before filtering and rebases to accepted text", () => {
+  const snapshot = vi.fn<(stats: TypingStats) => void>();
+  render({ entry: "35", onTypingSnapshot: snapshot });
+  fallbackEdit("3x45", "x4");
+  expect(input().value).toBe("345");
+  advance(2000);
+  expect(snapshot).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      inputEventCount: 1,
+      charsInsertedTotal: 2,
+      charsDeletedTotal: 0,
+    }),
+  );
+  // The control's removal of x is not a participant deletion. The next
+  // native event starts from the displayed, filtered value.
+  fallbackEdit("3456", "6", "insertText");
+  advance(2000);
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(snapshot).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      inputEventCount: 2,
+      charsInsertedTotal: 3,
+      charsDeletedTotal: 0,
+    }),
+  );
+});
+
+test("same-text native replacement is measured even when React omits onChange", () => {
+  const snapshot = vi.fn<(stats: TypingStats) => void>();
+  render({ entry: "3", onTypingSnapshot: snapshot });
+  act(() => input().setSelectionRange(0, 1));
+  insert("3");
+  advance(2000);
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(snapshot).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      inputEventCount: 1,
+      beforeInputEventCount: 1,
+      charsInsertedTotal: 1,
+      charsDeletedTotal: 1,
+    }),
+  );
+});
+
 test("a refused insertion preserves a selection and does not extend pending timers", () => {
   render();
   insert("35");
@@ -196,7 +312,8 @@ test("restored format survives no-edit blur and switches only after an accepted 
 });
 
 test("composition is untouched until its completed insertion is filtered once", () => {
-  render({ entry: "35" });
+  const snapshot = vi.fn<(stats: TypingStats) => void>();
+  render({ entry: "35", onTypingSnapshot: snapshot });
   act(() => input().setSelectionRange(1, 1));
   act(() => {
     input().dispatchEvent(
@@ -207,6 +324,7 @@ test("composition is untouched until its completed insertion is filtered once", 
   expect(input().value).toBe("3あ5");
   advance(6000);
   expect(save).not.toHaveBeenCalled();
+  expect(snapshot).not.toHaveBeenCalled();
   fallbackEdit("3x45");
   act(() => {
     input().dispatchEvent(
@@ -217,6 +335,14 @@ test("composition is untouched until its completed insertion is filtered once", 
   advance(2000);
   expect(save).toHaveBeenCalledTimes(1);
   expect(save).toHaveBeenLastCalledWith("345", dot);
+  expect(snapshot).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      inputEventCount: 2,
+      compositionCount: 1,
+      charsInsertedTotal: 3,
+      charsDeletedTotal: 1,
+    }),
+  );
 });
 
 test("paste and drop are blocked and recorded; drop commits unchanged text", () => {
