@@ -82,6 +82,7 @@ it("preserves group playback history and its audio source on signed URL rotation
       [20, 25],
     ]);
     expect(saves.at(-1)?.events.map((event) => event.type)).toEqual([
+      "volumechange", // The channel graph becomes observable on this mount.
       "play",
       "pause",
       "restored",

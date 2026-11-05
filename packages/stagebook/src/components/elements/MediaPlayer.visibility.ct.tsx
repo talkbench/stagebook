@@ -1,0 +1,85 @@
+import { test, expect } from "@playwright/experimental-ct-react";
+import { MockMediaPlayer } from "../testing/MockMediaPlayer.js";
+import type { VideoPlaybackRecord } from "../../schemas/mediaPlayerRecord.js";
+
+test("native playback resumes visibility accounting after a buffered seek", async ({
+  mount,
+  page,
+}) => {
+  // Control only the telemetry clock/page-state reading. Playback, decoding,
+  // seeking, and their native events remain real browser behavior.
+  await page.evaluate(() => {
+    document.documentElement.dataset.visibilityClock = "0";
+    Object.defineProperty(performance, "now", {
+      configurable: true,
+      value: () => Number(document.documentElement.dataset.visibilityClock),
+    });
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "hidden",
+    });
+  });
+  const component = await mount(
+    <MockMediaPlayer
+      url="/sample-video.mp4"
+      name="visibility"
+      playAudio={false}
+      playback="manual"
+      controls={{ playPause: true, seek: true }}
+    />,
+  );
+  const video = component.getByTestId("mediaPlayer-video");
+  const readSaves = async () =>
+    JSON.parse(
+      (await component.getByTestId("save-log").textContent()) ?? "[]",
+    ) as Array<{ value: VideoPlaybackRecord }>;
+  await video.evaluate(async (element: HTMLVideoElement) => {
+    await element.play();
+  });
+  await expect.poll(async () => (await readSaves()).length).toBe(1);
+  // Safari may preload metadata only until playback is requested.
+  await expect
+    .poll(() =>
+      video.evaluate((element: HTMLVideoElement) =>
+        element.buffered.length > 0
+          ? element.buffered.end(element.buffered.length - 1)
+          : 0,
+      ),
+    )
+    .toBeGreaterThan(3);
+  await video.evaluate((element: HTMLVideoElement) => {
+    let seeking = false;
+    const events: string[] = [];
+    element.dataset.seekEvents = "[]";
+    for (const type of ["seeking", "seeked", "waiting", "playing"]) {
+      element.addEventListener(type, () => {
+        if (type === "seeking") seeking = true;
+        if (seeking) {
+          events.push(type);
+          element.dataset.seekEvents = JSON.stringify(events);
+        }
+      });
+    }
+    // Isolate the backend's seek lifecycle from Stagebook's transport logging.
+    element.currentTime = 2;
+  });
+  await expect
+    .poll(() => video.getAttribute("data-seek-events"))
+    .toContain("seeked");
+  // WebKit can resume a buffered seek without another playing event. Verify
+  // advancing media time rather than assuming one engine's event sequence.
+  await expect
+    .poll(() =>
+      video.evaluate((element: HTMLVideoElement) => element.currentTime),
+    )
+    .toBeGreaterThan(2.1);
+  expect((await readSaves()).length).toBe(1);
+  await page.evaluate(() => {
+    document.documentElement.dataset.visibilityClock = "5000";
+  });
+  await video.evaluate((element: HTMLVideoElement) => element.pause());
+  await expect.poll(async () => (await readSaves()).length).toBe(2);
+  const record = (await readSaves()).at(-1)!.value;
+  expect(record.hiddenPlaybackSeconds).toBe(5);
+  expect(record.visibilityChangesDuringPlayback).toBe(0);
+});

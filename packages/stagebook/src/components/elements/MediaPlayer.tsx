@@ -17,6 +17,8 @@ import type { PlaybackHandle } from "../playback/PlaybackHandle.js";
 import { seekWindow, withSeekWindow } from "../playback/windowedHandle.js";
 import { atClipEnd, clipWindow } from "./mediaPlayer/clipEnd.js";
 import { createSeekCoalescer } from "./mediaPlayer/seekCoalescer.js";
+import { createPlaybackVisibility } from "./mediaPlayer/playbackVisibility.js";
+import { createMediaStateTelemetry } from "./mediaPlayer/mediaStateTelemetry.js";
 import {
   computeWatchedCoverage,
   computeWatchedRanges,
@@ -36,6 +38,8 @@ import { focusRingCss } from "../focusRing.js";
 import type {
   VideoEvent,
   VideoPlaybackRecord,
+  MediaAudioState,
+  MediaStateEvent,
 } from "../../schemas/mediaPlayerRecord.js";
 export type {
   VideoEvent,
@@ -53,7 +57,8 @@ import { ChannelLayoutFailure } from "./mediaPlayer/ChannelLayoutFailure.js";
 import { monitorChannelCount } from "./mediaPlayer/channelCountMonitor.js";
 
 // Preserve each event's required payload while recordEvent adds stage time.
-type VideoEventDetails<Event = VideoEvent> = Event extends VideoEvent
+type TransportEvent = Exclude<VideoEvent, MediaStateEvent>;
+type VideoEventDetails<Event = TransportEvent> = Event extends TransportEvent
   ? Pick<Event, "type" | "videoTime" | "fromTime" | "playbackRate">
   : never;
 
@@ -90,6 +95,16 @@ export interface MediaPlayerProps {
 }
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+
+function playbackVisibility(initial?: VideoPlaybackRecord) {
+  return createPlaybackVisibility({
+    now: () => performance.now(),
+    hidden:
+      typeof document !== "undefined" && document.visibilityState === "hidden",
+    focused: typeof document !== "undefined" && document.hasFocus(),
+    initial,
+  });
+}
 
 // Subtle edge for the video viewport. Without this, near-white content
 // (a washed-out background, a whiteboard) bleeds into the surrounding page.
@@ -291,9 +306,50 @@ function MediaPlayerCore({
     matchingRecord({ initialRecord, name, url, sourceId, startAt, stopAt }),
   );
   const eventsRef = useRef<VideoEvent[]>(restoredRecord?.events ?? []);
+  const [initialVisibility] = useState(() =>
+    playbackVisibility(restoredRecord),
+  );
+  const visibilityRef = useRef(initialVisibility);
+  const resumeAfterSeekRef = useRef(false);
+  const [initialMediaState] = useState(() =>
+    createMediaStateTelemetry(
+      restoredRecord?.events,
+      restoredRecord?.mediaStateEventsDropped,
+    ),
+  );
+  const mediaStateRef = useRef(initialMediaState);
+  const readAudioRef = useRef<() => MediaAudioState>(() => ({
+    muted: null,
+    volume: null,
+  }));
+  const finalAudioRef = useRef<MediaAudioState | null>(null);
+  useLayoutEffect(
+    () => () => {
+      // Read before passive cleanup destroys YouTube/the channel graph.
+      finalAudioRef.current = readAudioRef.current();
+    },
+    [],
+  );
+  const positionRef = useRef<() => number>(() => 0);
   // A restored open interval is unverified. The first local event records the
   // session break before appending; merely opening a page makes no host write.
   const pendingRestoreRef = useRef(eventsRef.current.length > 0);
+  const appendToLog = useCallback((batch: VideoEvent[]) => {
+    const first = batch[0];
+    if (!first) return;
+    if (pendingRestoreRef.current) {
+      pendingRestoreRef.current = false;
+      eventsRef.current = [
+        ...eventsRef.current,
+        {
+          type: "restored",
+          videoTime: first.type === "seek" ? first.fromTime : first.videoTime,
+          stageTimeElapsed: first.stageTimeElapsed,
+        },
+      ];
+    }
+    eventsRef.current = [...eventsRef.current, ...batch];
+  }, []);
   const logIdentityRef = useRef({ name, source: sourceId ?? url, url });
   const videoRef = useRef<HTMLVideoElement>(null);
   const channelCheckRequestedRef = useRef(false);
@@ -363,6 +419,48 @@ function MediaPlayerCore({
   const getElapsedTimeRef = useRef(getElapsedTime);
   getElapsedTimeRef.current = getElapsedTime;
 
+  const observeAudio = useCallback(() => {
+    if (logClosedRef.current) return;
+    mediaStateRef.current.observeAudio(readAudioRef.current(), () => ({
+      videoTime: positionRef.current(),
+      stageTimeElapsed: getElapsedTimeRef.current(),
+    }));
+  }, []);
+  const stopObservedPlayback = useCallback(() => {
+    resumeAfterSeekRef.current = false;
+    visibilityRef.current.setPlaying(false);
+  }, []);
+  const handleWaiting = useCallback(() => {
+    // A seek may buffer before seeked confirms enough data to resume.
+    visibilityRef.current.setPlaying(false);
+  }, []);
+  const handleSeeking = useCallback(
+    (event: React.SyntheticEvent<HTMLVideoElement>) => {
+      resumeAfterSeekRef.current =
+        !event.currentTarget.paused &&
+        (resumeAfterSeekRef.current || visibilityRef.current.isPlaying());
+      visibilityRef.current.setPlaying(false);
+    },
+    [],
+  );
+  const handleSeeked = useCallback(
+    (event: React.SyntheticEvent<HTMLVideoElement>) => {
+      const video = event.currentTarget;
+      // WebKit can resume buffered media after seeked without another playing.
+      // Require an observed active interval before the seek, plus live readiness.
+      if (
+        resumeAfterSeekRef.current &&
+        !video.paused &&
+        !video.ended &&
+        video.readyState >= 3
+      ) {
+        visibilityRef.current.setPlaying(true);
+      }
+      resumeAfterSeekRef.current = false;
+    },
+    [],
+  );
+
   // Seeks that arrive as a stream — from a sibling Timeline, or the scrub
   // bar — are logged once the stream settles (#682). appendEventRef is set
   // below, once the record's fields are in scope.
@@ -417,19 +515,39 @@ function MediaPlayerCore({
         stopAt,
       });
       eventsRef.current = seed?.events ?? [];
+      mediaStateRef.current.cancel();
+      mediaStateRef.current = createMediaStateTelemetry(
+        seed?.events,
+        seed?.mediaStateEventsDropped,
+      );
+      visibilityRef.current = playbackVisibility(seed);
+      resumeAfterSeekRef.current = false;
       measuredDurationRef.current = seed?.duration;
       pendingRestoreRef.current = eventsRef.current.length > 0;
     } else if (previous.url !== url) {
       // Rotating a signed URL reloads the backend for the same authored asset.
       // Retain closed ranges but don't extend its old, unverified interval
       // from a new playhead. Record the boundary with the next event.
+      visibilityRef.current.setPlaying(false);
+      resumeAfterSeekRef.current = false;
+      mediaStateRef.current.flush();
       seekLog.flush();
+      appendToLog(mediaStateRef.current.drain());
       pendingRestoreRef.current = eventsRef.current.length > 0;
     }
     logIdentityRef.current = { name, source: sourceId ?? url, url };
     // Layout timing precedes the new backend's ready/play. Window updates
     // keep the existing handle and re-clip the raw history on its next save.
-  }, [name, url, sourceId, initialRecord, startAt, stopAt, seekLog]);
+  }, [
+    name,
+    url,
+    sourceId,
+    initialRecord,
+    startAt,
+    stopAt,
+    seekLog,
+    appendToLog,
+  ]);
   const [bufferedEnd, setBufferedEnd] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [cues, setCues] = useState<CaptionCue[]>([]);
@@ -581,11 +699,31 @@ function MediaPlayerCore({
   // Uint8Array<ArrayBuffer> variant, not Uint8Array<ArrayBufferLike>.
   // Type the array element explicitly so TS doesn't widen it.
   const analyserBuffersRef = useRef<Uint8Array<ArrayBuffer>[]>([]);
-  // Per-channel GainNodes (see buildPlaybackGraph). Mute state is
-  // ephemeral: setChannelMuted writes here and to mutedStateRef below; not
-  // persisted and not saved.
+  // Per-channel GainNodes (see buildPlaybackGraph). Settings remain local;
+  // observations are logged but restoring a record never restores the mutes.
   const gainNodesRef = useRef<GainNode[]>([]);
   const mutedStateRef = useRef<boolean[]>([]);
+  readAudioRef.current = () => {
+    if (youtubeVideoId) {
+      return (
+        liveYtHandleRef.current?.getAudioState?.() ?? {
+          muted: null,
+          volume: null,
+        }
+      );
+    }
+    const video = videoRef.current ?? lastVideoElRef.current;
+    return {
+      muted: video?.muted ?? null,
+      volume: video?.volume ?? null,
+      ...(mutedStateRef.current.length > 0
+        ? { channelMuted: [...mutedStateRef.current] }
+        : {}),
+    };
+  };
+  useLayoutEffect(() => {
+    mediaStateRef.current.seedAudio(readAudioRef.current());
+  }, [url, name, sourceId, youtubeVideoId]);
   const peaksRef = useRef<Float32Array[]>([]);
   // Render token: bumps every time peaks are mutated, so consumers can
   // re-run effects despite the array reference being stable.
@@ -648,6 +786,7 @@ function MediaPlayerCore({
           analyserBuffersRef.current = buffers;
           gainNodesRef.current = orderedGains;
           mutedStateRef.current = new Array<boolean>(numChannels).fill(false);
+          observeAudio();
           setChannelCount(numChannels);
           setWaveformActive(true);
         } else if (isNew) {
@@ -845,6 +984,7 @@ function MediaPlayerCore({
     if (!ytHandle) return;
     const id = setInterval(() => {
       const t = ytHandle.getCurrentTime();
+      observeAudio();
       setCurrentTime(t);
       const mediaDuration = ytHandle.getDuration();
       if (mediaDuration > 0) measuredDurationRef.current = mediaDuration;
@@ -856,7 +996,7 @@ function MediaPlayerCore({
       }
     }, 250);
     return () => clearInterval(id);
-  }, [ytHandle, isPaused, stopAt]);
+  }, [ytHandle, isPaused, stopAt, observeAudio]);
 
   // A pause (including a browser power-saving pause), seek or new load can
   // reject an outstanding play request. Observe it without undoing the pause
@@ -904,6 +1044,7 @@ function MediaPlayerCore({
       getDuration: () => videoRef.current?.duration ?? 0,
       isPaused: () => videoRef.current?.paused ?? true,
       isYouTube: false,
+      getAudioState: () => readAudioRef.current(),
       participantTracks: groupTracks,
       get annotationError() {
         return captureFailedRef.current;
@@ -933,12 +1074,13 @@ function MediaPlayerCore({
         setChannelGain(gainNodesRef.current, channel, muted);
         if (channel >= 0 && channel < mutedStateRef.current.length) {
           mutedStateRef.current[channel] = muted;
+          observeAudio();
         }
       },
       isChannelMuted: (channel: number) =>
         mutedStateRef.current[channel] ?? false,
     }),
-    [channelCount, startWaveformCapture, playHTML5, groupTracks], // re-create when channelCount changes so consumers see the update
+    [channelCount, startWaveformCapture, playHTML5, groupTracks, observeAudio], // re-create when channelCount changes so consumers see the update
   );
   // Use the YouTube handle when available, fall back to the HTML5 handle.
   // Register nothing while the URL is unsafe: no <video> is mounted, so the
@@ -1061,18 +1203,22 @@ function MediaPlayerCore({
   const appendEvent = useCallback(
     (event: VideoEvent) => {
       if (logClosedRef.current) return;
-      if (pendingRestoreRef.current) {
-        pendingRestoreRef.current = false;
-        eventsRef.current = [
-          ...eventsRef.current,
-          {
-            type: "restored",
-            videoTime: event.type === "seek" ? event.fromTime : event.videoTime,
-            stageTimeElapsed: event.stageTimeElapsed,
-          },
-        ];
-      }
-      eventsRef.current = [...eventsRef.current, event];
+      mediaStateRef.current.observeAudio(
+        event.type === "removed" && finalAudioRef.current
+          ? finalAudioRef.current
+          : readAudioRef.current(),
+        () => ({
+          videoTime: positionRef.current(),
+          stageTimeElapsed: getElapsedTimeRef.current(),
+        }),
+      );
+      const observed = mediaStateRef.current.drain();
+      // A settled seek can predate queued state observations. Preserve its
+      // observation time without reordering any previously saved history.
+      const batch = [...observed, event].sort(
+        (a, b) => a.stageTimeElapsed - b.stageTimeElapsed,
+      );
+      appendToLog(batch);
       let observedDuration: number | undefined;
       try {
         observedDuration =
@@ -1113,10 +1259,12 @@ function MediaPlayerCore({
           duration: knownDuration,
         }),
         ...playbackMilestones(eventsRef.current),
+        ...visibilityRef.current.snapshot(),
+        mediaStateEventsDropped: mediaStateRef.current.droppedCounts(),
       };
       saveRef.current(saveKey, record);
     },
-    [name, url, sourceId, startAt, stopAt, saveKey],
+    [name, url, sourceId, startAt, stopAt, saveKey, appendToLog],
   );
   appendEventRef.current = appendEvent;
 
@@ -1126,8 +1274,11 @@ function MediaPlayerCore({
       seekLog.flush();
       appendEvent({
         ...event,
+        ...(event.type === "play" ? readAudioRef.current() : {}),
         stageTimeElapsed: getElapsedTimeRef.current(),
       });
+      if (event.type === "play")
+        mediaStateRef.current.seedAudio(readAudioRef.current());
     },
     [appendEvent, seekLog],
   );
@@ -1138,7 +1289,6 @@ function MediaPlayerCore({
   // here at the current position; lastVideoTime follows (#677). A pending
   // seek is logged first. The host gets this save after submit() — unlike a
   // response, this records what already happened.
-  const positionRef = useRef<() => number>(() => 0);
   positionRef.current = () => {
     try {
       const t = ytHandle
@@ -1150,10 +1300,76 @@ function MediaPlayerCore({
     }
     return currentTime;
   };
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const doc = container.ownerDocument;
+    const win = doc.defaultView;
+    const video = videoRef.current;
+    const visibility = () => {
+      visibilityRef.current.setVisibility(doc.visibilityState === "hidden");
+      visibilityRef.current.setFocused(doc.hasFocus());
+    };
+    const focus = () => visibilityRef.current.setFocused(doc.hasFocus());
+    const queue = (
+      event:
+        | { type: "fullscreenchange"; fullscreen: boolean }
+        | { type: "enterpictureinpicture" | "leavepictureinpicture" },
+    ) => {
+      if (logClosedRef.current) return;
+      mediaStateRef.current.queue({
+        ...event,
+        videoTime: positionRef.current(),
+        stageTimeElapsed: getElapsedTimeRef.current(),
+      });
+    };
+    let fullscreen = container.contains(doc.fullscreenElement);
+    const fullscreenChange = () => {
+      const next = container.contains(doc.fullscreenElement);
+      if (next === fullscreen) return;
+      fullscreen = next;
+      queue({ type: "fullscreenchange", fullscreen });
+    };
+    let pictureInPicture =
+      video !== null && doc.pictureInPictureElement === video;
+    const enterPictureInPicture = () => {
+      if (pictureInPicture) return;
+      pictureInPicture = true;
+      queue({ type: "enterpictureinpicture" });
+    };
+    const leavePictureInPicture = () => {
+      if (!pictureInPicture) return;
+      pictureInPicture = false;
+      queue({ type: "leavepictureinpicture" });
+    };
+    visibility();
+    doc.addEventListener("visibilitychange", visibility);
+    doc.addEventListener("fullscreenchange", fullscreenChange);
+    win?.addEventListener("blur", focus);
+    win?.addEventListener("focus", focus);
+    video?.addEventListener("enterpictureinpicture", enterPictureInPicture);
+    video?.addEventListener("leavepictureinpicture", leavePictureInPicture);
+    return () => {
+      visibilityRef.current.setPlaying(false);
+      doc.removeEventListener("visibilitychange", visibility);
+      doc.removeEventListener("fullscreenchange", fullscreenChange);
+      win?.removeEventListener("blur", focus);
+      win?.removeEventListener("focus", focus);
+      video?.removeEventListener(
+        "enterpictureinpicture",
+        enterPictureInPicture,
+      );
+      video?.removeEventListener(
+        "leavepictureinpicture",
+        leavePictureInPicture,
+      );
+    };
+  }, [url, youtubeVideoId, urlIsUnsafe, playVideo]);
   useEffect(() => {
     // Reopened by StrictMode's simulated remount.
     logClosedRef.current = false;
     return () => {
+      visibilityRef.current.setPlaying(false);
       seekLog.flush();
       if (!pendingRestoreRef.current && endsMidPlayback(eventsRef.current)) {
         appendEventRef.current({
@@ -1163,8 +1379,15 @@ function MediaPlayerCore({
         });
       }
       logClosedRef.current = true;
+      mediaStateRef.current.cancel();
     };
   }, [seekLog]);
+
+  const handlePlaying = useCallback(() => {
+    resumeAfterSeekRef.current = false;
+    visibilityRef.current.setPlaying(true);
+    markInitialStarted();
+  }, [markInitialStarted]);
 
   const handlePlay = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -1184,6 +1407,8 @@ function MediaPlayerCore({
 
   const handlePause = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      visibilityRef.current.setPlaying(false);
+      resumeAfterSeekRef.current = false;
       const fromScrub = scrubPauseRef.current;
       scrubPauseRef.current = false;
       // Suppress the phantom pause event triggered by our own stopAt enforcement.
@@ -1211,6 +1436,8 @@ function MediaPlayerCore({
 
   const handleEnded = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      visibilityRef.current.setPlaying(false);
+      resumeAfterSeekRef.current = false;
       markInitialStarted();
       setIsPaused(true);
       setCurrentTime(e.currentTarget.currentTime);
@@ -1265,6 +1492,8 @@ function MediaPlayerCore({
 
   const handleError = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
+      visibilityRef.current.setPlaying(false);
+      resumeAfterSeekRef.current = false;
       const err = e.currentTarget.error;
       const codeMessages: Record<number, string> = {
         1: messages.mediaErrorAborted,
@@ -1307,6 +1536,7 @@ function MediaPlayerCore({
       // paused isn't the clip finishing, and pausing an already-paused video
       // fires no "pause" event to consume stopAtReachedRef (#679).
       if (stopAt !== undefined && ct >= stopAt && !e.currentTarget.paused) {
+        visibilityRef.current.setPlaying(false);
         stopAtReachedRef.current = true;
         e.currentTarget.pause(); // fires "pause" event; handlePause suppresses it
         recordEvent({ type: "stopAt", videoTime: ct });
@@ -1909,6 +2139,7 @@ function MediaPlayerCore({
             hideNativeControls={hasControls || effectivePlayback === "once"}
             onHandleReady={(h) => {
               liveYtHandleRef.current = h;
+              mediaStateRef.current.seedAudio(readAudioRef.current());
               initialStartRef.current.ready = true;
               notifyInitialStart();
               setYtHandle(h);
@@ -1922,12 +2153,15 @@ function MediaPlayerCore({
             // A destroyed player's handle must stop being polled and stop
             // standing in for this player (the source changed or remounted).
             onHandleGone={() => {
+              visibilityRef.current.setPlaying(false);
               if (!logClosedRef.current) {
                 // Creation settings (startAt/native controls) can replace
                 // YouTube's backend while this component remains mounted.
                 // Finish any verified seek, then keep the old open interval
                 // from swallowing or bridging playback in the new backend.
+                mediaStateRef.current.flush();
                 seekLog.flush();
+                appendToLog(mediaStateRef.current.drain());
                 pendingRestoreRef.current = eventsRef.current.length > 0;
               }
               liveYtHandleRef.current = null;
@@ -1949,6 +2183,7 @@ function MediaPlayerCore({
               notifyInitialStart();
             }}
             onPlay={(t) => {
+              visibilityRef.current.setPlaying(true);
               markInitialStarted();
               setIsPaused(false);
               setYtEnded(false);
@@ -1966,6 +2201,7 @@ function MediaPlayerCore({
               recordEvent({ type: "play", videoTime: t });
             }}
             onPause={(t) => {
+              visibilityRef.current.setPlaying(false);
               const fromScrub = scrubPauseRef.current;
               scrubPauseRef.current = false;
               setIsPaused(true);
@@ -1995,6 +2231,7 @@ function MediaPlayerCore({
               recordEvent({ type: "pause", videoTime: t });
             }}
             onEnded={(t) => {
+              visibilityRef.current.setPlaying(false);
               markInitialStarted();
               setIsPaused(true);
               setYtEnded(true);
@@ -2002,6 +2239,7 @@ function MediaPlayerCore({
               recordEvent({ type: "ended", videoTime: t });
               if (submitOnComplete) onCompleteRef.current?.();
             }}
+            onPlaybackInactive={stopObservedPlayback}
           />
           {/* With YouTube's keyboard off (#699), a click into its frame
               would leave keys going nowhere. This layer takes the click
@@ -2143,7 +2381,13 @@ function MediaPlayerCore({
           // is unaffected.
           crossOrigin="anonymous"
           onPlay={handlePlay}
-          onPlaying={markInitialStarted}
+          onPlaying={handlePlaying}
+          onWaiting={handleWaiting}
+          onSeeking={handleSeeking}
+          onSeeked={handleSeeked}
+          onEmptied={stopObservedPlayback}
+          onAbort={stopObservedPlayback}
+          onVolumeChange={observeAudio}
           onPause={handlePause}
           onEnded={handleEnded}
           onLoadedMetadata={handleLoadedMetadata}
@@ -2167,7 +2411,13 @@ function MediaPlayerCore({
             // See above — required for waveform capture. Same-origin no-op.
             crossOrigin="anonymous"
             onPlay={handlePlay}
-            onPlaying={markInitialStarted}
+            onPlaying={handlePlaying}
+            onWaiting={handleWaiting}
+            onSeeking={handleSeeking}
+            onSeeked={handleSeeked}
+            onEmptied={stopObservedPlayback}
+            onAbort={stopObservedPlayback}
+            onVolumeChange={observeAudio}
             onPause={handlePause}
             onEnded={handleEnded}
             onLoadedMetadata={handleLoadedMetadata}

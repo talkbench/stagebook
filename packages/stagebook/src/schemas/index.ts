@@ -3,6 +3,10 @@ export {
   mediaPlayerRecordSchema,
   type VideoEvent,
   type VideoPlaybackRecord,
+  type MediaAudioState,
+  type MediaStateEvent,
+  type MediaStateEventType,
+  type MediaStateEventCounts,
 } from "./mediaPlayerRecord.js";
 
 export {

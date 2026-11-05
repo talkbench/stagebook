@@ -327,7 +327,7 @@ When the player has focus:
 
 ### Saved data
 
-Each interaction is appended to an event list under the element's name:
+Playback events and queued state observations are saved under the element's name:
 
 ```json
 {
@@ -338,7 +338,7 @@ Each interaction is appended to an event list under the element's name:
   "duration": 120,
   "lastVideoTime": 90.0,
   "events": [
-    { "type": "play", "videoTime": 30.0, "stageTimeElapsed": 4.1 },
+    { "type": "play", "videoTime": 30.0, "stageTimeElapsed": 4.1, "muted": false, "volume": 1 },
     {
       "type": "seek",
       "videoTime": 50.0,
@@ -352,7 +352,7 @@ Each interaction is appended to an event list under the element's name:
       "stageTimeElapsed": 20.1,
       "playbackRate": 1.5
     },
-    { "type": "play", "videoTime": 57.3, "stageTimeElapsed": 20.5 },
+    { "type": "play", "videoTime": 57.3, "stageTimeElapsed": 20.5, "muted": false, "volume": 1 },
     { "type": "stopAt", "videoTime": 90.0, "stageTimeElapsed": 42.3 }
   ],
   "watchedRanges": [
@@ -361,7 +361,16 @@ Each interaction is appended to an event list under the element's name:
   ],
   "watchedSeconds": 47.9,
   "watchedFraction": 0.7983333333333333,
-  "firstPlay": { "type": "play", "videoTime": 30.0, "stageTimeElapsed": 4.1 },
+  "hiddenPlaybackSeconds": 0,
+  "unfocusedPlaybackSeconds": 0,
+  "visibilityChangesDuringPlayback": 0,
+  "mediaStateEventsDropped": {
+    "volumechange": 0,
+    "fullscreenchange": 0,
+    "enterpictureinpicture": 0,
+    "leavepictureinpicture": 0
+  },
+  "firstPlay": { "type": "play", "videoTime": 30.0, "stageTimeElapsed": 4.1, "muted": false, "volume": 1 },
   "firstEnd": { "type": "stopAt", "videoTime": 90.0, "stageTimeElapsed": 42.3 }
 }
 ```
@@ -372,11 +381,18 @@ Event types:
 - `ended`: the file played to its natural end
 - `stopAt`: playback reached `stopAt`
 - `removed`: the player was removed from the page during playback — usually because the stage ended (the participant submitted, or the stage timed out), but also if `hideTime` or a condition hides the player mid-stage. Logged at the position playback had reached, so the last stretch still counts as watched.
-- `restored`: the player continued a matching saved log after a reload or remount, or the same authored source's backend reloaded (a refreshed playback URL or a YouTube creation-setting change). Added immediately before the next playback event, in that event's save; mounting alone does not save. It discards any unclosed range from before the break, because playback after its last saved event cannot be established. Earlier closed ranges remain.
+- `restored`: the player continued a matching saved log after a reload or remount, or the same authored source's backend reloaded (a refreshed playback URL or a YouTube creation-setting change). Separates observations across that boundary and is published with the next existing playback-event save; mounting alone does not save. It discards any unclosed range from before the break, because playback after its last saved event cannot be established. Earlier closed ranges remain.
 - `seek`: includes `fromTime`, the position before the seek. Logged for every seek made through stagebook: the player's seek buttons and keys, its scrub bar, an attached timeline (ruler, playhead drag, arrow keys, mark edits), and play replaying the clip from the end. A continuous seek (a drag, held keys on the timeline, or holding the player's arrow keys or seek buttons) is logged once it settles, as one seek from where it started to where it landed. A held arrow key's first step is logged at once. When `controls` turns on any of stagebook's controls, a YouTube video's own in-frame controls and keyboard shortcuts are turned off; in manual mode without Stagebook controls, YouTube's own controls stay on and seeks made with them aren't logged. Once mode disables YouTube's native controls and keyboard as well.
 - `speed`: includes `playbackRate`. Logged for the speed button and the `<` / `>` keys.
+- `volumechange`: the last observed audio state in a burst of changes, including `muted`, `volume`, and `channelMuted` when available. Changes settle after 500 ms of quiet; an existing playback save can include the pending state sooner. The event retains the last change's media/stage timestamps.
+- `fullscreenchange`: includes `fullscreen`, a boolean for this player's observed fullscreen state.
+- `enterpictureinpicture`, `leavepictureinpicture`: observed picture-in-picture transitions for the native media element.
 
-`lastVideoTime` is the position at the last event.
+Audio and presentation events are queued in memory for the next save that
+already occurs. They do not cause a save of their own. See
+[audio and page-state observations](#audio-and-page-state-observations) for their
+sampling limits. `lastVideoTime` remains the position at the playback event
+that triggered the save.
 
 `watchedRanges` is derived from the event log: closed `[start, end]` intervals (in video seconds) of the portions the participant actually watched, with overlapping or touching intervals merged. A range runs from a `play` to the next `pause`, `ended`, `stopAt` or `removed`. A seek during playback ends the range where the seek left and starts a new one where it landed, so skipped footage never counts as watched. Open intervals (a `play` with no closing event — e.g. a mid-playback disconnect) are excluded. A `restored` marker discards a pending open interval instead of joining it to playback in the new mount.
 
@@ -399,6 +415,83 @@ Raw `watchedRanges` remain unchanged by the coverage calculation: with `allowScr
 **Restoring a player.** When the host supplies a saved record before the player mounts, the player seeds its log once from a record with the same name, source, and clip bounds. Authored elements save their `file` path or asset URI as `sourceId`, so a host can rotate a signed playback URL while keeping the same source. If either side lacks `sourceId` (including older records), the media URL must still match. Conditional hide/show and page reload can then preserve earlier closed ranges and milestones. The next saved event appends `restored` followed by the new event; an interrupted open range is discarded. No save occurs merely because the player mounts, and later host updates don't replace a running player's log.
 
 Restoring the log does not seek to `lastVideoTime`, resume playback, or persist the `playback: once` attempt restriction. `startAt`, `syncToStageTime`, and `autoplay` retain their existing behavior; once mode still applies to each mounted player and source. Hosts must load restored participant data before mounting the player. See the [coverage and restoration decision](../decisions/2026-10-media-coverage-restore.md) for the host contract and deferred live-progress work.
+
+### Audio and page-state observations
+
+[#825](https://github.com/talkbench/stagebook/issues/825) adds descriptive audio,
+page-visibility, and focus observations to existing media saves. Each new
+`play` event records `muted` and `volume` from the backend. Volume is normalized
+to `[0, 1]`; YouTube values are converted from its percentage scale. Either
+value can be null when the backend cannot report it. Older events can omit
+these fields altogether. Unknown and missing values must not be interpreted
+as an unmuted player at full volume.
+
+When the player's channel controls have been initialized, play and volume
+events also include `channelMuted`, a boolean array in the player's channel
+index order: the order used by its Timeline rows and `isChannelMuted(index)`.
+For group recordings this follows the configured participant-channel mapping,
+not necessarily the physical decoded-channel order. The field is absent before
+channel state is available. These are the player's own gain/mute settings.
+
+The record adds three cumulative measurements:
+
+| Field | Meaning |
+| ----- | ------- |
+| `hiddenPlaybackSeconds` | Elapsed wall-clock seconds of observed playback while `document.visibilityState` is `hidden`. |
+| `unfocusedPlaybackSeconds` | Elapsed wall-clock seconds of observed playback while `document.hasFocus()` is false. |
+| `visibilityChangesDuringPlayback` | Changes between hidden and visible state while playback is active. Repeated reports of the same state and focus-only changes do not increment it. |
+
+These intervals begin when HTML media reports `playing` or YouTube reports
+PLAYING. They stop on observed buffering/waiting, seeking, pause, end, error,
+or backend replacement. A new playing report resumes them; so does completion
+of a buffered native seek when previously observed playback is still unpaused
+and ready to continue. A paused or initial seek does not start an interval.
+A `play` event
+still has its established meaning: an accepted playback request, which can
+precede actual playback. The new counters do not change that event or watched
+coverage. They use a monotonic clock and elapsed seconds, independent of speed:
+ten seconds of playback at 2× contributes ten seconds here, although it may
+cover twenty media seconds. Hidden and unfocused intervals can overlap; do not
+add them to obtain a total time away.
+
+Volume changes are coalesced in memory, including per-channel mute changes.
+These events describe observed state differences, not necessarily participant
+adjustments: learning the channel state when the graph initializes can produce
+a `volumechange` event too.
+YouTube audio state is sampled through the player's existing 250 ms poll and
+at playback saves; no additional polling loop is added. Changes that occur
+entirely between samples can be missed. Presentation events are observed when
+the containing page receives the relevant native event; YouTube's cross-origin
+iframe can hide its internal fullscreen or picture-in-picture transitions.
+
+Only the first 50 events of each new kind (`volumechange`, `fullscreenchange`,
+`enterpictureinpicture`, `leavepictureinpicture`) are retained in the player's
+log. Later observations increment the corresponding fixed-category entry in
+`mediaStateEventsDropped`. This is an early-event sample, not a random sample,
+and the existing transport-event history keeps its existing retention policy.
+The cap and drop counts continue across a matching restored record.
+
+None of these observations add host saves, periodic writes, or a teardown
+save. The next existing play/pause/seek/speed/end/removal save carries pending
+events and current counters. A pending volume gesture is included when that
+save occurs, even before its quiet period ends. State changes after the last
+save can be lost when a paused player disappears, because paused removal does
+not already produce a playback save. Valid matching restored records preserve
+their totals, but downtime between mounts is never counted. A backend reload
+for the same source stops the current interval and retains prior totals; a
+different source starts its own measurement.
+Older records that lack these totals contain unmeasured prior history; adding
+the fields later does not reconstruct that history as visible or focused time.
+
+These fields do not establish audibility, viewing, attention, or whether a
+respondent is a bot. They cannot establish device/system volume, working
+speakers, actual sound reaching the participant, or every Web Audio condition.
+A visible page may be occluded, scrolled away, or showing audio-only content;
+picture-in-picture can remain visible while its page is hidden. Muted playback
+with captions and work in another window can be legitimate. No automatic gate
+or exclusion is added. `audibleVisibleSeconds` is deferred until its coverage
+semantics are settled with [#719](https://github.com/talkbench/stagebook/issues/719)
+and [#760](https://github.com/talkbench/stagebook/issues/760).
 
 ## Timeline
 
