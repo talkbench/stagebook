@@ -45,6 +45,14 @@ snapshots from later local observations. Shared prompt records omit this
 participant telemetry. Slider/timeline coordinates encode answer or editing
 intent, so they and dropdowns remain outside this collection.
 
+Pointer observation is enabled only while a snapshot callback is supplied.
+Removing it detaches listeners; restoring it resumes the retained per-mount
+totals and sample caps without reusing pending pointer/key evidence. Geometry
+reads stop at each sample cap independently. Pointerdown geometry is needed only
+for field-focus samples; click samples measure at click time. Counts and label
+deduplication continue after sampling ends. These bounds limit interaction work
+as well as retained data (performance follow-up, agent `q7m2vk`).
+
 The shared observer measures stable control or label boxes, deduplicates label
 activation forwarding, and records pointer/keyboard provenance only when it has
 matching event evidence. Text-field state is captured before pointerdown moves

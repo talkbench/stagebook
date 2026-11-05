@@ -152,13 +152,14 @@ export function usePointerTelemetry(
   const statsRef = useRef<PointerStats>(emptyStats(controlType));
   const callbackRef = useRef(onSnapshot);
   callbackRef.current = onSnapshot;
+  const enabled = Boolean(onSnapshot);
   const takeSnapshot = () => snapshot(statsRef.current);
 
   useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
     if (statsRef.current.controlType !== controlType)
       statsRef.current = emptyStats(controlType);
+    const root = rootRef.current;
+    if (!root || !enabled) return;
     const stats = statsRef.current;
     const doc = root.ownerDocument;
     const isField = controlType === "text" || controlType === "numeric";
@@ -223,6 +224,10 @@ export function usePointerTelemetry(
       const target = resolveTarget(root, controlType, event.target);
       if (!target || event.button !== 0) return;
       const kind = event.pointerType;
+      // Only focus samples use press-time geometry. Click samples measure at
+      // click time, so buttons/choices and capped focus arrays need no reads.
+      const sampleFocus = isField && stats.focusSamples.length < SAMPLE_LIMIT;
+      const sampleClick = stats.clickSamples.length < SAMPLE_LIMIT;
       pointer = {
         target,
         timestamp: Date.now(),
@@ -233,13 +238,16 @@ export function usePointerTelemetry(
             : "unknown",
         x: event.clientX,
         y: event.clientY,
-        downPosition: pointerPosition(target.box, event.clientX, event.clientY),
+        downPosition: sampleFocus
+          ? pointerPosition(target.box, event.clientX, event.clientY)
+          : null,
         downControlPosition:
-          target.box !== target.control
+          sampleFocus && target.box !== target.control
             ? pointerPosition(target.control, event.clientX, event.clientY)
             : null,
         isTrusted: event.isTrusted,
-        fieldState: fieldState(target.control),
+        fieldState:
+          sampleFocus || sampleClick ? fieldState(target.control) : null,
         release: null,
         clicked: false,
         focused: false,
@@ -339,7 +347,10 @@ export function usePointerTelemetry(
         : keyboardClick
           ? "keyboard"
           : "unknown";
-      const sample = makeSample(event, target, source, evidence, "click");
+      if (stats.clickSamples.length < SAMPLE_LIMIT)
+        stats.clickSamples.push(
+          makeSample(event, target, source, evidence, "click"),
+        );
       if (evidence) evidence.clicked = true;
       keyboard = null;
       if (target.label && event.target !== target.control)
@@ -350,10 +361,7 @@ export function usePointerTelemetry(
         };
       stats.clickCount += 1;
       stats.clickCountsBySource[source] += 1;
-      if (sample.pointerType !== null)
-        stats.clickCountsByPointerType[sample.pointerType] += 1;
-      if (stats.clickSamples.length < SAMPLE_LIMIT)
-        stats.clickSamples.push(sample);
+      if (evidence) stats.clickCountsByPointerType[evidence.pointerType] += 1;
       emit();
     };
     const focus = (event: FocusEvent) => {
@@ -368,29 +376,30 @@ export function usePointerTelemetry(
         : key?.key === "Tab"
           ? "keyboard"
           : "unknown";
-      const sample: PointerFocusSample = {
-        ...makeSample(
-          event,
-          evidence?.target ?? target,
-          source,
-          evidence,
-          "pointerdown",
-        ),
-        fieldState: evidence?.fieldState
-          ? { ...evidence.fieldState }
-          : {
-              wasFocused: false,
-              wasEmpty: target.control.value.length === 0,
-              priorFocusCount: stats.focusCount,
-            },
-        visit: stats.focusCount === 0 ? "first" : "return",
-      };
+      if (stats.focusSamples.length < SAMPLE_LIMIT) {
+        const sample: PointerFocusSample = {
+          ...makeSample(
+            event,
+            evidence?.target ?? target,
+            source,
+            evidence,
+            "pointerdown",
+          ),
+          fieldState: evidence?.fieldState
+            ? { ...evidence.fieldState }
+            : {
+                wasFocused: false,
+                wasEmpty: target.control.value.length === 0,
+                priorFocusCount: stats.focusCount,
+              },
+          visit: stats.focusCount === 0 ? "first" : "return",
+        };
+        stats.focusSamples.push(sample);
+      }
       if (evidence) evidence.focused = true;
       keyboard = null;
       stats.focusCount += 1;
       stats.focusCountsBySource[source] += 1;
-      if (stats.focusSamples.length < SAMPLE_LIMIT)
-        stats.focusSamples.push(sample);
       emit();
     };
     const outsideFocus = (event: FocusEvent) => {
@@ -435,7 +444,7 @@ export function usePointerTelemetry(
       root.removeEventListener("focusout", blur, true);
       doc.defaultView?.removeEventListener("blur", blur);
     };
-  }, [rootRef, controlType]);
+  }, [rootRef, controlType, enabled]);
 
   return { snapshot: takeSnapshot };
 }

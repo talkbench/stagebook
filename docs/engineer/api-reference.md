@@ -690,8 +690,10 @@ Browser event types and payload availability differ; dictation may use `insertTe
 
 **Pointer and focus snapshots (#827).** `Button`, `RadioGroup`, `CheckboxGroup`,
 `TextArea`, and `NumericInput` accept an optional
-`onPointerSnapshot(stats: PointerStats)` callback. It receives an initial zero
-snapshot and independent snapshots of local observations; calling it is not a
+`onPointerSnapshot(stats: PointerStats)` callback. Providing the callback enables
+collection; without it, no pointer-telemetry listeners or geometry reads run.
+It receives an initial zero snapshot and independent snapshots of local
+observations; calling it is not a
 response commit and does not perform host I/O. Hosts using these standalone
 controls should retain the
 latest snapshot and attach it to their existing saves. `Prompt` does this for
@@ -700,6 +702,12 @@ solo text, numeric, radio, and checkbox responses, and `SubmitButton` includes
 
 Counts accumulate per component mount; the first 20 clicks and first 20 field
 focuses are sampled, with fixed-vocabulary count maps. Remount resets them.
+Removing the callback pauses collection and discards pending event provenance;
+adding it again publishes the retained counts and samples, then resumes
+collection. Replacing one callback with another does not restart the observer.
+Geometry is read only for samples that can still be retained: pointerdown
+geometry for field-focus samples, and click-time geometry for click samples.
+Once the relevant cap is reached, counts continue without those layout reads.
 Native observations precede the corresponding existing answer/submit callback
 so its snapshot includes the current interaction. Label-forwarded activation is
 not counted as another physical click. Pointer snapshots replace the previous
