@@ -541,6 +541,97 @@ The input-type maps have fixed vocabularies and the insertion list is capped **p
 
 These measurements support investigation, not automatic bot classification. Dictation, IME, switch access, and AAC can legitimately enter text without counted keys. Browser automation can generate trusted input events, while scripts and extensions can generate untrusted ones. Neither `isTrusted` nor absent keydowns establishes whether a respondent is human. See the [input-events specification](https://www.w3.org/TR/input-events-2/) and [WebDriver actions](https://www.w3.org/TR/webdriver/#actions).
 
+### Pointer and focus statistics
+
+[#827](https://github.com/talkbench/stagebook/issues/827) adds a `pointerStats`
+object alongside the answer and `debugMessages` for solo text, numeric, radio,
+and checkbox prompts. Submit-button records include it too. Shared prompts,
+dropdowns, sliders, timeline tools, and other controls do not export these
+statistics. Older records lack the object; absence does not mean zero activity.
+
+Counts accumulate since the control appeared. `clickSamples` retains the first
+20 clicks, and `focusSamples` retains the first 20 observed text-field focuses;
+later events still contribute to counts. This is an early-interaction sample,
+not a random sample of the entire response. The count maps use fixed categories
+and neither array grows beyond its cap. Use the latest snapshot rather than
+adding snapshots together. A remount, including page reload, starts over.
+
+| Field                                        | What it measures                                                                                                                                                           |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`                                    | Schema version, currently `1`.                                                                                                                                             |
+| `controlType`                                | The kind of control that produced the snapshot. Keep different control types separate in analysis.                                                                         |
+| `clickCount`, `focusCount`                   | Total observed clicks and text-field focuses. Label-forwarded activation is counted once. These are independent of the existing typing `mouseClickCount` and `focusCount`. |
+| `clickCountsBySource`, `focusCountsBySource` | Counts attributed to matching `pointer` or `keyboard` event evidence, or `unknown` when that evidence is missing.                                                          |
+| `clickCountsByPointerType`                   | Counts for pointer-attributed clicks only: `mouse`, `touch`, `pen`, or an unrecognized `unknown` pointer type. This map excludes keyboard/unknown-source clicks.           |
+| `clickSamples`, `focusSamples`               | Bounded observations with source, pointer type, target part, geometry when available, and text-field state where applicable.                                               |
+
+Each sample has a wall-clock millisecond `timestamp` and the observed event's
+`isTrusted` flag. Choice samples use a zero-based `optionIndex` in displayed
+option order; other controls use null. No option labels or values are copied
+into the telemetry. Trusted events can originate from browser automation.
+
+A positional sample's `position` describes the stable button, input, or label
+box; clicking a button's child icon still measures the button. Its `x` and `y`
+are normalized to the box, while `width` and `height` are CSS pixels. Values
+retain their numerical precision without rounding or clamping. For a choice
+row, `position` describes the whole clickable label and `controlPosition`
+describes the native radio/checkbox glyph. A label click can legitimately have
+an input-relative coordinate below 0 or above 1.
+
+`targetPart` distinguishes a direct `control` hit, `label-text`, and clickable
+`padding`. Text regions use each rendered text fragment's font metric rectangle,
+not the exact ink of individual letters. Text-field label clicks use `label`
+and retain label geometry; numeric affix/container clicks retain their own
+target context. Neither is reported as a physical click inside the text input.
+
+Each position includes `viewportClipped` and normalized `inViewCenterX` /
+`inViewCenterY`. The center uses the [WebDriver floor-to-CSS-pixel convention](https://www.w3.org/TR/webdriver2/#dfn-in-view-center-point)
+on the intersection with the viewport; it can differ from `(0.5, 0.5)` even
+without clipping when the box has fractional coordinates. A box with no
+viewport intersection has null center coordinates. This measures viewport
+clipping only: scroll-container clipping, overlays, and other occlusion are not
+measured. Rotated/transformed controls use their axis-aligned bounding boxes.
+Browser click coordinates can themselves be rounded, so preserved precision
+does not establish the precision of the physical device.
+
+Text-field samples with observed state add `fieldState`: `wasFocused`,
+`wasEmpty`, and `priorFocusCount`. For pointer activity these describe the field
+at pointerdown, before the browser normally moves focus. The placeholder is not
+response text.
+Together they distinguish first entry into an empty field, a return to a
+populated field, and a click while already focused. `focusSamples.visit` is
+`first` or `return` based on observed focus events since mount; autofocus or
+focus before observation starts may be missing. A click while already focused
+adds a click sample without adding a focus visit. `coordinateEvent` identifies
+whether coordinates came from `click` or the preceding `pointerdown`. Focus
+geometry is captured at pointerdown, before focus can change layout; click
+geometry measures the box at click time.
+
+Pointer types distinguish mouse, touch, pen, and unknown devices. Keyboard or
+unknown activation/focus has null positions, never an invented `(0, 0)`.
+Unknown click samples can also lack `fieldState`. Matching uses recent events
+on the associated control, with 30-second pointer and two-second keyboard
+expiry limits and resets after intervening interactions. These are safeguards
+against stale attribution, not guarantees of causation; unusual or slow input
+can remain unknown. Pointer-attributed clicks require a matching press/release,
+consistent event trust, and matching pointer IDs where the browser supplies
+them. A trusted touch sequence can also match the browser's compatibility mouse
+click with a different ID, within one second and one CSS pixel of release on
+the same control; its recorded pointer type remains `touch`.
+Focus can precede release, so focus attribution uses the press alone.
+The source is observed event context, not proof of a
+physical device or a human:
+browser automation can supply the same events, and assistive technology can
+activate controls without positional evidence. Repeated center placement may
+help identify a pattern worth investigating; it is not a bot verdict.
+
+No pointer trajectories or text contents are included. Statistics travel only
+with existing answer/submit saves; they add no server writes, timers, or final
+flush. A click on an unchanged choice, or focus activity after the last answer
+save, can remain unsaved indefinitely and is discarded at unmount/cutoff. The
+bounded `pointerStats` snapshot replaces its predecessor; it does not add
+entries to the typing-history list.
+
 ### Dropdown
 
 A compact single-choice picker. Use it when `multipleChoice` would render too many radio buttons (long option lists like countries / languages, or many-step Likert scales where the rows take more vertical space than the question itself).

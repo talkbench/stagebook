@@ -3,6 +3,7 @@ import type { NumberFormat } from "../messages/types.js";
 import { checkResponse } from "./checkResponse.js";
 import { parseNumericEntry } from "./numericResponse.js";
 import type { DebugMessage } from "./promptTelemetry.js";
+import type { PointerStats } from "./pointerTelemetry.js";
 
 export interface BuildPromptRecordOptions {
   metadata: MetadataType;
@@ -20,6 +21,8 @@ export interface BuildPromptRecordOptions {
   numberFormat?: NumberFormat;
   label?: string;
   debugMessages?: readonly DebugMessage[];
+  /** Bounded cumulative pointer/focus snapshot, when the control supplies one. */
+  pointerStats?: PointerStats;
   /** Commit-time context supplied by the caller; the builder reads no clocks. */
   step?: string;
   stageTimeElapsed?: number;
@@ -36,6 +39,7 @@ export type PromptRecord = MetadataType & {
   numberFormat?: NumberFormat;
   label?: string;
   debugMessages: DebugMessage[];
+  pointerStats?: PointerStats;
   isValid?: boolean;
   step?: string;
   stageTimeElapsed?: number;
@@ -46,7 +50,7 @@ export type PromptRecord = MetadataType & {
  * This is pure: it performs no I/O and has no React dependency. Player
  * responses carry advisory validity. Shared numeric responses also carry group
  * validity; other shared responses omit it. All shared responses omit participant
- * typing telemetry (#668, #697, #687).
+ * interaction telemetry (#668, #697, #687, #827).
  */
 export function buildPromptRecord({
   metadata,
@@ -60,6 +64,7 @@ export function buildPromptRecord({
   numberFormat,
   label,
   debugMessages = [],
+  pointerStats,
   step,
   stageTimeElapsed,
 }: BuildPromptRecordOptions): PromptRecord {
@@ -117,6 +122,9 @@ export function buildPromptRecord({
     prompt: body,
     responses: [...responses],
     debugMessages: shared ? [] : [...debugMessages],
+    ...(!shared && pointerStats
+      ? { pointerStats: structuredClone(pointerStats) }
+      : {}),
     ...response,
     ...(label !== undefined ? { label } : {}),
     ...(step !== undefined ? { step } : {}),

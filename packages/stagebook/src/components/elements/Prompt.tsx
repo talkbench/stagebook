@@ -13,6 +13,7 @@ import {
 import { getNumericFeedback } from "../../utils/numericFeedback.js";
 import { TextArea } from "../form/TextArea.js";
 import type { DebugMessage, TypingStats } from "../../utils/promptTelemetry.js";
+import type { PointerStats } from "../../utils/pointerTelemetry.js";
 import { useResponseCommit } from "../hooks/useResponseCommit.js";
 import { buildPromptRecord } from "../../utils/buildPromptRecord.js";
 import { Slider } from "../form/Slider.js";
@@ -115,6 +116,10 @@ function PromptContent({
   // Controls emit telemetry before the response. Read the ref at commit
   // time, without waiting for a React state update.
   const debugMessagesRef = useRef<DebugMessage[]>([]);
+  const pointerStatsRef = useRef<PointerStats | undefined>(undefined);
+  const recordPointerSnapshot = (snapshot: PointerStats) => {
+    pointerStatsRef.current = snapshot;
+  };
   const typingSnapshotIndexRef = useRef<number | undefined>(undefined);
   const finalizingTypingVisitRef = useRef(false);
 
@@ -229,6 +234,16 @@ function PromptContent({
       label?: string,
       format?: NumberFormat,
     ) => {
+      const controlType =
+        recordData.metadata.type === "openResponse"
+          ? "text"
+          : recordData.metadata.type === "numericResponse"
+            ? "numeric"
+            : recordData.metadata.type === "multipleChoice"
+              ? recordData.metadata.select === "multiple"
+                ? "checkbox"
+                : "radio"
+              : undefined;
       const updatedRecord = buildPromptRecord({
         ...recordData,
         value: newValue,
@@ -236,6 +251,10 @@ function PromptContent({
           ? { entry: newValue as string, numberFormat: format }
           : {}),
         debugMessages: debugMessagesRef.current,
+        pointerStats:
+          pointerStatsRef.current?.controlType === controlType
+            ? pointerStatsRef.current
+            : undefined,
         label,
         step,
         stageTimeElapsed: getElapsedTime?.(),
@@ -320,6 +339,7 @@ function PromptContent({
         // label is the displayed text. In text mode value === label.
         (hasNumericPoints && shuffledNumericPoints ? (
           <RadioGroup
+            onPointerSnapshot={recordPointerSnapshot}
             options={responses.map((label, idx) => ({
               key: String(shuffledNumericPoints[idx]),
               value: label,
@@ -340,6 +360,7 @@ function PromptContent({
           />
         ) : (
           <RadioGroup
+            onPointerSnapshot={recordPointerSnapshot}
             options={responses.map((choice) => ({
               key: choice,
               value: choice,
@@ -358,6 +379,7 @@ function PromptContent({
 
       {promptType === "multipleChoice" && metadata.select === "multiple" && (
         <CheckboxGroup
+          onPointerSnapshot={recordPointerSnapshot}
           options={responses.map((choice) => ({
             key: choice,
             value: choice,
@@ -412,6 +434,7 @@ function PromptContent({
           onChange={(val) => saveData(val, record)}
           onDebugMessage={recordDebugMessage}
           onTypingSnapshot={recordTypingSnapshot}
+          onPointerSnapshot={recordPointerSnapshot}
           value={value as string | undefined}
           rows={rows}
           showCharacterCount={!!(minLength || maxLength)}
@@ -446,6 +469,7 @@ function PromptContent({
           onChange={(text, format) => saveData(text, record, undefined, format)}
           onDebugMessage={recordDebugMessage}
           onTypingSnapshot={recordTypingSnapshot}
+          onPointerSnapshot={recordPointerSnapshot}
         />
       )}
 

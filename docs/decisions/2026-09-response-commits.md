@@ -30,6 +30,27 @@ accepted answer. Existing keystroke measurements remain unchanged. New maps and
 insertion samples are bounded per snapshot; retaining earlier blur summaries
 still makes the complete debug-message history grow with completed focus visits.
 
+Pointer and focus telemetry ([#827](https://github.com/talkbench/stagebook/issues/827))
+uses the same principle. Controls accumulate observations locally; Prompt adds
+a sibling `pointerStats` snapshot on existing solo text, numeric, radio, and
+checkbox answer commits. SubmitButton adds its snapshot to its existing submit
+record. These observations do not call host saves, create timers, or flush at
+teardown. Repeated clicks on an unchanged choice can therefore remain unsaved
+until an actual answer change; a final unsaved tail is accepted.
+
+The snapshot retains cumulative counts and the first 20 click samples plus the
+first 20 text-field focus samples per component mount. It replaces the preceding
+pointer snapshot rather than extending `debugMessages`. Copies isolate saved
+snapshots from later local observations. Shared prompt records omit this
+participant telemetry. Slider/timeline coordinates encode answer or editing
+intent, so they and dropdowns remain outside this collection.
+
+The shared observer measures stable control or label boxes, deduplicates label
+activation forwarding, and records pointer/keyboard provenance only when it has
+matching event evidence. Text-field state is captured before pointerdown moves
+focus. No pointer trajectories or text are stored, and existing `mouseClickCount`
+retains its earlier definition. See the [measurement definitions and limits](../researcher/prompts.md#pointer-and-focus-statistics).
+
 Blocked text drops also commit the current response immediately, including any
 pending typed edits, after recording the `pasteAttempt`
 ([#691](https://github.com/talkbench/stagebook/issues/691)). Canceling a drop can
