@@ -465,13 +465,15 @@ constraints and the host's configured number format; compare the client-written
 [recomputation example](../engineer/api-reference.md#numeric-entries-and-number-formats)
 and the [validity caveat](#response-validity-and-conditions).
 
-**Typing statistics.** Along with the answer, an `openResponse` prompt's saved record keeps a `debugMessages` list. Shared prompts (`shared: true`) are the exception: the platform's shared notepad renders them, and none of what follows is recorded.
+### Typing statistics
+
+Along with the answer, solo `openResponse` and `numericResponse` prompts keep a `debugMessages` list. Shared prompts (`shared: true`) use host-rendered editors and do not record the participant telemetry described here.
 
 Each answer save includes a current `typingStats` snapshot: after two seconds without edits, within five seconds during continued editing, and immediately when the participant leaves the box. Each snapshot is a running total since the text box appeared, so use the last `typingStats` entry rather than adding entries together. Repeated checkpoints replace the current focus visit's snapshot; leaving the box finalizes that visit's summary. Earlier completed visit summaries and paste-attempt events remain in the list. Checkpoints do not increment `blurCount` or end the focused interval.
 
 Stage cutoff still cancels pending work without a final save. During continued editing under normal foreground scheduling, text and statistics can lose the tail since the last checkpoint, nominally within five seconds. Idle fields do not checkpoint: focus time, cursor activity, or paste attempts after the last answer save can remain unsaved longer, and a focus-only visit ending at cutoff may have no summary. If the prompt is shown again, for example after a page reload, the counts and the list start over, and the next save replaces the earlier entries.
 
-Pasting is blocked. Each attempt adds a `pasteAttempt` entry with the clipboard text's `length` and a `timestamp`. Attempts made after the last save are lost if the stage ends first.
+Pasting and dropping text are blocked. Each attempt adds a `pasteAttempt` entry with the text's `length` and a `timestamp`; the text itself is not recorded in telemetry. A blocked drop commits the current answer immediately. A blocked paste does not trigger a save, so attempts made after the last save are lost if the stage ends first.
 
 A `typingStats` entry has the fields below. Times are wall-clock milliseconds, so they include any time the participant spent outside the box unless the row says otherwise. The first row defines a counted keystroke.
 
@@ -496,7 +498,48 @@ The key-press fields see only counted keystrokes, so text entered any other way 
 - Dictation and tapped autocomplete suggestions insert text without a key press.
 - With IME composition, the usual way to type Chinese, Japanese or Korean, Chrome and Firefox report keys as `Process`, so they are missed. Safari reports the underlying keys, so there the count reflects raw key presses rather than the characters entered.
 
-For affected participants the counts come out too low. The timings are distorted rather than simply low: a missed key merges the gaps on either side of it, and missing the first keys makes the first-keystroke delay too long. Fields can come out `0` or `null` even when the whole answer was typed, and nothing in the record flags it. Treat the key-press fields as reliable only for physical-keyboard input without an IME, and don't compare them across devices or input methods (#692).
+For affected participants the counts come out too low. The timings are distorted rather than simply low: a missed key merges the gaps on either side of it, and missing the first keys makes the first-keystroke delay too long. Fields can come out `0` or `null` even when the whole answer was typed. Treat the key-press fields as reliable only for physical-keyboard input without an IME, and don't compare them across devices or input methods (#692). The additional input-event fields below describe other activity without changing any existing measurement.
+
+#### Input-event statistics
+
+The fields added in [#824](https://github.com/talkbench/stagebook/issues/824) accompany the same `typingStats` snapshots. They accumulate locally and introduce no extra saves. Older records lack these fields; absence is not zero activity.
+
+| Field | What it measures |
+|-------|------------------|
+| `beforeInputEventCount` | Observed native `beforeinput` events, including attempted changes the control later cancels. |
+| `inputEventCount` | Observed native `input` events. A preceding `beforeinput` supplies context; it is not counted a second time here. |
+| `inputTypeCounts` | Input-event counts by a fixed set of browser-reported input types, with unrecognized or missing types grouped under `other`. Only nonzero buckets are included. |
+| `charsInsertedByInputType` | Gross inserted UTF-16 code units, grouped using the same input-type buckets. Only nonzero buckets are included. |
+| `charsInsertedTotal`, `charsDeletedTotal` | Gross inserted and removed UTF-16 code units in the observed input edits. These are not final answer length or inferred keystrokes. |
+| `maxSingleInsertionChars` | Largest observed insertion in one input event; `0` if none. |
+| `largeInsertionCount` | Input events inserting at least 20 UTF-16 code units. |
+| `largeInsertions` | Details for the first 10 such events; later events still contribute to counts and maxima. See below. |
+| `untrustedInputEventCount` | Input events whose `isTrusted` is `false`, as with events dispatched by script. |
+| `inputWithoutKeydownCount` | Input events with no keydown on this field in the preceding 50 ms. All keydowns qualify, including keys excluded from the legacy keystroke count. |
+| `inputEventsWithoutBeforeInput` | Input events without usable preceding `beforeinput` context. |
+| `inputEventsWithoutData` | Input events without a text payload in `InputEvent.data`. This is normal for several input types and browser/input-method combinations. |
+| `inputDiffFallbackCount` | Input events measured using a before/after value comparison rather than matching pre-edit selection context. |
+| `firstInputDelayMs` | From the first focus to the first observed input event. `null` if no input has occurred or that input had no preceding focus. |
+| `totalInputTimeMs` | From the first observed input event to the last, including pauses and time away. `null` with fewer than two input events. |
+| `unidentifiedKeyCount` | Keydowns reporting `Unidentified`, or key code 229 outside composition. An event satisfying both conditions counts once. |
+| `processKeyCount` | Keydowns reporting `Process`. |
+| `compositionCount` | Completed observed `compositionstart`/`compositionend` pairs, including canceled compositions. An unfinished composition is not a completed pair. |
+| `shortcutKeyCount` | Ctrl/Meta-modified keydowns that also contribute to `totalKeystrokes`. Modifier-only and cursor keys do not contribute. |
+| `copyCount`, `cutCount` | Copy and cut events on the field, whether or not they change its value. Clipboard contents are not recorded. |
+
+Input-type buckets include `insertText`, `insertCompositionText`, `insertReplacementText`, `insertFromDictation`, `insertLineBreak`, deletion types such as `deleteContentBackward`, and `historyUndo`/`historyRedo`. Their names describe what the browser reported, not a verified input method. Unknown or absent types use `other`, including in large-insertion records.
+
+Each `largeInsertions` item contains `chars`, `inputType`, `isTrusted`, and `isComposing`, plus a wall-clock `timestamp` comparable with a `pasteAttempt.timestamp`. Its `msSinceFirstFocus` and `msSinceLastFocus` locate the insertion relative to the first and most recent focus, or are `null` if no focus has been observed. `msSinceLastKeydown` is the elapsed time since the last keydown, or `null` with none; `precededByKeydown` says whether that gap was between 0 and 50 ms inclusive. These describe the event's context, not its cause.
+
+Character counts observe the native input change **before Stagebook validates or filters it**. They can therefore include text that does not survive in the saved answer. A canceled `beforeinput` contributes to `beforeInputEventCount` but not inserted-character totals: for example, a numeric field can cancel an insertion and apply its allowed subset itself without a native `input` event. Restoration from host values is not participant input and does not increment the counters.
+
+An equal-length replacement can insert and remove characters despite no change in total length. Measurement uses pre-edit selection/value context where available and falls back to the smallest contiguous difference between the before/after values. Missing event data, ambiguous replacements, or scripts changing a value without an input event limit what can be observed; an equal-content replacement without selection context may not register any inserted or removed characters. UTF-16 units match the existing length measurements: many emoji count as two.
+
+IME updates can repeatedly replace provisional composition text. Those replacements contribute gross edits under their reported input type; they must not be interpreted as independent completed characters. Browsers differ in the types and data they expose. Dictation, autocorrect, and writing assistants may report `insertText` or `insertReplacementText`; a distinct `insertFromDictation` event is not guaranteed. The observation-gap counters help distinguish missing context from observed absence of input.
+
+The input-type maps have fixed vocabularies and the insertion list is capped **per snapshot**. Existing history still retains a cumulative summary for each completed focus visit, so the entire `debugMessages` record is not fixed-size. Use the final summary for totals; do not add repeated summaries together.
+
+These measurements support investigation, not automatic bot classification. Dictation, IME, switch access, and AAC can legitimately enter text without counted keys. Browser automation can generate trusted input events, while scripts and extensions can generate untrusted ones. Neither `isTrusted` nor absent keydowns establishes whether a respondent is human. See the [input-events specification](https://www.w3.org/TR/input-events-2/) and [WebDriver actions](https://www.w3.org/TR/webdriver/#actions).
 
 ### Dropdown
 

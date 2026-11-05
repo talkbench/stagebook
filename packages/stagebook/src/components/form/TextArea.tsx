@@ -111,7 +111,8 @@ export function TextArea({
   // would not retrigger the keyframe (the animation prop string is
   // unchanged, so the browser doesn't restart).
   const [overflowPulseId, setOverflowPulseId] = useState(0);
-  const telemetry = useTypingTelemetry();
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const telemetry = useTypingTelemetry(inputRef);
   const responseCommit = useResponseCommit({
     onCommit: (nextValue: string) => {
       onTypingSnapshot?.(telemetry.snapshot());
@@ -310,6 +311,7 @@ export function TextArea({
         </label>
       )}
       <textarea
+        ref={inputRef}
         id={textAreaId}
         className={textareaClass}
         // Pass-throughs for the invisible-label / external-element cases.

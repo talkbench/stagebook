@@ -20,6 +20,16 @@ attempts remain in the history. Standalone TextArea keeps its
 configurable quiet period (500ms by default) and maximum wait (5 seconds by
 default). Unmount cancels pending timers, without flushing.
 
+Solo numeric responses use the same snapshot lifecycle for every existing
+commit ([#824](https://github.com/talkbench/stagebook/issues/824)); their earlier
+blur-only telemetry missed edits saved at checkpoints. The input-event,
+composition, and clipboard counters added in that issue are accumulated locally
+and attached to those snapshots. Native input observations precede control
+validation, so character totals describe observed edits rather than the final
+accepted answer. Existing keystroke measurements remain unchanged. New maps and
+insertion samples are bounded per snapshot; retaining earlier blur summaries
+still makes the complete debug-message history grow with completed focus visits.
+
 Blocked text drops also commit the current response immediately, including any
 pending typed edits, after recording the `pasteAttempt`
 ([#691](https://github.com/talkbench/stagebook/issues/691)). Canceling a drop can

@@ -17,7 +17,7 @@ import {
 } from "../../utils/numericResponse.js";
 import { getNumericFeedback } from "../../utils/numericFeedback.js";
 import type { NumberFormat } from "../../messages/types.js";
-import type { DebugMessage } from "../../utils/promptTelemetry.js";
+import type { DebugMessage, TypingStats } from "../../utils/promptTelemetry.js";
 
 export interface NumericInputProps {
   /** Raw restored text; omission means the participant has not answered. */
@@ -35,6 +35,9 @@ export interface NumericInputProps {
   id?: string;
   onChange?: (entry: string, numberFormat: NumberFormat) => void;
   onDebugMessage?: (message: DebugMessage) => void;
+  /** Current cumulative stats immediately before each existing onChange.
+   * Sampling does not end focus or count a blur. */
+  onTypingSnapshot?: (stats: TypingStats) => void;
   debounceDelay?: number;
   maxWait?: number;
 }
@@ -86,6 +89,7 @@ export function NumericInput({
   id,
   onChange,
   onDebugMessage,
+  onTypingSnapshot,
   debounceDelay = 2000,
   maxWait = 5000,
 }: NumericInputProps) {
@@ -120,9 +124,12 @@ export function NumericInput({
   const finishedComposition = useRef<
     { raw: string; entry: string; selection: Selection } | undefined
   >(undefined);
-  const telemetry = useTypingTelemetry();
+  const telemetry = useTypingTelemetry(inputRef);
   const commits = useResponseCommit<Response>({
-    onCommit: (response) => onChange?.(response.entry, response.numberFormat),
+    onCommit: (response) => {
+      onTypingSnapshot?.(telemetry.snapshot());
+      onChange?.(response.entry, response.numberFormat);
+    },
     debounceDelay,
     maxWait,
   });
@@ -188,6 +195,9 @@ export function NumericInput({
     // Restore immediately too: a wholly refused edit may leave React state unchanged.
     if (inputRef.current) {
       if (inputRef.current.value !== text) inputRef.current.value = text;
+      // Filtering changes the DOM directly. Rebase without treating the
+      // control's correction as another participant input event.
+      telemetry.syncValue();
       if (
         inputRef.current.selectionStart !== nextSelection.start ||
         inputRef.current.selectionEnd !== nextSelection.end
