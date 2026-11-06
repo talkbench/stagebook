@@ -28,7 +28,11 @@ import {
   buildCompletionGlob,
   parseFilePathCompletionContext,
 } from "./lib/filePathCompletion";
-import { getReferencedAssets, collectAssetPrefixes } from "stagebook";
+import {
+  getReferencedAssets,
+  collectAssetPrefixes,
+  collectAssetUris,
+} from "stagebook";
 import {
   ASSET_MOUNTS_STATE_KEY,
   mergeAssetMounts,
@@ -36,6 +40,8 @@ import {
   extraAssetRoots,
   parseMountedAsset,
   collectTaskParameterAssetPrefixes,
+  collectTaskParameterAssetUris,
+  findMissingAssets,
 } from "./lib/assetMounts";
 
 const diagnosticCollection =
@@ -880,6 +886,16 @@ function getWebviewContent(
 </html>`;
 }
 
+/** Whether `fsPath` is a readable file (#833). A directory doesn't count. */
+async function isFileOnDisk(fsPath: string): Promise<boolean> {
+  try {
+    const stat = await vscode.workspace.fs.stat(vscode.Uri.file(fsPath));
+    return (stat.type & vscode.FileType.File) !== 0;
+  } catch {
+    return false;
+  }
+}
+
 function getNonce(): string {
   const chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -1072,14 +1088,17 @@ export function activate(context: vscode.ExtensionContext): void {
   let currentParameterUri: vscode.Uri | undefined;
   let currentParameterSource: TaskParameterSource | null = null;
   let currentParameterTaskKey: string | null = null;
-  // The file's asset:// prefixes, found once per read rather than per post.
+  // The file's asset:// prefixes and URIs, found once per read rather than
+  // per post.
   let currentParameterAssetPrefixes: string[] = [];
+  let currentParameterAssetUris: string[] = [];
 
   const clearTaskParameters = (): void => {
     currentParameterUri = undefined;
     currentParameterSource = null;
     currentParameterTaskKey = null;
     currentParameterAssetPrefixes = [];
+    currentParameterAssetUris = [];
   };
 
   // Re-read the loaded parameter file from disk (refresh picks up edits). A
@@ -1103,6 +1122,8 @@ export function activate(context: vscode.ExtensionContext): void {
     currentParameterSource = source;
     currentParameterAssetPrefixes =
       "text" in source ? collectTaskParameterAssetPrefixes(source.text) : [];
+    currentParameterAssetUris =
+      "text" in source ? collectTaskParameterAssetUris(source.text) : [];
   };
 
   // --- #192: asset:// local mount resolution ---
@@ -1195,6 +1216,45 @@ export function activate(context: vscode.ExtensionContext): void {
       // static scan, and its mount must still be changeable there.
       mountedAssetFolders: mountDirs,
     });
+    void postMissingAssets(panel, mountDirs);
+  };
+
+  // #833: check that each statically known asset:// file exists in its
+  // mounted folder, so a wrong pick is named in the banner instead of showing
+  // up only as media that fails to load. Sent as its own message after the
+  // treatment one (the stats are async); each post and each webview reset
+  // bumps the generation, so a slower, older check can't overwrite a newer
+  // result or reach a fresh webview. Superseded checks still run to the end:
+  // at most MAX_ASSET_CHECKS stats each, a few at a time.
+  let missingAssetsGeneration = 0;
+  const postMissingAssets = async (
+    panel: vscode.WebviewPanel,
+    mountDirs: Record<string, string>,
+  ): Promise<void> => {
+    const generation = ++missingAssetsGeneration;
+    const uris = [
+      ...(currentTreatment ? collectAssetUris(currentTreatment) : []),
+      ...currentParameterAssetUris,
+    ];
+    const missingAssets = await findMissingAssets(
+      uris,
+      mountDirs,
+      isFileOnDisk,
+    );
+    if (generation !== missingAssetsGeneration || panel !== previewPanel) {
+      return;
+    }
+    try {
+      // The folders checked travel with the result, so the webview can drop a
+      // list whose folder has changed since (#833).
+      await panel.webview.postMessage({
+        type: "missingAssets",
+        missingAssets,
+        checkedFolders: mountDirs,
+      });
+    } catch {
+      // The panel closed while the check ran.
+    }
   };
 
   // Ensure the panel's localResourceRoots cover every mount dir, then refresh
@@ -1223,6 +1283,8 @@ export function activate(context: vscode.ExtensionContext): void {
       ...panel.webview.options,
       localResourceRoots: desired,
     };
+    // A reload resets the webview: drop any check still running for it.
+    missingAssetsGeneration++;
     panel.webview.html = getWebviewContent(panel.webview, context.extensionUri);
   };
 
@@ -1512,6 +1574,9 @@ export function activate(context: vscode.ExtensionContext): void {
         });
       }
 
+      // A new preview resets the webview: drop any check still running for
+      // the previous treatment (#833).
+      missingAssetsGeneration++;
       previewPanel.webview.html = getWebviewContent(
         previewPanel.webview,
         context.extensionUri,

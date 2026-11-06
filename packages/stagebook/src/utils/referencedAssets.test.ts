@@ -2,6 +2,7 @@ import { describe, test, expect } from "vitest";
 import {
   getReferencedAssets,
   collectAssetPrefixes,
+  collectAssetUris,
   type ReferencedAsset,
 } from "./referencedAssets.js";
 
@@ -513,5 +514,56 @@ describe("collectAssetPrefixes (#192)", () => {
       treatments: [],
     };
     expect(collectAssetPrefixes(tree)).toEqual(["onboarding"]);
+  });
+});
+
+describe("collectAssetUris (#833)", () => {
+  test("returns [] for non-object / empty input", () => {
+    expect(collectAssetUris(null)).toEqual([]);
+    expect(collectAssetUris("asset://x/y.mp4")).toEqual([]);
+    expect(collectAssetUris({})).toEqual([]);
+  });
+
+  test("collects each distinct asset:// reference from file fields", () => {
+    const tree = treatmentWithElements([
+      { type: "prompt", file: "asset://prompts/intro.prompt.md" },
+      {
+        type: "mediaPlayer",
+        file: "asset://videos/a.mp4",
+        captionsFile: "asset://captions/a.vtt",
+      },
+      { type: "image", file: "asset://videos/a.mp4" },
+    ]);
+    expect(collectAssetUris(tree)).toEqual([
+      "asset://prompts/intro.prompt.md",
+      "asset://videos/a.mp4",
+      "asset://captions/a.vtt",
+    ]);
+  });
+
+  test("skips local paths, URLs, opaque asset: and placeholder references", () => {
+    const tree = treatmentWithElements([
+      { type: "image", file: "images/local.png" },
+      { type: "image", file: "https://example.com/x.png" },
+      { type: "audio", file: "asset:clip.mp3" },
+      { type: "mediaPlayer", file: "asset://clips/${clipName}.mp4" },
+      { type: "mediaPlayer", file: "${clipUrl}" },
+    ]);
+    expect(collectAssetUris(tree)).toEqual([]);
+  });
+
+  test("matches the scheme case-insensitively, keeping the URI as written", () => {
+    const tree = treatmentWithElements([
+      { type: "image", file: "ASSET://Diagrams/flow.png" },
+    ]);
+    expect(collectAssetUris(tree)).toEqual(["ASSET://Diagrams/flow.png"]);
+  });
+
+  test("ignores asset:// strings outside file fields", () => {
+    const tree = treatmentWithElements([
+      { type: "display", reference: "asset://clips/a.mp4" },
+      { type: "timeline", source: "asset://clips/a.mp4" },
+    ]);
+    expect(collectAssetUris(tree)).toEqual([]);
   });
 });

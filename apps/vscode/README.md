@@ -39,22 +39,29 @@ To see the real media while authoring, **mount each prefix to a local folder**:
 - Your choices are remembered **per workspace** (in VS Code's storage) and are
   **never written to the study** — `asset://` stays platform-resolved and the
   `.stagebook.yaml` stays portable.
-- To re-point a folder you picked by mistake, use **Change…** next to it on the
-  **Fill in remaining fields** screen. That screen appears before the preview
-  when the treatment has `${field}` placeholders; once you've submitted it,
-  re-run **Stagebook: Preview Treatment** to get back to it. While a task from
-  a [task file](#previewing-a-task-from-a-task-file) is selected, its fields
-  are already filled, so that screen is skipped. Run
-  **`Stagebook: Configure Asset Folders`** from the Command Palette instead; it
-  also works any time, and can clear all mounts. Either way the folder picker
-  opens at the current folder.
+- If a mapped folder doesn't contain a file the treatment or task file
+  references, the banner names that folder, lists the missing files, and offers
+  **Change…**, so a wrong pick shows up before you reach the media. The check
+  covers `asset://` paths written in the treatment YAML and in a loaded task
+  file's fields, up to 2,000 files. Paths that appear only in a prompt body or
+  in a value you type aren't checked. After adding files to a folder, press
+  refresh (↻) to check again.
+- To re-point any folder, use **Change…** next to it on the **Fill in
+  remaining fields** screen. That screen appears before the preview when the
+  treatment has `${field}` placeholders; once you've submitted it, re-run
+  **Stagebook: Preview Treatment** to get back to it. While a task from a
+  [task file](#previewing-a-task-from-a-task-file) is selected, its fields are
+  already filled, so that screen is skipped: use the banner's **Change…** if it
+  lists missing files, or run **`Stagebook: Configure Asset Folders`** from the
+  Command Palette, which works any time and can clear all mounts. The folder
+  picker opens at the current folder.
 
 A mounted prefix resolves everywhere it's used: `<video>`/`<img>`/`<audio>`,
 caption tracks, `asset://` prompt files, and `asset://` images inside a prompt
 body. The **banner** only lists prefixes referenced directly in the treatment
-YAML — a prefix that appears only in a prompt body or a field value won't be
-offered there, but a folder you've configured (or picked for another reference)
-still resolves it.
+YAML or a loaded task file — a prefix that appears only in a prompt body or a
+value you type won't be offered there, but a folder you've configured (or
+picked for another reference) still resolves it.
 
 Prefer a **committable, shared convention** for a team? Set
 [`stagebook.assetRoots`](#settings) instead — but note the paths are only used

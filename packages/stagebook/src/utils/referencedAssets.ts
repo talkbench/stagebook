@@ -121,6 +121,27 @@ export function collectAssetPrefixes(treatmentFile: unknown): string[] {
   return [...prefixes];
 }
 
+/**
+ * Collect the distinct `asset://<prefix>/…` URIs a treatment references
+ * (#833), using the same file-field allowlist as {@link getReferencedAssets},
+ * so a host can check each one exists in the folder mounted for its prefix.
+ *
+ * Only the hierarchical form counts (an opaque `asset:clip.mp4` has no mount
+ * prefix), and a URI still holding a `${…}` placeholder anywhere is skipped:
+ * it names no concrete file until the field binds. Pass the EXPANDED treatment.
+ * Non-object input yields `[]`. Order is stable tree-walk order, first use wins.
+ */
+export function collectAssetUris(treatmentFile: unknown): string[] {
+  const uris = new Set<string>();
+  visitFileFields(treatmentFile, [], (info) => {
+    if (typeof info.value !== "string") return;
+    if (!ASSET_PREFIX_PATTERN.test(info.value)) return;
+    if (info.value.includes("${")) return;
+    uris.add(info.value);
+  });
+  return [...uris];
+}
+
 /** Info passed to a {@link visitFileFields} callback for one file-like field. */
 interface FileFieldVisit {
   /** The raw field value (may be any type; callers narrow to string). */

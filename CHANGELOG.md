@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- VS Code preview: flag `asset://` files missing from their mounted folder
+  ([#833](https://github.com/talkbench/stagebook/issues/833)). The asset banner
+  names each folder that lacks a file the treatment or a loaded task file
+  references, lists the missing files, and offers **Change…**. Adds
+  `collectAssetUris()`, which lists a treatment's `asset://` file references.
+- VS Code preview: change a mapped asset folder from the **Fill in remaining
+  fields** screen ([#813](https://github.com/talkbench/stagebook/issues/813)).
 - Keep stage `conditions`, mediaPlayer `playback` and timeline settings in
   resolved-schema output, and add `safeParseResolvedTreatmentFile()`, which
   returns participant-safe `data` only after the schema, placeholder and
