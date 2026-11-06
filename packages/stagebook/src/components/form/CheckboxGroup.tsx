@@ -1,6 +1,8 @@
-import React, { useId } from "react";
+import React, { useId, useRef } from "react";
 import { useIsRTL } from "../StagebookProvider.js";
 import { focusRingCss } from "../focusRing.js";
+import { usePointerTelemetry } from "../hooks/usePointerTelemetry.js";
+import type { PointerStats } from "../../utils/pointerTelemetry.js";
 
 export interface CheckboxOption {
   key: string;
@@ -13,6 +15,8 @@ export interface CheckboxGroupProps {
   options: CheckboxOption[];
   value: string[];
   onChange: (selected: string[]) => void;
+  /** Bounded interaction snapshot, updated before onChange. */
+  onPointerSnapshot?: (stats: PointerStats) => void;
   label?: string;
   ariaLabelledBy?: string;
   ariaDescribedBy?: string;
@@ -99,6 +103,7 @@ export function CheckboxGroup({
   options,
   value,
   onChange,
+  onPointerSnapshot,
   label = "",
   ariaLabelledBy,
   ariaDescribedBy,
@@ -107,6 +112,11 @@ export function CheckboxGroup({
   id,
   "data-testid": dataTestId,
 }: CheckboxGroupProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  usePointerTelemetry(rootRef, {
+    controlType: "checkbox",
+    onSnapshot: onPointerSnapshot,
+  });
   const isRTL = useIsRTL();
   // A default parameter only covers `undefined`. A JS consumer can hand
   // over `null` before async data arrives, and `null.includes` would
@@ -144,6 +154,7 @@ export function CheckboxGroup({
 
   return (
     <div
+      ref={rootRef}
       data-testid={testId}
       dir={isRTL ? "rtl" : "ltr"}
       style={flush ? undefined : { marginTop: "1rem" }}

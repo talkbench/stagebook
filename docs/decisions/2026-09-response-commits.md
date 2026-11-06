@@ -20,6 +20,65 @@ attempts remain in the history. Standalone TextArea keeps its
 configurable quiet period (500ms by default) and maximum wait (5 seconds by
 default). Unmount cancels pending timers, without flushing.
 
+Solo numeric responses use the same snapshot lifecycle for every existing
+commit ([#824](https://github.com/talkbench/stagebook/issues/824)); their earlier
+blur-only telemetry missed edits saved at checkpoints. The input-event,
+composition, and clipboard counters added in that issue are accumulated locally
+and attached to those snapshots. Native input observations precede control
+validation, so character totals describe observed edits rather than the final
+accepted answer. Existing keystroke measurements remain unchanged. New maps and
+insertion samples are bounded per snapshot; retaining earlier blur summaries
+still makes the complete debug-message history grow with completed focus visits.
+
+Pointer and focus telemetry ([#827](https://github.com/talkbench/stagebook/issues/827))
+uses the same principle. Controls accumulate observations locally; Prompt adds
+a sibling `pointerStats` snapshot on existing solo text, numeric, radio, and
+checkbox answer commits. SubmitButton adds its snapshot to its existing submit
+record. These observations do not call host saves, create timers, or flush at
+teardown. Repeated clicks on an unchanged choice can therefore remain unsaved
+until an actual answer change; a final unsaved tail is accepted.
+
+The snapshot retains cumulative counts and the first 20 click samples plus the
+first 20 text-field focus samples per component mount. It replaces the preceding
+pointer snapshot rather than extending `debugMessages`. Copies isolate saved
+snapshots from later local observations. Shared prompt records omit this
+participant telemetry. Slider/timeline coordinates encode answer or editing
+intent, so they and dropdowns remain outside this collection.
+
+Pointer observation is enabled only while a snapshot callback is supplied.
+Removing it detaches listeners; restoring it resumes the retained per-mount
+totals and sample caps without reusing pending pointer/key evidence. Geometry
+reads stop at each sample cap independently. Pointerdown geometry is needed only
+for field-focus samples; click samples measure at click time. Counts and label
+deduplication continue after sampling ends. These bounds limit interaction work
+as well as retained data (performance follow-up, agent `q7m2vk`).
+
+The shared observer measures stable control or label boxes, deduplicates label
+activation forwarding, and records pointer/keyboard provenance only when it has
+matching event evidence. Text-field state is captured before pointerdown moves
+focus. No pointer trajectories or text are stored, and existing `mouseClickCount`
+retains its earlier definition. See the [measurement definitions and limits](../researcher/prompts.md#pointer-and-focus-statistics).
+
+First-focus timing ([#831](https://github.com/talkbench/stagebook/issues/831),
+agent `q7m2vk`) follows these same commit boundaries. Solo text and numeric
+records add a flat `fieldTiming` sibling: `version: 1`, nullable
+`firstFocusDelayMs`, and nullable `firstFocusStageTimeElapsed`. The local delay
+uses `performance.now()` from control mount to first observed focus. The stage
+marker captures the host clock at that focus, never at a later save. Keeping
+these separate prevents host clock corrections or fallbacks from changing the
+measured delay. A missing or unusable clock produces a null stage marker; focus
+before the layout mount baseline produces a null delay. Both are null before
+focus.
+
+Refocusing retains the first observation; actual control remounts and new
+prompt/stage identities reset it. `onFieldTimingSnapshot` supplies a copy before
+each existing response callback, with no mount/focus saves, timers, or unmount
+flush. Shared and other response types omit it. Existing typing durations,
+epoch-based pointer focus samples, and first-input measurements remain unchanged.
+Mounting does not establish that the question was seen, and observed
+programmatic or assistive focus is included; these are observations, not a bot
+verdict. See the [measurement contract](../researcher/prompts.md#first-focus-timing).
+
 Blocked text drops also commit the current response immediately, including any
 pending typed edits, after recording the `pasteAttempt`
 ([#691](https://github.com/talkbench/stagebook/issues/691)). Canceling a drop can

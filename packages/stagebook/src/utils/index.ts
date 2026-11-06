@@ -39,10 +39,21 @@ export {
   type PromptRecord,
 } from "./buildPromptRecord.js";
 export type {
+  FieldTiming,
   TypingStats,
   PasteAttempt,
   DebugMessage,
 } from "./promptTelemetry.js";
+export type {
+  PointerStats,
+  PointerClickSample,
+  PointerFocusSample,
+  PointerPosition,
+  PointerFieldState,
+  PointerControlType,
+  PointerSource,
+  TelemetryPointerType,
+} from "./pointerTelemetry.js";
 export {
   parseNumericEntry,
   couldBecomeValidByAppending,

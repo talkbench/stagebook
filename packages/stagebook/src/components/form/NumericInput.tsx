@@ -8,6 +8,9 @@ import React, {
 import { useMessages, useIsRTL } from "../StagebookProvider.js";
 import { useResponseCommit } from "../hooks/useResponseCommit.js";
 import { useTypingTelemetry } from "../hooks/useTypingTelemetry.js";
+import { usePointerTelemetry } from "../hooks/usePointerTelemetry.js";
+import { useFieldTiming } from "../hooks/useFieldTiming.js";
+import type { PointerStats } from "../../utils/pointerTelemetry.js";
 import { focusRingCss } from "../focusRing.js";
 import { TEXTAREA_FONT_FAMILY, TEXTAREA_METRICS } from "./TextArea.js";
 import {
@@ -17,7 +20,11 @@ import {
 } from "../../utils/numericResponse.js";
 import { getNumericFeedback } from "../../utils/numericFeedback.js";
 import type { NumberFormat } from "../../messages/types.js";
-import type { DebugMessage } from "../../utils/promptTelemetry.js";
+import type {
+  DebugMessage,
+  TypingStats,
+  FieldTiming,
+} from "../../utils/promptTelemetry.js";
 
 export interface NumericInputProps {
   /** Raw restored text; omission means the participant has not answered. */
@@ -35,6 +42,15 @@ export interface NumericInputProps {
   id?: string;
   onChange?: (entry: string, numberFormat: NumberFormat) => void;
   onDebugMessage?: (message: DebugMessage) => void;
+  /** Current cumulative stats immediately before each existing onChange.
+   * Sampling does not end focus or count a blur. */
+  onTypingSnapshot?: (stats: TypingStats) => void;
+  /** Bounded pointer/focus observations; this callback does not commit a response. */
+  onPointerSnapshot?: (stats: PointerStats) => void;
+  /** Optional host stage clock, in seconds; sampled at first focus. */
+  getElapsedTime?: () => number;
+  /** Mount-to-focus timing immediately before each existing onChange. */
+  onFieldTimingSnapshot?: (timing: FieldTiming) => void;
   debounceDelay?: number;
   maxWait?: number;
 }
@@ -86,6 +102,10 @@ export function NumericInput({
   id,
   onChange,
   onDebugMessage,
+  onTypingSnapshot,
+  onPointerSnapshot,
+  getElapsedTime,
+  onFieldTimingSnapshot,
   debounceDelay = 2000,
   maxWait = 5000,
 }: NumericInputProps) {
@@ -98,6 +118,11 @@ export function NumericInput({
   const feedbackId = `${generatedId}-feedback`;
   const groupClass = `stagebook-number-${generatedId.replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  usePointerTelemetry(rootRef, {
+    controlType: "numeric",
+    onSnapshot: onPointerSnapshot,
+  });
   const [localEntry, setLocalEntry] = useState(entry ?? "");
   const stableEntry = useRef(entry ?? "");
   const formatPinned = useRef(
@@ -120,9 +145,14 @@ export function NumericInput({
   const finishedComposition = useRef<
     { raw: string; entry: string; selection: Selection } | undefined
   >(undefined);
-  const telemetry = useTypingTelemetry();
+  const telemetry = useTypingTelemetry(inputRef);
+  const fieldTiming = useFieldTiming(getElapsedTime);
   const commits = useResponseCommit<Response>({
-    onCommit: (response) => onChange?.(response.entry, response.numberFormat),
+    onCommit: (response) => {
+      onFieldTimingSnapshot?.(fieldTiming.snapshot());
+      onTypingSnapshot?.(telemetry.snapshot());
+      onChange?.(response.entry, response.numberFormat);
+    },
     debounceDelay,
     maxWait,
   });
@@ -188,6 +218,9 @@ export function NumericInput({
     // Restore immediately too: a wholly refused edit may leave React state unchanged.
     if (inputRef.current) {
       if (inputRef.current.value !== text) inputRef.current.value = text;
+      // Filtering changes the DOM directly. Rebase without treating the
+      // control's correction as another participant input event.
+      telemetry.syncValue();
       if (
         inputRef.current.selectionStart !== nextSelection.start ||
         inputRef.current.selectionEnd !== nextSelection.end
@@ -406,12 +439,14 @@ export function NumericInput({
 
   return (
     <div
+      ref={rootRef}
       dir={isRTL ? "rtl" : "ltr"}
       style={{ width: "100%", boxSizing: "border-box" }}
     >
       <div
         className={groupClass}
         data-testid="numeric-field"
+        data-pointer-field=""
         onClick={() => inputRef.current?.focus()}
         style={{
           display: "flex",
@@ -454,7 +489,10 @@ export function NumericInput({
             .join(" ")}
           value={localEntry}
           onChange={handleChange}
-          onFocus={telemetry.onFocus}
+          onFocus={() => {
+            fieldTiming.onFocus();
+            telemetry.onFocus();
+          }}
           onBlur={handleBlur}
           onClick={telemetry.onClick}
           onKeyDown={(event) => {

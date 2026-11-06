@@ -30,12 +30,14 @@ type MockYTPlayer = ReturnType<typeof makeMockYTPlayer>;
 // Captures the event callbacks registered with YT.Player so tests can fire them
 let capturedOnReady: (() => void) | null = null;
 let capturedOnStateChange: ((e: { data: number }) => void) | null = null;
+let capturedOnError: ((e: { data: number }) => void) | null = null;
 let mockPlayer: MockYTPlayer;
 
 function installYTMock() {
   mockPlayer = makeMockYTPlayer();
   capturedOnReady = null;
   capturedOnStateChange = null;
+  capturedOnError = null;
 
   Object.assign(window, {
     YT: {
@@ -54,11 +56,13 @@ function installYTMock() {
             events?: {
               onReady?: () => void;
               onStateChange?: (e: { data: number }) => void;
+              onError?: (e: { data: number }) => void;
             };
           },
         ) => {
           capturedOnReady = opts.events?.onReady ?? null;
           capturedOnStateChange = opts.events?.onStateChange ?? null;
+          capturedOnError = opts.events?.onError ?? null;
           return mockPlayer;
         },
       ),
@@ -160,6 +164,74 @@ describe("buildYouTubeHandle", () => {
   it("isYouTube is true", () => {
     expect(handle.isYouTube).toBe(true);
   });
+
+  it("reports unknown audio state when an older handle lacks the getters", () => {
+    expect(handle.getAudioState?.()).toEqual({ muted: null, volume: null });
+  });
+
+  it("reads and normalizes audio state without changing the player's settings", async () => {
+    const { buildYouTubeHandle } = await importModule();
+    const player = {
+      ...mockPlayer,
+      isMuted: vi.fn(() => true),
+      getVolume: vi.fn(() => 35),
+      mute: vi.fn(),
+      unMute: vi.fn(),
+      setVolume: vi.fn(),
+    };
+    const audioHandle = buildYouTubeHandle(player);
+    expect(audioHandle.getAudioState?.()).toEqual({
+      muted: true,
+      volume: 0.35,
+    });
+    player.isMuted.mockReturnValue(false);
+    player.getVolume.mockReturnValue(0);
+    expect(audioHandle.getAudioState?.()).toEqual({ muted: false, volume: 0 });
+    player.getVolume.mockReturnValue(100);
+    expect(audioHandle.getAudioState?.()).toEqual({ muted: false, volume: 1 });
+    expect(player.mute).not.toHaveBeenCalled();
+    expect(player.unMute).not.toHaveBeenCalled();
+    expect(player.setVolume).not.toHaveBeenCalled();
+  });
+
+  it.each([NaN, Infinity, -1, 101])(
+    "does not invent a volume from invalid API value %s",
+    async (volume) => {
+      const { buildYouTubeHandle } = await importModule();
+      const audioHandle = buildYouTubeHandle({
+        ...mockPlayer,
+        isMuted: () => false,
+        getVolume: () => volume,
+      });
+      expect(audioHandle.getAudioState?.()).toEqual({
+        muted: false,
+        volume: null,
+      });
+    },
+  );
+
+  it("reports each unavailable audio field independently", async () => {
+    const { buildYouTubeHandle } = await importModule();
+    const audioHandle = buildYouTubeHandle({
+      ...mockPlayer,
+      getVolume: () => 25,
+    });
+    expect(audioHandle.getAudioState?.()).toEqual({
+      muted: null,
+      volume: 0.25,
+    });
+    const destroyedHandle = buildYouTubeHandle({
+      ...mockPlayer,
+      isMuted: () => {
+        throw new Error("destroyed player");
+      },
+      getVolume: () => 50,
+    });
+    expect(destroyedHandle.getAudioState?.()).toEqual({
+      muted: null,
+      volume: 0.5,
+    });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -253,6 +325,61 @@ describe("createYouTubePlayer", () => {
     mockPlayer.getCurrentTime.mockReturnValue(120);
     fireStateChange(0 /* ENDED */);
     expect(onEnded).toHaveBeenCalledWith(120);
+  });
+
+  it.each([3, -1, 5])(
+    "reports inactive state %s without pause or querying the playhead",
+    async (state) => {
+      const { createYouTubePlayer } = await importModule();
+      const onPlaybackInactive = vi.fn();
+      const onPause = vi.fn();
+      const { destroy } = createYouTubePlayer({
+        container: document.createElement("div"),
+        videoId: "abc123",
+        onHandleReady: vi.fn(),
+        onPlay: vi.fn(),
+        onPause,
+        onEnded: vi.fn(),
+        onPlaybackInactive,
+      });
+      fireReady();
+      mockPlayer.getCurrentTime.mockImplementation(() => {
+        throw new Error("unavailable position");
+      });
+      fireStateChange(state);
+      expect(onPlaybackInactive).toHaveBeenCalledOnce();
+      expect(onPause).not.toHaveBeenCalled();
+      destroy();
+      fireStateChange(state);
+      expect(onPlaybackInactive).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("reports an error as inactive even when the backend cannot report its playhead", async () => {
+    const { createYouTubePlayer } = await importModule();
+    const onPlaybackInactive = vi.fn();
+    const onPause = vi.fn();
+    const onEnded = vi.fn();
+    const { destroy } = createYouTubePlayer({
+      container: document.createElement("div"),
+      videoId: "abc123",
+      onHandleReady: vi.fn(),
+      onPlay: vi.fn(),
+      onPause,
+      onEnded,
+      onPlaybackInactive,
+    });
+    fireReady();
+    mockPlayer.getCurrentTime.mockImplementation(() => {
+      throw new Error("failed backend");
+    });
+    capturedOnError?.({ data: 100 });
+    expect(onPlaybackInactive).toHaveBeenCalledOnce();
+    expect(onPause).not.toHaveBeenCalled();
+    expect(onEnded).not.toHaveBeenCalled();
+    destroy();
+    capturedOnError?.({ data: 100 });
+    expect(onPlaybackInactive).toHaveBeenCalledTimes(1);
   });
 
   it("passes startAt to YT.Player playerVars", async () => {

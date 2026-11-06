@@ -8,13 +8,54 @@ import {
 import type { VideoEvent } from "../components/elements/MediaPlayer.js";
 
 function ev(
-  type: Exclude<VideoEvent["type"], "seek" | "speed">,
+  type: Exclude<
+    VideoEvent["type"],
+    "seek" | "speed" | "volumechange" | "fullscreenchange"
+  >,
   videoTime: number,
 ): VideoEvent {
   return { type, videoTime, stageTimeElapsed: 0 };
 }
 
 describe("computeWatchedRanges", () => {
+  it("audio and presentation observations leave watched ranges and milestones unchanged", () => {
+    const play = ev("play", 5);
+    const ended = ev("ended", 15);
+    const observations: VideoEvent[] = [
+      {
+        type: "volumechange",
+        videoTime: 6,
+        stageTimeElapsed: 1,
+        muted: true,
+        volume: 0,
+        channelMuted: [true],
+      },
+      {
+        type: "fullscreenchange",
+        videoTime: 7,
+        stageTimeElapsed: 2,
+        fullscreen: true,
+      },
+      ev("enterpictureinpicture", 8),
+      ev("leavepictureinpicture", 9),
+      {
+        type: "fullscreenchange",
+        videoTime: 10,
+        stageTimeElapsed: 5,
+        fullscreen: false,
+      },
+    ];
+    const open = [play, ...observations];
+    expect(endsMidPlayback(open)).toBe(true);
+    expect(computeWatchedRanges(open)).toEqual([]);
+    const closed = [...open, ended];
+    expect(computeWatchedRanges(closed)).toEqual([[5, 15]]);
+    expect(endsMidPlayback(closed)).toBe(false);
+    expect(playbackMilestones(closed)).toEqual({
+      firstPlay: play,
+      firstEnd: ended,
+    });
+  });
   it("returns empty array for no events", () => {
     expect(computeWatchedRanges([])).toEqual([]);
   });

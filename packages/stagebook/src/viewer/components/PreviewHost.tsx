@@ -64,6 +64,13 @@ export interface PreviewHostProps {
    */
   hostNotice?: ReactNode;
   /**
+   * An optional host-supplied notice rendered on the FieldForm gate, above the
+   * inputs. The VS Code extension uses it to show its asset folders, mapped
+   * and unmapped, so a wrong pick can be changed before fields like
+   * `${clipUrl}` are filled (#813). Not shown once the Viewer renders.
+   */
+  hostFormNotice?: ReactNode;
+  /**
    * Opt in to previewing the workflow against a task parameter file — the
    * JSON task file Annotator takes (#815). PreviewHost parses the file, lets
    * the researcher choose an entry, narrows the workflow to that entry's
@@ -139,6 +146,7 @@ function PreviewBody({
   onTreatmentIndexChange,
   onIntroIndexChange,
   hostNotice,
+  hostFormNotice,
   toolbar,
 }: PreviewBodyProps) {
   const [userValues, setUserValues] = useState<Record<string, string> | null>(
@@ -241,6 +249,7 @@ function PreviewBody({
           unresolvedFields={previewState.formFields}
           initialValues={previewState.initialValues}
           errors={previewState.errors}
+          notice={hostFormNotice}
           onSubmit={(values) => {
             setUserValues(values);
             onFieldsResolved?.(values);

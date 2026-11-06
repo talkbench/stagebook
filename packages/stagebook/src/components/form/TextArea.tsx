@@ -2,10 +2,17 @@ import React, { useEffect, useState, useRef, useId } from "react";
 import { useResponseCommit } from "../hooks/useResponseCommit.js";
 import { checkResponse } from "../../utils/checkResponse.js";
 import { useTypingTelemetry } from "../hooks/useTypingTelemetry.js";
+import { usePointerTelemetry } from "../hooks/usePointerTelemetry.js";
+import { useFieldTiming } from "../hooks/useFieldTiming.js";
+import type { PointerStats } from "../../utils/pointerTelemetry.js";
 import { useMessages, useIsRTL } from "../StagebookProvider.js";
 import { focusRingCss } from "../focusRing.js";
 
-import type { DebugMessage, TypingStats } from "../../utils/promptTelemetry.js";
+import type {
+  DebugMessage,
+  TypingStats,
+  FieldTiming,
+} from "../../utils/promptTelemetry.js";
 
 // Preserve the existing component entry point for host type imports.
 export type {
@@ -21,6 +28,12 @@ export interface TextAreaProps {
   /** Current cumulative stats immediately before each existing onChange.
    * Sampling does not end focus or count a blur. */
   onTypingSnapshot?: (stats: TypingStats) => void;
+  /** Bounded pointer/focus observations; this callback does not commit a response. */
+  onPointerSnapshot?: (stats: PointerStats) => void;
+  /** Optional host stage clock, in seconds; sampled at first focus. */
+  getElapsedTime?: () => number;
+  /** Mount-to-focus timing immediately before each existing onChange. */
+  onFieldTimingSnapshot?: (timing: FieldTiming) => void;
   value?: string;
   rows?: number;
   showCharacterCount?: boolean;
@@ -78,6 +91,9 @@ export function TextArea({
   onChange,
   onDebugMessage,
   onTypingSnapshot,
+  onPointerSnapshot,
+  getElapsedTime,
+  onFieldTimingSnapshot,
   value,
   rows = 5,
   showCharacterCount,
@@ -111,9 +127,17 @@ export function TextArea({
   // would not retrigger the keyframe (the animation prop string is
   // unchanged, so the browser doesn't restart).
   const [overflowPulseId, setOverflowPulseId] = useState(0);
-  const telemetry = useTypingTelemetry();
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  usePointerTelemetry(rootRef, {
+    controlType: "text",
+    onSnapshot: onPointerSnapshot,
+  });
+  const telemetry = useTypingTelemetry(inputRef);
+  const fieldTiming = useFieldTiming(getElapsedTime);
   const responseCommit = useResponseCommit({
     onCommit: (nextValue: string) => {
+      onFieldTimingSnapshot?.(fieldTiming.snapshot());
       onTypingSnapshot?.(telemetry.snapshot());
       onChange?.(nextValue);
     },
@@ -289,6 +313,7 @@ export function TextArea({
 
   return (
     <div
+      ref={rootRef}
       dir={isRTL ? "rtl" : "ltr"}
       style={{ position: "relative", width: "100%", boxSizing: "border-box" }}
     >
@@ -310,6 +335,7 @@ export function TextArea({
         </label>
       )}
       <textarea
+        ref={inputRef}
         id={textAreaId}
         className={textareaClass}
         // Pass-throughs for the invisible-label / external-element cases.
@@ -324,7 +350,10 @@ export function TextArea({
         placeholder={defaultText}
         value={localValue}
         onChange={handleChange}
-        onFocus={telemetry.onFocus}
+        onFocus={() => {
+          fieldTiming.onFocus();
+          telemetry.onFocus();
+        }}
         onBlur={handleBlur}
         onClick={telemetry.onClick}
         onPaste={handlePaste}

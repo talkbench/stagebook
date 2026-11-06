@@ -465,13 +465,15 @@ constraints and the host's configured number format; compare the client-written
 [recomputation example](../engineer/api-reference.md#numeric-entries-and-number-formats)
 and the [validity caveat](#response-validity-and-conditions).
 
-**Typing statistics.** Along with the answer, an `openResponse` prompt's saved record keeps a `debugMessages` list. Shared prompts (`shared: true`) are the exception: the platform's shared notepad renders them, and none of what follows is recorded.
+### Typing statistics
+
+Along with the answer, solo `openResponse` and `numericResponse` prompts keep a `debugMessages` list. Shared prompts (`shared: true`) use host-rendered editors and do not record the participant telemetry described here.
 
 Each answer save includes a current `typingStats` snapshot: after two seconds without edits, within five seconds during continued editing, and immediately when the participant leaves the box. Each snapshot is a running total since the text box appeared, so use the last `typingStats` entry rather than adding entries together. Repeated checkpoints replace the current focus visit's snapshot; leaving the box finalizes that visit's summary. Earlier completed visit summaries and paste-attempt events remain in the list. Checkpoints do not increment `blurCount` or end the focused interval.
 
 Stage cutoff still cancels pending work without a final save. During continued editing under normal foreground scheduling, text and statistics can lose the tail since the last checkpoint, nominally within five seconds. Idle fields do not checkpoint: focus time, cursor activity, or paste attempts after the last answer save can remain unsaved longer, and a focus-only visit ending at cutoff may have no summary. If the prompt is shown again, for example after a page reload, the counts and the list start over, and the next save replaces the earlier entries.
 
-Pasting is blocked. Each attempt adds a `pasteAttempt` entry with the clipboard text's `length` and a `timestamp`. Attempts made after the last save are lost if the stage ends first.
+Pasting and dropping text are blocked. Each attempt adds a `pasteAttempt` entry with the text's `length` and a `timestamp`; the text itself is not recorded in telemetry. A blocked drop commits the current answer immediately. A blocked paste does not trigger a save, so attempts made after the last save are lost if the stage ends first.
 
 A `typingStats` entry has the fields below. Times are wall-clock milliseconds, so they include any time the participant spent outside the box unless the row says otherwise. The first row defines a counted keystroke.
 
@@ -496,7 +498,185 @@ The key-press fields see only counted keystrokes, so text entered any other way 
 - Dictation and tapped autocomplete suggestions insert text without a key press.
 - With IME composition, the usual way to type Chinese, Japanese or Korean, Chrome and Firefox report keys as `Process`, so they are missed. Safari reports the underlying keys, so there the count reflects raw key presses rather than the characters entered.
 
-For affected participants the counts come out too low. The timings are distorted rather than simply low: a missed key merges the gaps on either side of it, and missing the first keys makes the first-keystroke delay too long. Fields can come out `0` or `null` even when the whole answer was typed, and nothing in the record flags it. Treat the key-press fields as reliable only for physical-keyboard input without an IME, and don't compare them across devices or input methods (#692).
+For affected participants the counts come out too low. The timings are distorted rather than simply low: a missed key merges the gaps on either side of it, and missing the first keys makes the first-keystroke delay too long. Fields can come out `0` or `null` even when the whole answer was typed. Treat the key-press fields as reliable only for physical-keyboard input without an IME, and don't compare them across devices or input methods (#692). The additional input-event fields below describe other activity without changing any existing measurement.
+
+#### Input-event statistics
+
+The fields added in [#824](https://github.com/talkbench/stagebook/issues/824) accompany the same `typingStats` snapshots. They accumulate locally and introduce no extra saves. Older records lack these fields; absence is not zero activity.
+
+| Field | What it measures |
+|-------|------------------|
+| `beforeInputEventCount` | Observed native `beforeinput` events, including attempted changes the control later cancels. |
+| `inputEventCount` | Observed native `input` events. A preceding `beforeinput` supplies context; it is not counted a second time here. |
+| `inputTypeCounts` | Input-event counts by a fixed set of browser-reported input types, with unrecognized or missing types grouped under `other`. Only nonzero buckets are included. |
+| `charsInsertedByInputType` | Gross inserted UTF-16 code units, grouped using the same input-type buckets. Only nonzero buckets are included. |
+| `charsInsertedTotal`, `charsDeletedTotal` | Gross inserted and removed UTF-16 code units in the observed input edits. These are not final answer length or inferred keystrokes. |
+| `maxSingleInsertionChars` | Largest observed insertion in one input event; `0` if none. |
+| `largeInsertionCount` | Input events inserting at least 20 UTF-16 code units. |
+| `largeInsertions` | Details for the first 10 such events; later events still contribute to counts and maxima. See below. |
+| `untrustedInputEventCount` | Input events whose `isTrusted` is `false`, as with events dispatched by script. |
+| `inputWithoutKeydownCount` | Input events with no keydown on this field in the preceding 50 ms. All keydowns qualify, including keys excluded from the legacy keystroke count. |
+| `inputEventsWithoutBeforeInput` | Input events without usable preceding `beforeinput` context. |
+| `inputEventsWithoutData` | Input events without a text payload in `InputEvent.data`. This is normal for several input types and browser/input-method combinations. |
+| `inputDiffFallbackCount` | Input events measured using a before/after value comparison rather than matching pre-edit selection context. |
+| `firstInputDelayMs` | From the first focus to the first observed input event. `null` if no input has occurred or that input had no preceding focus. |
+| `totalInputTimeMs` | From the first observed input event to the last, including pauses and time away. `null` with fewer than two input events. |
+| `unidentifiedKeyCount` | Keydowns reporting `Unidentified`, or key code 229 outside composition. An event satisfying both conditions counts once. |
+| `processKeyCount` | Keydowns reporting `Process`. |
+| `compositionCount` | Completed observed `compositionstart`/`compositionend` pairs, including canceled compositions. An unfinished composition is not a completed pair. |
+| `shortcutKeyCount` | Ctrl/Meta-modified keydowns that also contribute to `totalKeystrokes`. Modifier-only and cursor keys do not contribute. |
+| `copyCount`, `cutCount` | Copy and cut events on the field, whether or not they change its value. Clipboard contents are not recorded. |
+
+Input-type buckets include `insertText`, `insertCompositionText`, `insertReplacementText`, `insertFromDictation`, `insertLineBreak`, deletion types such as `deleteContentBackward`, and `historyUndo`/`historyRedo`. Their names describe what the browser reported, not a verified input method. Unknown or absent types use `other`, including in large-insertion records.
+
+Each `largeInsertions` item contains `chars`, `inputType`, `isTrusted`, and `isComposing`, plus a wall-clock `timestamp` comparable with a `pasteAttempt.timestamp`. Its `msSinceFirstFocus` and `msSinceLastFocus` locate the insertion relative to the first and most recent focus, or are `null` if no focus has been observed. `msSinceLastKeydown` is the elapsed time since the last keydown, or `null` with none; `precededByKeydown` says whether that gap was between 0 and 50 ms inclusive. These describe the event's context, not its cause.
+
+Character counts observe the native input change **before Stagebook validates or filters it**. They can therefore include text that does not survive in the saved answer. A canceled `beforeinput` contributes to `beforeInputEventCount` but not inserted-character totals: for example, a numeric field can cancel an insertion and apply its allowed subset itself without a native `input` event. Restoration from host values is not participant input and does not increment the counters.
+
+An equal-length replacement can insert and remove characters despite no change in total length. Measurement uses pre-edit selection/value context where available and falls back to the smallest contiguous difference between the before/after values. Missing event data, ambiguous replacements, or scripts changing a value without an input event limit what can be observed; an equal-content replacement without selection context may not register any inserted or removed characters. UTF-16 units match the existing length measurements: many emoji count as two.
+
+IME updates can repeatedly replace provisional composition text. Those replacements contribute gross edits under their reported input type; they must not be interpreted as independent completed characters. Browsers differ in the types and data they expose. Dictation, autocorrect, and writing assistants may report `insertText` or `insertReplacementText`; a distinct `insertFromDictation` event is not guaranteed. The observation-gap counters help distinguish missing context from observed absence of input.
+
+The input-type maps have fixed vocabularies and the insertion list is capped **per snapshot**. Existing history still retains a cumulative summary for each completed focus visit, so the entire `debugMessages` record is not fixed-size. Use the final summary for totals; do not add repeated summaries together.
+
+These measurements support investigation, not automatic bot classification. Dictation, IME, switch access, and AAC can legitimately enter text without counted keys. Browser automation can generate trusted input events, while scripts and extensions can generate untrusted ones. Neither `isTrusted` nor absent keydowns establishes whether a respondent is human. See the [input-events specification](https://www.w3.org/TR/input-events-2/) and [WebDriver actions](https://www.w3.org/TR/webdriver/#actions).
+
+### First-focus timing
+
+[#831](https://github.com/talkbench/stagebook/issues/831) adds a `fieldTiming`
+object alongside `debugMessages` for solo `openResponse` and `numericResponse`
+records. It describes the first observed focus of the current field mount.
+Shared prompts and other response types omit it. Older records also omit it;
+absence does not mean immediate focus.
+
+| Field | What it measures |
+| --- | --- |
+| `version` | `1`, identifying this measurement contract. |
+| `firstFocusDelayMs` | Milliseconds from the field's mount baseline to its first observed focus, measured with the browser's monotonic `performance.now()` clock independently of the host stage clock. `null` without observed focus or a usable baseline. |
+| `firstFocusStageTimeElapsed` | Host stage elapsed seconds sampled at that same first focus. `null` without focus, or when the stage clock is missing, invalid, or throws. |
+
+For example, this saved-record excerpt has a first focus at stage time 21.25
+seconds, 1.25 seconds after the field mounted, and a later answer save at 30
+seconds:
+
+```json
+{
+  "type": "openResponse",
+  "value": "My answer",
+  "stageTimeElapsed": 30,
+  "fieldTiming": {
+    "version": 1,
+    "firstFocusDelayMs": 1250,
+    "firstFocusStageTimeElapsed": 21.25
+  }
+}
+```
+
+The first-focus values stay unchanged through later focuses and saves. An actual
+control remount, including a new prompt or stage identity, starts a new
+measurement. An unusually early focus before layout establishes the mount
+baseline has a `null` delay. Stage clocks can jump or use a fallback, so do not
+infer this latency by subtracting stage timestamps. A mounted field may be off
+screen or unnoticed; this is not time since seeing the question or a measure of
+attention. Programmatic and assistive-technology focus count when observed, and
+the values do not establish whether a respondent is a bot.
+
+Timing accompanies existing answer saves only. Mounting or focusing creates no
+save, and there are no new timers or unmount flushes, so a focus-only visit can
+remain unsaved. Existing typing durations, epoch timestamps in pointer focus
+samples, and first-input measurements keep their earlier meanings; this adds no
+new first-input marker.
+
+### Pointer and focus statistics
+
+[#827](https://github.com/talkbench/stagebook/issues/827) adds a `pointerStats`
+object alongside the answer and `debugMessages` for solo text, numeric, radio,
+and checkbox prompts. Submit-button records include it too. Shared prompts,
+dropdowns, sliders, timeline tools, and other controls do not export these
+statistics. Older records lack the object; absence does not mean zero activity.
+
+Counts accumulate since the control appeared. `clickSamples` retains the first
+20 clicks, and `focusSamples` retains the first 20 observed text-field focuses;
+later events still contribute to counts. This is an early-interaction sample,
+not a random sample of the entire response. The count maps use fixed categories
+and neither array grows beyond its cap. Use the latest snapshot rather than
+adding snapshots together. A remount, including page reload, starts over.
+
+| Field                                        | What it measures                                                                                                                                                           |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`                                    | Schema version, currently `1`.                                                                                                                                             |
+| `controlType`                                | The kind of control that produced the snapshot. Keep different control types separate in analysis.                                                                         |
+| `clickCount`, `focusCount`                   | Total observed clicks and text-field focuses. Label-forwarded activation is counted once. These are independent of the existing typing `mouseClickCount` and `focusCount`. |
+| `clickCountsBySource`, `focusCountsBySource` | Counts attributed to matching `pointer` or `keyboard` event evidence, or `unknown` when that evidence is missing.                                                          |
+| `clickCountsByPointerType`                   | Counts for pointer-attributed clicks only: `mouse`, `touch`, `pen`, or an unrecognized `unknown` pointer type. This map excludes keyboard/unknown-source clicks.           |
+| `clickSamples`, `focusSamples`               | Bounded observations with source, pointer type, target part, geometry when available, and text-field state where applicable.                                               |
+
+Each sample has a wall-clock millisecond `timestamp` and the observed event's
+`isTrusted` flag. Choice samples use a zero-based `optionIndex` in displayed
+option order; other controls use null. No option labels or values are copied
+into the telemetry. Trusted events can originate from browser automation.
+
+A positional sample's `position` describes the stable button, input, or label
+box; clicking a button's child icon still measures the button. Its `x` and `y`
+are normalized to the box, while `width` and `height` are CSS pixels. Values
+retain their numerical precision without rounding or clamping. For a choice
+row, `position` describes the whole clickable label and `controlPosition`
+describes the native radio/checkbox glyph. A label click can legitimately have
+an input-relative coordinate below 0 or above 1.
+
+`targetPart` distinguishes a direct `control` hit, `label-text`, and clickable
+`padding`. Text regions use each rendered text fragment's font metric rectangle,
+not the exact ink of individual letters. Text-field label clicks use `label`
+and retain label geometry; numeric affix/container clicks retain their own
+target context. Neither is reported as a physical click inside the text input.
+
+Each position includes `viewportClipped` and normalized `inViewCenterX` /
+`inViewCenterY`. The center uses the [WebDriver floor-to-CSS-pixel convention](https://www.w3.org/TR/webdriver2/#dfn-in-view-center-point)
+on the intersection with the viewport; it can differ from `(0.5, 0.5)` even
+without clipping when the box has fractional coordinates. A box with no
+viewport intersection has null center coordinates. This measures viewport
+clipping only: scroll-container clipping, overlays, and other occlusion are not
+measured. Rotated/transformed controls use their axis-aligned bounding boxes.
+Browser click coordinates can themselves be rounded, so preserved precision
+does not establish the precision of the physical device.
+
+Text-field samples with observed state add `fieldState`: `wasFocused`,
+`wasEmpty`, and `priorFocusCount`. For pointer activity these describe the field
+at pointerdown, before the browser normally moves focus. The placeholder is not
+response text.
+Together they distinguish first entry into an empty field, a return to a
+populated field, and a click while already focused. `focusSamples.visit` is
+`first` or `return` based on observed focus events since mount; autofocus or
+focus before observation starts may be missing. A click while already focused
+adds a click sample without adding a focus visit. `coordinateEvent` identifies
+whether coordinates came from `click` or the preceding `pointerdown`. Focus
+geometry is captured at pointerdown, before focus can change layout; click
+geometry measures the box at click time.
+
+Pointer types distinguish mouse, touch, pen, and unknown devices. Keyboard or
+unknown activation/focus has null positions, never an invented `(0, 0)`.
+Unknown click samples can also lack `fieldState`. Matching uses recent events
+on the associated control, with 30-second pointer and two-second keyboard
+expiry limits and resets after intervening interactions. These are safeguards
+against stale attribution, not guarantees of causation; unusual or slow input
+can remain unknown. Pointer-attributed clicks require a matching press/release,
+consistent event trust, and matching pointer IDs where the browser supplies
+them. A trusted touch sequence can also match the browser's compatibility mouse
+click with a different ID, within one second and one CSS pixel of release on
+the same control; its recorded pointer type remains `touch`.
+Focus can precede release, so focus attribution uses the press alone.
+The source is observed event context, not proof of a
+physical device or a human:
+browser automation can supply the same events, and assistive technology can
+activate controls without positional evidence. Repeated center placement may
+help identify a pattern worth investigating; it is not a bot verdict.
+
+No pointer trajectories or text contents are included. Statistics travel only
+with existing answer/submit saves; they add no server writes, timers, or final
+flush. A click on an unchanged choice, or focus activity after the last answer
+save, can remain unsaved indefinitely and is discarded at unmount/cutoff. The
+bounded `pointerStats` snapshot replaces its predecessor; it does not add
+entries to the typing-history list.
 
 ### Dropdown
 
