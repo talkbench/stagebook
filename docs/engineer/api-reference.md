@@ -304,14 +304,15 @@ Required inputs are `metadata`, `name`, `body`, and `responses`. Supply `value`
 for a nonnumeric response. Numeric metadata requires raw `entry` and
 `numberFormat`; the builder derives `value` itself and throws if either input
 is missing. Optional inputs are `file`, `shared` (default `false`), `label`,
-`debugMessages`, `step`, and `stageTimeElapsed`. Supply the clock and step at
-the commit boundary.
+`debugMessages`, `pointerStats`, `step`, and `stageTimeElapsed`. Supply the clock
+and step at the commit boundary.
 The result includes metadata, `name`, `file`, `shared`, `prompt` (the body),
 `responses`, `value`, and `debugMessages`, plus supplied label and timing fields.
 Player records include computed `isValid`; shared numeric records do too.
-Every shared record uses empty `debugMessages`, and shared nonnumeric records
-omit `isValid`. `responses` should be the same display order used by the prompt.
-The builder does not shuffle options.
+Supplied `pointerStats` is a sibling of `debugMessages` in solo records. Every
+shared record uses empty `debugMessages` and omits `pointerStats`; shared
+nonnumeric records also omit `isValid`. `responses` should be the same display
+order used by the prompt. The builder does not shuffle options.
 
 For numeric records, `entry` retains up to 1,000 raw characters and `numberFormat`
 records the effective separators. Anything over the 100-character parsing cap
@@ -686,6 +687,43 @@ Snapshots copy the maps and sample records, so later activity cannot mutate a sn
 The native input observer runs before control validation. It can see text later rejected by `TextArea` or filtered by `NumericInput`. Conversely, a numeric `beforeinput` handler can cancel an insertion and apply an allowed subset without a native `input`; that attempt increments `beforeInputEventCount` but not character totals. Restored host values do not count as input. The fallback diff can undercount replacements of identical text when pre-edit context is missing. IME provisional replacements contribute gross edits, not counts of committed composition characters.
 
 Browser event types and payload availability differ; dictation may use `insertText` or `insertReplacementText` rather than a distinct `insertFromDictation`. Trusted events can come from browser automation, while dictation, IME, switch access, and AAC can produce input without keydowns. These fields describe observation and must not be treated as a bot verdict. See [researcher interpretation guidance](../researcher/prompts.md#input-event-statistics).
+
+**Pointer and focus snapshots (#827).** `Button`, `RadioGroup`, `CheckboxGroup`,
+`TextArea`, and `NumericInput` accept an optional
+`onPointerSnapshot(stats: PointerStats)` callback. Providing the callback enables
+collection; without it, no pointer-telemetry listeners or geometry reads run.
+It receives an initial zero snapshot and independent snapshots of local
+observations; calling it is not a
+response commit and does not perform host I/O. Hosts using these standalone
+controls should retain the
+latest snapshot and attach it to their existing saves. `Prompt` does this for
+solo text, numeric, radio, and checkbox responses, and `SubmitButton` includes
+`pointerStats` in its existing `submitButton_<name>` record.
+
+Counts accumulate per component mount; the first 20 clicks and first 20 field
+focuses are sampled, with fixed-vocabulary count maps. Remount resets them.
+Removing the callback pauses collection and discards pending event provenance;
+adding it again publishes the retained counts and samples, then resumes
+collection. Replacing one callback with another does not restart the observer.
+Geometry is read only for samples that can still be retained: pointerdown
+geometry for field-focus samples, and click-time geometry for click samples.
+Once the relevant cap is reached, counts continue without those layout reads.
+Native observations precede the corresponding existing answer/submit callback
+so its snapshot includes the current interaction. Label-forwarded activation is
+not counted as another physical click. Pointer snapshots replace the previous
+snapshot and are separate from the historical typing `debugMessages` list.
+No extra timers, saves, or teardown flushes are introduced, and existing
+`mouseClickCount` is unchanged. A click without an answer change or a focus-only
+visit may never be saved.
+
+Geometry uses unrounded normalized coordinates and CSS-pixel dimensions of the
+stable control/label box, with an additional input-relative position for choice
+labels. Missing pointer evidence produces no coordinates. The viewport-clipped,
+floored center is a comparison reference, not an automation verdict. See the
+[sample fields, focus definitions, and interpretation limits](../researcher/prompts.md#pointer-and-focus-statistics).
+Trusted touch sequences retain their `touch` type when a browser emits a
+compatibility mouse click with a different pointer ID; this match also requires
+the same control and release coordinates within one CSS pixel and one second.
 
 ### Display Components (standalone)
 

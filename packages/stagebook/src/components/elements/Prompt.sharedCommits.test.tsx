@@ -379,6 +379,24 @@ for (const shared of [false, true]) {
         body: parsed.body,
         responses: parsed.responseItems,
         value: "committed answer",
+        pointerStats: shared
+          ? undefined
+          : {
+              version: 1,
+              controlType: "text",
+              clickCount: 0,
+              clickCountsBySource: { pointer: 0, keyboard: 0, unknown: 0 },
+              clickCountsByPointerType: {
+                mouse: 0,
+                touch: 0,
+                pen: 0,
+                unknown: 0,
+              },
+              clickSamples: [],
+              focusCount: 0,
+              focusCountsBySource: { pointer: 0, keyboard: 0, unknown: 0 },
+              focusSamples: [],
+            },
         // The synthetic solo input has no key/focus events, but its answer
         // checkpoint still carries zero legacy counts plus the observed input.
         // Shared fields do not collect participant typing telemetry.

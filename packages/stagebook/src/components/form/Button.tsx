@@ -1,9 +1,13 @@
-import React, { useEffect, useId } from "react";
+import React, { useEffect, useId, useRef } from "react";
 import { focusRingCss } from "../focusRing.js";
+import { usePointerTelemetry } from "../hooks/usePointerTelemetry.js";
+import type { PointerStats } from "../../utils/pointerTelemetry.js";
 
 interface ButtonBaseProps {
   children: React.ReactNode;
   onClick?: React.MouseEventHandler<HTMLButtonElement> | null;
+  /** Bounded interaction snapshot; observing it does not trigger a save. */
+  onPointerSnapshot?: (stats: PointerStats) => void;
   className?: string;
   style?: React.CSSProperties;
   primary?: boolean;
@@ -115,6 +119,7 @@ const iconInlineStyle: React.CSSProperties = {
 export function Button({
   children,
   onClick = null,
+  onPointerSnapshot,
   className = "",
   style = {},
   primary = true,
@@ -127,6 +132,11 @@ export function Button({
   "aria-label": ariaLabel,
   title,
 }: ButtonProps) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  usePointerTelemetry(buttonRef, {
+    controlType: "button",
+    onSnapshot: onPointerSnapshot,
+  });
   const generatedId = useId();
   const buttonId = id || `button${generatedId}`;
   // useId returns an opaque string. Preventive sanitization for
@@ -218,6 +228,7 @@ export function Button({
         }
       `}</style>
       <button
+        ref={buttonRef}
         type={type}
         onClick={onClick ?? undefined}
         className={`${buttonClass} ${className}`.trim()}

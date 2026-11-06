@@ -20,8 +20,34 @@ const base = {
 const debugMessages: DebugMessage[] = [
   { type: "pasteAttempt", length: 10, timestamp: 42 },
 ];
+const pointerStats = {
+  version: 1 as const,
+  controlType: "text" as const,
+  clickCount: 0,
+  clickCountsBySource: { pointer: 0, keyboard: 0, unknown: 0 },
+  clickCountsByPointerType: { mouse: 0, touch: 0, pen: 0, unknown: 0 },
+  clickSamples: [],
+  focusCount: 0,
+  focusCountsBySource: { pointer: 0, keyboard: 0, unknown: 0 },
+  focusSamples: [],
+};
 
 describe("buildPromptRecord (#697)", () => {
+  test("copies optional pointer telemetry and excludes it from shared records", () => {
+    const record = buildPromptRecord({ ...base, pointerStats });
+    expect(record.pointerStats).toEqual(pointerStats);
+    expect(record.pointerStats).not.toBe(pointerStats);
+    expect(record.pointerStats?.clickCountsBySource).not.toBe(
+      pointerStats.clickCountsBySource,
+    );
+    expect(record.pointerStats?.clickSamples).not.toBe(
+      pointerStats.clickSamples,
+    );
+    expect(
+      buildPromptRecord({ ...base, shared: true, pointerStats }),
+    ).not.toHaveProperty("pointerStats");
+    expect(buildPromptRecord(base)).not.toHaveProperty("pointerStats");
+  });
   test("builds the complete player record with commit-time context", () => {
     expect(
       buildPromptRecord({

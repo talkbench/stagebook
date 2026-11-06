@@ -38,6 +38,16 @@ export {
 } from "./ElementErrorBoundary.js";
 
 // Standalone form components — no StagebookProvider required
+export type {
+  PointerStats,
+  PointerClickSample,
+  PointerFocusSample,
+  PointerPosition,
+  PointerFieldState,
+  PointerControlType,
+  PointerSource,
+  TelemetryPointerType,
+} from "../utils/pointerTelemetry.js";
 export {
   Button,
   type ButtonProps,

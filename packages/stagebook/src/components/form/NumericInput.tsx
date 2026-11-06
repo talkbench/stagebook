@@ -8,6 +8,8 @@ import React, {
 import { useMessages, useIsRTL } from "../StagebookProvider.js";
 import { useResponseCommit } from "../hooks/useResponseCommit.js";
 import { useTypingTelemetry } from "../hooks/useTypingTelemetry.js";
+import { usePointerTelemetry } from "../hooks/usePointerTelemetry.js";
+import type { PointerStats } from "../../utils/pointerTelemetry.js";
 import { focusRingCss } from "../focusRing.js";
 import { TEXTAREA_FONT_FAMILY, TEXTAREA_METRICS } from "./TextArea.js";
 import {
@@ -38,6 +40,8 @@ export interface NumericInputProps {
   /** Current cumulative stats immediately before each existing onChange.
    * Sampling does not end focus or count a blur. */
   onTypingSnapshot?: (stats: TypingStats) => void;
+  /** Bounded pointer/focus observations; this callback does not commit a response. */
+  onPointerSnapshot?: (stats: PointerStats) => void;
   debounceDelay?: number;
   maxWait?: number;
 }
@@ -90,6 +94,7 @@ export function NumericInput({
   onChange,
   onDebugMessage,
   onTypingSnapshot,
+  onPointerSnapshot,
   debounceDelay = 2000,
   maxWait = 5000,
 }: NumericInputProps) {
@@ -102,6 +107,11 @@ export function NumericInput({
   const feedbackId = `${generatedId}-feedback`;
   const groupClass = `stagebook-number-${generatedId.replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  usePointerTelemetry(rootRef, {
+    controlType: "numeric",
+    onSnapshot: onPointerSnapshot,
+  });
   const [localEntry, setLocalEntry] = useState(entry ?? "");
   const stableEntry = useRef(entry ?? "");
   const formatPinned = useRef(
@@ -416,12 +426,14 @@ export function NumericInput({
 
   return (
     <div
+      ref={rootRef}
       dir={isRTL ? "rtl" : "ltr"}
       style={{ width: "100%", boxSizing: "border-box" }}
     >
       <div
         className={groupClass}
         data-testid="numeric-field"
+        data-pointer-field=""
         onClick={() => inputRef.current?.focus()}
         style={{
           display: "flex",

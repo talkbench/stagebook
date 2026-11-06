@@ -362,6 +362,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
       const buttonName = element.name ?? progressLabel;
       return (
         <SubmitButton
+          key={JSON.stringify([stageId ?? progressLabel, buttonName])}
           onSubmit={onSubmit}
           name={buttonName}
           buttonText={element.buttonText}
