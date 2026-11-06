@@ -98,6 +98,12 @@ function App() {
   const [mountedAssetFolders, setMountedAssetFolders] = useState<
     Record<string, string>
   >({});
+  // #833: prefix → referenced paths its mounted folder lacks. Arrives in its
+  // own message after each treatment message, once the host's checks finish;
+  // kept until then so a refresh doesn't flash the banner away and back.
+  const [missingAssets, setMissingAssets] = useState<Record<string, string[]>>(
+    {},
+  );
   // #815: the task parameter file the extension host loaded (re-read on each
   // refresh) and the chosen entry. The host owns both, so they survive a
   // webview reload; this copy updates on each treatment message.
@@ -169,6 +175,10 @@ function App() {
         );
         setContentVersion((v) => v + 1);
         setError(null);
+      } else if (msg.type === "missingAssets") {
+        setMissingAssets(
+          (msg.missingAssets as Record<string, string[]> | undefined) ?? {},
+        );
       } else if (msg.type === "error") {
         setError(msg.message);
         setTreatmentFile(null);
@@ -209,6 +219,15 @@ function App() {
     );
   }
 
+  // #833: the live banner's mapped rows are only the folders lacking files, so
+  // a wrong pick can be changed from the preview itself (a selected task skips
+  // the FieldForm, the only other place with Change… rows).
+  const foldersMissingFiles = Object.fromEntries(
+    Object.entries(mountedAssetFolders).filter(
+      ([prefix]) => (missingAssets[prefix]?.length ?? 0) > 0,
+    ),
+  );
+
   return (
     <PreviewHost
       treatmentFile={treatmentFile}
@@ -235,9 +254,12 @@ function App() {
         },
       }}
       hostNotice={
-        unmappedAssetPrefixes.length > 0 ? (
+        unmappedAssetPrefixes.length > 0 ||
+        Object.keys(foldersMissingFiles).length > 0 ? (
           <AssetMountCard
             unmapped={unmappedAssetPrefixes}
+            mounted={foldersMissingFiles}
+            missing={missingAssets}
             onPick={pickFolder}
           />
         ) : undefined
@@ -246,6 +268,7 @@ function App() {
         <AssetMountCard
           unmapped={unmappedAssetPrefixes}
           mounted={mountedAssetFolders}
+          missing={missingAssets}
           onPick={pickFolder}
           inline
         />

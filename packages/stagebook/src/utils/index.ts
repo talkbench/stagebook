@@ -17,6 +17,7 @@ export {
 export {
   getReferencedAssets,
   collectAssetPrefixes,
+  collectAssetUris,
   type ReferencedAsset,
 } from "./referencedAssets.js";
 // Kept in a separate module so its CommonMark parser can be tree-shaken from

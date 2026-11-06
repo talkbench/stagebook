@@ -1,5 +1,6 @@
 import * as path from "path";
 import { isWithinWorkspace } from "./filePaths.js";
+import { runPool } from "./runPool.js";
 
 /**
  * workspaceState key under which the VS Code preview persists the user's
@@ -135,6 +136,31 @@ export function splitAssetMounts(
  * it. Pure — testable.
  */
 export function collectTaskParameterAssetPrefixes(text: string): string[] {
+  const prefixes = new Set<string>();
+  for (const value of taskFieldStrings(text)) {
+    const prefix = ASSET_PREFIX.exec(value)?.[1];
+    // A `${…}` prefix isn't a concrete mount key.
+    if (prefix !== undefined && !prefix.includes("${")) prefixes.add(prefix);
+  }
+  return [...prefixes];
+}
+
+/**
+ * The distinct `asset://<prefix>/…` URIs in a task parameter file's field
+ * values, across every entry (#833), so the host can check each exists in its
+ * mounted folder. A URI still holding a `${…}` names no concrete file and is
+ * skipped. Same file shapes as {@link collectTaskParameterAssetPrefixes}.
+ */
+export function collectTaskParameterAssetUris(text: string): string[] {
+  const uris = new Set<string>();
+  for (const value of taskFieldStrings(text)) {
+    if (ASSET_PREFIX.test(value) && !value.includes("${")) uris.add(value);
+  }
+  return [...uris];
+}
+
+/** Every string inside the entries' `fields`, in file order. */
+function taskFieldStrings(text: string): string[] {
   let json: unknown;
   try {
     json = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
@@ -147,24 +173,77 @@ export function collectTaskParameterAssetPrefixes(text: string): string[] {
       ? json.tasks
       : [];
 
-  const prefixes = new Set<string>();
-  // Explicit stack: a deeply nested value can't overflow the call stack.
-  const pending: unknown[] = entries.map((entry) =>
-    isRecord(entry) ? entry.fields : undefined,
-  );
+  const strings: string[] = [];
+  // Explicit stack (reversed pushes keep file order): a deeply nested value
+  // can't overflow the call stack.
+  const pending: unknown[] = entries
+    .map((entry) => (isRecord(entry) ? entry.fields : undefined))
+    .reverse();
   while (pending.length > 0) {
     const value = pending.pop();
     if (typeof value === "string") {
-      const prefix = ASSET_PREFIX.exec(value)?.[1];
-      // A `${…}` prefix isn't a concrete mount key.
-      if (prefix !== undefined && !prefix.includes("${")) prefixes.add(prefix);
+      strings.push(value);
     } else if (Array.isArray(value)) {
-      for (const item of value) pending.push(item);
+      for (let i = value.length - 1; i >= 0; i--) pending.push(value[i]);
     } else if (isRecord(value)) {
-      for (const item of Object.values(value)) pending.push(item);
+      const items = Object.values(value);
+      for (let i = items.length - 1; i >= 0; i--) pending.push(items[i]);
     }
   }
-  return [...prefixes];
+  return strings;
+}
+
+/** Most distinct files {@link findMissingAssets} checks per call by default. */
+export const MAX_ASSET_CHECKS = 2000;
+
+/**
+ * Which referenced `asset://` files are absent from the folder mounted for
+ * their prefix (#833): prefix → the missing paths after the prefix, in input
+ * order. A wrong folder pick otherwise surfaces only as media that fails to
+ * load, with nothing pointing at the folder.
+ *
+ * Skips URIs whose prefix isn't mounted (the picker card already lists those),
+ * that name no file after the prefix, that still hold a `${…}`, or whose path
+ * would leave the mounted folder (`..`, either separator) — those are never
+ * probed. `isFile` does the filesystem check; a rejection counts as missing.
+ * Checks at most `limit` distinct files, a few at a time.
+ */
+export async function findMissingAssets(
+  uris: string[],
+  mountDirs: Record<string, string>,
+  isFile: (fsPath: string) => Promise<boolean>,
+  { limit = MAX_ASSET_CHECKS, concurrency = 16 } = {},
+): Promise<Record<string, string[]>> {
+  const checks: { prefix: string; rest: string; fsPath: string }[] = [];
+  const seen = new Set<string>();
+  for (const uri of uris) {
+    if (checks.length >= limit) break;
+    if (seen.has(uri) || uri.includes("${")) continue;
+    seen.add(uri);
+    const parsed = parseMountedAsset(uri, mountDirs);
+    if (!parsed || parsed.rest.replace(/[/\\]/g, "") === "") continue;
+    const fsPath = path.join(parsed.dir, parsed.rest);
+    if (!isWithinWorkspace(fsPath, parsed.dir)) continue;
+    checks.push({
+      prefix: ASSET_PREFIX.exec(uri)![1],
+      rest: parsed.rest,
+      fsPath,
+    });
+  }
+
+  const found = new Array<boolean>(checks.length).fill(false);
+  await runPool(
+    checks.map((check, i) => async () => {
+      found[i] = await isFile(check.fsPath);
+    }),
+    concurrency,
+  );
+
+  const missing: Record<string, string[]> = {};
+  checks.forEach((check, i) => {
+    if (!found[i]) (missing[check.prefix] ??= []).push(check.rest);
+  });
+  return missing;
 }
 
 // Matches stagebook's collectAssetPrefixes: case-insensitive scheme, prefix up

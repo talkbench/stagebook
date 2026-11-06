@@ -8,8 +8,10 @@ import React from "react";
 // Both buttons ask the extension to open a folder picker for that prefix.
 //
 // The live preview shows it (via PreviewHost's `hostNotice`) only while a
-// prefix is unmapped, without mapped rows; the preview keeps rendering
-// (unmapped assets show the #191 placeholder) rather than gating on the pick.
+// prefix is unmapped or a mapped folder lacks referenced files (#833); its
+// mapped rows are just those folders, each listing what wasn't found. The
+// preview keeps rendering (unmapped assets show the #191 placeholder) rather
+// than gating on the pick.
 // The FieldForm gate shows it (via `hostFormNotice`) with mapped rows too:
 // a pick outside the workspace reloads the webview back to that form.
 //
@@ -20,18 +22,25 @@ import React from "react";
 export function AssetMountCard({
   unmapped,
   mounted = {},
+  missing = {},
   onPick,
   inline = false,
 }: {
   unmapped: string[];
   /** prefix → local folder for each mapped prefix (#813). */
   mounted?: Record<string, string>;
+  /** prefix → referenced paths its folder lacks (#833). */
+  missing?: Record<string, string[]>;
   onPick: (prefix: string) => void;
   /** Boxed for a host card (the FieldForm) rather than a full-width banner. */
   inline?: boolean;
 }) {
   const mountedEntries = Object.entries(mounted);
   if (unmapped.length === 0 && mountedEntries.length === 0) return null;
+  const missingCount = mountedEntries.reduce(
+    (sum, [prefix]) => sum + (missing[prefix]?.length ?? 0),
+    0,
+  );
 
   return (
     <div
@@ -42,7 +51,11 @@ export function AssetMountCard({
     >
       <strong style={cardTitleStyle}>
         {unmapped.length === 0
-          ? "Asset folders"
+          ? missingCount === 0
+            ? "Asset folders"
+            : missingCount === 1
+              ? "1 asset file wasn't found"
+              : `${missingCount} asset files weren't found`
           : unmapped.length === 1
             ? "1 asset folder isn't mapped"
             : `${unmapped.length} asset folders aren't mapped`}
@@ -58,6 +71,9 @@ export function AssetMountCard({
         <code style={codeChipStyle}>a/b.mp4</code> from the folder chosen for{" "}
         <code style={codeChipStyle}>media</code>. Your choices are remembered
         for this workspace and are never written to the study.
+        {missingCount > 0
+          ? " Files listed under a folder aren't in it: if it's the wrong folder, change it."
+          : ""}
       </p>
       <ul style={cardListStyle}>
         {unmapped.map((prefix) => (
@@ -78,6 +94,7 @@ export function AssetMountCard({
             <span style={cardMountStyle}>
               <code style={cardPrefixStyle}>asset://{prefix}/</code>
               <span style={cardDirStyle}>{dir}</span>
+              <MissingFiles prefix={prefix} paths={missing[prefix] ?? []} />
             </span>
             <button
               type="button"
@@ -89,6 +106,31 @@ export function AssetMountCard({
             </button>
           </li>
         ))}
+      </ul>
+    </div>
+  );
+}
+
+// The first few paths a folder lacks; a long list would push the preview off
+// screen, and a handful is enough to tell a wrong folder from a stray typo.
+const MISSING_SHOWN = 5;
+
+function MissingFiles({ prefix, paths }: { prefix: string; paths: string[] }) {
+  if (paths.length === 0) return null;
+  const hidden = paths.length - MISSING_SHOWN;
+  return (
+    <div style={cardMissingStyle}>
+      <span aria-hidden="true">Not found in this folder:</span>
+      <ul
+        aria-label={`Files not found in the folder for asset://${prefix}/`}
+        style={cardMissingListStyle}
+      >
+        {paths.slice(0, MISSING_SHOWN).map((p) => (
+          <li key={p}>
+            <code style={cardMissingPathStyle}>{p}</code>
+          </li>
+        ))}
+        {hidden > 0 ? <li>and {hidden} more</li> : null}
       </ul>
     </div>
   );
@@ -194,4 +236,22 @@ const cardSecondaryButtonStyle: React.CSSProperties = {
   border: "1px solid var(--stagebook-primary, #2563eb)",
   backgroundColor: "#ffffff",
   color: "var(--stagebook-primary, #2563eb)",
+};
+
+const cardMissingStyle: React.CSSProperties = {
+  marginTop: "0.25rem",
+  fontSize: "0.75rem",
+  // amber-800: a warning, distinct from the card's blue chrome.
+  color: "#92400e",
+  overflowWrap: "anywhere",
+};
+
+const cardMissingListStyle: React.CSSProperties = {
+  margin: "0.125rem 0 0",
+  paddingLeft: "1.25rem",
+};
+
+const cardMissingPathStyle: React.CSSProperties = {
+  fontFamily: "monospace",
+  color: "inherit",
 };

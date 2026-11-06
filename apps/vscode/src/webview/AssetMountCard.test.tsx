@@ -105,4 +105,88 @@ describe("AssetMountCard (#192, #813)", () => {
     expect(container.innerHTML).toBe("");
     unmount();
   });
+
+  it("lists the files a mapped folder lacks under its Change… row (#833)", () => {
+    const onPick = vi.fn();
+    const { container, unmount } = render(
+      <AssetMountCard
+        unmapped={[]}
+        mounted={{ clips: "/data/wrong" }}
+        missing={{ clips: ["session3/a.mp4", "session3/b.mp4"] }}
+        onPick={onPick}
+      />,
+    );
+
+    expect(title(container)).toBe("2 asset files weren't found");
+    const list = container.querySelector(
+      'ul[aria-label="Files not found in the folder for asset://clips/"]',
+    );
+    expect(
+      [...(list?.querySelectorAll("li") ?? [])].map((li) => li.textContent),
+    ).toEqual(["session3/a.mp4", "session3/b.mp4"]);
+    const [change] = buttons(container);
+    expect(change.textContent).toBe("Change…");
+    act(() => change.click());
+    expect(onPick).toHaveBeenCalledWith("clips");
+    unmount();
+  });
+
+  it("caps the missing list and says how many more (#833)", () => {
+    const missing = Array.from({ length: 8 }, (_, i) => `clip${i}.mp4`);
+    const { container, unmount } = render(
+      <AssetMountCard
+        unmapped={[]}
+        mounted={{ clips: "/data/wrong" }}
+        missing={{ clips: missing }}
+        onPick={() => {}}
+      />,
+    );
+
+    expect(title(container)).toBe("8 asset files weren't found");
+    const items = [
+      ...container.querySelectorAll('ul[aria-label^="Files not found"] li'),
+    ].map((li) => li.textContent);
+    expect(items).toEqual([
+      "clip0.mp4",
+      "clip1.mp4",
+      "clip2.mp4",
+      "clip3.mp4",
+      "clip4.mp4",
+      "and 3 more",
+    ]);
+    unmount();
+  });
+
+  it("names a single missing file in the title (#833)", () => {
+    const { container, unmount } = render(
+      <AssetMountCard
+        unmapped={[]}
+        mounted={{ clips: "/data/wrong", other: "/data/other" }}
+        missing={{ clips: ["a.mp4"] }}
+        onPick={() => {}}
+      />,
+    );
+
+    expect(title(container)).toBe("1 asset file wasn't found");
+    // A folder with nothing missing gets no list.
+    expect(
+      container.querySelectorAll('ul[aria-label^="Files not found"]'),
+    ).toHaveLength(1);
+    unmount();
+  });
+
+  it("keeps the unmapped title when prefixes are unmapped too (#833)", () => {
+    const { container, unmount } = render(
+      <AssetMountCard
+        unmapped={["recordings"]}
+        mounted={{ clips: "/data/wrong" }}
+        missing={{ clips: ["a.mp4"] }}
+        onPick={() => {}}
+      />,
+    );
+
+    expect(title(container)).toBe("1 asset folder isn't mapped");
+    expect(container.textContent).toContain("a.mp4");
+    unmount();
+  });
 });
