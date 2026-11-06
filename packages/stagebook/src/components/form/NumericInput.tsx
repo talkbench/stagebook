@@ -9,6 +9,7 @@ import { useMessages, useIsRTL } from "../StagebookProvider.js";
 import { useResponseCommit } from "../hooks/useResponseCommit.js";
 import { useTypingTelemetry } from "../hooks/useTypingTelemetry.js";
 import { usePointerTelemetry } from "../hooks/usePointerTelemetry.js";
+import { useFieldTiming } from "../hooks/useFieldTiming.js";
 import type { PointerStats } from "../../utils/pointerTelemetry.js";
 import { focusRingCss } from "../focusRing.js";
 import { TEXTAREA_FONT_FAMILY, TEXTAREA_METRICS } from "./TextArea.js";
@@ -19,7 +20,11 @@ import {
 } from "../../utils/numericResponse.js";
 import { getNumericFeedback } from "../../utils/numericFeedback.js";
 import type { NumberFormat } from "../../messages/types.js";
-import type { DebugMessage, TypingStats } from "../../utils/promptTelemetry.js";
+import type {
+  DebugMessage,
+  TypingStats,
+  FieldTiming,
+} from "../../utils/promptTelemetry.js";
 
 export interface NumericInputProps {
   /** Raw restored text; omission means the participant has not answered. */
@@ -42,6 +47,10 @@ export interface NumericInputProps {
   onTypingSnapshot?: (stats: TypingStats) => void;
   /** Bounded pointer/focus observations; this callback does not commit a response. */
   onPointerSnapshot?: (stats: PointerStats) => void;
+  /** Optional host stage clock, in seconds; sampled at first focus. */
+  getElapsedTime?: () => number;
+  /** Mount-to-focus timing immediately before each existing onChange. */
+  onFieldTimingSnapshot?: (timing: FieldTiming) => void;
   debounceDelay?: number;
   maxWait?: number;
 }
@@ -95,6 +104,8 @@ export function NumericInput({
   onDebugMessage,
   onTypingSnapshot,
   onPointerSnapshot,
+  getElapsedTime,
+  onFieldTimingSnapshot,
   debounceDelay = 2000,
   maxWait = 5000,
 }: NumericInputProps) {
@@ -135,8 +146,10 @@ export function NumericInput({
     { raw: string; entry: string; selection: Selection } | undefined
   >(undefined);
   const telemetry = useTypingTelemetry(inputRef);
+  const fieldTiming = useFieldTiming(getElapsedTime);
   const commits = useResponseCommit<Response>({
     onCommit: (response) => {
+      onFieldTimingSnapshot?.(fieldTiming.snapshot());
       onTypingSnapshot?.(telemetry.snapshot());
       onChange?.(response.entry, response.numberFormat);
     },
@@ -476,7 +489,10 @@ export function NumericInput({
             .join(" ")}
           value={localEntry}
           onChange={handleChange}
-          onFocus={telemetry.onFocus}
+          onFocus={() => {
+            fieldTiming.onFocus();
+            telemetry.onFocus();
+          }}
           onBlur={handleBlur}
           onClick={telemetry.onClick}
           onKeyDown={(event) => {

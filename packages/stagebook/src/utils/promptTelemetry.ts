@@ -1,4 +1,12 @@
 /** Prompt interaction telemetry shared by browser controls and record builders. */
+export interface FieldTiming {
+  version: 1;
+  /** Monotonic mount-to-first-focus milliseconds; null when unobserved. */
+  firstFocusDelayMs: number | null;
+  /** Host stage seconds at first focus; null without a valid observation. */
+  firstFocusStageTimeElapsed: number | null;
+}
+
 export interface TypingStats extends Partial<InputStats> {
   type: "typingStats";
   totalKeystrokes: number;

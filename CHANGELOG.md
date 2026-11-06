@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add first-focus timing to existing solo text and numeric response saves
+  ([#831](https://github.com/talkbench/stagebook/issues/831)). Record the local
+  delay since field mount and the host stage time observed at first focus,
+  independently of later save time. Add no writes or timers; preserve existing
+  typing and pointer measurements.
 - Add bounded pointer and text-field focus statistics to solo text, numeric,
   radio, and checkbox response records and submit-button records
   ([#827](https://github.com/talkbench/stagebook/issues/827)). Preserve click

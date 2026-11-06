@@ -38,6 +38,7 @@ export {
 } from "./ElementErrorBoundary.js";
 
 // Standalone form components — no StagebookProvider required
+export type { FieldTiming } from "../utils/promptTelemetry.js";
 export type {
   PointerStats,
   PointerClickSample,

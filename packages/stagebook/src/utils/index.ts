@@ -39,6 +39,7 @@ export {
   type PromptRecord,
 } from "./buildPromptRecord.js";
 export type {
+  FieldTiming,
   TypingStats,
   PasteAttempt,
   DebugMessage,
