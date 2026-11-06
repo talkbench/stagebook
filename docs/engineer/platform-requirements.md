@@ -171,7 +171,7 @@ const recordCheck = checkHostRecord("discussion", savedRecord, { hostSchemas });
 
 Pass the same `hostSchemas` to `checkExpressionTypes` (third argument),
 `checkExpressionTypesWithLoader`, `validateResolvedTreatmentFile`,
-`validateTreatmentWithDiff`, and the options of `expandAndValidate` /
+`safeParseResolvedTreatmentFile`, `validateTreatmentWithDiff`, and the options of `expandAndValidate` /
 `expandAndValidateWithImports`, as applicable. The standalone CLI and VS Code
 extension use the built-in registry. A host using custom discussion metrics
 must supply its registry when validating studies; the standalone tools cannot

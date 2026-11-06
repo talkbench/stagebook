@@ -212,10 +212,19 @@ describe("resolved participant output (#821)", () => {
         ],
       },
     ],
-  ])("withholds data on %s errors", (_label, input) => {
+  ])("withholds data on %s errors", (label, input) => {
     const result = safeParseResolvedTreatmentFile(input);
     expect(result.success).toBe(false);
     expect(result.issues.length).toBeGreaterThan(0);
+    // The schema alone accepts the placeholder and expression-type inputs:
+    // the reason shows which later check withheld the data.
+    const reason = {
+      placeholder: "unresolved-placeholder",
+      "expression types": "expression-type",
+    }[label];
+    if (reason !== undefined) {
+      expect(result.issues.map((issue) => issue.reason)).toContain(reason);
+    }
     expect(result).not.toHaveProperty("data");
   });
 
@@ -241,6 +250,9 @@ describe("resolved participant output (#821)", () => {
     const previewOptions = { skipUnresolved: true, promptFiles: new Map() };
     const result = safeParseResolvedTreatmentFile(input, previewOptions);
     expect(result.success).toBe(false);
+    expect(result.issues.map((issue) => issue.reason)).toContain(
+      "unresolved-placeholder",
+    );
     expect(result).not.toHaveProperty("data");
   });
 });
