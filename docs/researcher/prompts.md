@@ -541,6 +541,52 @@ The input-type maps have fixed vocabularies and the insertion list is capped **p
 
 These measurements support investigation, not automatic bot classification. Dictation, IME, switch access, and AAC can legitimately enter text without counted keys. Browser automation can generate trusted input events, while scripts and extensions can generate untrusted ones. Neither `isTrusted` nor absent keydowns establishes whether a respondent is human. See the [input-events specification](https://www.w3.org/TR/input-events-2/) and [WebDriver actions](https://www.w3.org/TR/webdriver/#actions).
 
+### First-focus timing
+
+[#831](https://github.com/talkbench/stagebook/issues/831) adds a `fieldTiming`
+object alongside `debugMessages` for solo `openResponse` and `numericResponse`
+records. It describes the first observed focus of the current field mount.
+Shared prompts and other response types omit it. Older records also omit it;
+absence does not mean immediate focus.
+
+| Field | What it measures |
+| --- | --- |
+| `version` | `1`, identifying this measurement contract. |
+| `firstFocusDelayMs` | Milliseconds from the field's mount baseline to its first observed focus, measured with the browser's monotonic `performance.now()` clock independently of the host stage clock. `null` without observed focus or a usable baseline. |
+| `firstFocusStageTimeElapsed` | Host stage elapsed seconds sampled at that same first focus. `null` without focus, or when the stage clock is missing, invalid, or throws. |
+
+For example, this saved-record excerpt has a first focus at stage time 21.25
+seconds, 1.25 seconds after the field mounted, and a later answer save at 30
+seconds:
+
+```json
+{
+  "type": "openResponse",
+  "value": "My answer",
+  "stageTimeElapsed": 30,
+  "fieldTiming": {
+    "version": 1,
+    "firstFocusDelayMs": 1250,
+    "firstFocusStageTimeElapsed": 21.25
+  }
+}
+```
+
+The first-focus values stay unchanged through later focuses and saves. An actual
+control remount, including a new prompt or stage identity, starts a new
+measurement. An unusually early focus before layout establishes the mount
+baseline has a `null` delay. Stage clocks can jump or use a fallback, so do not
+infer this latency by subtracting stage timestamps. A mounted field may be off
+screen or unnoticed; this is not time since seeing the question or a measure of
+attention. Programmatic and assistive-technology focus count when observed, and
+the values do not establish whether a respondent is a bot.
+
+Timing accompanies existing answer saves only. Mounting or focusing creates no
+save, and there are no new timers or unmount flushes, so a focus-only visit can
+remain unsaved. Existing typing durations, epoch timestamps in pointer focus
+samples, and first-input measurements keep their earlier meanings; this adds no
+new first-input marker.
+
 ### Pointer and focus statistics
 
 [#827](https://github.com/talkbench/stagebook/issues/827) adds a `pointerStats`

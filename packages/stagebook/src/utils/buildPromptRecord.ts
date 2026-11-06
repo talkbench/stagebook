@@ -2,7 +2,7 @@ import type { MetadataType } from "../schemas/promptFile.js";
 import type { NumberFormat } from "../messages/types.js";
 import { checkResponse } from "./checkResponse.js";
 import { parseNumericEntry } from "./numericResponse.js";
-import type { DebugMessage } from "./promptTelemetry.js";
+import type { DebugMessage, FieldTiming } from "./promptTelemetry.js";
 import type { PointerStats } from "./pointerTelemetry.js";
 
 export interface BuildPromptRecordOptions {
@@ -23,6 +23,8 @@ export interface BuildPromptRecordOptions {
   debugMessages?: readonly DebugMessage[];
   /** Bounded cumulative pointer/focus snapshot, when the control supplies one. */
   pointerStats?: PointerStats;
+  /** Mount-to-first-focus timing for solo text and numeric fields. */
+  fieldTiming?: FieldTiming;
   /** Commit-time context supplied by the caller; the builder reads no clocks. */
   step?: string;
   stageTimeElapsed?: number;
@@ -40,6 +42,7 @@ export type PromptRecord = MetadataType & {
   label?: string;
   debugMessages: DebugMessage[];
   pointerStats?: PointerStats;
+  fieldTiming?: FieldTiming;
   isValid?: boolean;
   step?: string;
   stageTimeElapsed?: number;
@@ -50,7 +53,7 @@ export type PromptRecord = MetadataType & {
  * This is pure: it performs no I/O and has no React dependency. Player
  * responses carry advisory validity. Shared numeric responses also carry group
  * validity; other shared responses omit it. All shared responses omit participant
- * interaction telemetry (#668, #697, #687, #827).
+ * interaction telemetry (#668, #697, #687, #827, #831).
  */
 export function buildPromptRecord({
   metadata,
@@ -65,6 +68,7 @@ export function buildPromptRecord({
   label,
   debugMessages = [],
   pointerStats,
+  fieldTiming,
   step,
   stageTimeElapsed,
 }: BuildPromptRecordOptions): PromptRecord {
@@ -114,7 +118,7 @@ export function buildPromptRecord({
         : {}),
     };
   }
-  return {
+  const record: PromptRecord = {
     ...metadata,
     name,
     file,
@@ -130,4 +134,14 @@ export function buildPromptRecord({
     ...(step !== undefined ? { step } : {}),
     ...(stageTimeElapsed !== undefined ? { stageTimeElapsed } : {}),
   };
+  // Runtime telemetry must come from the caller, never authored metadata.
+  delete record.fieldTiming;
+  if (
+    !shared &&
+    (metadata.type === "openResponse" || metadata.type === "numericResponse") &&
+    fieldTiming !== undefined
+  ) {
+    record.fieldTiming = { ...fieldTiming };
+  }
+  return record;
 }

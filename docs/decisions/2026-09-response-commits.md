@@ -59,6 +59,26 @@ matching event evidence. Text-field state is captured before pointerdown moves
 focus. No pointer trajectories or text are stored, and existing `mouseClickCount`
 retains its earlier definition. See the [measurement definitions and limits](../researcher/prompts.md#pointer-and-focus-statistics).
 
+First-focus timing ([#831](https://github.com/talkbench/stagebook/issues/831),
+agent `q7m2vk`) follows these same commit boundaries. Solo text and numeric
+records add a flat `fieldTiming` sibling: `version: 1`, nullable
+`firstFocusDelayMs`, and nullable `firstFocusStageTimeElapsed`. The local delay
+uses `performance.now()` from control mount to first observed focus. The stage
+marker captures the host clock at that focus, never at a later save. Keeping
+these separate prevents host clock corrections or fallbacks from changing the
+measured delay. A missing or unusable clock produces a null stage marker; focus
+before the layout mount baseline produces a null delay. Both are null before
+focus.
+
+Refocusing retains the first observation; actual control remounts and new
+prompt/stage identities reset it. `onFieldTimingSnapshot` supplies a copy before
+each existing response callback, with no mount/focus saves, timers, or unmount
+flush. Shared and other response types omit it. Existing typing durations,
+epoch-based pointer focus samples, and first-input measurements remain unchanged.
+Mounting does not establish that the question was seen, and observed
+programmatic or assistive focus is included; these are observations, not a bot
+verdict. See the [measurement contract](../researcher/prompts.md#first-focus-timing).
+
 Blocked text drops also commit the current response immediately, including any
 pending typed edits, after recording the `pasteAttempt`
 ([#691](https://github.com/talkbench/stagebook/issues/691)). Canceling a drop can

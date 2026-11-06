@@ -304,15 +304,21 @@ Required inputs are `metadata`, `name`, `body`, and `responses`. Supply `value`
 for a nonnumeric response. Numeric metadata requires raw `entry` and
 `numberFormat`; the builder derives `value` itself and throws if either input
 is missing. Optional inputs are `file`, `shared` (default `false`), `label`,
-`debugMessages`, `pointerStats`, `step`, and `stageTimeElapsed`. Supply the clock
+`debugMessages`, `pointerStats`, `fieldTiming`, `step`, and `stageTimeElapsed`. Supply the clock
 and step at the commit boundary.
 The result includes metadata, `name`, `file`, `shared`, `prompt` (the body),
 `responses`, `value`, and `debugMessages`, plus supplied label and timing fields.
 Player records include computed `isValid`; shared numeric records do too.
 Supplied `pointerStats` is a sibling of `debugMessages` in solo records. Every
-shared record uses empty `debugMessages` and omits `pointerStats`; shared
+shared record uses empty `debugMessages` and omits `pointerStats` and `fieldTiming`; shared
 nonnumeric records also omit `isValid`. `responses` should be the same display
 order used by the prompt. The builder does not shuffle options.
+
+`fieldTiming` is an optional sibling snapshot for solo `openResponse` and
+`numericResponse` records only. The builder copies its flat object and omits it
+for shared or other response types even when supplied. Authored metadata cannot
+populate it. Omission preserves the legacy record shape; the builder reads no
+clock and cannot reconstruct an earlier focus from commit-time context.
 
 For numeric records, `entry` retains up to 1,000 raw characters and `numberFormat`
 records the effective separators. Anything over the 100-character parsing cap
@@ -633,8 +639,8 @@ it for `body: none` prompts.
 | `RadioGroup`    | `options`, `value`, `onChange`, `label?`, `layout?`, `flush?`                                                                                                              |
 | `CheckboxGroup` | `options`, `value`, `onChange`, `label?`, `layout?`, `flush?`                                                                                                              |
 | `Select`        | `options`, `value`, `onChange`, `label?`, `placeholder?`, `disabled?`                                                                                                      |
-| `TextArea`      | `value`, `onChange`, `rows?`, `minLength?`, `maxLength?`, `showCharacterCount?`, `onDebugMessage?`, `onTypingSnapshot?`                                                    |
-| `NumericInput`  | `entry?`, `numberFormat?`, `nextEditNumberFormat?`, `constraints?`, `prefix?`, `suffix?`, `onChange?`, `onDebugMessage?`, `onTypingSnapshot?`, `ariaLabel?`, `ariaLabelledBy?`, `ariaRequired?` |
+| `TextArea`      | `value`, `onChange`, `rows?`, `minLength?`, `maxLength?`, `showCharacterCount?`, `onDebugMessage?`, `onTypingSnapshot?`, `onFieldTimingSnapshot?`, `getElapsedTime?`                                                    |
+| `NumericInput`  | `entry?`, `numberFormat?`, `nextEditNumberFormat?`, `constraints?`, `prefix?`, `suffix?`, `onChange?`, `onDebugMessage?`, `onTypingSnapshot?`, `onFieldTimingSnapshot?`, `getElapsedTime?`, `ariaLabel?`, `ariaLabelledBy?`, `ariaRequired?` |
 | `Slider`        | `min`, `max`, `interval`, `value?`, `onChange`, `labelPts?` (parallel to `labels?`, sourced from `promptFileSchema.parse(...).sliderPoints` after #243), `labels?`         |
 | `ListSorter`    | `items`, `onChange`                                                                                                                                                        |
 | `Markdown`      | `text`, `resolveURL?`                                                                                                                                                      |
@@ -687,6 +693,38 @@ Snapshots copy the maps and sample records, so later activity cannot mutate a sn
 The native input observer runs before control validation. It can see text later rejected by `TextArea` or filtered by `NumericInput`. Conversely, a numeric `beforeinput` handler can cancel an insertion and apply an allowed subset without a native `input`; that attempt increments `beforeInputEventCount` but not character totals. Restored host values do not count as input. The fallback diff can undercount replacements of identical text when pre-edit context is missing. IME provisional replacements contribute gross edits, not counts of committed composition characters.
 
 Browser event types and payload availability differ; dictation may use `insertText` or `insertReplacementText` rather than a distinct `insertFromDictation`. Trusted events can come from browser automation, while dictation, IME, switch access, and AAC can produce input without keydowns. These fields describe observation and must not be treated as a bot verdict. See [researcher interpretation guidance](../researcher/prompts.md#input-event-statistics).
+
+**First-focus timing (#831).** `TextArea` and `NumericInput` accept optional
+`getElapsedTime?: () => number` and
+`onFieldTimingSnapshot?: (timing: FieldTiming) => void` props. `FieldTiming` is
+exported from both `stagebook` and `stagebook/components`:
+
+```typescript
+interface FieldTiming {
+  version: 1;
+  firstFocusDelayMs: number | null;
+  firstFocusStageTimeElapsed: number | null;
+}
+```
+
+The callback receives a fresh snapshot immediately before each existing
+`onChange`, including quiet-period, maximum-wait, blur, and drop commits.
+`Prompt` attaches it to solo text/numeric records. No snapshot callback or save
+is triggered by mount or focus, and no new timers or unmount flushes are added.
+
+The delay uses `performance.now()` from the layout mount baseline to the first
+observed focus. The host clock is read once at that focus, in seconds, never at
+a later snapshot or save. Both fields are `null` before focus; an unavailable,
+negative, nonfinite, or throwing host clock leaves only the stage marker `null`.
+Focus before the mount baseline is established leaves the delay `null`.
+Refocusing and callback changes preserve the first observation; an actual
+control remount, including a new prompt/stage identity, resets it.
+
+Host stage-clock jumps or fallbacks do not affect the local delay. Existing
+typing durations, epoch-based pointer focus timestamps, and first-input
+measurements are unchanged. Mounting does not establish visibility or attention,
+and observed programmatic or assistive focus counts. See the
+[record example and interpretation limits](../researcher/prompts.md#first-focus-timing).
 
 **Pointer and focus snapshots (#827).** `Button`, `RadioGroup`, `CheckboxGroup`,
 `TextArea`, and `NumericInput` accept an optional

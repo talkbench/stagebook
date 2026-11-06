@@ -12,7 +12,11 @@ import {
 } from "../../utils/numericResponse.js";
 import { getNumericFeedback } from "../../utils/numericFeedback.js";
 import { TextArea } from "../form/TextArea.js";
-import type { DebugMessage, TypingStats } from "../../utils/promptTelemetry.js";
+import type {
+  DebugMessage,
+  TypingStats,
+  FieldTiming,
+} from "../../utils/promptTelemetry.js";
 import type { PointerStats } from "../../utils/pointerTelemetry.js";
 import { useResponseCommit } from "../hooks/useResponseCommit.js";
 import { buildPromptRecord } from "../../utils/buildPromptRecord.js";
@@ -117,6 +121,10 @@ function PromptContent({
   // time, without waiting for a React state update.
   const debugMessagesRef = useRef<DebugMessage[]>([]);
   const pointerStatsRef = useRef<PointerStats | undefined>(undefined);
+  const fieldTimingRef = useRef<FieldTiming | undefined>(undefined);
+  const recordFieldTimingSnapshot = (snapshot: FieldTiming) => {
+    fieldTimingRef.current = snapshot;
+  };
   const recordPointerSnapshot = (snapshot: PointerStats) => {
     pointerStatsRef.current = snapshot;
   };
@@ -251,6 +259,7 @@ function PromptContent({
           ? { entry: newValue as string, numberFormat: format }
           : {}),
         debugMessages: debugMessagesRef.current,
+        fieldTiming: fieldTimingRef.current,
         pointerStats:
           pointerStatsRef.current?.controlType === controlType
             ? pointerStatsRef.current
@@ -436,6 +445,8 @@ function PromptContent({
           onTypingSnapshot={recordTypingSnapshot}
           onPointerSnapshot={recordPointerSnapshot}
           value={value as string | undefined}
+          getElapsedTime={getElapsedTime}
+          onFieldTimingSnapshot={recordFieldTimingSnapshot}
           rows={rows}
           showCharacterCount={!!(minLength || maxLength)}
           minLength={minLength}
@@ -467,6 +478,8 @@ function PromptContent({
           ariaLabelledBy={bodyId}
           ariaRequired={required || undefined}
           onChange={(text, format) => saveData(text, record, undefined, format)}
+          getElapsedTime={getElapsedTime}
+          onFieldTimingSnapshot={recordFieldTimingSnapshot}
           onDebugMessage={recordDebugMessage}
           onTypingSnapshot={recordTypingSnapshot}
           onPointerSnapshot={recordPointerSnapshot}
