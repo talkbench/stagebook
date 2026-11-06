@@ -10,6 +10,7 @@ interface StubPlayer {
   state: number;
   muted: boolean;
   volume: number;
+  destroyed: boolean;
   change: (state: number) => void;
 }
 
@@ -90,6 +91,7 @@ beforeEach(() => {
         state: 2,
         muted: false,
         volume: 65,
+        destroyed: false,
         change: () => {},
       };
       stub.change = (state) => {
@@ -98,18 +100,24 @@ beforeEach(() => {
       };
       players.push(stub);
       queueMicrotask(() => options.events.onReady());
+      const readLive = <T,>(read: () => T): T => {
+        if (stub.destroyed) throw new Error("Destroyed YouTube player");
+        return read();
+      };
       return {
         playVideo: () => stub.change(1),
         pauseVideo: () => stub.change(2),
         seekTo: (time: number) => {
           stub.time = time;
         },
-        getCurrentTime: () => stub.time,
-        getDuration: () => 100,
-        getPlayerState: () => stub.state,
-        isMuted: () => stub.muted,
-        getVolume: () => stub.volume,
-        destroy: () => {},
+        getCurrentTime: () => readLive(() => stub.time),
+        getDuration: () => readLive(() => 100),
+        getPlayerState: () => readLive(() => stub.state),
+        isMuted: () => readLive(() => stub.muted),
+        getVolume: () => readLive(() => stub.volume),
+        destroy: () => {
+          stub.destroyed = true;
+        },
       };
     },
   };
@@ -235,6 +243,90 @@ test("same-source backend replacement retains totals and places prior observatio
     "play",
     "pause",
   ]);
+});
+
+test.each([
+  { label: "start offset", replacement: { startAt: 5 } },
+  { label: "native controls", replacement: { controls: { seek: true } } },
+])(
+  "$label replacement flushes a pending seek before destroying the old backend",
+  async ({ replacement }) => {
+    await render();
+    change(1);
+    const old = player();
+    old.time = 10;
+    act(() => {
+      container.querySelector('[data-testid="mediaPlayer"]')!.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowRight",
+          repeat: true,
+          bubbles: true,
+        }),
+      );
+    });
+    expect(old.time).toBe(11);
+    expect(save).toHaveBeenCalledTimes(1);
+    await render(replacement);
+    expect(old.destroyed).toBe(true);
+    expect(player()).not.toBe(old);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(record().events.map((event) => event.type)).toEqual([
+      "play",
+      "seek",
+    ]);
+    expect(record().events[1]).toMatchObject({
+      type: "seek",
+      fromTime: 10,
+      videoTime: 11,
+    });
+    advance(1000);
+    expect(save).toHaveBeenCalledTimes(2);
+  },
+);
+
+test("replacement captures changed audio at the live old position while flushing a pending seek", async () => {
+  await render();
+  change(1);
+  const old = player();
+  old.time = 10;
+  act(() => {
+    container.querySelector('[data-testid="mediaPlayer"]')!.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "ArrowRight",
+        repeat: true,
+        bubbles: true,
+      }),
+    );
+  });
+  // The backend advances and changes volume between the 250ms polls.
+  old.time = 11.25;
+  old.volume = 20;
+  await render({ startAt: 5 });
+  expect(save).toHaveBeenCalledTimes(2);
+  expect(record().events).toContainEqual(
+    expect.objectContaining({
+      type: "volumechange",
+      muted: false,
+      volume: 0.2,
+      videoTime: 11.25,
+    }),
+  );
+  expect(record().events).toHaveLength(3);
+});
+
+test("a retired YouTube poll cannot sample a destroyed or replacement backend", async () => {
+  const intervals = vi.spyOn(globalThis, "setInterval");
+  await render();
+  change(1);
+  const poll = intervals.mock.calls.at(-1)![0] as () => void;
+  const old = player();
+  await render({ startAt: 5 });
+  expect(old.destroyed).toBe(true);
+  const savesBeforePoll = save.mock.calls.length;
+  // A callback already scheduled before the interval was cleared must not
+  // read its retired handle or attribute new-backend state to the old one.
+  expect(() => act(poll)).not.toThrow();
+  expect(save).toHaveBeenCalledTimes(savesBeforePoll);
 });
 
 test.each(["matching", "different-source", "malformed"] as const)(

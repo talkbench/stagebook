@@ -42,21 +42,14 @@ state change too; a `volumechange` is not necessarily a participant adjustment.
 YouTube audio sampling reuses its existing 250 ms poll; no additional polling
 loop is introduced, and changes between samples can be missed.
 
-The visibility accumulator starts on HTML `playing` or YouTube PLAYING,
-stops on waiting/buffering, seeking, pause/end/error, and backend replacement,
-and resumes on another playing report. WebKit can complete a buffered seek
-without emitting another `playing`, so `seeked` or a later `canplay` can resume
-a previously observed active interval when the media is ready, no longer
-seeking, unpaused, and not ended.
-Linux WebKit may advance while reporting only current data and emitting neither
-readiness event. In that case, an existing `timeupdate` must show advancement
-beyond the completed seek position before accounting resumes. The seek jump
-and buffering gap are not counted, and replacement elements discard that
-pending recovery evidence. No additional timer or save is needed.
-A paused or initial seek cannot establish playback. The earlier `play` event semantics
-are preserved: it can precede rendering or a stalled playback request.
-The counters therefore describe observed playback without redefining the
-historical event log or its watched ranges.
+Visibility accounting requires backend evidence of playback and excludes
+buffering, seeking, pause/end/error, and backend replacement. Resuming a prior
+active interval requires renewed playback evidence; an initial or paused seek
+cannot establish one. A `play` request alone is not evidence of rendering.
+These rules preserve the historical transport log and watched-range semantics.
+Browser event sequences and recovery guards are covered in the
+[native media-state tests](../../packages/stagebook/src/components/elements/MediaPlayer.mediaState.test.tsx)
+and [cross-browser visibility test](../../packages/stagebook/src/components/elements/MediaPlayer.visibility.ct.tsx).
 
 Durations use a monotonic clock and wall seconds, not media seconds or distinct
 coverage. `hiddenPlaybackSeconds` counts playback while the document reports

@@ -129,6 +129,34 @@ test("play snapshots actual audio settings and a volume drag rides the next paus
   expect(save).toHaveBeenCalledTimes(2);
 });
 
+test.each(["play", "pause", "removed"])(
+  "audio sampled by %s shares its timestamp and precedes it",
+  (boundary) => {
+    let clock = 0;
+    render({ getElapsedTime: () => clock++ / 1000 });
+    if (boundary !== "play") fire("play");
+    video().currentTime = 5;
+    // Native volumechange can be queued until after a synchronous save.
+    Object.defineProperty(video(), "volume", {
+      configurable: true,
+      value: 0.2,
+    });
+    if (boundary === "removed") unmount();
+    else fire(boundary);
+    const events = record().events.slice(-2);
+    expect(events.map((event) => event.type)).toEqual([
+      "volumechange",
+      boundary,
+    ]);
+    expect(events[0]).toMatchObject({
+      videoTime: events[1].videoTime,
+      stageTimeElapsed: events[1].stageTimeElapsed,
+      volume: 0.2,
+    });
+    expect(save).toHaveBeenCalledTimes(boundary === "play" ? 1 : 2);
+  },
+);
+
 test("hidden/focus wall time excludes waiting and paused time without extra saves", () => {
   render();
   fire("play");
@@ -290,6 +318,40 @@ test("buffered seek completion resumes a prior active interval even after waitin
   expect(save).toHaveBeenCalledTimes(2);
 });
 
+test.each([4, 2])(
+  "waiting before a seek preserves recovery evidence at readyState %i",
+  (readyState) => {
+    render();
+    Object.defineProperty(video(), "paused", {
+      configurable: true,
+      value: false,
+    });
+    Object.defineProperty(video(), "readyState", {
+      configurable: true,
+      value: readyState,
+    });
+    fire("play");
+    fire("playing");
+    visibility(true);
+    advance(1000);
+    fire("waiting");
+    advance(5000);
+    fire("seeking");
+    advance(5000);
+    video().currentTime = 10;
+    fire("seeked");
+    if (readyState === 2) {
+      advance(5000);
+      video().currentTime = 10.25;
+      fire("timeupdate");
+    }
+    advance(2000);
+    fire("pause");
+    expect(record().hiddenPlaybackSeconds).toBe(3);
+    expect(save).toHaveBeenCalledTimes(2);
+  },
+);
+
 test.each(["initial", "paused"])(
   "%s seek completion never invents an active interval",
   (kind) => {
@@ -305,6 +367,7 @@ test.each(["initial", "paused"])(
       });
       fire("play");
       fire("playing");
+      fire("waiting");
       fire("seeking");
       Object.defineProperty(video(), "paused", {
         configurable: true,
@@ -317,6 +380,7 @@ test.each(["initial", "paused"])(
         value: false,
       });
       fire("play");
+      fire("waiting");
       fire("seeking");
     }
     visibility(true);
@@ -329,6 +393,43 @@ test.each(["initial", "paused"])(
     expect(record().hiddenPlaybackSeconds).toBe(0);
   },
 );
+
+test("a new buffering interval cannot reuse an earlier seek position", () => {
+  render();
+  Object.defineProperty(video(), "paused", {
+    configurable: true,
+    value: false,
+  });
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 4,
+  });
+  fire("play");
+  fire("playing");
+  visibility(true);
+  advance(1000);
+  fire("seeking");
+  video().currentTime = 10;
+  fire("seeked");
+  video().currentTime = 11;
+  fire("timeupdate");
+  fire("waiting");
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 2,
+  });
+  fire("timeupdate"); // Same stalled position, beyond the old seek target.
+  advance(5000);
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 3,
+  });
+  fire("canplay");
+  advance(2000);
+  fire("pause");
+  expect(record().hiddenPlaybackSeconds).toBe(3);
+  expect(save).toHaveBeenCalledTimes(2);
+});
 
 test("seek resumption waits for canplay when seeked has only current data", () => {
   render();

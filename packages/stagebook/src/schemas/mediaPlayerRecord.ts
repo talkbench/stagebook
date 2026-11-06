@@ -27,14 +27,14 @@ export const MEDIA_STATE_EVENT_TYPES = [
 ] as const;
 export type MediaStateEventType = (typeof MEDIA_STATE_EVENT_TYPES)[number];
 
-const mediaStateEventCountsSchema = z
-  .object({
-    volumechange: nonnegativeCount,
-    fullscreenchange: nonnegativeCount,
-    enterpictureinpicture: nonnegativeCount,
-    leavepictureinpicture: nonnegativeCount,
-  })
-  .strict();
+// Strip future kinds so an older reader can restore the log while keeping its
+// dropped-count map bounded to the event kinds it knows how to record.
+const mediaStateEventCountsSchema = z.object({
+  volumechange: nonnegativeCount,
+  fullscreenchange: nonnegativeCount,
+  enterpictureinpicture: nonnegativeCount,
+  leavepictureinpicture: nonnegativeCount,
+});
 export type MediaStateEventCounts = z.infer<typeof mediaStateEventCountsSchema>;
 
 const videoEventBaseSchema = z

@@ -431,10 +431,19 @@ function MediaPlayerCore({
     resumeAfterSeekRef.current = false;
     visibilityRef.current.setPlaying(false);
   }, []);
-  const handleWaiting = useCallback(() => {
-    // A seek may buffer before seeked confirms enough data to resume.
-    visibilityRef.current.setPlaying(false);
-  }, []);
+  const handleWaiting = useCallback(
+    (event: React.SyntheticEvent<HTMLVideoElement>) => {
+      const wasPlaying = visibilityRef.current.isPlaying();
+      // Buffering can precede seeking. Preserve prior-active evidence in
+      // either event order without reusing an earlier completed seek position.
+      if (wasPlaying) seekedPositionRef.current = null;
+      resumeAfterSeekRef.current =
+        !event.currentTarget.paused &&
+        (resumeAfterSeekRef.current || wasPlaying);
+      visibilityRef.current.setPlaying(false);
+    },
+    [],
+  );
   const handleSeeking = useCallback(
     (event: React.SyntheticEvent<HTMLVideoElement>) => {
       resumeAfterSeekRef.current =
@@ -989,6 +998,7 @@ function MediaPlayerCore({
   useEffect(() => {
     if (!ytHandle) return;
     const id = setInterval(() => {
+      if (liveYtHandleRef.current !== ytHandle) return;
       const t = ytHandle.getCurrentTime();
       observeAudio();
       setCurrentTime(t);
@@ -1213,10 +1223,19 @@ function MediaPlayerCore({
         event.type === "removed" && finalAudioRef.current
           ? finalAudioRef.current
           : readAudioRef.current(),
-        () => ({
-          videoTime: positionRef.current(),
-          stageTimeElapsed: getElapsedTimeRef.current(),
-        }),
+        // Immediate saves observe audio at the transport boundary, keeping
+        // removed last even if the clock ticks while sampling. A coalesced
+        // seek can be older; newly sampled audio must keep its actual timing.
+        () =>
+          event.type === "seek"
+            ? {
+                videoTime: positionRef.current(),
+                stageTimeElapsed: getElapsedTimeRef.current(),
+              }
+            : {
+                videoTime: event.videoTime,
+                stageTimeElapsed: event.stageTimeElapsed,
+              },
       );
       const observed = mediaStateRef.current.drain();
       // A settled seek can predate queued state observations. Preserve its
@@ -2172,8 +2191,8 @@ function MediaPlayerCore({
               if (effectiveAutoplay && !initialStartRef.current.attempted)
                 startInitial(h);
             }}
-            // A destroyed player's handle must stop being polled and stop
-            // standing in for this player (the source changed or remounted).
+            // Finish sampling before teardown, then retire the old handle
+            // so it cannot be polled or stand in for the replacement player.
             onHandleGone={() => {
               visibilityRef.current.setPlaying(false);
               if (!logClosedRef.current) {

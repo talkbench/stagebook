@@ -262,9 +262,9 @@ export interface YouTubePlayerProps {
   /** See CreateYouTubePlayerOptions.hideNativeControls. */
   hideNativeControls?: boolean;
   onHandleReady: (handle: PlaybackHandle) => void;
-  /** The player behind the last handle was destroyed (unmount, or a new
-   *  videoId/startAt/hideNativeControls). Drop that handle: it must not be
-   *  read again. */
+  /** The player behind the last handle is about to be destroyed (unmount,
+   *  or a new videoId/startAt/hideNativeControls). Finish any synchronous
+   *  reads, then drop the handle: it must not be read after this returns. */
   onHandleGone?: () => void;
   onPlay: (currentTime: number) => void;
   onPause: (currentTime: number) => void;
@@ -324,8 +324,13 @@ export function YouTubePlayer({
       onAutoplayBlocked: () => onAutoplayBlockedRef.current?.(),
     });
     return () => {
-      destroy();
-      onHandleGoneRef.current?.();
+      try {
+        // The owner may need the final position/audio when flushing a
+        // pending seek. The API becomes unreadable once destroy runs.
+        onHandleGoneRef.current?.();
+      } finally {
+        destroy();
+      }
     };
     // Re-create the player when any of its creation options change.
   }, [videoId, startAt, hideNativeControls]);

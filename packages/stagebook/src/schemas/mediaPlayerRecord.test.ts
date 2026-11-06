@@ -88,6 +88,45 @@ describe("mediaPlayerRecordSchema", () => {
     ).toMatchObject(fields);
   });
 
+  it("restores playback history when a newer writer adds a dropped-event kind", () => {
+    const knownCounts = {
+      volumechange: 4,
+      fullscreenchange: 0,
+      enterpictureinpicture: 1,
+      leavepictureinpicture: 0,
+    };
+    const savedRecord = {
+      ...record,
+      events: [play, { type: "pause", videoTime: 12, stageTimeElapsed: 14 }],
+      lastVideoTime: 12,
+      watchedRanges: [[0, 12]],
+      mediaStateEventsDropped: { ...knownCounts, ratechange: 0 },
+    };
+
+    expect(mediaPlayerRecordSchema.parse(savedRecord)).toEqual({
+      ...savedRecord,
+      mediaStateEventsDropped: knownCounts,
+    });
+  });
+
+  it.each([-1, 0.5, Infinity, NaN, "1", undefined])(
+    "rejects an invalid known dropped-event count: %s",
+    (volumechange) => {
+      expect(
+        mediaPlayerRecordSchema.safeParse({
+          ...record,
+          mediaStateEventsDropped: {
+            volumechange,
+            fullscreenchange: 0,
+            enterpictureinpicture: 0,
+            leavepictureinpicture: 0,
+            ratechange: 0,
+          },
+        }).success,
+      ).toBe(false);
+    },
+  );
+
   it.each([
     { hiddenPlaybackSeconds: -1 },
     { hiddenPlaybackSeconds: Infinity },
@@ -100,15 +139,6 @@ describe("mediaPlayerRecordSchema", () => {
         fullscreenchange: 0,
         enterpictureinpicture: 0,
         leavepictureinpicture: 0,
-      },
-    },
-    {
-      mediaStateEventsDropped: {
-        volumechange: 0,
-        fullscreenchange: 0,
-        enterpictureinpicture: 0,
-        leavepictureinpicture: 0,
-        arbitrary: 1,
       },
     },
   ])("rejects malformed media totals: %j", (fields) => {
