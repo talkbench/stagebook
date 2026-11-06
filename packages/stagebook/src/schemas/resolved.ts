@@ -8,6 +8,8 @@
  * The full schemas in treatment.ts (with altTemplateContext wrappers) are
  * used for validating raw treatment files. These resolved schemas are used
  * by rendering components that only see hydrated data.
+ * Hosts use safeParseResolvedTreatmentFile to validate the filled tree and
+ * obtain the sanitized output to publish, rather than sending authoring data.
  */
 import { z } from "zod";
 import { checkExpressionTypes } from "./expressionTypes.js";
@@ -36,6 +38,8 @@ import {
   SURVEY_ELEMENT_REMOVED_MESSAGE,
   finiteSecondsSchema,
   checkDisplaySource,
+  mediaPlayerSchema,
+  timelineSchema,
 } from "./treatment.js";
 
 // Detects `${field}` placeholders that survived `fillTemplates` —
@@ -169,6 +173,7 @@ const resolvedElementBaseSchema = z.object({
     )
     .optional(),
   // mediaPlayer fields
+  playback: mediaPlayerSchema.shape.playback,
   syncToStageTime: z.boolean().optional(),
   submitOnComplete: z.boolean().optional(),
   autoplay: z.boolean().optional(),
@@ -187,6 +192,14 @@ const resolvedElementBaseSchema = z.object({
       speed: z.boolean().optional(),
     })
     .optional(),
+  // Timeline fields must survive the same projection used for participant
+  // publication. Reuse authoring declarations; these slots have no templates.
+  source: timelineSchema.shape.source.optional(),
+  selectionType: timelineSchema.shape.selectionType.optional(),
+  selectionScope: timelineSchema.shape.selectionScope,
+  multiSelect: timelineSchema.shape.multiSelect,
+  showWaveform: timelineSchema.shape.showWaveform,
+  trackLabels: timelineSchema.shape.trackLabels,
 });
 
 // Post-fill validation contract (#398). After `fillTemplates`, the
@@ -363,6 +376,7 @@ type _ResolvedDiscussionNarrowed = AssertTrue<
 
 export const resolvedStageSchema = z.object({
   name: nameSchema,
+  conditions: resolvedConditionsSchema,
   discussion: resolvedDiscussionSchema.optional(),
   duration: durationSchema,
   elements: z.array(resolvedElementSchema).nonempty(),
@@ -468,7 +482,8 @@ export type ResolvedTreatmentType = z.infer<typeof resolvedTreatmentSchema>;
 // `treatmentFileSchema` in treatment.ts is the pre-fill schema —
 // every stringly field accepts `${field}` placeholders. After
 // `fillTemplates` has run (host bound the placeholders), call
-// `validateResolvedTreatmentFile(filled)` to catch leaks that
+// `safeParseResolvedTreatmentFile(filled)` before publication, or the
+// diagnostics-only `validateResolvedTreatmentFile(filled)`, to catch leaks that
 // would surface to participants:
 //
 //   - prompt.file values that lack `.prompt.md` (mirror of the
@@ -525,9 +540,8 @@ const resolvedIntroSequenceSchema = z.object({
 
 const resolvedTreatmentFileBaseSchema = z.object({
   imports: z.array(z.string().min(1)).optional(),
-  // `templates:` is stripped by `fillTemplates` so it's not in the
-  // post-fill shape. Keep the field permissively typed in case a
-  // caller passes a not-yet-stripped tree.
+  // Tolerate authoring lookup tables in input, but discard them from output
+  // below. Definitions can contain researcher notes and unbound fields.
   templates: z.array(z.unknown()).optional(),
   introSequences: z.array(resolvedIntroSequenceSchema).optional(),
   treatments: z.array(resolvedTreatmentSchema).optional(),
@@ -547,8 +561,8 @@ const resolvedTreatmentFileBaseSchema = z.object({
 // orchestrator matches issues on exact normalized text — an embedded
 // index would unpair the same literal duplicate across passes (#499
 // advisory-suffix bug class).
-export const resolvedTreatmentFileSchema =
-  resolvedTreatmentFileBaseSchema.superRefine((data, ctx) => {
+export const resolvedTreatmentFileSchema = resolvedTreatmentFileBaseSchema
+  .superRefine((data, ctx) => {
     if (!Array.isArray(data.consent)) return;
     const seen = new Set<string>();
     data.consent.forEach((arm, armIdx) => {
@@ -572,7 +586,10 @@ export const resolvedTreatmentFileSchema =
         message: `Consent arm name "${displayName}" is already used by an earlier consent arm. Arm names must be unique within \`consent:\` — the host selects an arm by name.`,
       });
     });
-  });
+  })
+  .transform(
+    ({ imports: _imports, templates: _templates, ...runtime }) => runtime,
+  );
 export type ResolvedTreatmentFileType = z.infer<
   typeof resolvedTreatmentFileSchema
 >;
@@ -619,6 +636,41 @@ export function validateResolvedTreatmentFile(
   success: boolean;
   issues: ValidateResolvedIssue[];
 } {
+  const { issues } = checkResolvedTreatmentFile(filled, options);
+  return { success: issues.length === 0, issues };
+}
+
+export type SafeParseResolvedTreatmentFileResult =
+  | { success: true; data: ResolvedTreatmentFileType; issues: [] }
+  | { success: false; issues: ValidateResolvedIssue[] };
+
+/**
+ * Strict post-fill validation and participant projection. Publish only `data`
+ * from a successful result, never the original input. Authoring notes and
+ * file-level imports/templates are removed without mutating the input.
+ *
+ * Unlike the diagnostics-only validator, this never permits unresolved fields,
+ * even if an untyped caller supplies `skipUnresolved`. Authoring previews should
+ * continue using validateResolvedTreatmentFile instead.
+ */
+export function safeParseResolvedTreatmentFile(
+  filled: unknown,
+  options: Omit<ValidateResolvedOptions, "skipUnresolved"> = {},
+): SafeParseResolvedTreatmentFileResult {
+  const { result, issues } = checkResolvedTreatmentFile(filled, {
+    ...options,
+    skipUnresolved: false,
+  });
+  if (!result.success || issues.length > 0) {
+    return { success: false, issues };
+  }
+  return { success: true, data: result.data, issues: [] };
+}
+
+function checkResolvedTreatmentFile(
+  filled: unknown,
+  options: ValidateResolvedOptions,
+) {
   const result = resolvedTreatmentFileSchema.safeParse(filled);
   let issues: ValidateResolvedIssue[] = result.success
     ? []
@@ -685,7 +737,7 @@ export function validateResolvedTreatmentFile(
   if (options.skipUnresolved) {
     issues = issues.filter((i) => i.reason !== "unresolved-placeholder");
   }
-  return { success: issues.length === 0, issues };
+  return { result, issues };
 }
 
 // ----------------------------------------------------------------

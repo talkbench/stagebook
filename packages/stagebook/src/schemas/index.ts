@@ -205,6 +205,8 @@ export {
   resolvedConditionSchema,
   resolvedConditionsSchema,
   validateResolvedTreatmentFile,
+  safeParseResolvedTreatmentFile,
+  type SafeParseResolvedTreatmentFileResult,
   type ResolvedDiscussionType,
   type ResolvedElementType,
   type ResolvedStageType,

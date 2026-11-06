@@ -81,7 +81,7 @@ run("npm", ["ls", "stagebook", "zod", "--all"]);
 // A real .mts and .cts consumer composes the exported schemas with its own
 // Zod import. skipLibCheck=false also checks both declaration export targets.
 const composition = `import { z } from "zod";
-import { conditionSchema, treatmentFileSchema, promptFileSchema, promptSchema } from "stagebook";
+import { conditionSchema, treatmentFileSchema, promptFileSchema, promptSchema, safeParseResolvedTreatmentFile } from "stagebook";
 import type { StageConfig, StagebookContext } from "stagebook/components";
 import type { ViewerProps } from "stagebook/viewer";
 import type { ParseResult } from "stagebook/validate";
@@ -89,6 +89,8 @@ import type { DispatchResult } from "stagebook/dispatch";
 import type { ProbeReport } from "stagebook/audio-probe";
 
 const acceptsConsumerSchema = <T extends z.ZodType>(schema: T): T => schema;
+const runtimeResult = safeParseResolvedTreatmentFile({});
+export const runtimeData = runtimeResult.success ? runtimeResult.data : undefined;
 export const envelope = z.object({
   condition: acceptsConsumerSchema(conditionSchema),
   treatment: acceptsConsumerSchema(treatmentFileSchema),
@@ -150,6 +152,13 @@ for (const [name, api] of [["esm", esm], ["cjs", cjs]]) {
   const parsed = composed.parse({ treatment, prompt, condition });
   assert.equal(parsed.treatment.treatments[0].name, "packed");
   assert.equal(parsed.prompt.body.trim(), "Hello");
+  const withNotes = structuredClone(treatment);
+  withNotes.treatments[0].notes = "researcher-only";
+  withNotes.templates = [{ notes: "researcher-only" }];
+  const runtime = api.safeParseResolvedTreatmentFile(withNotes);
+  assert.equal(runtime.success, true, name + " strict participant parser");
+  assert.equal(JSON.stringify(runtime.data).includes("researcher-only"), false);
+  assert.equal(withNotes.treatments[0].notes, "researcher-only", "input is unchanged");
   // Zod 4.4 changed missing-key handling for unknown/any fields. These
   // deferred values must preserve the authored field presence on both peers.
   for (const [schema, input] of [

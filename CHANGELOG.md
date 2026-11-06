@@ -9,6 +9,15 @@
   `collectAssetUris()`, which lists a treatment's `asset://` file references.
 - VS Code preview: change a mapped asset folder from the **Fill in remaining
   fields** screen ([#813](https://github.com/talkbench/stagebook/issues/813)).
+- Keep stage `conditions`, mediaPlayer `playback` and timeline settings in
+  resolved-schema output, and add `safeParseResolvedTreatmentFile()`, which
+  returns participant-safe `data` only after the schema, placeholder and
+  expression-type checks all pass
+  ([#821](https://github.com/talkbench/stagebook/issues/821)). Hosts should
+  publish its `data`: it omits authoring `notes`, `imports` and `templates`.
+  **Type change:** `resolvedTreatmentFileSchema` is now a Zod pipe (no
+  `.shape`, `.extend` or `.merge`), and `ResolvedTreatmentFileType` no longer
+  has `imports` or `templates`. `validateResolvedTreatmentFile()` is unchanged.
 - Add first-focus timing to existing solo text and numeric response saves
   ([#831](https://github.com/talkbench/stagebook/issues/831)). Record the local
   delay since field mount and the host stage time observed at first focus,
