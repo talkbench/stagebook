@@ -379,6 +379,13 @@ for (const shared of [false, true]) {
         body: parsed.body,
         responses: parsed.responseItems,
         value: "committed answer",
+        fieldTiming: shared
+          ? undefined
+          : {
+              version: 1,
+              firstFocusDelayMs: null,
+              firstFocusStageTimeElapsed: null,
+            },
         pointerStats: shared
           ? undefined
           : {
