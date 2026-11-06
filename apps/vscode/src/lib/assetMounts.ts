@@ -218,17 +218,23 @@ export async function findMissingAssets(
   const seen = new Set<string>();
   for (const uri of uris) {
     if (checks.length >= limit) break;
-    if (seen.has(uri) || uri.includes("${")) continue;
-    seen.add(uri);
+    if (uri.includes("${")) continue;
     const parsed = parseMountedAsset(uri, mountDirs);
-    if (!parsed || parsed.rest.replace(/[/\\]/g, "") === "") continue;
-    const fsPath = path.join(parsed.dir, parsed.rest);
+    if (!parsed) continue;
+    // Normalize as the webview's resolveAssetUrl does (drop empty and `.`
+    // segments), so the file checked is the file it loads, and differently
+    // spelled URIs for one file are checked and listed once.
+    const rest = parsed.rest
+      .split("/")
+      .filter((seg) => seg !== "" && seg !== ".")
+      .join("/");
+    if (rest === "") continue;
+    const fsPath = path.join(parsed.dir, rest);
+    if (seen.has(fsPath)) continue;
+    seen.add(fsPath);
+    // Backstop: parseMountedAsset already rejects `..` segments.
     if (!isWithinWorkspace(fsPath, parsed.dir)) continue;
-    checks.push({
-      prefix: ASSET_PREFIX.exec(uri)![1],
-      rest: parsed.rest,
-      fsPath,
-    });
+    checks.push({ prefix: ASSET_PREFIX.exec(uri)![1], rest, fsPath });
   }
 
   const found = new Array<boolean>(checks.length).fill(false);

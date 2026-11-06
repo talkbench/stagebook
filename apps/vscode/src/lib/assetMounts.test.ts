@@ -271,6 +271,25 @@ describe("collectTaskParameterAssetUris (#833)", () => {
     ]);
   });
 
+  it("keeps file order across fields and entries", () => {
+    const text = JSON.stringify([
+      {
+        treatment: "t",
+        fields: { first: "asset://c/b.mp4", second: "asset://c/a.mp4" },
+      },
+      {
+        treatment: "t",
+        fields: { list: ["asset://c/d.mp4", "asset://c/c.mp4"] },
+      },
+    ]);
+    expect(collectTaskParameterAssetUris(text)).toEqual([
+      "asset://c/b.mp4",
+      "asset://c/a.mp4",
+      "asset://c/d.mp4",
+      "asset://c/c.mp4",
+    ]);
+  });
+
   it("returns nothing for text that isn't a task file", () => {
     expect(collectTaskParameterAssetUris("[{")).toEqual([]);
   });
@@ -286,6 +305,12 @@ describe("findMissingAssets (#833 — files absent from a mounted folder)", () =
   const isFile = (p: string) => Promise.resolve(present.has(p));
 
   it("lists the files a mounted folder lacks, by prefix, in input order", async () => {
+    // Earlier checks finish later, so completion order isn't input order.
+    let pending = 5;
+    const slowFirst = (p: string) =>
+      new Promise<boolean>((resolve) =>
+        setTimeout(() => resolve(present.has(p)), pending-- * 5),
+      );
     await expect(
       findMissingAssets(
         [
@@ -296,7 +321,8 @@ describe("findMissingAssets (#833 — files absent from a mounted folder)", () =
           "asset://clips/y.mp4",
         ],
         mounts,
-        isFile,
+        slowFirst,
+        { concurrency: 5 },
       ),
     ).resolves.toEqual({
       clips: ["z.mp4", "y.mp4"],
@@ -369,5 +395,47 @@ describe("findMissingAssets (#833 — files absent from a mounted folder)", () =
     );
     expect(calls).toBe(4);
     expect(missing).toEqual({ clips: ["0.mp4", "1.mp4", "2.mp4", "3.mp4"] });
+  });
+
+  it("checks each file once, however its URI is spelled", async () => {
+    const seen: string[] = [];
+    const spy = (p: string) => {
+      seen.push(p);
+      return Promise.resolve(false);
+    };
+    const missing = await findMissingAssets(
+      [
+        "asset://clips/a.mp4",
+        "ASSET://clips/a.mp4",
+        "asset://clips/./a.mp4",
+        "asset://clips//a.mp4/",
+      ],
+      mounts,
+      spy,
+    );
+    expect(seen).toEqual([path.join(clips, "a.mp4")]);
+    expect(missing).toEqual({ clips: ["a.mp4"] });
+  });
+
+  it("probes the file the webview loads, ignoring a trailing slash", async () => {
+    await expect(
+      findMissingAssets(["asset://clips/sub/b.mp4/"], mounts, isFile),
+    ).resolves.toEqual({});
+  });
+
+  it("doesn't count skipped URIs toward the limit", async () => {
+    let calls = 0;
+    const counting = () => {
+      calls += 1;
+      return Promise.resolve(false);
+    };
+    const missing = await findMissingAssets(
+      ["asset://unmapped/a.mp4", "asset://clips/../x", "asset://clips/x.mp4"],
+      mounts,
+      counting,
+      { limit: 1 },
+    );
+    expect(calls).toBe(1);
+    expect(missing).toEqual({ clips: ["x.mp4"] });
   });
 });

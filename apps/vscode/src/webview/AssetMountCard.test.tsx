@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import React, { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { AssetMountCard } from "./AssetMountCard.js";
+import { AssetMountCard, currentMissingAssets } from "./AssetMountCard.js";
 
 beforeAll(() => {
   (
@@ -188,5 +188,53 @@ describe("AssetMountCard (#192, #813)", () => {
     expect(title(container)).toBe("1 asset folder isn't mapped");
     expect(container.textContent).toContain("a.mp4");
     unmount();
+  });
+
+  it("doesn't count missing files for a prefix that isn't mounted (#833)", () => {
+    const { container, unmount } = render(
+      <AssetMountCard
+        unmapped={[]}
+        mounted={{ clips: "/data/clips" }}
+        missing={{ ghost: ["x.mp4"] }}
+        onPick={() => {}}
+      />,
+    );
+
+    expect(title(container)).toBe("Asset folders");
+    expect(container.textContent).not.toContain("x.mp4");
+    unmount();
+  });
+});
+
+describe("currentMissingAssets (#833)", () => {
+  it("keeps the lists checked against each prefix's current folder", () => {
+    expect(
+      currentMissingAssets(
+        { clips: ["a.mp4"], captions: ["a.vtt"] },
+        { clips: "/data/clips", captions: "/data/captions" },
+        { clips: "/data/clips", captions: "/data/captions" },
+      ),
+    ).toEqual({ clips: ["a.mp4"], captions: ["a.vtt"] });
+  });
+
+  it("drops a list checked against a folder that has since changed", () => {
+    // Right after Change…, until the new check lands.
+    expect(
+      currentMissingAssets(
+        { clips: ["a.mp4"] },
+        { clips: "/data/wrong" },
+        { clips: "/data/right" },
+      ),
+    ).toEqual({});
+  });
+
+  it("drops unmounted prefixes and empty lists", () => {
+    expect(
+      currentMissingAssets(
+        { gone: ["a.mp4"], clips: [] },
+        { gone: "/data/gone", clips: "/data/clips" },
+        { clips: "/data/clips" },
+      ),
+    ).toEqual({});
   });
 });

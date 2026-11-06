@@ -4,7 +4,7 @@ import type { TreatmentFileType } from "stagebook";
 import { PreviewHost, type TaskParameterSource } from "stagebook/viewer";
 import stagebookStyles from "stagebook/styles";
 import { buildAssetURL } from "./resolveAsset.js";
-import { AssetMountCard } from "./AssetMountCard.js";
+import { AssetMountCard, currentMissingAssets } from "./AssetMountCard.js";
 
 // Declare the VS Code API injected by the webview
 declare function acquireVsCodeApi(): {
@@ -101,9 +101,10 @@ function App() {
   // #833: prefix → referenced paths its mounted folder lacks. Arrives in its
   // own message after each treatment message, once the host's checks finish;
   // kept until then so a refresh doesn't flash the banner away and back.
-  const [missingAssets, setMissingAssets] = useState<Record<string, string[]>>(
-    {},
-  );
+  const [missingAssets, setMissingAssets] = useState<{
+    missing: Record<string, string[]>;
+    checkedFolders: Record<string, string>;
+  }>({ missing: {}, checkedFolders: {} });
   // #815: the task parameter file the extension host loaded (re-read on each
   // refresh) and the chosen entry. The host owns both, so they survive a
   // webview reload; this copy updates on each treatment message.
@@ -176,9 +177,12 @@ function App() {
         setContentVersion((v) => v + 1);
         setError(null);
       } else if (msg.type === "missingAssets") {
-        setMissingAssets(
-          (msg.missingAssets as Record<string, string[]> | undefined) ?? {},
-        );
+        setMissingAssets({
+          missing:
+            (msg.missingAssets as Record<string, string[]> | undefined) ?? {},
+          checkedFolders:
+            (msg.checkedFolders as Record<string, string> | undefined) ?? {},
+        });
       } else if (msg.type === "error") {
         setError(msg.message);
         setTreatmentFile(null);
@@ -222,10 +226,13 @@ function App() {
   // #833: the live banner's mapped rows are only the folders lacking files, so
   // a wrong pick can be changed from the preview itself (a selected task skips
   // the FieldForm, the only other place with Change… rows).
+  const missing = currentMissingAssets(
+    missingAssets.missing,
+    missingAssets.checkedFolders,
+    mountedAssetFolders,
+  );
   const foldersMissingFiles = Object.fromEntries(
-    Object.entries(mountedAssetFolders).filter(
-      ([prefix]) => (missingAssets[prefix]?.length ?? 0) > 0,
-    ),
+    Object.entries(mountedAssetFolders).filter(([prefix]) => prefix in missing),
   );
 
   return (
@@ -259,7 +266,7 @@ function App() {
           <AssetMountCard
             unmapped={unmappedAssetPrefixes}
             mounted={foldersMissingFiles}
-            missing={missingAssets}
+            missing={missing}
             onPick={pickFolder}
           />
         ) : undefined
@@ -268,7 +275,7 @@ function App() {
         <AssetMountCard
           unmapped={unmappedAssetPrefixes}
           mounted={mountedAssetFolders}
-          missing={missingAssets}
+          missing={missing}
           onPick={pickFolder}
           inline
         />

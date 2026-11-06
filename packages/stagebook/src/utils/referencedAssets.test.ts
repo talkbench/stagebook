@@ -552,6 +552,13 @@ describe("collectAssetUris (#833)", () => {
     expect(collectAssetUris(tree)).toEqual([]);
   });
 
+  test("matches the scheme case-insensitively, keeping the URI as written", () => {
+    const tree = treatmentWithElements([
+      { type: "image", file: "ASSET://Diagrams/flow.png" },
+    ]);
+    expect(collectAssetUris(tree)).toEqual(["ASSET://Diagrams/flow.png"]);
+  });
+
   test("ignores asset:// strings outside file fields", () => {
     const tree = treatmentWithElements([
       { type: "display", reference: "asset://clips/a.mp4" },

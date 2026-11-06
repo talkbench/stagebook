@@ -1222,8 +1222,10 @@ export function activate(context: vscode.ExtensionContext): void {
   // #833: check that each statically known asset:// file exists in its
   // mounted folder, so a wrong pick is named in the banner instead of showing
   // up only as media that fails to load. Sent as its own message after the
-  // treatment one (the stats are async); each post bumps the generation, so
-  // a slower, older check can't overwrite a newer result.
+  // treatment one (the stats are async); each post and each webview reset
+  // bumps the generation, so a slower, older check can't overwrite a newer
+  // result or reach a fresh webview. Superseded checks still run to the end:
+  // at most MAX_ASSET_CHECKS stats each, a few at a time.
   let missingAssetsGeneration = 0;
   const postMissingAssets = async (
     panel: vscode.WebviewPanel,
@@ -1243,7 +1245,13 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
     try {
-      await panel.webview.postMessage({ type: "missingAssets", missingAssets });
+      // The folders checked travel with the result, so the webview can drop a
+      // list whose folder has changed since (#833).
+      await panel.webview.postMessage({
+        type: "missingAssets",
+        missingAssets,
+        checkedFolders: mountDirs,
+      });
     } catch {
       // The panel closed while the check ran.
     }
@@ -1275,6 +1283,8 @@ export function activate(context: vscode.ExtensionContext): void {
       ...panel.webview.options,
       localResourceRoots: desired,
     };
+    // A reload resets the webview: drop any check still running for it.
+    missingAssetsGeneration++;
     panel.webview.html = getWebviewContent(panel.webview, context.extensionUri);
   };
 
@@ -1564,6 +1574,9 @@ export function activate(context: vscode.ExtensionContext): void {
         });
       }
 
+      // A new preview resets the webview: drop any check still running for
+      // the previous treatment (#833).
+      missingAssetsGeneration++;
       previewPanel.webview.html = getWebviewContent(
         previewPanel.webview,
         context.extensionUri,

@@ -111,6 +111,31 @@ export function AssetMountCard({
   );
 }
 
+/**
+ * The missing-file lists that still describe each prefix's current folder
+ * (#833). A check result names the folders it ran against; until a newer one
+ * lands, a prefix whose folder has since changed (right after Change…) or
+ * that is no longer mounted shows no list rather than the old folder's.
+ */
+export function currentMissingAssets(
+  missing: Record<string, string[]>,
+  checkedFolders: Record<string, string>,
+  mounted: Record<string, string>,
+): Record<string, string[]> {
+  const current: Record<string, string[]> = {};
+  for (const [prefix, paths] of Object.entries(missing)) {
+    const dir = mounted[prefix];
+    if (
+      paths.length > 0 &&
+      dir !== undefined &&
+      checkedFolders[prefix] === dir
+    ) {
+      current[prefix] = paths;
+    }
+  }
+  return current;
+}
+
 // The first few paths a folder lacks; a long list would push the preview off
 // screen, and a handful is enough to tell a wrong folder from a stray typo.
 const MISSING_SHOWN = 5;
