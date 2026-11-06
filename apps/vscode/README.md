@@ -42,10 +42,12 @@ To see the real media while authoring, **mount each prefix to a local folder**:
 - To re-point a folder you picked by mistake, use **Change…** next to it on the
   **Fill in remaining fields** screen. That screen appears before the preview
   when the treatment has `${field}` placeholders; once you've submitted it,
-  re-run **Stagebook: Preview Treatment** to get back to it. Or run
-  **`Stagebook: Configure Asset Folders`** from the Command Palette, which can
-  also clear all mounts. Either way the folder picker opens at the current
-  folder.
+  re-run **Stagebook: Preview Treatment** to get back to it. While a task from
+  a [task file](#previewing-a-task-from-a-task-file) is selected, its fields
+  are already filled, so that screen is skipped. Run
+  **`Stagebook: Configure Asset Folders`** from the Command Palette instead; it
+  also works any time, and can clear all mounts. Either way the folder picker
+  opens at the current folder.
 
 A mounted prefix resolves everywhere it's used: `<video>`/`<img>`/`<audio>`,
 caption tracks, `asset://` prompt files, and `asset://` images inside a prompt
