@@ -322,6 +322,8 @@ test.each(["initial", "paused"])(
     visibility(true);
     fire("seeked");
     fire("canplay");
+    video().currentTime = 5;
+    fire("timeupdate");
     advance(5000);
     fire("pause");
     expect(record().hiddenPlaybackSeconds).toBe(0);
@@ -427,4 +429,119 @@ test("pausing a pending seek prevents a later canplay from reviving its interval
   fire("pause");
   expect(record().hiddenPlaybackSeconds).toBe(1);
   expect(save).toHaveBeenCalledTimes(4);
+});
+
+test("advancing media time resumes a completed seek without playing or canplay", () => {
+  render();
+  Object.defineProperty(video(), "paused", {
+    configurable: true,
+    value: false,
+  });
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 4,
+  });
+  fire("play");
+  fire("playing");
+  visibility(true);
+  advance(1000);
+  fire("seeking");
+  fire("waiting");
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 2,
+  });
+  video().currentTime = 10;
+  fire("seeked");
+  fire("timeupdate"); // Merely reaching the seek target is not playback.
+  advance(10000);
+  video().currentTime = 10.25;
+  fire("timeupdate");
+  advance(2000);
+  fire("pause");
+  expect(record().hiddenPlaybackSeconds).toBe(3);
+  expect(save).toHaveBeenCalledTimes(2);
+});
+
+test("seek jumps and canceled playback cannot supply advancing-playback evidence", () => {
+  render();
+  Object.defineProperty(video(), "paused", {
+    configurable: true,
+    value: false,
+  });
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 2,
+  });
+  fire("play");
+  fire("playing");
+  visibility(true);
+  advance(1000);
+  fire("seeking");
+  video().currentTime = 10;
+  fire("timeupdate"); // No completed seek yet.
+  advance(10000);
+  fire("seeked");
+  Object.defineProperty(video(), "seeking", {
+    configurable: true,
+    value: true,
+  });
+  video().currentTime = 20;
+  fire("timeupdate"); // A second seek jump is not playback either.
+  fire("seeking");
+  advance(10000);
+  Object.defineProperty(video(), "seeking", {
+    configurable: true,
+    value: false,
+  });
+  fire("seeked");
+  fire("pause");
+  fire("play"); // A new request cannot revive the canceled seek interval.
+  video().currentTime = 20.25;
+  fire("timeupdate");
+  advance(2000);
+  fire("pause");
+  expect(record().hiddenPlaybackSeconds).toBe(1);
+  expect(save).toHaveBeenCalledTimes(4);
+});
+
+test("a replacement native element cannot inherit pending seek recovery", () => {
+  render();
+  Object.defineProperty(video(), "paused", {
+    configurable: true,
+    value: false,
+  });
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 4,
+  });
+  fire("play");
+  fire("playing");
+  visibility(true);
+  advance(1000);
+  fire("seeking");
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 2,
+  });
+  video().currentTime = 10;
+  fire("seeked");
+  const previousVideo = video();
+  render({ playVideo: false });
+  expect(video()).not.toBe(previousVideo);
+  Object.defineProperty(video(), "paused", {
+    configurable: true,
+    value: false,
+  });
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 4,
+  });
+  fire("play");
+  fire("canplay");
+  video().currentTime = 20;
+  fire("timeupdate");
+  advance(2000);
+  fire("pause");
+  expect(record().hiddenPlaybackSeconds).toBe(1);
 });

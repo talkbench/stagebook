@@ -49,15 +49,31 @@ test("native playback resumes visibility accounting after a buffered seek", asyn
     .toBeGreaterThan(3);
   await video.evaluate((element: HTMLVideoElement) => {
     let seeking = false;
+    let seekedPosition: number | null = null;
     const events: Array<{
       type: string;
       readyState: number;
       seeking: boolean;
     }> = [];
     element.dataset.seekEvents = "[]";
-    for (const type of ["seeking", "seeked", "waiting", "canplay", "playing"]) {
+    for (const type of [
+      "seeking",
+      "seeked",
+      "waiting",
+      "canplay",
+      "playing",
+      "timeupdate",
+    ]) {
       element.addEventListener(type, () => {
         if (type === "seeking") seeking = true;
+        if (type === "seeked") seekedPosition = element.currentTime;
+        if (
+          type === "timeupdate" &&
+          seekedPosition !== null &&
+          !element.seeking &&
+          element.currentTime > seekedPosition
+        )
+          element.dataset.advancedAfterSeek = "true";
         if (seeking) {
           events.push({
             type,
@@ -74,13 +90,11 @@ test("native playback resumes visibility accounting after a buffered seek", asyn
   await expect
     .poll(() => video.getAttribute("data-seek-events"))
     .toContain("seeked");
-  // WebKit can resume a buffered seek without another playing event. Verify
-  // advancing media time rather than assuming one engine's event sequence.
+  // WebKit can resume without playing/canplay. Wait for the native timeupdate
+  // observation of advancing media, not only a getter between queued events.
   await expect
-    .poll(() =>
-      video.evaluate((element: HTMLVideoElement) => element.currentTime),
-    )
-    .toBeGreaterThan(2.1);
+    .poll(() => video.getAttribute("data-advanced-after-seek"))
+    .toBe("true");
   expect((await readSaves()).length).toBe(1);
   await page.evaluate(() => {
     document.documentElement.dataset.visibilityClock = "5000";

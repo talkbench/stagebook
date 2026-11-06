@@ -311,6 +311,7 @@ function MediaPlayerCore({
   );
   const visibilityRef = useRef(initialVisibility);
   const resumeAfterSeekRef = useRef(false);
+  const seekedPositionRef = useRef<number | null>(null);
   const [initialMediaState] = useState(() =>
     createMediaStateTelemetry(
       restoredRecord?.events,
@@ -439,6 +440,7 @@ function MediaPlayerCore({
       resumeAfterSeekRef.current =
         !event.currentTarget.paused &&
         (resumeAfterSeekRef.current || visibilityRef.current.isPlaying());
+      seekedPositionRef.current = null;
       visibilityRef.current.setPlaying(false);
     },
     [],
@@ -446,6 +448,8 @@ function MediaPlayerCore({
   const resumeAfterSeek = useCallback(
     (event: React.SyntheticEvent<HTMLVideoElement>) => {
       const video = event.currentTarget;
+      if (resumeAfterSeekRef.current && event.type === "seeked")
+        seekedPositionRef.current = video.currentTime;
       // WebKit can resume buffered media without another playing event. Data
       // may become ready only after seeked, so retain prior-active evidence for
       // canplay as well. Neither event may resume an unfinished or paused seek.
@@ -1352,7 +1356,7 @@ function MediaPlayerCore({
     video?.addEventListener("enterpictureinpicture", enterPictureInPicture);
     video?.addEventListener("leavepictureinpicture", leavePictureInPicture);
     return () => {
-      visibilityRef.current.setPlaying(false);
+      stopObservedPlayback();
       doc.removeEventListener("visibilitychange", visibility);
       doc.removeEventListener("fullscreenchange", fullscreenChange);
       win?.removeEventListener("blur", focus);
@@ -1366,7 +1370,7 @@ function MediaPlayerCore({
         leavePictureInPicture,
       );
     };
-  }, [url, youtubeVideoId, urlIsUnsafe, playVideo]);
+  }, [url, youtubeVideoId, urlIsUnsafe, playVideo, stopObservedPlayback]);
   useEffect(() => {
     // Reopened by StrictMode's simulated remount.
     logClosedRef.current = false;
@@ -1530,7 +1534,23 @@ function MediaPlayerCore({
 
   const handleTimeUpdate = useCallback(
     (e: React.SyntheticEvent<HTMLVideoElement>) => {
-      const { currentTime: ct } = e.currentTarget;
+      const video = e.currentTarget;
+      const { currentTime: ct } = video;
+      // Linux WebKit can advance after seeked while remaining at
+      // HAVE_CURRENT_DATA, without playing/canplay. Only actual advancement
+      // beyond the completed seek position can resume that prior interval.
+      if (
+        resumeAfterSeekRef.current &&
+        seekedPositionRef.current !== null &&
+        ct > seekedPositionRef.current &&
+        !video.paused &&
+        !video.ended &&
+        !video.seeking &&
+        video.readyState >= 2
+      ) {
+        visibilityRef.current.setPlaying(true);
+        resumeAfterSeekRef.current = false;
+      }
       setCurrentTime(ct);
 
       // stopAt enforcement — records "stopAt" event (distinct from natural
