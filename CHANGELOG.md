@@ -8,6 +8,10 @@
   placement, pointer/keyboard/unknown context, and field focus context on the
   existing saves. Collect no pointer trajectories or additional text; retain
   existing typing measurements and response commit timing.
+- Add audio state, bounded volume/presentation events, and hidden/unfocused
+  playback totals to existing MediaPlayer saves
+  ([#825](https://github.com/talkbench/stagebook/issues/825)). Volume gestures
+  are coalesced locally; these observations add no host writes or gating.
 - Add input-event, composition, shortcut, and clipboard statistics to solo text
   and numeric response telemetry ([#824](https://github.com/talkbench/stagebook/issues/824)).
   Include input timing and a capped list of large insertions with event context;

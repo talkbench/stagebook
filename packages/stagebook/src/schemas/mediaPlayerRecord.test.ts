@@ -17,6 +17,136 @@ const record: VideoPlaybackRecord = {
 };
 
 describe("mediaPlayerRecordSchema", () => {
+  it.each([
+    {
+      type: "volumechange",
+      muted: true,
+      volume: 0.25,
+      channelMuted: [false, true],
+    },
+    { type: "volumechange", muted: null, volume: null },
+    { type: "fullscreenchange", fullscreen: true },
+    { type: "fullscreenchange", fullscreen: false },
+    { type: "enterpictureinpicture" },
+    { type: "leavepictureinpicture" },
+  ])("accepts observational media state events: %j", (fields) => {
+    const event = { ...play, ...fields };
+    expect(videoEventSchema.parse(event)).toEqual(event);
+  });
+
+  it("accepts audio state on play and firstPlay while preserving old records", () => {
+    const observed = {
+      ...play,
+      muted: false,
+      volume: 0,
+      channelMuted: [true, false],
+    };
+    expect(
+      mediaPlayerRecordSchema.parse({
+        ...record,
+        events: [observed],
+        firstPlay: observed,
+      }),
+    ).toMatchObject({ events: [observed], firstPlay: observed });
+    expect(mediaPlayerRecordSchema.safeParse(record).success).toBe(true);
+    expect(
+      videoEventSchema.safeParse({ ...play, muted: null, volume: null })
+        .success,
+    ).toBe(true);
+  });
+
+  it.each([
+    { type: "play", muted: "yes" },
+    { type: "play", volume: -0.01 },
+    { type: "play", volume: 1.01 },
+    { type: "play", channelMuted: [1] },
+    { type: "volumechange", muted: false },
+    { type: "volumechange", volume: 1 },
+    { type: "volumechange", muted: false, volume: Infinity },
+    { type: "fullscreenchange" },
+    { type: "fullscreenchange", fullscreen: 1 },
+  ])("rejects malformed media state payloads: %j", (fields) => {
+    expect(videoEventSchema.safeParse({ ...play, ...fields }).success).toBe(
+      false,
+    );
+  });
+
+  it("types playback visibility totals and bounded-event drop counts", () => {
+    const fields = {
+      hiddenPlaybackSeconds: 2.5,
+      unfocusedPlaybackSeconds: 3.25,
+      visibilityChangesDuringPlayback: 2,
+      mediaStateEventsDropped: {
+        volumechange: 4,
+        fullscreenchange: 0,
+        enterpictureinpicture: 1,
+        leavepictureinpicture: 0,
+      },
+    };
+    expect(
+      mediaPlayerRecordSchema.parse({ ...record, ...fields }),
+    ).toMatchObject(fields);
+  });
+
+  it("restores playback history when a newer writer adds a dropped-event kind", () => {
+    const knownCounts = {
+      volumechange: 4,
+      fullscreenchange: 0,
+      enterpictureinpicture: 1,
+      leavepictureinpicture: 0,
+    };
+    const savedRecord = {
+      ...record,
+      events: [play, { type: "pause", videoTime: 12, stageTimeElapsed: 14 }],
+      lastVideoTime: 12,
+      watchedRanges: [[0, 12]],
+      mediaStateEventsDropped: { ...knownCounts, ratechange: 0 },
+    };
+
+    expect(mediaPlayerRecordSchema.parse(savedRecord)).toEqual({
+      ...savedRecord,
+      mediaStateEventsDropped: knownCounts,
+    });
+  });
+
+  it.each([-1, 0.5, Infinity, NaN, "1", undefined])(
+    "rejects an invalid known dropped-event count: %s",
+    (volumechange) => {
+      expect(
+        mediaPlayerRecordSchema.safeParse({
+          ...record,
+          mediaStateEventsDropped: {
+            volumechange,
+            fullscreenchange: 0,
+            enterpictureinpicture: 0,
+            leavepictureinpicture: 0,
+            ratechange: 0,
+          },
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it.each([
+    { hiddenPlaybackSeconds: -1 },
+    { hiddenPlaybackSeconds: Infinity },
+    { unfocusedPlaybackSeconds: "2" },
+    { visibilityChangesDuringPlayback: 0.5 },
+    { visibilityChangesDuringPlayback: -1 },
+    {
+      mediaStateEventsDropped: {
+        volumechange: -1,
+        fullscreenchange: 0,
+        enterpictureinpicture: 0,
+        leavepictureinpicture: 0,
+      },
+    },
+  ])("rejects malformed media totals: %j", (fields) => {
+    expect(
+      mediaPlayerRecordSchema.safeParse({ ...record, ...fields }).success,
+    ).toBe(false);
+  });
+
   it("accepts saved playback records and optional Element metadata", () => {
     expect(mediaPlayerRecordSchema.safeParse(record).success).toBe(true);
     expect(

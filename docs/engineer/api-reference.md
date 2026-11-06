@@ -814,6 +814,48 @@ or gap tolerance is applied. See [saved data](../researcher/elements.md#saved-da
 for record examples and [the ADR](../decisions/2026-10-media-coverage-restore.md)
 for the first-slice scope of #719 and media-player portion of #728.
 
+**Audio and page-state telemetry (#825).** New `play` events include `muted`
+and normalized `volume` (`0`–`1`), with null for unavailable backend readings.
+Historical events may omit these fields. Play and `volumechange` events include
+`channelMuted?: boolean[]` once the player's channel graph is initialized, in
+the channel-index order used by `PlaybackHandle.isChannelMuted` and Timeline.
+
+Volume gestures settle after 500 ms of quiet, then remain queued in memory.
+An observed change can also reflect newly available channel state when the
+graph initializes; `volumechange` does not imply a manual participant action.
+Existing playback saves also drain a pending gesture before its settle timer
+fires. `fullscreenchange` carries a `fullscreen` boolean; native media can also
+report `enterpictureinpicture` and `leavepictureinpicture`. These events do not
+invoke `save`. The next existing transport-event save batches them with its
+normal record; it still determines `lastVideoTime` and playback milestones.
+Each of these four new event kinds retains its first 50 observations across
+the restored log; further observations increment `mediaStateEventsDropped`.
+Transport-event retention is unchanged.
+
+`hiddenPlaybackSeconds`, `unfocusedPlaybackSeconds`, and
+`visibilityChangesDuringPlayback` accumulate locally and ride on existing
+saves. The durations are overlapping wall-clock intervals, measured with
+`performance.now()` while actual playback is reported; they are independent
+of playback rate and unique media coverage. HTML `playing` and YouTube PLAYING
+start an interval; waiting/buffering, seeking, pause/end/error, and backend
+replacement stop it. Buffered native seek completion can resume an interval
+when playback was observed before the seek and the media is still ready,
+unpaused, and not ended; this covers WebKit's lack of a new `playing` event
+after some seeks. `play` retains its earlier request/start semantics.
+Page state is read through `document.visibilityState` and `document.hasFocus()`.
+Matching restore preserves valid totals without inferring downtime playback;
+source replacement resets the measurement.
+Missing totals in older records mean prior history was unmeasured, not that
+hidden or unfocused playback was observed to be zero.
+
+YouTube audio readings use the existing 250 ms poll, without adding a polling
+loop. Its internal presentation-mode events may be inaccessible through the
+cross-origin iframe. No new host saves or teardown flushes are introduced, so
+an unsaved state-only tail can disappear on paused removal. Browser state is
+descriptive and cannot establish device audibility, actual visibility, or
+attention. See [measurement definitions and limits](../researcher/elements.md#audio-and-page-state-observations)
+and the [implementation decision](../decisions/2026-11-media-state-telemetry.md).
+
 ### Render Slots (platform-provided)
 
 | Slot                          | Config                                                                                  | When Used                                                                                                                                                                                                                                                                                                                                                         |

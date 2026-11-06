@@ -534,6 +534,8 @@ describe("HTML5", () => {
         type: "play",
         videoTime: 5,
         stageTimeElapsed: 3,
+        muted: false,
+        volume: 1,
       });
       moveTo(video, 9);
       stageTime = 7;
@@ -545,6 +547,8 @@ describe("HTML5", () => {
         type: "play",
         videoTime: 5,
         stageTimeElapsed: 3,
+        muted: false,
+        volume: 1,
       });
     });
 
