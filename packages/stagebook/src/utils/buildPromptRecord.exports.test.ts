@@ -124,6 +124,29 @@ describe("host record contracts published main entry (#751)", () => {
 
 describe("stagebook/audio-probe published subpath (#663)", () => {
   test.each(["commonjs", "module"])(
+    "%s validates group layouts without React or browser globals",
+    (format) => {
+      const imports =
+        format === "commonjs"
+          ? "const assert = require('node:assert/strict'); const { checkChannelLayout, checkHostRecord } = require('stagebook');"
+          : "import assert from 'node:assert/strict'; import { checkChannelLayout, checkHostRecord } from 'stagebook';";
+      const script = `${imports}
+      const mapping = [{ index: 0, role: 'participant', position: 0 }, { index: 1, role: 'participant', position: 5 }];
+      assert.deepEqual(checkChannelLayout({ mapping }), []);
+      assert.equal(checkChannelLayout({ mapping, probe: undefined })[0].code, 'probe');
+      assert.equal(checkHostRecord('timeline', [{ time: 1, position: 5 }]).success, true);
+      assert.equal(checkHostRecord('timeline', [{ time: 1, position: -1 }]).success, false);
+      process.stdout.write('ok');`;
+      expect(
+        execFileSync(
+          process.execPath,
+          [`--input-type=${format}`, "-e", script],
+          { cwd: fixture, encoding: "utf8" },
+        ),
+      ).toBe("ok");
+    },
+  );
+  test.each(["commonjs", "module"])(
     "%s loads in Node and fails closed without Web Audio",
     (format) => {
       const imports =
@@ -134,7 +157,7 @@ describe("stagebook/audio-probe published subpath (#663)", () => {
         readFileSync(join(packageRoot, "package.json"), "utf8"),
       ) as { version: string };
       const script = `${imports}
-      assert.deepEqual(CAPABILITIES, { channelProbe: true, perSpeakerTracks: false });
+      assert.deepEqual(CAPABILITIES, { channelProbe: true, perSpeakerTracks: true });
       probeChannelOrder().then((probe) => {
         assert.equal(probe.verdict, 'fail');
         assert.deepEqual(Object.keys(probe.detail), ['2', '3', '4', '5', '6', '7', '8']);

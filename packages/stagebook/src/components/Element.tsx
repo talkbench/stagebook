@@ -362,6 +362,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
       const buttonName = element.name ?? progressLabel;
       return (
         <SubmitButton
+          key={JSON.stringify([stageId ?? progressLabel, buttonName])}
           onSubmit={onSubmit}
           name={buttonName}
           buttonText={element.buttonText}
@@ -429,6 +430,16 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           name={mediaName}
           url={resolvedURL}
           sourceId={rawURL}
+          channelMapping={ctx.getChannelMapping?.(rawURL)}
+          channelProbe={ctx.channelProbe}
+          onChannelError={(error) =>
+            ctx.onElementError?.({
+              elementType: "mediaPlayer",
+              elementName: mediaName,
+              error,
+              errorInfo: { componentStack: "" },
+            })
+          }
           initialRecord={
             savedRecord === Missing
               ? undefined

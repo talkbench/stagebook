@@ -30,6 +30,12 @@ export interface ExampleEntry {
   prompts: Record<string, string>;
   /** README.md content, if present in the example directory. */
   readme?: string;
+  /**
+   * tasks.json content, if the example ships a task parameter file (#815).
+   * The viewer preloads it so the example's `${field}`s can be filled by
+   * choosing a task.
+   */
+  taskParameters?: string;
 }
 
 /**
@@ -50,10 +56,13 @@ export interface ExampleEntry {
 export function buildCatalog(
   yamlByPath: Record<string, string>,
   textByPath: Record<string, string>,
+  taskFileByPath: Record<string, string> = {},
 ): ExampleEntry[] {
   return Object.entries(yamlByPath)
     .filter(([path]) => isExampleRoot(path))
-    .map(([path, yaml]) => buildEntry(path, yaml, textByPath, yamlByPath))
+    .map(([path, yaml]) =>
+      buildEntry(path, yaml, textByPath, yamlByPath, taskFileByPath),
+    )
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
@@ -141,6 +150,7 @@ function buildEntry(
   yaml: string,
   textByPath: Record<string, string>,
   yamlByPath: Record<string, string>,
+  taskFileByPath: Record<string, string>,
 ): ExampleEntry {
   const parts = path.split("/");
   const fileName = parts[parts.length - 1];
@@ -175,6 +185,7 @@ function buildEntry(
     mergedYaml,
     prompts,
     readme: textByPath[`${exampleDir}README.md`],
+    taskParameters: taskFileByPath[`${exampleDir}tasks.json`],
   };
 }
 
@@ -198,9 +209,18 @@ const textByPath = import.meta.glob(
   { query: "?raw", import: "default", eager: true },
 ) as Record<string, string>;
 
+// Raw text, not parsed JSON: the viewer parses it the way it parses a task
+// file a researcher loads, errors included.
+const taskFileByPath = import.meta.glob("../../../../examples/*/tasks.json", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
 export const exampleCatalog: ExampleEntry[] = buildCatalog(
   yamlByPath,
   textByPath,
+  taskFileByPath,
 );
 
 /**

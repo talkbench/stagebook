@@ -5,6 +5,7 @@ import {
   splitAssetMounts,
   extraAssetRoots,
   parseMountedAsset,
+  collectTaskParameterAssetPrefixes,
 } from "./assetMounts.js";
 
 // Build an OS-appropriate absolute path so these run on POSIX and Windows CI.
@@ -193,5 +194,56 @@ describe("parseMountedAsset (#192 — asset:// prompt text via readFile)", () =>
 
   it("returns null for a non-asset path", () => {
     expect(parseMountedAsset("prompts/intro.prompt.md", DIRS)).toBeNull();
+  });
+});
+
+describe("collectTaskParameterAssetPrefixes (#815 — asset:// in task fields)", () => {
+  it("collects each prefix once from task field values", () => {
+    const text = JSON.stringify([
+      {
+        callerTaskId: "clip-01",
+        treatment: "review",
+        fields: {
+          clipUrl: "asset://solo_recordings/a.mp4",
+          contextClipUrl: "asset://group_recordings/b.mp4",
+          clipStartAt: 15.82,
+        },
+      },
+      {
+        treatment: "review",
+        fields: {
+          clipUrl: "ASSET://solo_recordings/c.mp4",
+          list: ["asset://x/y"],
+        },
+      },
+    ]);
+    expect(collectTaskParameterAssetPrefixes(text).sort()).toEqual([
+      "group_recordings",
+      "solo_recordings",
+      "x",
+    ]);
+  });
+
+  it("reads the API submission shape too", () => {
+    const text = JSON.stringify({
+      tasks: [{ treatment: "t", fields: { u: "asset://clips/a.mp4" } }],
+    });
+    expect(collectTaskParameterAssetPrefixes(text)).toEqual(["clips"]);
+  });
+
+  it("ignores strings outside `fields`, placeholders, and opaque asset: URIs", () => {
+    const text = JSON.stringify([
+      {
+        treatment: "t",
+        fields: { a: "asset:clip.mp4", b: "asset://${prefix}/a.mp4" },
+        metadata: { note: "asset://from_metadata/a.mp4" },
+      },
+    ]);
+    expect(collectTaskParameterAssetPrefixes(text)).toEqual([]);
+  });
+
+  it("returns nothing for text that isn't a task file", () => {
+    expect(collectTaskParameterAssetPrefixes("[{")).toEqual([]);
+    expect(collectTaskParameterAssetPrefixes('"asset://a/b"')).toEqual([]);
   });
 });

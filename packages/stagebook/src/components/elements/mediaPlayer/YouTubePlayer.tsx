@@ -19,6 +19,8 @@ interface YTPlayer {
   getCurrentTime(): number;
   getDuration(): number;
   getPlayerState(): number;
+  isMuted?(): boolean;
+  getVolume?(): number;
   destroy(): void;
 }
 
@@ -37,6 +39,7 @@ interface YTPlayerOptions {
     onReady?: () => void;
     onAutoplayBlocked?: () => void;
     onStateChange?: (event: { data: number }) => void;
+    onError?: (event: { data: number }) => void;
   };
 }
 
@@ -113,6 +116,15 @@ export function loadYouTubeAPI(): Promise<void> {
 
 // ── PlaybackHandle factory ────────────────────────────────────────────────────
 
+function readAudioSetting(read: () => unknown): unknown {
+  try {
+    return read();
+  } catch {
+    // A destroyed or not-yet-ready backend may no longer answer API queries.
+    return undefined;
+  }
+}
+
 /** Build a PlaybackHandle that delegates to a live YT.Player instance. */
 export function buildYouTubeHandle(player: YTPlayer): PlaybackHandle {
   return {
@@ -122,6 +134,20 @@ export function buildYouTubeHandle(player: YTPlayer): PlaybackHandle {
     getCurrentTime: () => player.getCurrentTime(),
     getDuration: () => player.getDuration(),
     isPaused: () => player.getPlayerState() !== 1 /* YT.PlayerState.PLAYING */,
+    getAudioState: () => {
+      const muted = readAudioSetting(() => player.isMuted?.());
+      const volume = readAudioSetting(() => player.getVolume?.());
+      return {
+        muted: typeof muted === "boolean" ? muted : null,
+        volume:
+          typeof volume === "number" &&
+          Number.isFinite(volume) &&
+          volume >= 0 &&
+          volume <= 100
+            ? volume / 100
+            : null,
+      };
+    },
     isYouTube: true,
     channelCount: 0,
     peaks: [],
@@ -146,6 +172,8 @@ export interface CreateYouTubePlayerOptions {
   onPlay: (currentTime: number) => void;
   onPause: (currentTime: number) => void;
   onEnded: (currentTime: number) => void;
+  /** Buffering, unstarted/cued state or an error interrupts observed playback. */
+  onPlaybackInactive?: () => void;
   onAutoplayBlocked?: () => void;
 }
 
@@ -184,10 +212,22 @@ export function createYouTubePlayer(
         },
         onStateChange: (event) => {
           if (destroyed || !player) return;
+          if (
+            event.data === 3 /* BUFFERING */ ||
+            event.data === -1 /* UNSTARTED */ ||
+            event.data === 5 /* CUED */
+          ) {
+            opts.onPlaybackInactive?.();
+            return;
+          }
           const t = player.getCurrentTime();
           if (event.data === 1 /* PLAYING */) opts.onPlay(t);
           else if (event.data === 2 /* PAUSED */) opts.onPause(t);
           else if (event.data === 0 /* ENDED */) opts.onEnded(t);
+        },
+        onError: () => {
+          // Stop observation even if the failed backend cannot report a time.
+          if (!destroyed) opts.onPlaybackInactive?.();
         },
       },
     });
@@ -222,13 +262,15 @@ export interface YouTubePlayerProps {
   /** See CreateYouTubePlayerOptions.hideNativeControls. */
   hideNativeControls?: boolean;
   onHandleReady: (handle: PlaybackHandle) => void;
-  /** The player behind the last handle was destroyed (unmount, or a new
-   *  videoId/startAt/hideNativeControls). Drop that handle: it must not be
-   *  read again. */
+  /** The player behind the last handle is about to be destroyed (unmount,
+   *  or a new videoId/startAt/hideNativeControls). Finish any synchronous
+   *  reads, then drop the handle: it must not be read after this returns. */
   onHandleGone?: () => void;
   onPlay: (currentTime: number) => void;
   onPause: (currentTime: number) => void;
   onEnded: (currentTime: number) => void;
+  /** See CreateYouTubePlayerOptions.onPlaybackInactive. */
+  onPlaybackInactive?: () => void;
   onAutoplayBlocked?: () => void;
 }
 
@@ -245,6 +287,7 @@ export function YouTubePlayer({
   onPlay,
   onPause,
   onEnded,
+  onPlaybackInactive,
   onAutoplayBlocked,
 }: YouTubePlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -256,12 +299,14 @@ export function YouTubePlayer({
   const onPlayRef = useRef(onPlay);
   const onPauseRef = useRef(onPause);
   const onEndedRef = useRef(onEnded);
+  const onPlaybackInactiveRef = useRef(onPlaybackInactive);
   const onAutoplayBlockedRef = useRef(onAutoplayBlocked);
   onHandleReadyRef.current = onHandleReady;
   onHandleGoneRef.current = onHandleGone;
   onPlayRef.current = onPlay;
   onPauseRef.current = onPause;
   onEndedRef.current = onEnded;
+  onPlaybackInactiveRef.current = onPlaybackInactive;
   onAutoplayBlockedRef.current = onAutoplayBlocked;
 
   useEffect(() => {
@@ -275,11 +320,17 @@ export function YouTubePlayer({
       onPlay: (t) => onPlayRef.current(t),
       onPause: (t) => onPauseRef.current(t),
       onEnded: (t) => onEndedRef.current(t),
+      onPlaybackInactive: () => onPlaybackInactiveRef.current?.(),
       onAutoplayBlocked: () => onAutoplayBlockedRef.current?.(),
     });
     return () => {
-      destroy();
-      onHandleGoneRef.current?.();
+      try {
+        // The owner may need the final position/audio when flushing a
+        // pending seek. The API becomes unreadable once destroy runs.
+        onHandleGoneRef.current?.();
+      } finally {
+        destroy();
+      }
     };
     // Re-create the player when any of its creation options change.
   }, [videoId, startAt, hideNativeControls]);

@@ -609,13 +609,59 @@ Measured verdicts (October 2026): Chrome, Chromium and Firefox pass. Safari fail
 
 **Store `verdict`, `mappings` and `detail` with the session.** Then the order used to present each recording can be audited later, against the browser and the stagebook release that measured it. The result is reported by the participant's browser, so validate it on your server before you store it or rely on it. Check that `verdict` is `"pass"` or `"fail"`, that the keys are 2 to 8, that each non-null mapping is a permutation of `0` to `C − 1`, and that the size is bounded.
 
-**`CAPABILITIES` describes the bundled release**, so key your gate mode on it rather than on a flag of your own. In this release it is `{ channelProbe: true, perSpeakerTracks: false }`: the probe exists, but MediaPlayer doesn't draw per-participant tracks yet and doesn't use the result. Record the verdict, and don't block on it, until `perSpeakerTracks` is `true`.
+**`CAPABILITIES` describes the bundled release**, so key your gate mode on it rather than on a flag of your own. In this release it is `{ channelProbe: true, perSpeakerTracks: true }` (Release B). Hosts serving group recordings must enforce a passing verdict before starting annotation. Release A (v0.34.0) exposed the probe with `perSpeakerTracks: false` for a record-only rollout; upgrading requires the mapping and gate integration below.
 
 **Requirements:**
 
 - **A secure context.** AudioWorklet is available only over HTTPS or on `localhost`. Elsewhere the probe fails with `unsupported`.
 - **Content-Security-Policy.** If you set one, allow `blob:` in `media-src`, because the assets play from blob URLs. Also allow it in the directive that governs scripts (`script-src-elem` if you set it, else `script-src`, else `default-src`), because the AudioWorklet module loads from a blob URL. Allowing `blob:` scripts lets any blob your origin creates run as a script; weigh that if you keep a strict CSP.
 - **No network access.** The assets are embedded in the `stagebook/audio-probe` bundle (about 135 kB of base64), so nothing is fetched. The main and `stagebook/components` bundles don't include them.
+
+### Supplying participant tracks (Release B)
+
+The host supplies two optional `StagebookContext` fields:
+
+```typescript
+import { checkChannelLayout, type ChannelMappingEntry } from "stagebook";
+import type { StagebookContext } from "stagebook/components";
+
+// At task construction, read the sidecar belonging to the exact served MP4.
+const mapping: ChannelMappingEntry[] = [
+  { index: 0, role: "participant", position: 0, label: "Speaker A" },
+  { index: 1, role: "participant", position: 5, label: "Speaker B" },
+];
+const diagnostics = checkChannelLayout({ mapping });
+if (diagnostics.length) throw new Error(JSON.stringify(diagnostics));
+
+const audioContext: Pick<
+  StagebookContext,
+  "getChannelMapping" | "channelProbe"
+> = {
+  getChannelMapping: (file) =>
+    file === "asset://room/recording.mp4" ? mapping : undefined,
+  channelProbe: session.channelProbe,
+};
+```
+
+`file` is the authored `mediaPlayer.file`, before URL resolution or path encoding. Return `undefined` only for ordinary media. Pass the session's actual probe result; do not synthesize identity permutations. Keep the mapping and probe immutable while the recording is presented. Stagebook does not fetch sidecars or store session-level calibration itself.
+
+`checkChannelLayout({ mapping })` is React-free and can run on the server. The mapping must have 1–8 entries, indices exactly 0..C−1, only `participant` roles, distinct non-negative integer positions, and non-empty strings for supplied labels. Legacy `mix_left` / `mix_right` roles fail with a re-compose diagnostic. Including a `probe` property, even `undefined`, additionally requires a passing verdict and a permutation for this recording's count when C ≥ 2. A single participant needs no probe in the player; the host's session admission policy remains its responsibility.
+
+Stagebook widens the splitter to C channels and uses the count-specific calibration to put tracks in ascending participant-position order. All channels play into both ears at 1/C each, including when no Timeline is present. Each track uses its supplied label or a localized “Track 1…N”; raw positions are never default labels. `timeline.trackLabels` is ignored for group recordings.
+
+With `selectionScope: track`, group Timeline records use **`position`**, not `track`. In the example above, marking the second row saves `{ time: 1.2, position: 5 }`. All-track marks have neither field. Ordinary media continues to save row-number `track`. On restoration, group marks are located by position; legacy row-number marks and positions absent from the recording are discarded, never guessed or reassigned. Migrate older annotations explicitly if they must be restored.
+
+**Refusal boundaries:**
+
+1. At task construction, the host must refuse a group recording with a missing or invalid sidecar mapping and bind that mapping to the exact media served.
+2. At session start, enforce the probe verdict and store the result with the session.
+3. In the renderer, invalid group layouts or calibration replace the player and Timeline with a localized error and prevent Timeline writes. `onElementError` receives a `ChannelLayoutError` whose `diagnostics` contains stable codes and developer-facing messages; `errorInfo.componentStack` is empty because this is a controlled refusal.
+
+As a backstop, any MediaPlayer with an attached Timeline observes the decoded channel count through an AudioWorklet, even when `showWaveform: false`. More than two decoded channels without a mapping are refused. This also refuses ordinary surround audio used with a Timeline. The check runs once audio signal reaches the worklet; it cannot identify an omitted mapping on mono/stereo recordings, or a browser's stereo fallback. **The host's missing-mapping check is essential.** Monitor setup failures also refuse annotation. Group playback checks that the observed count matches the supplied mapping.
+
+The player-side channel check needs the same secure context and blob-script CSP permission as the probe. Ordinary playback without a Timeline does not start this check. A silent or audio-free source provides no signal from which to verify its count.
+
+Store the probe result, channel mapping and recording identity alongside annotations in the host. See [annotator #338](https://github.com/talkbench/annotator/issues/338) and [#226](https://github.com/talkbench/annotator/issues/226). The player cannot establish which file a structurally valid sidecar originally described.
 
 ## Render Slots for Service-Coupled Elements
 

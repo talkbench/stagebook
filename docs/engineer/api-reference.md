@@ -125,7 +125,13 @@ and returns `{ watchedSeconds: number; watchedFraction?: number }`.
 ```ts
 import { computeWatchedCoverage } from "stagebook";
 
-computeWatchedCoverage([[0, 1], [3, 4]], { duration: 4 });
+computeWatchedCoverage(
+  [
+    [0, 1],
+    [3, 4],
+  ],
+  { duration: 4 },
+);
 // { watchedSeconds: 2, watchedFraction: 0.5 }
 ```
 
@@ -298,14 +304,15 @@ Required inputs are `metadata`, `name`, `body`, and `responses`. Supply `value`
 for a nonnumeric response. Numeric metadata requires raw `entry` and
 `numberFormat`; the builder derives `value` itself and throws if either input
 is missing. Optional inputs are `file`, `shared` (default `false`), `label`,
-`debugMessages`, `step`, and `stageTimeElapsed`. Supply the clock and step at
-the commit boundary.
+`debugMessages`, `pointerStats`, `step`, and `stageTimeElapsed`. Supply the clock
+and step at the commit boundary.
 The result includes metadata, `name`, `file`, `shared`, `prompt` (the body),
 `responses`, `value`, and `debugMessages`, plus supplied label and timing fields.
 Player records include computed `isValid`; shared numeric records do too.
-Every shared record uses empty `debugMessages`, and shared nonnumeric records
-omit `isValid`. `responses` should be the same display order used by the prompt.
-The builder does not shuffle options.
+Supplied `pointerStats` is a sibling of `debugMessages` in solo records. Every
+shared record uses empty `debugMessages` and omits `pointerStats`; shared
+nonnumeric records also omit `isValid`. `responses` should be the same display
+order used by the prompt. The builder does not shuffle options.
 
 For numeric records, `entry` retains up to 1,000 raw characters and `numberFormat`
 records the effective separators. Anything over the 100-character parsing cap
@@ -486,6 +493,21 @@ import { StagebookProvider, type StagebookContext } from "stagebook/components";
 <StagebookProvider value={context}>{children}</StagebookProvider>;
 ```
 
+### Group-recording audio
+
+The main `stagebook` entry exports `ChannelMappingEntry`, `ChannelLayoutDiagnostic`,
+`ChannelLayoutError`, `ChannelProbeResult`, and
+`checkChannelLayout({ mapping, probe? }): ChannelLayoutDiagnostic[]`.
+Omit `probe` for server-side mapping validation; include it to check session
+calibration as well. An empty array means the supplied layout is valid.
+
+`StagebookContext.getChannelMapping?(file)` supplies the sidecar mapping for an
+authored media file; `channelProbe?` supplies this session's calibration result.
+The player uses these to order and label participant tracks and save group
+Timeline selections by `position`. Ordinary media retains `track` row numbers.
+See the [integration contract](integration-guide.md#supplying-participant-tracks-release-b)
+for validation, refusal, restoration and rollout requirements.
+
 ### Pure reference reads
 
 ```ts
@@ -504,13 +526,13 @@ if (answer !== Missing) {
 
 ### Hooks
 
-| Hook                          | Returns                                   | Requires Provider |
-| ----------------------------- | ----------------------------------------- | ----------------- |
+| Hook                          | Returns                                                                         | Requires Provider |
+| ----------------------------- | ------------------------------------------------------------------------------- | ----------------- |
 | `useStagebookContext()`       | Host context plus bound `readReference`, `violationKeys`, and resolved messages | yes               |
-| `useReadReference(reference)` | `unknown` (scalar, Missing, or seat list) | yes               |
-| `useSave()`                   | `save` function                           | yes               |
-| `useElapsedTime()`            | `number` (seconds)                        | yes               |
-| `useTextContent(path)`        | `{ data, isLoading, error }`              | yes               |
+| `useReadReference(reference)` | `unknown` (scalar, Missing, or seat list)                                       | yes               |
+| `useSave()`                   | `save` function                                                                 | yes               |
+| `useElapsedTime()`            | `number` (seconds)                                                              | yes               |
+| `useTextContent(path)`        | `{ data, isLoading, error }`                                                    | yes               |
 
 ### Stage
 
@@ -604,18 +626,18 @@ associations and the localized `promptRequired` marker automatically.
 top margin and start indent that set the options under a question; Prompt sets
 it for `body: none` prompts.
 
-| Component       | Key Props                                                                                                                                                          |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Button`        | `onClick`, `children`, `primary?`, `disabled?`, `icon?`, `aria-label?` (required with `icon`), `title?`                                                            |
-| `Separator`     | `style?` (`"thin"`, `"regular"`, `"thick"`)                                                                                                                        |
-| `RadioGroup`    | `options`, `value`, `onChange`, `label?`, `layout?`, `flush?`                                                                                                      |
-| `CheckboxGroup` | `options`, `value`, `onChange`, `label?`, `layout?`, `flush?`                                                                                                      |
-| `Select`        | `options`, `value`, `onChange`, `label?`, `placeholder?`, `disabled?`                                                                                              |
-| `TextArea`      | `value`, `onChange`, `rows?`, `minLength?`, `maxLength?`, `showCharacterCount?`, `onDebugMessage?`, `onTypingSnapshot?`                                                                 |
-| `NumericInput` | `entry?`, `numberFormat?`, `nextEditNumberFormat?`, `constraints?`, `prefix?`, `suffix?`, `onChange?`, `onDebugMessage?`, `ariaLabel?`, `ariaLabelledBy?`, `ariaRequired?` |
-| `Slider`        | `min`, `max`, `interval`, `value?`, `onChange`, `labelPts?` (parallel to `labels?`, sourced from `promptFileSchema.parse(...).sliderPoints` after #243), `labels?` |
-| `ListSorter`    | `items`, `onChange`                                                                                                                                                |
-| `Markdown`      | `text`, `resolveURL?`                                                                                                                                              |
+| Component       | Key Props                                                                                                                                                                  |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Button`        | `onClick`, `children`, `primary?`, `disabled?`, `icon?`, `aria-label?` (required with `icon`), `title?`                                                                    |
+| `Separator`     | `style?` (`"thin"`, `"regular"`, `"thick"`)                                                                                                                                |
+| `RadioGroup`    | `options`, `value`, `onChange`, `label?`, `layout?`, `flush?`                                                                                                              |
+| `CheckboxGroup` | `options`, `value`, `onChange`, `label?`, `layout?`, `flush?`                                                                                                              |
+| `Select`        | `options`, `value`, `onChange`, `label?`, `placeholder?`, `disabled?`                                                                                                      |
+| `TextArea`      | `value`, `onChange`, `rows?`, `minLength?`, `maxLength?`, `showCharacterCount?`, `onDebugMessage?`, `onTypingSnapshot?`                                                    |
+| `NumericInput`  | `entry?`, `numberFormat?`, `nextEditNumberFormat?`, `constraints?`, `prefix?`, `suffix?`, `onChange?`, `onDebugMessage?`, `onTypingSnapshot?`, `ariaLabel?`, `ariaLabelledBy?`, `ariaRequired?` |
+| `Slider`        | `min`, `max`, `interval`, `value?`, `onChange`, `labelPts?` (parallel to `labels?`, sourced from `promptFileSchema.parse(...).sliderPoints` after #243), `labels?`         |
+| `ListSorter`    | `items`, `onChange`                                                                                                                                                        |
+| `Markdown`      | `text`, `resolveURL?`                                                                                                                                                      |
 
 **Native control themes.** Select, TextArea and Slider pin `color-scheme: light` on their native controls, including when `stagebook/styles` is omitted or a parent advertises a dark scheme. Forced-colors accessibility settings remain available. Select’s disclosure arrow uses `--stagebook-select-chevron` (`#6b7280`), independently of its text and border. The native select still owns keyboard and pointer interaction.
 
@@ -637,11 +659,71 @@ it for `body: none` prompts.
 
 **`Select` picker.** The options list is opted into the customizable select (`appearance: base-select`, #627). On engines that have it — Chrome and Edge 135+, Safari 27 — the picker is a top-layer popover in the page: anchored under the trigger, pinned to its width (long labels wrap into taller rows; the trigger itself stays one line), and painted with the same tokens as the rest of the control (`--stagebook-surface`, `--stagebook-border`, `--stagebook-text`, `--stagebook-hover-bg` on the hovered row, `--stagebook-primary` for the checked row's mark, `--stagebook-row-min-height` for row height, and an inset `--stagebook-focus-ring` on the row the keyboard walks to). The engine may flip it above the trigger when there is no room below (Chromium does; WebKit not dependably). It also no longer opens the OS's own picker on Android or iOS. The keyboard model, roles and names are still the native `<select>`'s: Space or an arrow key opens, arrows walk the rows without changing the value, Enter or a click commits, Escape closes and returns focus. One engine difference worth knowing when a `placeholder` is set: Chromium opens with the first _enabled_ row focused, so Space then Enter commits that row, while WebKit focuses the placeholder row and commits nothing. Engines without it (Firefox, until it ships) ignore the value and keep the native popup, so the trigger is identical on both paths and only the popup differs. `color-scheme: light` is pinned on the `<select>` itself as well as at `:root`, so a host that never loads `stagebook/styles` still gets a light popup where the OS draws one.
 
-**`TextArea` typing stats.** `onDebugMessage` receives a `TypingStats` object on every real blur and a `PasteAttempt` for every blocked paste/drop. The optional `onTypingSnapshot(stats)` callback receives current cumulative statistics immediately before each existing `onChange`, including quiet-period, maximum-wait, blur, and drop commits. On blur, the debug message precedes the snapshot and response. Sampling does not count a blur or close the current focus interval. `Prompt` uses these snapshots for open responses, replacing the provisional snapshot until real blur finalizes it, while preserving earlier blur summaries and paste events. Standalone `onChange(value)` and `onDebugMessage` retain their existing contracts.
+**`TextArea` and `NumericInput` typing stats.** `onDebugMessage` receives a `TypingStats` object on every real blur and a `PasteAttempt` for every blocked paste/drop. The optional `onTypingSnapshot(stats)` callback receives current cumulative statistics immediately before each existing `onChange`, including quiet-period, maximum-wait, blur, and drop commits. On blur, the debug message precedes the snapshot and response. Sampling does not count a blur or close the current focus interval. `Prompt` uses these snapshots for solo open and numeric responses, replacing the provisional snapshot until real blur finalizes it, while preserving earlier blur summaries and paste events. Standalone `TextArea.onChange(value)`, `NumericInput.onChange(entry, numberFormat)`, and `onDebugMessage` retain their existing contracts.
 
-Snapshots add no saves or timers. Unmount still cancels pending work without flushing. During continued editing, text and statistics share the same checkpoint boundaries; idle focus time, cursor activity, and paste attempts after the last save can remain unsaved longer than five seconds. `TypingStats` counters accumulate for the component's lifetime, so use the last summary rather than adding entries together. Its timings are wall-clock, so they include time spent outside the field; only `focusedDurationMs` excludes that time. The field-by-field definitions are in the table under "Typing statistics" in [prompts.md](../researcher/prompts.md) (Prompt Types in Detail → Open Response).
+Snapshots add no saves or timers. Unmount still cancels pending work without flushing. During continued editing, text and statistics share the same checkpoint boundaries; idle focus time, cursor activity, and paste attempts after the last save can remain unsaved longer than five seconds. `TypingStats` counters accumulate for the component's lifetime, so use the last summary rather than adding entries together. Its timings are wall-clock, so they include time spent outside the field; only `focusedDurationMs` excludes that time. A remount resets the counters and subsequent saves replace the old history. See the [field-by-field definitions](../researcher/prompts.md#typing-statistics).
 
-`totalKeystrokes`, `editingKeyCount` and the timings still come from `keydown`, and a key counts toward them only when `e.key` is a single character, Enter, Tab, Backspace or Delete (cursor keys go to `arrowKeyCount` instead). Input that reaches the field without such a keydown is invisible to them: Android virtual keyboards (`key: "Unidentified"`, keyCode 229, often Backspace too), IME composition in Chrome and Firefox (`"Process"`), dictation, and autocomplete insertions. Safari reports the underlying key during composition, so there IME presses count as raw keys rather than characters. On the missed paths `totalKeystrokes` and `editingKeyCount` undercount. The interval statistics, `firstKeystrokeDelayMs` and `totalTypingTimeMs` are distorted, because missed keys merge intervals and shift the first and last timestamps, or they come out `0`/`null`. Nothing flags either case. Counting from `beforeinput`/`input` would change the measurement and is not planned (#692); checkpointing preserves the existing measurements.
+`totalKeystrokes`, `editingKeyCount` and the existing keystroke timings still come from `keydown`, and a key counts toward them only when `e.key` is a single character, Enter, Tab, Backspace or Delete (cursor keys go to `arrowKeyCount` instead). Input that reaches the field without such a keydown is invisible to them: Android virtual keyboards (`key: "Unidentified"`, keyCode 229, often Backspace too), IME composition in Chrome and Firefox (`"Process"`), dictation, and autocomplete insertions. Safari reports the underlying key during composition, so there IME presses count as raw keys rather than characters. On the missed paths `totalKeystrokes` and `editingKeyCount` undercount. The interval statistics, `firstKeystrokeDelayMs` and `totalTypingTimeMs` are distorted, because missed keys merge intervals and shift the first and last timestamps, or they come out `0`/`null`. These existing measurements remain unchanged (#692).
+
+**Additive native-input statistics (#824).** Native DOM listeners observe `beforeinput`, `input`, composition, copy, and cut events independently of React's change detection. `beforeinput` supplies pre-edit context and counts attempted changes; only observed `input` events contribute to input-event and character totals. The new fields are optional in the exported `TypingStats` type for compatibility with older host code and records, but current controls populate all of them. Missing fields in older records must not be treated as observed zeroes.
+
+| Fields | Contract |
+| --- | --- |
+| `beforeInputEventCount`, `inputEventCount` | Counts of the respective native events, never a combined count. Canceled attempts can produce only `beforeinput`. |
+| `inputTypeCounts`, `charsInsertedByInputType` | Sparse maps of event counts and inserted UTF-16 units, keyed by a finite input-type allowlist; unknown/missing types use `other`. Missing buckets mean zero within an available map. Arbitrary browser strings never become new keys. |
+| `charsInsertedTotal`, `charsDeletedTotal` | Gross UTF-16 insertion/removal footprints from observed native-input value changes before validation/filtering. Pre-edit selection identifies consistent replacements; otherwise a minimal contiguous value diff estimates them. These totals are not accepted answer length. |
+| `maxSingleInsertionChars`, `largeInsertionCount` | Largest event insertion (`0` with none) and number of events inserting at least 20 UTF-16 units. |
+| `largeInsertions` | First 10 large-insertion records. Each has `chars`, normalized `inputType`, `isTrusted`, `isComposing`, wall-clock `timestamp`, nullable `msSinceFirstFocus`/`msSinceLastFocus`/`msSinceLastKeydown`, and `precededByKeydown` (keydown gap at most 50 ms). |
+| `untrustedInputEventCount`, `inputWithoutKeydownCount` | Input events with `isTrusted === false`, and events without any field keydown in the preceding 50 ms. The key correlation includes keys excluded from `totalKeystrokes`. |
+| `inputEventsWithoutBeforeInput`, `inputEventsWithoutData`, `inputDiffFallbackCount` | Input events missing usable pre-edit context, lacking an input text payload, or measured by value-diff fallback. These overlap and indicate observation limits, not invalid input. |
+| `firstInputDelayMs`, `totalInputTimeMs` | First-focus-to-first-input delay (`null` without input or prior focus), and first-to-last-input duration (`null` with fewer than two events). Pauses and time away are included. |
+| `unidentifiedKeyCount`, `processKeyCount` | `Unidentified` keydowns (also key code 229 outside composition, counted once) and `Process` keydowns. |
+| `compositionCount` | Completed observed composition start/end pairs, including cancellation; unfinished pairs are excluded. |
+| `shortcutKeyCount` | Ctrl/Meta-modified keydowns included in the legacy `totalKeystrokes`; excludes modifier-only and cursor keys, so this is a subset of that total. |
+| `copyCount`, `cutCount` | Observed field copy/cut events. Neither clipboard contents nor inserted text is persisted in telemetry. |
+
+Snapshots copy the maps and sample records, so later activity cannot mutate a snapshot already handed to a host. The allowlist and ten-sample cap bound each added snapshot, not the entire history: earlier completed blur summaries still retain cumulative samples.
+
+The native input observer runs before control validation. It can see text later rejected by `TextArea` or filtered by `NumericInput`. Conversely, a numeric `beforeinput` handler can cancel an insertion and apply an allowed subset without a native `input`; that attempt increments `beforeInputEventCount` but not character totals. Restored host values do not count as input. The fallback diff can undercount replacements of identical text when pre-edit context is missing. IME provisional replacements contribute gross edits, not counts of committed composition characters.
+
+Browser event types and payload availability differ; dictation may use `insertText` or `insertReplacementText` rather than a distinct `insertFromDictation`. Trusted events can come from browser automation, while dictation, IME, switch access, and AAC can produce input without keydowns. These fields describe observation and must not be treated as a bot verdict. See [researcher interpretation guidance](../researcher/prompts.md#input-event-statistics).
+
+**Pointer and focus snapshots (#827).** `Button`, `RadioGroup`, `CheckboxGroup`,
+`TextArea`, and `NumericInput` accept an optional
+`onPointerSnapshot(stats: PointerStats)` callback. Providing the callback enables
+collection; without it, no pointer-telemetry listeners or geometry reads run.
+It receives an initial zero snapshot and independent snapshots of local
+observations; calling it is not a
+response commit and does not perform host I/O. Hosts using these standalone
+controls should retain the
+latest snapshot and attach it to their existing saves. `Prompt` does this for
+solo text, numeric, radio, and checkbox responses, and `SubmitButton` includes
+`pointerStats` in its existing `submitButton_<name>` record.
+
+Counts accumulate per component mount; the first 20 clicks and first 20 field
+focuses are sampled, with fixed-vocabulary count maps. Remount resets them.
+Removing the callback pauses collection and discards pending event provenance;
+adding it again publishes the retained counts and samples, then resumes
+collection. Replacing one callback with another does not restart the observer.
+Geometry is read only for samples that can still be retained: pointerdown
+geometry for field-focus samples, and click-time geometry for click samples.
+Once the relevant cap is reached, counts continue without those layout reads.
+Native observations precede the corresponding existing answer/submit callback
+so its snapshot includes the current interaction. Label-forwarded activation is
+not counted as another physical click. Pointer snapshots replace the previous
+snapshot and are separate from the historical typing `debugMessages` list.
+No extra timers, saves, or teardown flushes are introduced, and existing
+`mouseClickCount` is unchanged. A click without an answer change or a focus-only
+visit may never be saved.
+
+Geometry uses unrounded normalized coordinates and CSS-pixel dimensions of the
+stable control/label box, with an additional input-relative position for choice
+labels. Missing pointer evidence produces no coordinates. The viewport-clipped,
+floored center is a comparison reference, not an automation verdict. See the
+[sample fields, focus definitions, and interpretation limits](../researcher/prompts.md#pointer-and-focus-statistics).
+Trusted touch sequences retain their `touch` type when a browser emits a
+compatibility mouse click with a different pointer ID; this match also requires
+the same control and release coordinates within one CSS pixel and one second.
 
 ### Display Components (standalone)
 
@@ -653,18 +735,18 @@ Peaks helpers exported alongside it: `createPeaksArrays(channelCount, bucketCoun
 
 ### Element Components (pure props)
 
-| Component       | Key Props                                                                                                                       |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `Prompt`        | `metadata`, `body`, `responseItems`, `name`, `save`, `value`, `entry?`, `numberFormat?`, `step?`, `getElapsedTime?`, `stageId?` |
-| `Display`       | `reference`, `values`, `position?`                                                                                              |
-| `SubmitButton`  | `onSubmit`, `name`, `save`, `getElapsedTime`, `buttonText?`                                                                     |
-| `AudioElement`  | `src`                                                                                                                           |
-| `ImageElement`  | `src`, `width?`                                                                                                                 |
-| `KitchenTimer`  | `startTime`, `endTime`, `getElapsedTime`, `warnTimeRemaining?`                                                                  |
-| `TrackedLink`   | `name`, `url`, `displayText`, `save`, `getElapsedTime`, `progressLabel`, `resolvedParams?`                                      |
-| `TrainingVideo` | `url`, `getElapsedTime`, `onComplete`                                                                                           |
+| Component       | Key Props                                                                                                                                           |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Prompt`        | `metadata`, `body`, `responseItems`, `name`, `save`, `value`, `entry?`, `numberFormat?`, `step?`, `getElapsedTime?`, `stageId?`                     |
+| `Display`       | `reference`, `values`, `position?`                                                                                                                  |
+| `SubmitButton`  | `onSubmit`, `name`, `save`, `getElapsedTime`, `buttonText?`                                                                                         |
+| `AudioElement`  | `src`                                                                                                                                               |
+| `ImageElement`  | `src`, `width?`                                                                                                                                     |
+| `KitchenTimer`  | `startTime`, `endTime`, `getElapsedTime`, `warnTimeRemaining?`                                                                                      |
+| `TrackedLink`   | `name`, `url`, `displayText`, `save`, `getElapsedTime`, `progressLabel`, `resolvedParams?`                                                          |
+| `TrainingVideo` | `url`, `getElapsedTime`, `onComplete`                                                                                                               |
 | `MediaPlayer`   | `name`, `url`, `save`, `getElapsedTime`, `initialRecord?`, `sourceId?`, `startAt?`, `stopAt?`, `playback?`, `autoplay?`, `controls?`, `onComplete?` |
-| `Qualtrics`     | `url`, `resolvedParams?`, `stableParticipantId?`, `sampleId?`, `onContractViolation?`, `save`, `onComplete`                     |
+| `Qualtrics`     | `url`, `resolvedParams?`, `stableParticipantId?`, `sampleId?`, `onContractViolation?`, `save`, `onComplete`                                         |
 
 `Display.values` remains an array of display entries. Wrap a single-position
 `readReference` result in `[value]`, including when that participant's answer is
@@ -732,22 +814,64 @@ or gap tolerance is applied. See [saved data](../researcher/elements.md#saved-da
 for record examples and [the ADR](../decisions/2026-10-media-coverage-restore.md)
 for the first-slice scope of #719 and media-player portion of #728.
 
+**Audio and page-state telemetry (#825).** New `play` events include `muted`
+and normalized `volume` (`0`–`1`), with null for unavailable backend readings.
+Historical events may omit these fields. Play and `volumechange` events include
+`channelMuted?: boolean[]` once the player's channel graph is initialized, in
+the channel-index order used by `PlaybackHandle.isChannelMuted` and Timeline.
+
+Volume gestures settle after 500 ms of quiet, then remain queued in memory.
+An observed change can also reflect newly available channel state when the
+graph initializes; `volumechange` does not imply a manual participant action.
+Existing playback saves also drain a pending gesture before its settle timer
+fires. `fullscreenchange` carries a `fullscreen` boolean; native media can also
+report `enterpictureinpicture` and `leavepictureinpicture`. These events do not
+invoke `save`. The next existing transport-event save batches them with its
+normal record; it still determines `lastVideoTime` and playback milestones.
+Each of these four new event kinds retains its first 50 observations across
+the restored log; further observations increment `mediaStateEventsDropped`.
+Transport-event retention is unchanged.
+
+`hiddenPlaybackSeconds`, `unfocusedPlaybackSeconds`, and
+`visibilityChangesDuringPlayback` accumulate locally and ride on existing
+saves. The durations are overlapping wall-clock intervals, measured with
+`performance.now()` while actual playback is reported; they are independent
+of playback rate and unique media coverage. HTML `playing` and YouTube PLAYING
+start an interval; waiting/buffering, seeking, pause/end/error, and backend
+replacement stop it. Buffered native seek completion can resume an interval
+when playback was observed before the seek and the media is still ready,
+unpaused, and not ended; this covers WebKit's lack of a new `playing` event
+after some seeks. `play` retains its earlier request/start semantics.
+Page state is read through `document.visibilityState` and `document.hasFocus()`.
+Matching restore preserves valid totals without inferring downtime playback;
+source replacement resets the measurement.
+Missing totals in older records mean prior history was unmeasured, not that
+hidden or unfocused playback was observed to be zero.
+
+YouTube audio readings use the existing 250 ms poll, without adding a polling
+loop. Its internal presentation-mode events may be inaccessible through the
+cross-origin iframe. No new host saves or teardown flushes are introduced, so
+an unsaved state-only tail can disappear on paused removal. Browser state is
+descriptive and cannot establish device audibility, actual visibility, or
+attention. See [measurement definitions and limits](../researcher/elements.md#audio-and-page-state-observations)
+and the [implementation decision](../decisions/2026-11-media-state-telemetry.md).
+
 ### Render Slots (platform-provided)
 
-| Slot                  | Config                                                                  | When Used                                                                                                                                                                                                                                                                                                 |
-| --------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `renderDiscussion`    | Full `DiscussionType` config                                            | Stage with `discussion` block                                                                                                                                                                                                                                                                             |
-| `renderSharedNotepad` | `{ padName, defaultText?, rows?, ariaLabelledBy, onLocalEdit, onRemoteChange, onBlur }` | `shared: true` open-response prompt. Each callback takes the latest merged text. `defaultText` is placeholder-only: hint text, never seeded into the shared document or saved value. Set `ariaLabelledBy` as the editor's `aria-labelledby`. See the [shared editor contract](integration-guide.md#shared-notepad) for timing and own-transaction classification. |
-| `renderSharedNumericResponse` | `SharedNumericResponseConfig` (exported from `stagebook/components`) | `shared: true` numeric prompt. Its own optional slot; missing support renders an error and reports a contract violation. See [Shared numeric responses](integration-guide.md#shared-numeric-responses). |
+| Slot                          | Config                                                                                  | When Used                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `renderDiscussion`            | Full `DiscussionType` config                                                            | Stage with `discussion` block                                                                                                                                                                                                                                                                                                                                     |
+| `renderSharedNotepad`         | `{ padName, defaultText?, rows?, ariaLabelledBy, onLocalEdit, onRemoteChange, onBlur }` | `shared: true` open-response prompt. Each callback takes the latest merged text. `defaultText` is placeholder-only: hint text, never seeded into the shared document or saved value. Set `ariaLabelledBy` as the editor's `aria-labelledby`. See the [shared editor contract](integration-guide.md#shared-notepad) for timing and own-transaction classification. |
+| `renderSharedNumericResponse` | `SharedNumericResponseConfig` (exported from `stagebook/components`)                    | `shared: true` numeric prompt. Its own optional slot; missing support renders an error and reports a contract violation. See [Shared numeric responses](integration-guide.md#shared-numeric-responses).                                                                                                                                                           |
 
 ### Conditional Components
 
-| Component                     | Key Props                                                        |
-| ----------------------------- | ---------------------------------------------------------------- |
-| `TimeConditionalRender`       | `displayTime?`, `hideTime?`, `getElapsedTime`, `children`        |
-| `PositionConditionalRender`   | `showToPositions?`, `hideFromPositions?`, `position`, `children` |
+| Component                     | Key Props                                                                                |
+| ----------------------------- | ---------------------------------------------------------------------------------------- |
+| `TimeConditionalRender`       | `displayTime?`, `hideTime?`, `getElapsedTime`, `children`                                |
+| `PositionConditionalRender`   | `showToPositions?`, `hideFromPositions?`, `position`, `children`                         |
 | `ConditionsConditionalRender` | `conditions`, `readReference`, `children`, `fallback?`, `onViolation?`, `violationKeys?` |
-| `SubmissionConditionalRender` | `isSubmitted`, `playerCount`, `children`                         |
+| `SubmissionConditionalRender` | `isSubmitted`, `playerCount`, `children`                                                 |
 
 For custom condition wrappers inside a provider, pass its bound `readReference`,
 `onContractViolation` as `onViolation`, and `violationKeys` from
@@ -788,6 +912,31 @@ const { getTextContent, getAssetURL } = createStaticContentFns({
 
 `getTextContent`/`getAssetURL` **must be referentially stable** (memoize them) or the harness re-fetches on every render.
 
+#### Task parameter files
+
+Pass `taskParameters` to let researchers preview a parameterized workflow against an Annotator task file: a **Load parameters…** bar appears above the preview, the researcher chooses a task, and `PreviewHost` previews the workflow narrowed to that task's treatment with its `fields` bound — JSON types intact, so `15.82` binds a number and `"15.82"` a string. The host owns the file I/O and the selection:
+
+```tsx
+<PreviewHost
+  {/* …the props above… */}
+  taskParameters={{
+    source, // { name, text } | { name, readError } | null — re-read on refresh
+    selectedKey, // the chosen entry's key, or null
+    onSelect: setSelectedKey, // persist it so a refresh keeps the selection
+    onLoad: openFilePicker, // read the chosen file into `source`
+    onClear: () => { setSource(null); setSelectedKey(null); },
+  }}
+/>
+```
+
+- **Accepted files:** a JSON array of task entries (Annotator's task-file upload) or `{ "tasks": [...] }` (its `/api/v1` submission body). Each entry needs `treatment` and a `fields` object; `callerTaskId` identifies it. Deployment-only keys (`targetReplications`, `exportPath`, `metadata`, `_comment`) are ignored and never become bindings.
+- **Selection keys:** `id:<callerTaskId>`, or `entry:<n>` (1-based position) for an entry without one, or for every copy of a repeated `callerTaskId` (each copy is flagged). Keep `selectedKey` across refreshes of the same file and reset it when a different file loads. When the selected entry is gone, the preview says so rather than showing another one.
+- **Checks:** malformed JSON, a malformed entry, an unknown treatment, and a missing field are reported by entry and field; a field the treatment doesn't use is a non-blocking warning (Annotator rejects it on upload). Post-fill validation issues name the `${field}` that supplied the failing value.
+- **Isolation:** switching tasks remounts the preview, so responses, media state, and manual field overrides never carry from one task to another. A refresh that leaves the task unchanged keeps its state, like a workflow refresh; one that changes the task's treatment or field values remounts too, so a manual override never outlives the value it replaced. When `onRefresh` is passed, the parameter bar offers it on screens that don't show the Viewer header (task problems, the task list, the field form).
+- `source` should be referentially stable — a new object re-parses the file.
+
+`parseTaskParameters(text)` and `resolveTaskParameterEntry(file, entry, hostFields?)` expose the same parsing and checks for hosts building their own UI.
+
 ### Content-fn helpers
 
 | Helper                        | For                                                                                                                                                                     |
@@ -797,11 +946,12 @@ const { getTextContent, getAssetURL } = createStaticContentFns({
 
 ### Other exports
 
-| Export                                                                                              | Purpose                                                                                      |
-| --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `Viewer`                                                                                            | The rendering component `PreviewHost` wraps — for hosts that resolve `${field}`s themselves. |
-| `ViewerStateStore` / `createViewerStateStore()`                                                     | The simulated response store (resettable), for custom harnesses.                             |
-| `createViewerContext(opts)`                                                                         | Builds the mock `StagebookContext` bridging the store to `stagebook/components`.             |
-| `flattenSteps`, `extractStageReferences`, `extractTimeBreakpoints`                                  | Structural introspection over a treatment (steps, references, timeline breakpoints).         |
-| `expandTreatmentFile(file, fields?)`                                                                | Expand `templates:` and report unresolved `${field}`s (no import merge, no js-yaml).         |
-| `StageNav`, `StateInspector`, `TimeScrubber`, `TreatmentPicker`, `FieldForm`, `SkeletonPlaceholder` | The individual dev-chrome components, for hosts assembling bespoke chrome.                   |
+| Export                                                                                              | Purpose                                                                                        |
+| --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `Viewer`                                                                                            | The rendering component `PreviewHost` wraps — for hosts that resolve `${field}`s themselves.   |
+| `ViewerStateStore` / `createViewerStateStore()`                                                     | The simulated response store (resettable), for custom harnesses.                               |
+| `createViewerContext(opts)`                                                                         | Builds the mock `StagebookContext` bridging the store to `stagebook/components`.               |
+| `flattenSteps`, `extractStageReferences`, `extractTimeBreakpoints`                                  | Structural introspection over a treatment (steps, references, timeline breakpoints).           |
+| `expandTreatmentFile(file, fields?)`                                                                | Expand `templates:` and report unresolved `${field}`s (no import merge, no js-yaml).           |
+| `parseTaskParameters(text)`, `resolveTaskParameterEntry(file, entry, hostFields?)`                  | Parse an Annotator task file; narrow a workflow to one entry's treatment and check its fields. |
+| `StageNav`, `StateInspector`, `TimeScrubber`, `TreatmentPicker`, `FieldForm`, `SkeletonPlaceholder` | The individual dev-chrome components, for hosts assembling bespoke chrome.                     |

@@ -8,6 +8,12 @@ export interface PostFillIssue {
   /** Dotted path into the filled tree, or "(root)" for top-level issues. */
   path: string;
   message: string;
+  /**
+   * The `${field}`s whose values produced the failing value, when the issue
+   * sits in (or under) a placeholder slot. Absent for issues in literal
+   * content.
+   */
+  fields?: string[];
 }
 
 export type PreviewState =
@@ -49,10 +55,20 @@ export function computePreviewState(
   const merged = { ...(additionalFields ?? {}), ...(userValues ?? {}) };
   const bindings = Object.keys(merged).length > 0 ? merged : undefined;
 
-  const { result, unresolvedFields } = expandTreatmentFile(
-    treatmentFile,
-    bindings,
-  );
+  let filled: ReturnType<typeof expandTreatmentFile>;
+  try {
+    filled = expandTreatmentFile(treatmentFile, bindings);
+  } catch (err) {
+    // Filling a placeholder inside a longer string splices the value into
+    // serialized JSON, so a quote or backslash in a value can break the
+    // fill (#818). Report it like a validation failure, with the fields
+    // editable, rather than crash the preview.
+    const message = err instanceof Error ? err.message : String(err);
+    return failureState(treatmentFile, merged, [
+      { path: [], message: `Couldn't fill in the fields: ${message}` },
+    ]);
+  }
+  const { result, unresolvedFields } = filled;
 
   if (unresolvedFields.length > 0) {
     return {
@@ -67,16 +83,30 @@ export function computePreviewState(
   if (issues.length === 0) {
     return { mode: "ready", resolved: result };
   }
+  return failureState(treatmentFile, merged, issues);
+}
 
-  const errors: PostFillIssue[] = issues.map((issue) => ({
-    path: issue.path.join(".") || "(root)",
-    message: issue.message,
-  }));
+/** The form (or error) state for bindings that fill in but don't validate. */
+function failureState(
+  treatmentFile: TreatmentFileType,
+  merged: Record<string, unknown>,
+  issues: { path: (string | number)[]; message: string }[],
+): PreviewState {
+  // The bindings-free expansion still holds each `${field}` where the
+  // filled tree holds its value, so it names the fields behind an issue —
+  // and lists the file's fillable fields for the form (the with-bindings
+  // pass reported none unresolved, but the user may revise any of them).
+  const base = expandTreatmentFile(treatmentFile);
+  const errors: PostFillIssue[] = issues.map((issue) => {
+    const fields = fieldsAtPath(base.result, issue.path);
+    return {
+      path: issue.path.join(".") || "(root)",
+      message: issue.message,
+      ...(fields.length > 0 && { fields }),
+    };
+  });
 
-  // Re-derive the file's fillable fields from a bindings-free
-  // expansion: the with-bindings pass reported none unresolved, but
-  // the form needs the full set to let the user revise their answers.
-  const baseFields = expandTreatmentFile(treatmentFile).unresolvedFields;
+  const baseFields = base.unresolvedFields;
   const formFields = baseFields.filter((field) => {
     const value = merged[field];
     return value === undefined || typeof value === "string";
@@ -92,6 +122,28 @@ export function computePreviewState(
     errors,
   };
 }
+
+/**
+ * The `${field}` names in the unfilled tree at `path`, or at the nearest
+ * ancestor that is a string: a substituted structure (a list, an object) can
+ * fail below the slot its placeholder occupied.
+ */
+function fieldsAtPath(
+  unfilled: unknown,
+  path: readonly (string | number)[],
+): string[] {
+  let node = unfilled;
+  for (const key of path) {
+    if (node === null || typeof node !== "object") break;
+    node = (node as Record<string | number, unknown>)[key];
+  }
+  if (typeof node !== "string") return [];
+  return [
+    ...new Set(Array.from(node.matchAll(FIELD_PLACEHOLDER), (m) => m[1])),
+  ];
+}
+
+const FIELD_PLACEHOLDER = /\$\{([a-zA-Z0-9_]+)\}/g;
 
 /** Restrict bindings to string values for the given fields — FieldForm
  * inputs only carry strings; host-supplied non-string context (e.g.

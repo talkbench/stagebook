@@ -122,7 +122,7 @@ schemas are also available from the same React-free entrypoint:
 | Source         | Export                     | Stored shape                                                                                     |
 | -------------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
 | `attributes`   | `attributesSchema`         | Existing participant-attributes contract, including required `stableParticipantId`               |
-| `timeline`     | `timelineRecordSchema`     | A bare array of ranges (`start`, `end`) or points (`time`), with optional `track`; `[]` is valid |
+| `timeline`     | `timelineRecordSchema`     | A bare array of ranges (`start`, `end`) or points (`time`), with optional `track` (ordinary media) or `position` (group recording), never both; `[]` is valid |
 | `trackedLink`  | `trackedLinkRecordSchema`  | `name`, `url`, `displayText`, `events`, `totalTimeAwaySeconds`, and optional last-event fields   |
 | `submitButton` | `submitButtonRecordSchema` | Required numeric `time`, in elapsed stage seconds                                                |
 | `mediaPlayer`  | `mediaPlayerRecordSchema`  | Playback event log, watched intervals, last video time, and optional first-play/end events       |

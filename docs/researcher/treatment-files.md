@@ -462,6 +462,35 @@ Distinct from `asset://`: use a field when the asset _varies from task to task_.
 
 The task definition supplies the value at creation time. The value itself can be any of the three forms above (relative path, full URL, or `asset://`).
 
+#### Previewing tasks from a task file
+
+To see the workflow the way a particular task will, load the task file into the preview instead of typing each field by hand. In the VS Code preview or the web viewer, choose **Load parameters…**, pick the JSON task file you upload to Annotator, and choose a task. The preview runs that task's treatment with its fields filled in:
+
+```json
+[
+  {
+    "callerTaskId": "clip-01",
+    "treatment": "clip_review",
+    "fields": {
+      "clipUrl": "asset://solo_recordings/session_01_listener.mp4",
+      "clipStartAt": 15.82,
+      "clipStopAt": 16.436,
+      "transcript": "Mhm"
+    },
+    "targetReplications": 1
+  }
+]
+```
+
+- Values keep their JSON types: `15.82` is a number, `"15.82"` is text. A `startAt` given as text is reported, naming the field, rather than quietly converted.
+- Only `treatment` and `fields` affect the preview. `targetReplications`, `exportPath`, and `metadata` are for deployment and are ignored.
+- Annotator's `/api/v1` body (`{ "tasks": [...] }`) works too. Entries without a `callerTaskId` are listed as "Entry 1", "Entry 2", … by position.
+- The preview reports a treatment the workflow doesn't define, a field the task leaves out, and a field the treatment doesn't use (Annotator rejects those on upload).
+- Switching tasks starts the preview over. In VS Code, refresh re-reads the workflow, its prompts, and the task file, and keeps the task you chose. If the task's values changed, the preview starts over with them.
+- Loading a task file only reads it. It doesn't change the file or create anything in Annotator.
+
+The preview binds any JSON value, but Annotator itself currently accepts only text, numbers, and `null` as field values. See [`examples/task-parameters`](../../examples/task-parameters/) for a small workflow and task file to try.
+
 ### Choosing between the three
 
 | Asset is the same every task? | Asset is in the repo? | Reference form |

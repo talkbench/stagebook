@@ -6,6 +6,10 @@ import {
   prepareExampleTreatment,
 } from "./exampleCatalog";
 import { parseTreatmentYaml, expandTreatmentFile } from "./treatment";
+import {
+  parseTaskParameters,
+  resolveTaskParameterEntry,
+} from "stagebook/viewer";
 
 const SAMPLE_YAML = `
 introSequences:
@@ -182,9 +186,43 @@ describe("exampleCatalog (discovered via import.meta.glob)", () => {
       // included before template expansion. For examples without
       // imports, mergedYaml === yaml.
       const parsed = parseTreatmentYaml(entry.mergedYaml);
+      if (entry.taskParameters !== undefined) {
+        // An example with a task file (#815) leaves its fields to the
+        // tasks: each one must fill them all.
+        const tasks = parseTaskParameters(entry.taskParameters);
+        if (!tasks.ok) throw new Error(`${entry.id}: ${tasks.error}`);
+        for (const task of tasks.entries) {
+          const resolution = resolveTaskParameterEntry(parsed, task);
+          if (!resolution.ok) {
+            throw new Error(
+              `${entry.id} ${task.label}: ${resolution.errors.join("; ")}`,
+            );
+          }
+          const { unresolvedFields } = expandTreatmentFile(
+            resolution.treatmentFile,
+            resolution.fields,
+          );
+          expect(
+            unresolvedFields,
+            `${entry.id} ${task.label} has unresolved fields`,
+          ).toEqual([]);
+        }
+        continue;
+      }
       const { unresolvedFields } = expandTreatmentFile(parsed);
       expect(unresolvedFields, `${entry.id} has unresolved fields`).toEqual([]);
     }
+  });
+
+  it("bundles an example's task file (#815)", () => {
+    const entry = exampleCatalog.find((e) => e.id === "task-parameters");
+    expect(entry?.taskParameters).toContain('"callerTaskId": "clip-01"');
+    // Examples without one have none.
+    const walkthrough = exampleCatalog.find(
+      (e) => e.id === "annotated-walkthrough",
+    );
+    expect(walkthrough).toBeDefined();
+    expect(walkthrough?.taskParameters).toBeUndefined();
   });
 });
 

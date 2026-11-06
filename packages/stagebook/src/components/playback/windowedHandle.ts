@@ -77,12 +77,22 @@ export function withSeekWindow(
     getDuration: () => inner.getDuration(),
     getBounds,
     isPaused: () => inner.isPaused(),
+    get getAudioState() {
+      return inner.getAudioState?.bind(inner);
+    },
     get isYouTube() {
       return inner.isYouTube;
     },
     get channelCount() {
       return inner.channelCount;
     },
+    get participantTracks() {
+      return inner.participantTracks;
+    },
+    get annotationError() {
+      return inner.annotationError;
+    },
+    requestChannelCheck: () => inner.requestChannelCheck?.(),
     get peaks() {
       return inner.peaks;
     },

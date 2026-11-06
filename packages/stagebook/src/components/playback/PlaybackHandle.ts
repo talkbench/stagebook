@@ -5,6 +5,13 @@ export interface TransportCapabilities {
   seek: boolean;
 }
 
+/** Observed player settings; null means the backend could not report them. */
+export interface PlaybackAudioState {
+  muted: boolean | null;
+  /** Normalized player volume from 0 to 1, independent of mute state. */
+  volume: number | null;
+}
+
 /** Unified playback interface. Both HTML5 VideoCore and YouTubePlayer expose this via ref. */
 export interface PlaybackHandle {
   /** Missing on legacy handles means all transport actions are allowed.
@@ -27,11 +34,23 @@ export interface PlaybackHandle {
    */
   getBounds?(): { start: number; end: number };
   isPaused(): boolean;
+  /** Reads player settings without changing playback. Missing on older handles. */
+  getAudioState?(): PlaybackAudioState;
   /** True when backed by the YouTube IFrame API; frame-step controls should be hidden. */
   readonly isYouTube: boolean;
 
   /** Number of audio channels in the media. 0 until waveform capture starts. */
   readonly channelCount: number;
+
+  /** Group rows in display order; positions are storage identities, not labels. */
+  readonly participantTracks?: readonly {
+    readonly position: number;
+    readonly label?: string;
+  }[];
+  /** Invalid channel layout: Timeline must not present or save annotations. */
+  readonly annotationError?: boolean;
+  /** Run the missing-mapping backstop even when waveforms are hidden. */
+  requestChannelCheck?(): void;
 
   /**
    * Per-channel waveform peaks. One Float32Array per channel, containing
@@ -71,8 +90,9 @@ export interface PlaybackHandle {
   requestWaveformCapture(): void;
 
   /**
-   * Mute or unmute a single audio channel in the output. Ephemeral — not
-   * persisted, a listening aid only. Silences the channel at its GainNode,
+   * Mute or unmute a single audio channel in the output. A listening aid;
+   * MediaPlayer records observations but does not restore these settings.
+   * Silences the channel at its GainNode,
    * ahead of the mix, so the waveform (which taps the pre-gain signal) is
    * unaffected and the other channels play on. Out-of-range channel indices
    * are ignored. No-op before waveform capture has been started, and for

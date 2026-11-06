@@ -50,14 +50,16 @@ function renderElement(element: ElementConfig) {
   const container = document.createElement("div");
   const root = createRoot(container);
   roots.push(root);
-  act(() => {
-    root.render(
-      <StagebookProvider value={context}>
-        <Element element={element} onSubmit={onSubmit} />
-        <ReadReferences />
-      </StagebookProvider>,
-    );
-  });
+  const render = () =>
+    act(() => {
+      root.render(
+        <StagebookProvider value={{ ...context }}>
+          <Element element={element} onSubmit={onSubmit} />
+          <ReadReferences />
+        </StagebookProvider>,
+      );
+    });
+  render();
   return {
     container,
     state,
@@ -66,6 +68,10 @@ function renderElement(element: ElementConfig) {
     readReference: (reference: string) => readReference(reference),
     setElapsedTime: (time: number) => {
       elapsedTime = time;
+    },
+    setStage: (stageId: string) => {
+      context.stageId = stageId;
+      render();
     },
   };
 }
@@ -92,10 +98,28 @@ describe("Element referenceable completion records (#690)", () => {
         time: 25.5,
         step: "game_0_survey",
         stageTimeElapsed: 25.5,
+        pointerStats: expect.objectContaining({
+          controlType: "button",
+          clickCount: 1,
+        }) as unknown,
       });
       expect(view.onSubmit).toHaveBeenCalledTimes(1);
     },
   );
+
+  test("reused submit buttons start fresh pointer telemetry in a new stage", () => {
+    const view = renderElement({ type: "submitButton", name: "continue" });
+    act(() => view.container.querySelector("button")!.click());
+    act(() => view.container.querySelector("button")!.click());
+    expect(view.state.get("submitButton_continue")).toMatchObject({
+      pointerStats: { clickCount: 2 },
+    });
+    view.setStage("next-stage");
+    act(() => view.container.querySelector("button")!.click());
+    expect(view.state.get("submitButton_continue")).toMatchObject({
+      pointerStats: { clickCount: 1 },
+    });
+  });
 
   test.each(["exit", undefined])(
     "qualtrics %s records completion metadata and preserves the host trigger",

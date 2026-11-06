@@ -12,7 +12,8 @@ import {
 } from "../../utils/numericResponse.js";
 import { getNumericFeedback } from "../../utils/numericFeedback.js";
 import { TextArea } from "../form/TextArea.js";
-import type { DebugMessage } from "../../utils/promptTelemetry.js";
+import type { DebugMessage, TypingStats } from "../../utils/promptTelemetry.js";
+import type { PointerStats } from "../../utils/pointerTelemetry.js";
 import { useResponseCommit } from "../hooks/useResponseCommit.js";
 import { buildPromptRecord } from "../../utils/buildPromptRecord.js";
 import { Slider } from "../form/Slider.js";
@@ -115,8 +116,35 @@ function PromptContent({
   // Controls emit telemetry before the response. Read the ref at commit
   // time, without waiting for a React state update.
   const debugMessagesRef = useRef<DebugMessage[]>([]);
+  const pointerStatsRef = useRef<PointerStats | undefined>(undefined);
+  const recordPointerSnapshot = (snapshot: PointerStats) => {
+    pointerStatsRef.current = snapshot;
+  };
   const typingSnapshotIndexRef = useRef<number | undefined>(undefined);
   const finalizingTypingVisitRef = useRef(false);
+
+  const recordDebugMessage = (message: DebugMessage) => {
+    if (message.type === "typingStats") {
+      // The real blur event precedes its commit snapshot. Finalize
+      // that snapshot once, without appending a duplicate summary.
+      finalizingTypingVisitRef.current = true;
+    } else {
+      debugMessagesRef.current = [...debugMessagesRef.current, message];
+    }
+  };
+  const recordTypingSnapshot = (snapshot: TypingStats) => {
+    // One provisional snapshot until a real blur. Move replacements
+    // to the end so intervening paste events retain their ordering;
+    // never mutate arrays/objects already handed to a host save.
+    const history = debugMessagesRef.current.filter(
+      (_, index) => index !== typingSnapshotIndexRef.current,
+    );
+    debugMessagesRef.current = [...history, snapshot];
+    typingSnapshotIndexRef.current = finalizingTypingVisitRef.current
+      ? undefined
+      : history.length;
+    finalizingTypingVisitRef.current = false;
+  };
 
   // Stable id for the wrapper around the rendered prompt body. The
   // dropdown's `<select>` points its `aria-labelledby` here so the
@@ -206,6 +234,16 @@ function PromptContent({
       label?: string,
       format?: NumberFormat,
     ) => {
+      const controlType =
+        recordData.metadata.type === "openResponse"
+          ? "text"
+          : recordData.metadata.type === "numericResponse"
+            ? "numeric"
+            : recordData.metadata.type === "multipleChoice"
+              ? recordData.metadata.select === "multiple"
+                ? "checkbox"
+                : "radio"
+              : undefined;
       const updatedRecord = buildPromptRecord({
         ...recordData,
         value: newValue,
@@ -213,6 +251,10 @@ function PromptContent({
           ? { entry: newValue as string, numberFormat: format }
           : {}),
         debugMessages: debugMessagesRef.current,
+        pointerStats:
+          pointerStatsRef.current?.controlType === controlType
+            ? pointerStatsRef.current
+            : undefined,
         label,
         step,
         stageTimeElapsed: getElapsedTime?.(),
@@ -297,6 +339,7 @@ function PromptContent({
         // label is the displayed text. In text mode value === label.
         (hasNumericPoints && shuffledNumericPoints ? (
           <RadioGroup
+            onPointerSnapshot={recordPointerSnapshot}
             options={responses.map((label, idx) => ({
               key: String(shuffledNumericPoints[idx]),
               value: label,
@@ -317,6 +360,7 @@ function PromptContent({
           />
         ) : (
           <RadioGroup
+            onPointerSnapshot={recordPointerSnapshot}
             options={responses.map((choice) => ({
               key: choice,
               value: choice,
@@ -335,6 +379,7 @@ function PromptContent({
 
       {promptType === "multipleChoice" && metadata.select === "multiple" && (
         <CheckboxGroup
+          onPointerSnapshot={recordPointerSnapshot}
           options={responses.map((choice) => ({
             key: choice,
             value: choice,
@@ -387,28 +432,9 @@ function PromptContent({
           debounceDelay={2000}
           maxWait={5000}
           onChange={(val) => saveData(val, record)}
-          onDebugMessage={(message) => {
-            if (message.type === "typingStats") {
-              // The real blur event precedes its commit snapshot. Finalize
-              // that snapshot once, without appending a duplicate summary.
-              finalizingTypingVisitRef.current = true;
-            } else {
-              debugMessagesRef.current = [...debugMessagesRef.current, message];
-            }
-          }}
-          onTypingSnapshot={(snapshot) => {
-            // One provisional snapshot until a real blur. Move replacements
-            // to the end so intervening paste events retain their ordering;
-            // never mutate arrays/objects already handed to a host save.
-            const history = debugMessagesRef.current.filter(
-              (_, index) => index !== typingSnapshotIndexRef.current,
-            );
-            debugMessagesRef.current = [...history, snapshot];
-            typingSnapshotIndexRef.current = finalizingTypingVisitRef.current
-              ? undefined
-              : history.length;
-            finalizingTypingVisitRef.current = false;
-          }}
+          onDebugMessage={recordDebugMessage}
+          onTypingSnapshot={recordTypingSnapshot}
+          onPointerSnapshot={recordPointerSnapshot}
           value={value as string | undefined}
           rows={rows}
           showCharacterCount={!!(minLength || maxLength)}
@@ -441,9 +467,9 @@ function PromptContent({
           ariaLabelledBy={bodyId}
           ariaRequired={required || undefined}
           onChange={(text, format) => saveData(text, record, undefined, format)}
-          onDebugMessage={(message) => {
-            debugMessagesRef.current = [...debugMessagesRef.current, message];
-          }}
+          onDebugMessage={recordDebugMessage}
+          onTypingSnapshot={recordTypingSnapshot}
+          onPointerSnapshot={recordPointerSnapshot}
         />
       )}
 

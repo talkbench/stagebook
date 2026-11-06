@@ -1,6 +1,10 @@
-import { useRef } from "react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
 import { computeIntervalQuantiles } from "../form/typingQuantiles.js";
 import type { TypingStats } from "../../utils/promptTelemetry.js";
+import {
+  createInputTelemetry,
+  type TelemetryKeyEvent,
+} from "./inputTelemetry.js";
 
 const CURSOR_KEYS = new Set([
   "ArrowLeft",
@@ -16,7 +20,42 @@ const CURSOR_KEYS = new Set([
 const EDITING_KEYS = new Set(["Backspace", "Delete"]);
 
 /** Identical typing measurements for Stagebook's text and numeric instruments. */
-export function useTypingTelemetry() {
+export function useTypingTelemetry(
+  fieldRef: RefObject<HTMLInputElement | HTMLTextAreaElement | null>,
+) {
+  const inputRef = useRef<ReturnType<typeof createInputTelemetry> | null>(null);
+  inputRef.current ??= createInputTelemetry();
+  const input = inputRef.current;
+  const syncValue = () => {
+    if (fieldRef.current) input.syncValue(fieldRef.current.value);
+  };
+  // Rebase restored or filtered DOM values; never count a React render as input.
+  useLayoutEffect(syncValue);
+  // Attach before parent layout effects or user input can dispatch an edit.
+  useLayoutEffect(() => {
+    const field = fieldRef.current;
+    if (!field) return;
+    const before = (event: Event) =>
+      input.beforeInput(event as InputEvent, field);
+    const changed = (event: Event) =>
+      input.input(event as InputEvent, field, Date.now());
+    const listeners = {
+      beforeinput: before,
+      input: changed,
+      compositionstart: input.compositionStart,
+      compositionend: input.compositionEnd,
+      copy: input.copy,
+      cut: input.cut,
+    };
+    for (const [name, handler] of Object.entries(listeners)) {
+      field.addEventListener(name, handler, true);
+    }
+    return () => {
+      for (const [name, handler] of Object.entries(listeners)) {
+        field.removeEventListener(name, handler, true);
+      }
+    };
+  }, [fieldRef, input]);
   // Inter-keystroke timing comes from character-producing and editing keys
   // (Backspace/Delete). Cursor-only keys (arrows, Home/End) are excluded so
   // that pure navigation doesn't dilute the typing rhythm signal.
@@ -89,11 +128,14 @@ export function useTypingTelemetry() {
       firstKeystrokeDelayMs,
       totalTypingTimeMs,
       focusedDurationMs: totalFocusedMs,
+      ...input.snapshot(),
     };
   };
 
   const onFocus = () => {
     const now = Date.now();
+    input.focus(now);
+    syncValue();
     focusCount.current += 1;
     if (firstFocusAt.current === null) {
       firstFocusAt.current = now;
@@ -102,6 +144,7 @@ export function useTypingTelemetry() {
   };
 
   const onBlur = (): TypingStats => {
+    input.blur();
     blurCount.current += 1;
     if (currentFocusStartedAt.current !== null) {
       focusedDurationMs.current += Date.now() - currentFocusStartedAt.current;
@@ -111,7 +154,15 @@ export function useTypingTelemetry() {
     return computeTypingStats();
   };
 
-  const onKeyDown = (e: { key: string }) => {
+  const onKeyDown = (e: TelemetryKeyEvent) => {
+    input.keydown(
+      e,
+      Date.now(),
+      EDITING_KEYS.has(e.key) ||
+        e.key.length === 1 ||
+        e.key === "Enter" ||
+        e.key === "Tab",
+    );
     if (CURSOR_KEYS.has(e.key)) {
       arrowKeyCount.current += 1;
       return;
@@ -133,5 +184,12 @@ export function useTypingTelemetry() {
     mouseClickCount.current += 1;
   };
 
-  return { onFocus, onBlur, onKeyDown, onClick, snapshot: computeTypingStats };
+  return {
+    onFocus,
+    onBlur,
+    onKeyDown,
+    onClick,
+    snapshot: computeTypingStats,
+    syncValue,
+  };
 }

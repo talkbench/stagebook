@@ -31,6 +31,9 @@ export function buildPlaybackGraph(
   channelCount: number,
 ): PlaybackGraph {
   const splitter = ctx.createChannelSplitter(channelCount);
+  splitter.channelCount = channelCount;
+  splitter.channelCountMode = "explicit";
+  splitter.channelInterpretation = "discrete";
   source.connect(splitter);
   // Explicitly mono: the per-channel gains sum here, and the destination
   // up-mixes mono to both speakers.

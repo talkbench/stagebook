@@ -124,3 +124,53 @@ export function splitAssetMounts(
   }
   return { mounted, unmapped };
 }
+
+/**
+ * The `asset://<prefix>/…` prefixes in a task parameter file's field values
+ * (#815), so the picker card can offer to mount them: a task's clip URL is
+ * usually where an `asset://` reference lives, and the treatment only holds
+ * its `${clipUrl}` placeholder. Reads the Annotator task-file array or a
+ * `{ "tasks": [...] }` submission body; only entries' `fields` count, never
+ * deployment `metadata`. Unparseable text yields none — the preview reports
+ * it. Pure — testable.
+ */
+export function collectTaskParameterAssetPrefixes(text: string): string[] {
+  let json: unknown;
+  try {
+    json = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
+  } catch {
+    return [];
+  }
+  const entries: unknown[] = Array.isArray(json)
+    ? json
+    : isRecord(json) && Array.isArray(json.tasks)
+      ? json.tasks
+      : [];
+
+  const prefixes = new Set<string>();
+  // Explicit stack: a deeply nested value can't overflow the call stack.
+  const pending: unknown[] = entries.map((entry) =>
+    isRecord(entry) ? entry.fields : undefined,
+  );
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (typeof value === "string") {
+      const prefix = ASSET_PREFIX.exec(value)?.[1];
+      // A `${…}` prefix isn't a concrete mount key.
+      if (prefix !== undefined && !prefix.includes("${")) prefixes.add(prefix);
+    } else if (Array.isArray(value)) {
+      for (const item of value) pending.push(item);
+    } else if (isRecord(value)) {
+      for (const item of Object.values(value)) pending.push(item);
+    }
+  }
+  return [...prefixes];
+}
+
+// Matches stagebook's collectAssetPrefixes: case-insensitive scheme, prefix up
+// to the first slash; an opaque `asset:clip.mp4` has no mount prefix.
+const ASSET_PREFIX = /^asset:\/\/([^/]+)/i;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

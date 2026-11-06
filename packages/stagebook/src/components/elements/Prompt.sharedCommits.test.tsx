@@ -379,9 +379,27 @@ for (const shared of [false, true]) {
         body: parsed.body,
         responses: parsed.responseItems,
         value: "committed answer",
+        pointerStats: shared
+          ? undefined
+          : {
+              version: 1,
+              controlType: "text",
+              clickCount: 0,
+              clickCountsBySource: { pointer: 0, keyboard: 0, unknown: 0 },
+              clickCountsByPointerType: {
+                mouse: 0,
+                touch: 0,
+                pen: 0,
+                unknown: 0,
+              },
+              clickSamples: [],
+              focusCount: 0,
+              focusCountsBySource: { pointer: 0, keyboard: 0, unknown: 0 },
+              focusSamples: [],
+            },
         // The synthetic solo input has no key/focus events, but its answer
-        // checkpoint still carries a zero-count snapshot. Shared fields do
-        // not collect participant typing telemetry.
+        // checkpoint still carries zero legacy counts plus the observed input.
+        // Shared fields do not collect participant typing telemetry.
         debugMessages: shared
           ? []
           : [
@@ -399,6 +417,28 @@ for (const shared of [false, true]) {
                 firstKeystrokeDelayMs: null,
                 totalTypingTimeMs: null,
                 focusedDurationMs: 0,
+                inputEventCount: 1,
+                beforeInputEventCount: 0,
+                inputTypeCounts: { other: 1 },
+                charsInsertedByInputType: { other: 16 },
+                charsInsertedTotal: 16,
+                charsDeletedTotal: 0,
+                maxSingleInsertionChars: 16,
+                largeInsertionCount: 0,
+                largeInsertions: [],
+                untrustedInputEventCount: 1,
+                inputWithoutKeydownCount: 1,
+                inputEventsWithoutBeforeInput: 1,
+                inputEventsWithoutData: 1,
+                inputDiffFallbackCount: 1,
+                unidentifiedKeyCount: 0,
+                processKeyCount: 0,
+                compositionCount: 0,
+                shortcutKeyCount: 0,
+                copyCount: 0,
+                cutCount: 0,
+                firstInputDelayMs: null,
+                totalInputTimeMs: null,
               },
             ],
         step: "game_1_answer",

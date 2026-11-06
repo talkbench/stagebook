@@ -38,6 +38,16 @@ export {
 } from "./ElementErrorBoundary.js";
 
 // Standalone form components — no StagebookProvider required
+export type {
+  PointerStats,
+  PointerClickSample,
+  PointerFocusSample,
+  PointerPosition,
+  PointerFieldState,
+  PointerControlType,
+  PointerSource,
+  TelemetryPointerType,
+} from "../utils/pointerTelemetry.js";
 export {
   Button,
   type ButtonProps,
@@ -141,6 +151,7 @@ export { useScrollAwareness } from "./scroll/useScrollAwareness.js";
 // Playback coordination — lets sibling components control a named MediaPlayer
 export type {
   PlaybackHandle,
+  PlaybackAudioState,
   TransportCapabilities,
 } from "./playback/PlaybackHandle.js";
 export {

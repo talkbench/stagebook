@@ -28,6 +28,17 @@ export { extractStageReferences } from "./lib/references.js";
 export { extractTimeBreakpoints } from "./lib/timeBreakpoints.js";
 export { expandTreatmentFile } from "./lib/expandTreatmentFile.js";
 
+// --- Task parameter files (#815) ---
+export {
+  parseTaskParameters,
+  resolveTaskParameterEntry,
+} from "./lib/taskParameters.js";
+export type {
+  TaskParameterEntry,
+  ParsedTaskParameters,
+  TaskParameterResolution,
+} from "./lib/taskParameters.js";
+
 // --- Content-fn helpers (host-supplied file access) ---
 export {
   createUrlContentFns,
@@ -38,7 +49,11 @@ export {
 export { Viewer } from "./components/Viewer.js";
 export type { ViewerProps } from "./components/Viewer.js";
 export { PreviewHost } from "./components/PreviewHost.js";
-export type { PreviewHostProps } from "./components/PreviewHost.js";
+export type {
+  PreviewHostProps,
+  TaskParametersControl,
+  TaskParameterSource,
+} from "./components/PreviewHost.js";
 export { StageNav } from "./components/StageNav.js";
 export { StateInspector } from "./components/StateInspector.js";
 export { TimeScrubber } from "./components/TimeScrubber.js";

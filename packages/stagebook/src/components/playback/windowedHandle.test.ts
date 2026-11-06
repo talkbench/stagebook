@@ -144,6 +144,38 @@ describe("withSeekWindow (#675)", () => {
     expect(windowed.getBounds?.()).toEqual({ start: 60, end: 90 });
   });
 
+  it.each([false, true])(
+    "forwards live audio snapshots with the inner receiver (YouTube=%s)",
+    (isYouTube) => {
+      const { handle: legacy } = recordingHandle();
+      const audio = { muted: false, volume: 0.65 };
+      const handle: PlaybackHandle = {
+        ...legacy,
+        isYouTube,
+        getAudioState() {
+          expect(this).toBe(handle);
+          return { ...audio };
+        },
+      };
+      const windowed = withSeekWindow(handle, () => ({ start: 60, end: 90 }));
+      const earlier = windowed.getAudioState?.();
+      expect(earlier).toEqual({ muted: false, volume: 0.65 });
+      audio.muted = true;
+      audio.volume = 0.2;
+      const current = windowed.getAudioState?.();
+      expect(current).toEqual({ muted: true, volume: 0.2 });
+      expect(earlier).toEqual({ muted: false, volume: 0.65 });
+      current!.volume = 0;
+      expect(windowed.getAudioState?.()).toEqual({ muted: true, volume: 0.2 });
+    },
+  );
+
+  it("does not invent an audio getter for legacy handles", () => {
+    const { handle } = recordingHandle();
+    const windowed = withSeekWindow(handle, () => ({ start: 60, end: 90 }));
+    expect(typeof windowed.getAudioState).toBe("undefined");
+  });
+
   it("passes everything else through, including live getters", () => {
     const { handle, state } = recordingHandle();
     const windowed = withSeekWindow(handle, () => ({ start: 60, end: 90 }));

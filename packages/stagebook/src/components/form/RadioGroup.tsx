@@ -1,6 +1,8 @@
-import React, { useId } from "react";
+import React, { useId, useRef } from "react";
 import { useIsRTL } from "../StagebookProvider.js";
 import { focusRingCss } from "../focusRing.js";
+import { usePointerTelemetry } from "../hooks/usePointerTelemetry.js";
+import type { PointerStats } from "../../utils/pointerTelemetry.js";
 
 export interface RadioOption {
   key: string;
@@ -13,6 +15,8 @@ export interface RadioGroupProps {
   options: RadioOption[];
   value?: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  /** Bounded interaction snapshot, updated before onChange. */
+  onPointerSnapshot?: (stats: PointerStats) => void;
   label?: string;
   ariaLabelledBy?: string;
   ariaRequired?: boolean;
@@ -101,6 +105,7 @@ export function RadioGroup({
   options,
   value,
   onChange,
+  onPointerSnapshot,
   label = "",
   ariaLabelledBy,
   ariaRequired,
@@ -109,6 +114,11 @@ export function RadioGroup({
   id,
   "data-testid": dataTestId,
 }: RadioGroupProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  usePointerTelemetry(rootRef, {
+    controlType: "radio",
+    onSnapshot: onPointerSnapshot,
+  });
   const isRTL = useIsRTL();
   // Stable per-instance id for the radiogroup + label association.
   // `useId` guarantees uniqueness even when multiple RadioGroups
@@ -138,6 +148,7 @@ export function RadioGroup({
 
   return (
     <div
+      ref={rootRef}
       data-testid={testId}
       dir={isRTL ? "rtl" : "ltr"}
       style={flush ? undefined : { marginTop: "1rem" }}
