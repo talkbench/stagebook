@@ -38,16 +38,20 @@ test("real playback records native mute and volume settings on the existing play
     />,
   );
   const video = await ready(component);
-  await video.evaluate((element: HTMLVideoElement) => {
+  const nativeVolume = await video.evaluate((element: HTMLVideoElement) => {
     element.volume = 0.35;
+    return element.volume;
   });
+  // Linux WebKit exposes this property at float32 precision. Telemetry should
+  // preserve the browser's actual value, including that rounding.
+  expect(nativeVolume).toBeCloseTo(0.35, 6);
   expect(await records(component)).toHaveLength(0);
   await component.getByTestId("mediaPlayer-playPause").click();
   await expect.poll(async () => (await records(component)).length).toBe(1);
   expect((await records(component))[0].firstPlay).toMatchObject({
     type: "play",
     muted: true,
-    volume: 0.35,
+    volume: nativeVolume,
   });
   await component.getByTestId("mediaPlayer-playPause").click();
   await expect.poll(async () => (await records(component)).length).toBe(2);

@@ -49,13 +49,21 @@ test("native playback resumes visibility accounting after a buffered seek", asyn
     .toBeGreaterThan(3);
   await video.evaluate((element: HTMLVideoElement) => {
     let seeking = false;
-    const events: string[] = [];
+    const events: Array<{
+      type: string;
+      readyState: number;
+      seeking: boolean;
+    }> = [];
     element.dataset.seekEvents = "[]";
-    for (const type of ["seeking", "seeked", "waiting", "playing"]) {
+    for (const type of ["seeking", "seeked", "waiting", "canplay", "playing"]) {
       element.addEventListener(type, () => {
         if (type === "seeking") seeking = true;
         if (seeking) {
-          events.push(type);
+          events.push({
+            type,
+            readyState: element.readyState,
+            seeking: element.seeking,
+          });
           element.dataset.seekEvents = JSON.stringify(events);
         }
       });
@@ -80,6 +88,9 @@ test("native playback resumes visibility accounting after a buffered seek", asyn
   await video.evaluate((element: HTMLVideoElement) => element.pause());
   await expect.poll(async () => (await readSaves()).length).toBe(2);
   const record = (await readSaves()).at(-1)!.value;
-  expect(record.hiddenPlaybackSeconds).toBe(5);
+  expect(
+    record.hiddenPlaybackSeconds,
+    await video.getAttribute("data-seek-events"),
+  ).toBe(5);
   expect(record.visibilityChangesDuringPlayback).toBe(0);
 });

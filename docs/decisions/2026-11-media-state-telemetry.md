@@ -45,8 +45,9 @@ loop is introduced, and changes between samples can be missed.
 The visibility accumulator starts on HTML `playing` or YouTube PLAYING,
 stops on waiting/buffering, seeking, pause/end/error, and backend replacement,
 and resumes on another playing report. WebKit can complete a buffered seek
-without emitting another `playing`, so `seeked` can also resume a previously
-observed active interval when the media remains ready, unpaused, and not ended.
+without emitting another `playing`, so `seeked` or a later `canplay` can resume
+a previously observed active interval when the media is ready, no longer
+seeking, unpaused, and not ended.
 A paused or initial seek cannot establish playback. The earlier `play` event semantics
 are preserved: it can precede rendering or a stalled playback request.
 The counters therefore describe observed playback without redefining the

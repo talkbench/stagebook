@@ -77,6 +77,9 @@ export function withSeekWindow(
     getDuration: () => inner.getDuration(),
     getBounds,
     isPaused: () => inner.isPaused(),
+    get getAudioState() {
+      return inner.getAudioState?.bind(inner);
+    },
     get isYouTube() {
       return inner.isYouTube;
     },

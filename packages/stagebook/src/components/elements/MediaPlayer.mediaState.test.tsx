@@ -321,8 +321,110 @@ test.each(["initial", "paused"])(
     }
     visibility(true);
     fire("seeked");
+    fire("canplay");
     advance(5000);
     fire("pause");
     expect(record().hiddenPlaybackSeconds).toBe(0);
   },
 );
+
+test("seek resumption waits for canplay when seeked has only current data", () => {
+  render();
+  Object.defineProperty(video(), "paused", {
+    configurable: true,
+    value: false,
+  });
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 4,
+  });
+  fire("play");
+  fire("playing");
+  visibility(true);
+  advance(1000);
+  fire("seeking");
+  fire("waiting");
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 2,
+  });
+  fire("seeked");
+  advance(10000);
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 3,
+  });
+  // Some WebKit backends resume without emitting playing after the seek.
+  fire("canplay");
+  advance(2000);
+  fire("pause");
+  expect(record().hiddenPlaybackSeconds).toBe(3);
+  expect(save).toHaveBeenCalledTimes(2);
+});
+
+test("canplay during an unfinished seek does not resume visibility accounting", () => {
+  render();
+  Object.defineProperty(video(), "paused", {
+    configurable: true,
+    value: false,
+  });
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 4,
+  });
+  fire("play");
+  fire("playing");
+  visibility(true);
+  advance(1000);
+  Object.defineProperty(video(), "seeking", {
+    configurable: true,
+    value: true,
+  });
+  fire("seeking");
+  fire("canplay");
+  advance(10000);
+  Object.defineProperty(video(), "seeking", {
+    configurable: true,
+    value: false,
+  });
+  fire("seeked");
+  advance(2000);
+  fire("pause");
+  expect(record().hiddenPlaybackSeconds).toBe(3);
+  expect(save).toHaveBeenCalledTimes(2);
+});
+
+test("pausing a pending seek prevents a later canplay from reviving its interval", () => {
+  render();
+  Object.defineProperty(video(), "paused", {
+    configurable: true,
+    value: false,
+  });
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 4,
+  });
+  fire("play");
+  fire("playing");
+  visibility(true);
+  advance(1000);
+  fire("seeking");
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 2,
+  });
+  fire("seeked");
+  fire("pause");
+  advance(10000);
+  // A new play request has not yet produced an observed playing event.
+  fire("play");
+  Object.defineProperty(video(), "readyState", {
+    configurable: true,
+    value: 3,
+  });
+  fire("canplay");
+  advance(2000);
+  fire("pause");
+  expect(record().hiddenPlaybackSeconds).toBe(1);
+  expect(save).toHaveBeenCalledTimes(4);
+});

@@ -443,20 +443,22 @@ function MediaPlayerCore({
     },
     [],
   );
-  const handleSeeked = useCallback(
+  const resumeAfterSeek = useCallback(
     (event: React.SyntheticEvent<HTMLVideoElement>) => {
       const video = event.currentTarget;
-      // WebKit can resume buffered media after seeked without another playing.
-      // Require an observed active interval before the seek, plus live readiness.
+      // WebKit can resume buffered media without another playing event. Data
+      // may become ready only after seeked, so retain prior-active evidence for
+      // canplay as well. Neither event may resume an unfinished or paused seek.
       if (
         resumeAfterSeekRef.current &&
         !video.paused &&
         !video.ended &&
+        !video.seeking &&
         video.readyState >= 3
       ) {
         visibilityRef.current.setPlaying(true);
+        resumeAfterSeekRef.current = false;
       }
-      resumeAfterSeekRef.current = false;
     },
     [],
   );
@@ -2384,7 +2386,8 @@ function MediaPlayerCore({
           onPlaying={handlePlaying}
           onWaiting={handleWaiting}
           onSeeking={handleSeeking}
-          onSeeked={handleSeeked}
+          onSeeked={resumeAfterSeek}
+          onCanPlay={resumeAfterSeek}
           onEmptied={stopObservedPlayback}
           onAbort={stopObservedPlayback}
           onVolumeChange={observeAudio}
@@ -2414,7 +2417,8 @@ function MediaPlayerCore({
             onPlaying={handlePlaying}
             onWaiting={handleWaiting}
             onSeeking={handleSeeking}
-            onSeeked={handleSeeked}
+            onSeeked={resumeAfterSeek}
+            onCanPlay={resumeAfterSeek}
             onEmptied={stopObservedPlayback}
             onAbort={stopObservedPlayback}
             onVolumeChange={observeAudio}
