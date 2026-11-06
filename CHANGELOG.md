@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.39.0
+
 - VS Code preview: flag `asset://` files missing from their mounted folder
   ([#833](https://github.com/talkbench/stagebook/issues/833)). The asset banner
   names each folder that lacks a file the treatment or a loaded task file
