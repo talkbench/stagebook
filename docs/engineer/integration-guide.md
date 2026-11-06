@@ -184,6 +184,7 @@ Before passing treatment data to Stagebook's rendering components, the platform 
 ```typescript
 import {
   safeParseTreatmentFile,
+  safeParseResolvedTreatmentFile,
   fillTemplates,
   parseTreatmentYaml,
   resolveImportPath,
@@ -232,8 +233,36 @@ const { result: hydrated } = fillTemplates({
 const result = safeParseTreatmentFile(hydrated);
 if (!result.success) throw new Error(result.error.message);
 
-// 6. Pass resolved stages to Stagebook components.
+// 6. Check the post-fill contract and obtain participant-safe data.
+//    This also checks placeholder leaks and expression types; calling a
+//    resolved Zod schema directly does not run all of those checks.
+const participantResult = safeParseResolvedTreatmentFile(hydrated);
+if (!participantResult.success) {
+  throw new Error(
+    participantResult.issues.map((issue) => issue.message).join("\n"),
+  );
+}
+
+// 7. Publish ONLY this data to participants (including intro and consent).
+//    Never publish `hydrated` or the authoring parse result above: those
+//    still contain researcher notes. Add host-owned runtime fields after
+//    this projection, since unknown fields are stripped by the schemas.
+const participantData = participantResult.data;
+// Pass participantData.treatments/... to the host's client-state boundary.
 ```
+
+`safeParseResolvedTreatmentFile` returns `{ success: true, data, issues: [] }`
+on success, or `{ success: false, issues }` without data on failure. It removes
+authoring `notes` from study-tree nodes and drops file-level `imports` and
+`templates`, while preserving supported runtime fields and arbitrary application
+records such as discussion feed options. It does not mutate the input.
+
+Pass `promptFiles` and custom `hostSchemas` when available, just as with
+`validateResolvedTreatmentFile`, to enable the same expression-type checks.
+The existing validator remains a diagnostics-only API; its `skipUnresolved`
+option is for authoring previews. The strict parser never honors that option,
+even when supplied by an untyped caller, and never returns data on a failed check.
+This projection does not restrict access to separately hosted source files.
 
 If your study doesn't use `imports:`, steps 2-3 are no-ops (`rootImports` is empty, `mergedTemplates` is just `root.templates`). The pipeline above accommodates both shapes.
 
