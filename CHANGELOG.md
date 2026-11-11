@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Fix timelines in the VS Code preview, which have shown the channel-layout
+  error for every recording since 0.38.0
+  ([#837](https://github.com/talkbench/stagebook/issues/837)). The media
+  player's channel-count AudioWorklet module loaded from a `blob:` URL, which
+  the preview's Content-Security-Policy refuses. The extension now ships the
+  module as a file and allows that one file.
+- Ship the AudioWorklet modules as files, `stagebook/worklets/channel-count.js`
+  and `stagebook/worklets/channel-order-probe.js`, so a host with a
+  Content-Security-Policy need not allow `blob:` scripts. Serve them and pass
+  their URLs as `channelCountWorkletUrl` (a new optional `StagebookContext`
+  field, also a `PreviewHost` and `Viewer` prop) and
+  `probeChannelOrder({ workletUrl })`. Without the URLs the modules load from
+  `blob:` URLs as before, so hosts that set no policy need no change.
+- When the channel-count module cannot load, the diagnostic passed to
+  `onElementError` says how it was loaded and what to change. The viewer and
+  the VS Code preview show a media player's channel diagnostics above the
+  stage, where before the researcher saw only the participant's message about
+  the recording.
+
 ## 0.39.0
 
 - VS Code preview: flag `asset://` files missing from their mounted folder

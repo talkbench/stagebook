@@ -5,6 +5,12 @@ import {
   createUrlContentFns,
   type TaskParameterSource,
 } from "stagebook/viewer";
+// The media player's channel-count AudioWorklet module, emitted by Vite as a
+// file of this site. The preview then needs no blob: script, so it keeps
+// working if the page is ever served with a Content-Security-Policy (#837).
+// `no-inline` matters: Vite turns a file this small into a data: URI, which
+// such a policy refuses just as it refuses blob:.
+import channelCountWorkletUrl from "stagebook/worklets/channel-count.js?url&no-inline";
 import { loadTreatmentFromUrl } from "./lib/loader";
 import type { ViewerDiagnostic } from "./lib/diagnostics";
 import { needsOverviewPicker } from "./lib/selection";
@@ -298,6 +304,7 @@ function ViewingPhase({
         treatmentFile={treatmentFile}
         getTextContent={contentFns.getTextContent}
         getAssetURL={contentFns.getAssetURL}
+        channelCountWorkletUrl={channelCountWorkletUrl}
         selectedIntroIndex={selectedIntroIndex}
         selectedTreatmentIndex={selectedTreatmentIndex}
         onBack={onBack}

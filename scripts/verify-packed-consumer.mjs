@@ -137,7 +137,8 @@ write(
   "runtime.mjs",
   `import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import { z } from "zod";
 import * as esm from "stagebook";
 const require = createRequire(import.meta.url);
@@ -187,6 +188,14 @@ for (const [name, api] of [["esm", esm], ["cjs", cjs]]) {
 for (const entry of ["stagebook/components", "stagebook/viewer", "stagebook/validate", "stagebook/dispatch", "stagebook/audio-probe"]) {
   assert.ok(Object.keys(await import(entry)).length, entry + " ESM exports");
   assert.ok(Object.keys(require(entry)).length, entry + " CJS exports");
+}
+// The AudioWorklet modules ship as files, for hosts whose
+// Content-Security-Policy refuses the blob: URL they otherwise load from.
+for (const [file, processor] of [["channel-count.js", "stagebook-channel-count"], ["channel-order-probe.js", "stagebook-channel-order-probe"]]) {
+  const source = readFileSync(require.resolve("stagebook/worklets/" + file), "utf8");
+  const registered = [];
+  runInNewContext(source, { AudioWorkletProcessor: class {}, registerProcessor: (name) => registered.push(name) });
+  assert.deepEqual(registered, [processor], file + " registers its processor");
 }
 const { parseTreatmentSource, validatePromptSource } = await import("stagebook/validate");
 assert.equal((await parseTreatmentSource({ source: JSON.stringify(treatment), loadImport: async () => { throw new Error("unexpected import"); } })).ok, true);

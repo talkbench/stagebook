@@ -112,6 +112,7 @@ export interface GroupRecordingHarnessProps {
   showWaveform?: boolean;
   selectionType?: "point" | "range";
   locale?: string;
+  channelCountWorkletUrl?: string;
 }
 
 export function GroupRecordingHarness(props: GroupRecordingHarnessProps) {
@@ -156,6 +157,7 @@ export function GroupRecordingHarness(props: GroupRecordingHarnessProps) {
             ? mapping
             : props.mappingOverride) as ChannelMappingEntry[]);
     },
+    channelCountWorkletUrl: props.channelCountWorkletUrl,
     channelProbe:
       props.probeOverride === undefined
         ? probe

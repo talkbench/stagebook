@@ -126,10 +126,11 @@
     }
   },
   "scripts": {
-    "build": "npm run build:extension && npm run build:webview",
+    "build": "npm run build:extension && npm run build:webview && npm run build:worklet",
+    "build:worklet": "node -e \"require('fs').copyFileSync(require.resolve('stagebook/worklets/channel-count.js'), 'dist/channel-count-worklet.js')\"",
     "build:extension": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
     "build:webview": "esbuild src/webview/index.tsx --bundle --outfile=dist/webview.js --format=iife --platform=browser --sourcemap --loader:.css=text --define:process.env.NODE_ENV='\"production\"'",
-    "build:production": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify && esbuild src/webview/index.tsx --bundle --outfile=dist/webview.js --format=iife --platform=browser --minify --loader:.css=text --define:process.env.NODE_ENV='\"production\"'",
+    "build:production": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify && esbuild src/webview/index.tsx --bundle --outfile=dist/webview.js --format=iife --platform=browser --minify --loader:.css=text --define:process.env.NODE_ENV='\"production\"' && npm run build:worklet",
     "build:watch:extension": "npm run build:extension -- --watch",
     "build:watch:webview": "npm run build:webview -- --watch",
     "vscode:prepublish": "npm run build --prefix ../../packages/stagebook && npm run build:production",

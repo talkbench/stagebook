@@ -16,6 +16,7 @@ import {
 import { findClosestMatch } from "./lib/levenshtein";
 import { UnrecognizedKeyQuickFixProvider } from "./lib/unrecognizedKeyQuickFix";
 import { isWithinWorkspace, relativizePath } from "./lib/filePaths";
+import { buildWebviewCsp } from "./lib/webviewCsp";
 import { runPool } from "./lib/runPool";
 import { buildFindExcludeGlob } from "./lib/findExclude";
 import {
@@ -811,14 +812,25 @@ function getWebviewContent(
   const scriptUri = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, "dist", "webview.js"),
   );
+  // The media player's channel-count AudioWorklet module, as a file: the
+  // policy below refuses the blob: URL it otherwise loads from (#837).
+  const workletUri = webview
+    .asWebviewUri(
+      vscode.Uri.joinPath(extensionUri, "dist", "channel-count-worklet.js"),
+    )
+    .toString();
   const nonce = getNonce();
+  const csp = buildWebviewCsp({
+    nonce,
+    cspSource: webview.cspSource,
+    workletUri,
+  });
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; img-src ${webview.cspSource} data:; font-src ${webview.cspSource}; media-src ${webview.cspSource} data:;">
+  <meta http-equiv="Content-Security-Policy" content="${csp}">
   <style>
     /* Webview-chrome styling ONLY. The stagebook design tokens and every
      * component reset (form controls, code/pre, tables, prompt typography) are
@@ -880,7 +892,7 @@ function getWebviewContent(
   </style>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root" data-channel-count-worklet="${workletUri}"></div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

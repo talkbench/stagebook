@@ -50,7 +50,9 @@ class FakeWorkletNode {
 const audioNode = () => ({ connect() {}, disconnect() {} });
 
 /** A context that renders: its clock advances with real time. */
-function renderingContext(addModule = () => Promise.resolve()) {
+function renderingContext(
+  addModule: (url: string) => Promise<void> = () => Promise.resolve(),
+) {
   const gains: { gain: { value: number } }[] = [];
   const createdAt = performance.now();
   const ctx = {
@@ -259,7 +261,30 @@ describe("runProbe without a usable AudioWorklet", () => {
         "Could not load the probe worklet",
       ) as string,
     });
+    // The browser's error does not say why; the message has to.
+    expect(result.detail[2].failure?.message).toContain("blob: URL");
+    expect(result.detail[2].failure?.message).toContain(
+      "probeChannelOrder({ workletUrl })",
+    );
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:worklet");
+  });
+
+  test("a host-served worklet URL is loaded as given, with no blob: URL", async () => {
+    replies.set(2, report([marker(4_800), marker(7_680)]));
+    replies.set(3, report([marker(4_800), marker(10_560), marker(7_680)]));
+    const addModule = vi.fn((_url: string) => Promise.resolve());
+    const { ctx } = renderingContext(addModule);
+    const result = await runProbe(
+      ctx,
+      ASSETS,
+      2_000,
+      performance.now(),
+      "/static/channel-order-probe.js",
+    );
+
+    expect(result.verdict).toBe("pass");
+    expect(addModule).toHaveBeenCalledWith("/static/channel-order-probe.js");
+    expect(revokeObjectURL).not.toHaveBeenCalled();
   });
 });
 

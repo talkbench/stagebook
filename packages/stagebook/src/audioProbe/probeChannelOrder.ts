@@ -23,6 +23,19 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+export interface ProbeChannelOrderOptions {
+  /**
+   * Where the host serves `stagebook/worklets/channel-order-probe.js`.
+   * Without it the probe's AudioWorklet module loads from a blob: URL, which
+   * a Content-Security-Policy refuses unless its script directive allows
+   * `blob:`. Take the file from the installed package, so it is the one this
+   * release was measured with.
+   * The URL appears in failure messages, which are part of the stored probe
+   * result, so it must not carry a token or signature.
+   */
+  readonly workletUrl?: string;
+}
+
 /**
  * Measure the order this browser decodes multichannel Opus in, at every
  * channel count from 2 to 8, through the path recordings take: a media
@@ -35,7 +48,9 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
  * Never rejects. A browser that cannot run the probe gets a "fail" verdict
  * whose `detail` says why.
  */
-export async function probeChannelOrder(): Promise<ChannelProbeResult> {
+export async function probeChannelOrder(
+  options: ProbeChannelOrderOptions = {},
+): Promise<ChannelProbeResult> {
   const startedAt = performance.now();
 
   if (typeof AudioContext === "undefined") {
@@ -63,7 +78,13 @@ export async function probeChannelOrder(): Promise<ChannelProbeResult> {
         return { channels, artifactId, sha256, url };
       },
     );
-    return await runProbe(ctx, assets, PROBE_TIMEOUT_MS, startedAt);
+    return await runProbe(
+      ctx,
+      assets,
+      PROBE_TIMEOUT_MS,
+      startedAt,
+      options.workletUrl,
+    );
   } catch (err) {
     // runProbe never rejects; this covers preparing the assets.
     const message = `Could not prepare the calibration assets (${describeError(err)}).`;

@@ -15,6 +15,12 @@ declare function acquireVsCodeApi(): {
 
 const vscode = acquireVsCodeApi();
 
+// The media player's channel-count AudioWorklet module, packaged with the
+// extension. The webview's Content-Security-Policy allows this one file and
+// refuses the blob: URL the library would otherwise load it from (#837).
+const channelCountWorkletUrl =
+  document.getElementById("root")?.dataset.channelCountWorklet;
+
 // --- Content functions via postMessage bridge ---
 
 let requestId = 0;
@@ -240,6 +246,7 @@ function App() {
       treatmentFile={treatmentFile}
       getTextContent={contentFns.getTextContent}
       getAssetURL={contentFns.getAssetURL}
+      channelCountWorkletUrl={channelCountWorkletUrl}
       selectedIntroIndex={introIndex}
       selectedTreatmentIndex={treatmentIndex}
       onTreatmentIndexChange={setTreatmentIndex}

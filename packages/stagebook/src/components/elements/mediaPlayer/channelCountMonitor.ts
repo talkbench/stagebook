@@ -15,21 +15,31 @@ class ChannelCount extends AudioWorkletProcessor {
 registerProcessor('stagebook-channel-count', ChannelCount);
 `;
 
-/** The caller aborts a pending install and disposes the tap on unmount. */
+/**
+ * The caller aborts a pending install and disposes the tap on unmount.
+ *
+ * `workletUrl` is where the host serves `stagebook/worklets/channel-count.js`
+ * (the text above, as a file). Without it the module loads from a blob: URL,
+ * which a Content-Security-Policy refuses unless its script directive allows
+ * `blob:` (#837).
+ */
 export async function monitorChannelCount(
   ctx: AudioContext,
   source: AudioNode,
   onCount: (count: number) => void,
   signal: AbortSignal,
+  workletUrl?: string,
 ): Promise<() => void> {
-  const url = URL.createObjectURL(
-    new Blob([CHANNEL_COUNT_WORKLET], { type: "text/javascript" }),
-  );
+  const moduleUrl =
+    workletUrl ??
+    URL.createObjectURL(
+      new Blob([CHANNEL_COUNT_WORKLET], { type: "text/javascript" }),
+    );
   let timer: ReturnType<typeof setTimeout> | undefined;
   let abort: (() => void) | undefined;
   try {
     await Promise.race([
-      ctx.audioWorklet.addModule(url),
+      ctx.audioWorklet.addModule(moduleUrl),
       new Promise<never>((_, reject) => {
         timer = setTimeout(
           () => reject(new Error("Channel monitor load timed out")),
@@ -43,7 +53,7 @@ export async function monitorChannelCount(
   } finally {
     clearTimeout(timer);
     if (abort) signal.removeEventListener("abort", abort);
-    URL.revokeObjectURL(url);
+    if (workletUrl === undefined) URL.revokeObjectURL(moduleUrl);
   }
   if (signal.aborted) return () => {};
   if (ctx.state === "closed") return () => {};

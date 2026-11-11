@@ -59,3 +59,23 @@ test.each(["abort", "timeout"])(
     expect(vi.getTimerCount()).toBe(0);
   },
 );
+
+test("a host-served module URL is loaded as given, with no blob: URL", async () => {
+  const create = vi.spyOn(URL, "createObjectURL");
+  const revoke = vi.spyOn(URL, "revokeObjectURL");
+  const addModule = vi.fn(() => Promise.resolve());
+  const controller = new AbortController();
+  // Aborted before the node is built: only the module load is under test.
+  controller.abort();
+  const ctx = { audioWorklet: { addModule } } as unknown as AudioContext;
+  await monitorChannelCount(
+    ctx,
+    {} as AudioNode,
+    () => {},
+    controller.signal,
+    "/static/channel-count.js",
+  );
+  expect(addModule).toHaveBeenCalledWith("/static/channel-count.js");
+  expect(create).not.toHaveBeenCalled();
+  expect(revoke).not.toHaveBeenCalled();
+});
