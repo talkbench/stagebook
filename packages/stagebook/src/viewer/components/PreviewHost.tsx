@@ -36,6 +36,12 @@ export interface PreviewHostProps {
   getTextContent: (path: string) => Promise<string>;
   /** Must be referentially stable (memoized) to avoid re-fetch loops. */
   getAssetURL: (path: string) => string;
+  /**
+   * Where the host serves `stagebook/worklets/channel-count.js`. Needed when
+   * the host page's Content-Security-Policy refuses `blob:` scripts; without
+   * it every timeline then shows the channel-layout error (#837).
+   */
+  channelCountWorkletUrl?: string;
   /** Optional — hidden in the header when omitted. */
   onBack?: () => void;
   /**
@@ -139,6 +145,7 @@ function PreviewBody({
   selectedTreatmentIndex,
   getTextContent,
   getAssetURL,
+  channelCountWorkletUrl,
   onBack,
   onFieldsResolved,
   onRefresh,
@@ -338,6 +345,7 @@ function PreviewBody({
       treatmentFile={previewState.resolved}
       getTextContent={getTextContent}
       getAssetURL={getAssetURL}
+      channelCountWorkletUrl={channelCountWorkletUrl}
       selectedIntroIndex={selectedIntroIndex}
       selectedTreatmentIndex={selectedTreatmentIndex}
       onBack={onBack}

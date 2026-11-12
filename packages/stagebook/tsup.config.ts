@@ -1,10 +1,21 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { defineConfig } from "tsup";
+import { WORKLET_SOURCE } from "./src/audioProbe/worklet.js";
+import { CHANNEL_COUNT_WORKLET } from "./src/components/elements/mediaPlayer/channelCountMonitor.js";
 
 const { version } = JSON.parse(
   readFileSync(new URL("./package.json", import.meta.url), "utf8"),
 ) as {
   version: string;
+};
+
+// The AudioWorklet modules as files, for hosts whose Content-Security-Policy
+// refuses the blob: URL they otherwise load from (#837). Written from the
+// same source text the blob is built from, so the two cannot differ. Exported
+// as `stagebook/worklets/<name>`.
+const WORKLET_FILES = {
+  "channel-count.js": CHANNEL_COUNT_WORKLET,
+  "channel-order-probe.js": WORKLET_SOURCE,
 };
 
 export default defineConfig({
@@ -35,4 +46,16 @@ export default defineConfig({
   // Read by src/version.ts, so the channel-order probe can record which
   // release measured it (#663).
   define: { __STAGEBOOK_VERSION__: JSON.stringify(version) },
+  // Runs once per build, after `clean` has emptied dist.
+  onSuccess: () => {
+    const dir = new URL("./dist/worklets/", import.meta.url);
+    mkdirSync(dir, { recursive: true });
+    for (const [name, source] of Object.entries(WORKLET_FILES)) {
+      writeFileSync(
+        new URL(name, dir),
+        `// stagebook ${version} AudioWorklet module.\n${source}`,
+      );
+    }
+    return Promise.resolve();
+  },
 });

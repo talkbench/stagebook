@@ -5,6 +5,7 @@
 // main and components bundles.
 
 export { probeChannelOrder } from "./probeChannelOrder.js";
+export type { ProbeChannelOrderOptions } from "./probeChannelOrder.js";
 export { CAPABILITIES } from "./capabilities.js";
 export type {
   ChannelProbeResult,

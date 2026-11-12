@@ -20,6 +20,8 @@
     "./styles": "./src/styles.css",
     "./host-typography": "./src/host-typography.css",
     "./assets/InterVariable.woff2": "./src/assets/InterVariable.woff2",
+    "./worklets/channel-count.js": "./dist/worklets/channel-count.js",
+    "./worklets/channel-order-probe.js": "./dist/worklets/channel-order-probe.js",
     "./components": {
       "import": {
         "types": "./dist/components/index.d.ts",

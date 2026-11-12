@@ -126,6 +126,18 @@ export interface StagebookContext {
   ) => readonly ChannelMappingEntry[] | undefined;
   /** Result of probeChannelOrder() from this session's start click. */
   channelProbe?: ChannelProbeResult;
+  /**
+   * Where the host serves `stagebook/worklets/channel-count.js`, the
+   * AudioWorklet module every media player with a linked timeline (and every
+   * group recording) loads to check its decoded channel count. Without it
+   * the module loads from a blob: URL, which a Content-Security-Policy
+   * refuses unless its script directive allows `blob:`; the timeline then
+   * shows the channel-layout error. Take the file from the installed
+   * package, so it matches this release. The URL appears in diagnostics
+   * (`onElementError`, the console), so it must not carry a token or
+   * signature.
+   */
+  channelCountWorkletUrl?: string;
 
   /**
    * Monotonically increasing counter that signals cached content is stale.

@@ -11,6 +11,9 @@ import {
   type ProbeReport,
 } from "./analyze.js";
 import { PROCESSOR_NAME, WORKLET_SOURCE } from "./worklet.js";
+import { describeError, workletLoadHint } from "./workletLoad.js";
+
+export { describeError };
 import { STAGEBOOK_VERSION } from "../version.js";
 
 /** Which calibration asset a channel count was measured with. */
@@ -95,11 +98,6 @@ class ProbeError extends Error {
   }
 }
 
-export function describeError(err: unknown): string {
-  if (err instanceof Error) return `${err.name}: ${err.message}`;
-  return String(err);
-}
-
 function failedCount(
   asset: CountedAsset,
   reason: ProbeFailureReason,
@@ -168,20 +166,28 @@ function withTimeout<T>(
 }
 
 /**
- * Register a worklet module given as source text. Loaded from a Blob URL so
- * it needs no served file.
+ * Register a worklet module. With `url`, the host serves the module as a
+ * file and it loads from there. Otherwise it loads from a Blob URL built
+ * from `source`, which needs no served file but which a
+ * Content-Security-Policy refuses unless its script directive allows `blob:`
+ * (#837).
  */
 export async function loadWorkletModule(
   ctx: BaseAudioContext,
   source: string,
+  url?: string,
 ): Promise<void> {
-  const url = URL.createObjectURL(
+  if (url !== undefined) {
+    await ctx.audioWorklet.addModule(url);
+    return;
+  }
+  const blobUrl = URL.createObjectURL(
     new Blob([source], { type: "text/javascript" }),
   );
   try {
-    await ctx.audioWorklet.addModule(url);
+    await ctx.audioWorklet.addModule(blobUrl);
   } finally {
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(blobUrl);
   }
 }
 
@@ -357,13 +363,16 @@ async function probeAsset(
  * Probe every asset at once on `ctx`, which the caller owns (creates inside
  * a user gesture, and closes). Never rejects: anything that stops a count
  * from being measured fails that count. `startedAt` (a `performance.now()`
- * reading) is when the caller's clock for `elapsedMs` starts.
+ * reading) is when the caller's clock for `elapsedMs` starts. `workletUrl`
+ * is where the host serves `stagebook/worklets/channel-order-probe.js`;
+ * without it the worklet loads from a blob: URL.
  */
 export async function runProbe(
   ctx: AudioContext,
   assets: readonly ProbeAsset[],
   timeoutMs: number,
   startedAt = performance.now(),
+  workletUrl?: string,
 ): Promise<ChannelProbeResult> {
   if (typeof AudioWorkletNode === "undefined" || !ctx.audioWorklet) {
     const message = window.isSecureContext
@@ -373,7 +382,7 @@ export async function runProbe(
   }
   try {
     await withTimeout(
-      loadWorkletModule(ctx, WORKLET_SOURCE),
+      loadWorkletModule(ctx, WORKLET_SOURCE, workletUrl),
       timeoutMs,
       `The probe worklet did not load within ${timeoutMs} ms.`,
     );
@@ -381,7 +390,11 @@ export async function runProbe(
     if (err instanceof ProbeError) {
       return failAll(assets, err.reason, err.message, startedAt);
     }
-    const message = `Could not load the probe worklet (${describeError(err)}).`;
+    const message = `Could not load the probe worklet (${describeError(err)}). ${workletLoadHint(
+      "stagebook/worklets/channel-order-probe.js",
+      "probeChannelOrder({ workletUrl })",
+      workletUrl,
+    )}`;
     return failAll(assets, "unsupported", message, startedAt);
   }
   try {

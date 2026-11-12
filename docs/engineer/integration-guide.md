@@ -643,8 +643,44 @@ Measured verdicts (October 2026): Chrome, Chromium and Firefox pass. Safari fail
 **Requirements:**
 
 - **A secure context.** AudioWorklet is available only over HTTPS or on `localhost`. Elsewhere the probe fails with `unsupported`.
-- **Content-Security-Policy.** If you set one, allow `blob:` in `media-src`, because the assets play from blob URLs. Also allow it in the directive that governs scripts (`script-src-elem` if you set it, else `script-src`, else `default-src`), because the AudioWorklet module loads from a blob URL. Allowing `blob:` scripts lets any blob your origin creates run as a script; weigh that if you keep a strict CSP.
+- **Content-Security-Policy.** If you set one, allow `blob:` in `media-src`, because the assets play from blob URLs. The probe's AudioWorklet module is a script: either serve it as a file and pass `workletUrl`, or allow `blob:` scripts. See [AudioWorklet modules under a Content-Security-Policy](#audioworklet-modules-under-a-content-security-policy).
 - **No network access.** The assets are embedded in the `stagebook/audio-probe` bundle (about 135 kB of base64), so nothing is fetched. The main and `stagebook/components` bundles don't include them.
+
+### AudioWorklet modules under a Content-Security-Policy
+
+Stagebook loads two AudioWorklet modules:
+
+| Module                                      | Loaded by                                                               | How you pass its URL                                |
+| ------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------- |
+| `stagebook/worklets/channel-count.js`       | Every `mediaPlayer` with a linked `timeline`, and every group recording | `channelCountWorkletUrl` on your `StagebookContext` |
+| `stagebook/worklets/channel-order-probe.js` | `probeChannelOrder()`                                                   | `probeChannelOrder({ workletUrl })`                 |
+
+If you pass no URL, each module loads from a `blob:` URL built in the page. That needs no setup, and it is what happens on a page with no Content-Security-Policy.
+
+A policy changes this. A worklet module is a script, so the directive that governs scripts applies (`script-src-elem` if you set it, else `script-src`, else `default-src`), and it refuses `blob:` unless you list it. The result does not look like a policy problem. Every timeline shows "This recording's speaker tracks cannot be presented reliably", and the probe fails with `unsupported`. The `ChannelLayoutError` passed to `onElementError` and the probe's `failure.message` both say how the module was loaded and what to change.
+
+**Serve the files and pass their URLs.** Then `script-src 'self'` is enough. With Vite:
+
+```typescript
+import channelCountWorkletUrl from "stagebook/worklets/channel-count.js?url&no-inline";
+import probeWorkletUrl from "stagebook/worklets/channel-order-probe.js?url&no-inline";
+
+const context: StagebookContext = { ...rest, channelCountWorkletUrl };
+
+startButton.addEventListener("click", () => {
+  void probeChannelOrder({ workletUrl: probeWorkletUrl }).then(saveProbe);
+});
+```
+
+- **Keep `no-inline`.** Vite turns a file this small into a `data:` URI, which your policy refuses just as it refuses `blob:`.
+- **Without a bundler that emits assets,** copy the two files from `node_modules/stagebook/dist/worklets/` into your static files at build time and pass their paths.
+- **Take the files from the installed package** on every build. They belong to the release you render with; don't keep a hand-made copy.
+- **Use plain URLs, with no token or signature.** A URL you pass appears in failure messages, including the probe result you store with the session.
+- **If you serve them from another origin,** add that origin to the script directive and send CORS headers for the files. Browsers fetch worklet modules with CORS.
+
+The alternative is to allow `blob:` in the script directive. That lets any blob your origin creates run as a script, so weigh it if you keep a strict policy.
+
+Both modules also need a secure context: AudioWorklet is available only over HTTPS or on `localhost`. A media player with no timeline and no channel mapping loads no worklet.
 
 ### Supplying participant tracks (Release B)
 
@@ -688,7 +724,7 @@ With `selectionScope: track`, group Timeline records use **`position`**, not `tr
 
 As a backstop, any MediaPlayer with an attached Timeline observes the decoded channel count through an AudioWorklet, even when `showWaveform: false`. More than two decoded channels without a mapping are refused. This also refuses ordinary surround audio used with a Timeline. The check runs once audio signal reaches the worklet; it cannot identify an omitted mapping on mono/stereo recordings, or a browser's stereo fallback. **The host's missing-mapping check is essential.** Monitor setup failures also refuse annotation. Group playback checks that the observed count matches the supplied mapping.
 
-The player-side channel check needs the same secure context and blob-script CSP permission as the probe. Ordinary playback without a Timeline does not start this check. A silent or audio-free source provides no signal from which to verify its count.
+The player-side channel check needs a secure context, as the probe does. Under a Content-Security-Policy it also needs `channelCountWorkletUrl` or permission for `blob:` scripts; see [AudioWorklet modules under a Content-Security-Policy](#audioworklet-modules-under-a-content-security-policy). Ordinary playback without a Timeline does not start this check. A silent or audio-free source provides no signal from which to verify its count.
 
 Store the probe result, channel mapping and recording identity alongside annotations in the host. See [annotator #338](https://github.com/talkbench/annotator/issues/338) and [#226](https://github.com/talkbench/annotator/issues/226). The player cannot establish which file a structurally valid sidecar originally described.
 

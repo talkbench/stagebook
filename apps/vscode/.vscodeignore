@@ -1,6 +1,7 @@
 **
 !dist/extension.js
 !dist/webview.js
+!dist/channel-count-worklet.js
 !package.json
 !README.md
 !LICENSE

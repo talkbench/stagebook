@@ -3,6 +3,7 @@ import {
   expect,
   type MountResult,
 } from "@playwright/experimental-ct-react";
+import type { Page } from "@playwright/test";
 import { GroupRecordingHarness } from "../testing/GroupRecordingHarness.js";
 import { invalidMappings } from "../../audioProbe/testing/invalidMappings.js";
 import type { ChannelProbeResult } from "../../audioProbe/probe.js";
@@ -22,6 +23,66 @@ test("hidden waveforms preserve ordinary mono playback level", async ({
     .poll(async () => (await measure(c)).powers[0])
     .toBeGreaterThan(0.0006);
   await expect(c.getByTestId("group-errors")).toHaveText("[]");
+});
+test.describe("under a Content-Security-Policy without blob: scripts (#837)", () => {
+  // What the VS Code preview's webview sets, and what a host with a strict
+  // policy would: no blob: scripts. ('unsafe-eval' is for the component-test
+  // bundle, which evaluates strings; it does not admit blob: URLs.)
+  const refuseBlobScripts = (page: Page) =>
+    page.evaluate(() => {
+      const meta = document.createElement("meta");
+      meta.httpEquiv = "Content-Security-Policy";
+      meta.content = "script-src 'self' 'unsafe-eval'";
+      document.head.append(meta);
+    });
+
+  test("the blob: worklet is refused, and the diagnostic names the policy", async ({
+    mount,
+    page,
+  }) => {
+    const c = await mount(
+      <GroupRecordingHarness count={1} ordinary skipProbe />,
+    );
+    await refuseBlobScripts(page);
+    await c.getByRole("button", { name: "Start session" }).click();
+    await c
+      .getByRole("button", { name: "Play recording", exact: true })
+      .click();
+    await expect(c.getByTestId("timeline-error")).toBeVisible();
+    await expect(c.getByTestId("group-errors")).toContainText(
+      "Content-Security-Policy",
+    );
+    await expect(c.getByTestId("group-errors")).toContainText(
+      "channelCountWorkletUrl",
+    );
+  });
+
+  // The file is put in the test bundle by playwright-ct.config.ts.
+  test("a worklet file the host serves loads, and the timeline works", async ({
+    mount,
+    page,
+  }) => {
+    const c = await mount(
+      <GroupRecordingHarness
+        count={1}
+        ordinary
+        skipProbe
+        showWaveform={false}
+        channelCountWorkletUrl="/worklets/channel-count.js"
+      />,
+    );
+    await refuseBlobScripts(page);
+    await c.getByRole("button", { name: "Start session" }).click();
+    await c
+      .getByRole("button", { name: "Play recording", exact: true })
+      .click();
+    await expect
+      .poll(async () => (await measure(c)).powers[0])
+      .toBeGreaterThan(0.0006);
+    await expect(c.getByTestId("timeline")).toBeVisible();
+    await expect(c.getByTestId("timeline-error")).toHaveCount(0);
+    await expect(c.getByTestId("group-errors")).toHaveText("[]");
+  });
 });
 for (const [index, mapping] of invalidMappings.entries()) {
   // Undefined declares ordinary media at the renderer; hosts catch omitted

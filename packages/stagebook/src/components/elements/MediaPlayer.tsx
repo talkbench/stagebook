@@ -53,6 +53,10 @@ import {
   type ParticipantAudioTrack,
 } from "../../audioProbe/channelLayout.js";
 import type { ChannelProbeResult } from "../../audioProbe/probe.js";
+import {
+  describeError,
+  workletLoadHint,
+} from "../../audioProbe/workletLoad.js";
 import { ChannelLayoutFailure } from "./mediaPlayer/ChannelLayoutFailure.js";
 import { monitorChannelCount } from "./mediaPlayer/channelCountMonitor.js";
 
@@ -66,6 +70,9 @@ export interface MediaPlayerProps {
   channelMapping?: readonly ChannelMappingEntry[];
   channelProbe?: ChannelProbeResult;
   onChannelError?: (error: ChannelLayoutError) => void;
+  /** Where the host serves `stagebook/worklets/channel-count.js`; without
+   * it the channel-count worklet loads from a blob: URL (#837). */
+  channelCountWorkletUrl?: string;
   name: string;
   url: string;
   /** Stable authored asset identity when the resolved URL can expire/change. */
@@ -266,6 +273,7 @@ function MediaPlayerCore({
   autoplay,
   controls,
   groupTracks,
+  channelCountWorkletUrl,
   onCaptureError,
 }: MediaPlayerProps & {
   groupTracks?: readonly ParticipantAudioTrack[];
@@ -830,19 +838,23 @@ function MediaPlayerCore({
             }
           },
           abort.signal,
+          channelCountWorkletUrl,
         )
           .then((cleanup) => {
             if (audioCtxRef.current !== ctx) cleanup();
             else monitorCleanupRef.current = cleanup;
           })
-          .catch(() => {
+          .catch((err: unknown) => {
             if (audioCtxRef.current !== ctx) return;
             failCapture(
               new ChannelLayoutError([
                 {
                   code: "capture",
-                  message:
-                    "Unable to verify decoded audio channels. A secure context with AudioWorklet and blob script access is required.",
+                  message: `Unable to verify decoded audio channels: the channel-count AudioWorklet module did not load (${describeError(err)}). ${workletLoadHint(
+                    "stagebook/worklets/channel-count.js",
+                    "channelCountWorkletUrl in the StagebookContext",
+                    channelCountWorkletUrl,
+                  )}`,
                 },
               ]),
             );
@@ -859,7 +871,7 @@ function MediaPlayerCore({
         );
       }
     },
-    [groupTracks, failCapture],
+    [groupTracks, failCapture, channelCountWorkletUrl],
   );
   startCaptureRef.current = startWaveformCapture;
 

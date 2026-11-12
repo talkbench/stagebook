@@ -1,7 +1,10 @@
 // The AudioWorklet processor that measures a calibration asset as it plays.
 //
-// Shipped as source text and loaded from a Blob URL, so hosts need no bundler
-// configuration or extra served file to use the probe. A worklet module runs
+// Kept as source text. By default it loads from a Blob URL, so hosts need no
+// bundler configuration or extra served file to use the probe; the build
+// also writes it out as `stagebook/worklets/channel-order-probe.js`, for
+// hosts whose Content-Security-Policy refuses blob: scripts (#837). A worklet
+// module runs
 // in its own global scope and cannot import from the page, so the constants it
 // shares with analyze.ts are interpolated here.
 //

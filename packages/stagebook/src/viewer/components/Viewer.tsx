@@ -14,7 +14,9 @@ import {
   ScrollIndicator,
   useScrollAwareness,
   isRTLLocale,
+  type StagebookContext,
 } from "../../components/index.js";
+import { ChannelLayoutError } from "../../audioProbe/channelLayout.js";
 import {
   buildUnits,
   initialUnitKey,
@@ -37,6 +39,13 @@ export interface ViewerProps {
   getTextContent: (path: string) => Promise<string>;
   /** Must be referentially stable (memoized) to avoid re-fetch loops. */
   getAssetURL: (path: string) => string;
+  /**
+   * Where the host serves `stagebook/worklets/channel-count.js`. A host whose
+   * page sets a Content-Security-Policy without `blob:` scripts (the VS Code
+   * webview does) must pass it, or every timeline shows the channel-layout
+   * error. See `StagebookContext.channelCountWorkletUrl`.
+   */
+  channelCountWorkletUrl?: string;
   selectedIntroIndex: number;
   selectedTreatmentIndex: number;
   /**
@@ -86,6 +95,7 @@ export function Viewer({
   treatmentFile,
   getTextContent,
   getAssetURL,
+  channelCountWorkletUrl,
   selectedIntroIndex,
   selectedTreatmentIndex,
   onBack,
@@ -298,20 +308,53 @@ export function Viewer({
     onFocusPicker: () => treatmentSelectRef.current?.focus(),
   });
 
+  // A media player that refuses its audio channels shows the participant a
+  // message about the recording. The researcher needs the diagnostics, which
+  // may have nothing to do with the recording (#837). Keyed by element name;
+  // cleared when the stage remounts.
+  const [channelErrors, setChannelErrors] = useState<{
+    stageKey: string;
+    byElement: Record<string, readonly string[]>;
+  }>({ stageKey, byElement: {} });
+  const reportElementError = useCallback<
+    NonNullable<StagebookContext["onElementError"]>
+  >(
+    ({ elementName, error }) => {
+      if (!(error instanceof ChannelLayoutError)) return;
+      const messages = error.diagnostics.map((d) => d.message);
+      setChannelErrors((current) => ({
+        stageKey,
+        byElement: {
+          ...(current.stageKey === stageKey ? current.byElement : {}),
+          [elementName ?? "mediaPlayer"]: messages,
+        },
+      }));
+    },
+    [stageKey],
+  );
+  const shownChannelErrors =
+    channelErrors.stageKey === stageKey
+      ? Object.entries(channelErrors.byElement)
+      : [];
+
   const ctx = useMemo(
     () => {
-      const context = createViewerContext({
-        store,
-        position: clampedPosition,
-        stageIndex,
-        playerCount,
-        locale,
-        onSubmit: handleSubmit,
-        getTextContent,
-        getAssetURL,
-        contentVersion,
-        renderers: createSkeletonRenderers(),
-      });
+      const context: StagebookContext = {
+        ...createViewerContext({
+          store,
+          position: clampedPosition,
+          stageIndex,
+          playerCount,
+          locale,
+          onSubmit: handleSubmit,
+          getTextContent,
+          getAssetURL,
+          contentVersion,
+          renderers: createSkeletonRenderers(),
+        }),
+        channelCountWorkletUrl,
+        onElementError: reportElementError,
+      };
       // Stage has its own submission renderer. Async completion flags are
       // inspection metadata, so revisiting or toggling them must leave the
       // step's contents visible rather than showing a spinner/group wait.
@@ -331,6 +374,8 @@ export function Viewer({
       getTextContent,
       getAssetURL,
       contentVersion,
+      channelCountWorkletUrl,
+      reportElementError,
     ],
   );
 
@@ -489,6 +534,35 @@ export function Viewer({
       </header>
 
       {notice}
+      {shownChannelErrors.length > 0 && (
+        <div
+          role="alert"
+          data-testid="viewer-channel-errors"
+          style={channelErrorsStyle}
+        >
+          <strong>Audio channels refused</strong>
+          {/* A player reports a refusal but not its own removal, so the
+              notice can outlast an edit that fixes or removes the player. */}
+          <button
+            type="button"
+            onClick={() => setChannelErrors({ stageKey, byElement: {} })}
+            style={channelErrorsDismissStyle}
+          >
+            Dismiss
+          </button>
+          <p style={channelErrorsNoteStyle}>
+            The participant sees only a general message about the recording. The
+            cause reported by the player:
+          </p>
+          <ul style={channelErrorsListStyle}>
+            {shownChannelErrors.map(([name, messages]) => (
+              <li key={name}>
+                <code>{name}</code>: {messages.join(" ")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div style={bodyStyle}>
         <aside style={sidebarStyle}>
@@ -695,6 +769,35 @@ const positionSelectStyle: React.CSSProperties = {
   borderRadius: "0.25rem",
   border: "1px solid #d1d5db",
   fontSize: "0.75rem",
+};
+
+const channelErrorsStyle: React.CSSProperties = {
+  padding: "0.75rem 1rem",
+  borderBottom: "1px solid #fecaca",
+  backgroundColor: "#fef2f2",
+  color: "#991b1b",
+  fontFamily: "system-ui, sans-serif",
+  fontSize: "0.875rem",
+};
+
+const channelErrorsDismissStyle: React.CSSProperties = {
+  float: "inline-end",
+  padding: "0.125rem 0.5rem",
+  border: "1px solid #991b1b",
+  borderRadius: "0.25rem",
+  background: "transparent",
+  color: "inherit",
+  font: "inherit",
+  cursor: "pointer",
+};
+
+const channelErrorsNoteStyle: React.CSSProperties = {
+  margin: "0.25rem 0 0",
+};
+
+const channelErrorsListStyle: React.CSSProperties = {
+  margin: "0.25rem 0 0",
+  paddingLeft: "1.25rem",
 };
 
 const bodyStyle: React.CSSProperties = {

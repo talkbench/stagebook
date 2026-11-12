@@ -50,6 +50,40 @@ describe("probeChannelOrder without Web Audio", () => {
     }
   });
 
+  test("loads the worklet from the host's URL when given one, and names it on failure", async () => {
+    const addModule = vi.fn((_url: string) =>
+      Promise.reject(new DOMException("blocked", "AbortError")),
+    );
+    vi.stubGlobal(
+      "AudioContext",
+      class {
+        audioWorklet = { addModule };
+        resume = () => Promise.resolve();
+        close = () => Promise.resolve();
+      },
+    );
+    vi.stubGlobal("AudioWorkletNode", class {});
+    vi.stubGlobal(
+      "URL",
+      class extends URL {
+        static createObjectURL = () => "blob:asset";
+        static revokeObjectURL = () => {};
+      },
+    );
+
+    const result = await probeChannelOrder({
+      workletUrl: "/static/channel-order-probe.js",
+    });
+
+    expect(addModule).toHaveBeenCalledWith("/static/channel-order-probe.js");
+    expect(result.detail[2].failure).toMatchObject({
+      reason: "unsupported",
+      message: expect.stringContaining(
+        "It was loaded from /static/channel-order-probe.js.",
+      ) as string,
+    });
+  });
+
   test("creates and resumes its AudioContext before it first awaits, then cleans up", async () => {
     // The host calls it from a click, and browsers start audio only inside
     // the gesture, so both must happen synchronously.

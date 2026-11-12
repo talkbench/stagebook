@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/experimental-ct-react";
+import { CHANNEL_COUNT_WORKLET } from "./src/components/elements/mediaPlayer/channelCountMonitor.js";
 
 // Validated rather than coerced: `Number("3l23")` is NaN, which ct-core
 // treats as unset and quietly falls back to 3100 — the shared port this
@@ -31,6 +32,24 @@ export default defineConfig({
     // default to a repo-distinct port and let a second worktree of this repo
     // pick its own: `PW_CT_PORT=3123 npm run test:ct`. See #603.
     ctPort,
+    // Serves the channel-count worklet as a file, as a host with a strict
+    // Content-Security-Policy does, at /worklets/channel-count.js (#837).
+    // Playwright cannot route a worklet's module request in Chromium, so the
+    // file has to be in the bundle the tests are served from.
+    ctViteConfig: {
+      plugins: [
+        {
+          name: "stagebook-worklet-files",
+          generateBundle() {
+            this.emitFile({
+              type: "asset",
+              fileName: "worklets/channel-count.js",
+              source: CHANNEL_COUNT_WORKLET,
+            });
+          },
+        },
+      ],
+    },
   },
   projects: [
     {
