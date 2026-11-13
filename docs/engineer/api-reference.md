@@ -514,6 +514,12 @@ Timeline selections by `position`. Ordinary media retains `track` row numbers.
 See the [integration contract](integration-guide.md#supplying-participant-tracks-release-b)
 for validation, refusal, restoration and rollout requirements.
 
+`stagebook/audio-probe` exports `probeChannelOrder()`, which measures channel
+order through playback and must start in a user gesture, and
+`checkMultichannelDecode()`, which checks without a gesture that the browser
+can decode multichannel Opus at all and reports no order. See the
+[decode check](integration-guide.md#decode-check-capability-without-a-click).
+
 ### Pure reference reads
 
 ```ts

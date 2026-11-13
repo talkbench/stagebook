@@ -13,6 +13,7 @@ import {
 } from "@playwright/experimental-ct-react";
 import { ProbeHarness, type ToneMeasurement } from "./testing/ProbeHarness.js";
 import type { ChannelProbeResult } from "./probe.js";
+import type { DecodeCheckResult } from "./decodeCheck.js";
 
 const COUNTS = [2, 3, 4, 5, 6, 7, 8];
 
@@ -161,6 +162,79 @@ test.describe("channel-order probe", () => {
         probe.detail[channels].failure?.reason,
         `${channels} channels`,
       ).toBe("extra-signal");
+    }
+  });
+});
+
+test.describe("decode check", () => {
+  test.setTimeout(60_000);
+
+  test("runs without a click, and passes Chromium and Firefox at every count", async ({
+    mount,
+    browserName,
+  }) => {
+    test.skip(browserName === "webkit", "WebKit fails; see below");
+    const component = await mount(<ProbeHarness decodeOnMount />);
+    const output = component.getByTestId("decode-result");
+    await expect(output).not.toBeEmpty({ timeout: 20_000 });
+    const result = JSON.parse(
+      (await output.textContent()) ?? "",
+    ) as DecodeCheckResult;
+    await test.info().attach("decode-result", {
+      body: JSON.stringify(result),
+      contentType: "application/json",
+    });
+    expect(result.verdict).toBe("pass");
+    expect(Object.keys(result.detail).map(Number)).toEqual(COUNTS);
+    expect(result).not.toHaveProperty("mappings");
+  });
+
+  test("WebKit on macOS fails: it decodes the stereo fallback", async ({
+    mount,
+    browserName,
+  }) => {
+    test.skip(
+      browserName !== "webkit" || process.platform !== "darwin",
+      "WebKit on macOS only",
+    );
+    const component = await mount(<ProbeHarness decodeOnMount />);
+    const output = component.getByTestId("decode-result");
+    await expect(output).not.toBeEmpty({ timeout: 20_000 });
+    const result = JSON.parse(
+      (await output.textContent()) ?? "",
+    ) as DecodeCheckResult;
+    expect(result.verdict).toBe("fail");
+    // At 2 channels the count matches; only the missing markers give it away.
+    expect(result.detail[2].failure?.reason).toBe("marker-missing");
+    for (const channels of COUNTS.slice(1)) {
+      expect(result.detail[channels].failure?.reason, `${channels}`).toBe(
+        "channel-count",
+      );
+      expect(result.detail[channels].report?.inputChannels).toBe(2);
+    }
+  });
+
+  test("a decode that mixes in the fallback track fails at every count", async ({
+    mount,
+    browserName,
+  }) => {
+    test.skip(
+      browserName === "webkit",
+      "WebKit can't decode an Opus-only MP4 at all",
+    );
+    const component = await mount(
+      <ProbeHarness probeAssets={fixtureAssets("sim_mixed")} />,
+    );
+    const result = await runTask<DecodeCheckResult>(
+      component,
+      "Decode fixtures",
+      "decode-fixture-result",
+    );
+    expect(result.verdict).toBe("fail");
+    for (const channels of COUNTS) {
+      expect(result.detail[channels].failure?.reason, `${channels}`).toBe(
+        "extra-signal",
+      );
     }
   });
 });

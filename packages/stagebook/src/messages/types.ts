@@ -161,6 +161,12 @@ export interface StagebookMessages {
   mediaErrorFormat: string;
   mediaErrorUnknown: string;
   mediaChannelLayoutError: string;
+  /** A group recording waits for the channel probe (#841). */
+  mediaChannelProbePrompt: string;
+  mediaChannelProbeButton: string;
+  mediaChannelProbeRunning: string;
+  /** Timeline beside a recording that is waiting for the channel probe. */
+  timelineAwaitingAudio: string;
   mediaErrorCode: (code: number) => string;
   /** Transport controls — aria-labels and (keyboard-hint-bearing) titles.
    *  "Full" titles belong to the native video controls (hold-to-scrub

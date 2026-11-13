@@ -81,3 +81,19 @@ Real-browser tests use distinct source tones and amplitudes to verify player
 waveform ordering at multiple counts, the audible mix under mute, the 0/5 breakout
 case, restoration, solo playback, malformed mapping refusals, localization and
 the missing-mapping guard. WebKit on macOS exercises refusal of the AAC fallback.
+
+## Amendment, 2026-11-13: capability at entry, order when needed (#840, #841)
+
+The annotator's gate (talkbench/annotator#226, decided on talkbench/annotator#338) splits the
+two jobs the session-start probe did. Capability is checked at entry, with no
+click, by `checkMultichannelDecode()`: it decodes the calibration assets and
+applies the probe's own marker analysis, and reports no channel order. Order
+still comes only from the playback probe, which the host starts in the
+background from the participant's first click.
+
+So a group recording can render before the session has a passing probe. With
+`requestChannelProbe` in the context, the player waits with a **Prepare
+audio** button, and its click joins or starts the probe; the linked Timeline
+saves nothing until tracks are known. A failed result still ends in the
+refusal above. Without `requestChannelProbe`, nothing changes: a missing probe
+is refused at render.

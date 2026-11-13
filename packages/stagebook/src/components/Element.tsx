@@ -432,6 +432,7 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           sourceId={rawURL}
           channelMapping={ctx.getChannelMapping?.(rawURL)}
           channelProbe={ctx.channelProbe}
+          requestChannelProbe={ctx.requestChannelProbe}
           channelCountWorkletUrl={ctx.channelCountWorkletUrl}
           onChannelError={(error) =>
             ctx.onElementError?.({

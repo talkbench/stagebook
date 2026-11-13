@@ -49,6 +49,8 @@ export type ProbeFailureReason =
   | "coincident-markers"
   /** The asset did not play to its end: a media error, or play() refused. */
   | "playback"
+  /** decodeAudioData rejected the asset (the decode check only). */
+  | "decode"
   /** The asset did not finish playing within the probe's time limit. */
   | "timeout"
   /** The browser lacks a Web Audio feature the probe needs. */

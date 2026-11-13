@@ -167,6 +167,11 @@ export const en: StagebookMessages = {
   mediaErrorUnknown: "Unknown error",
   mediaChannelLayoutError:
     "This recording’s speaker tracks cannot be presented reliably. Please contact the study team.",
+  mediaChannelProbePrompt:
+    "This recording needs a short audio check before it can play.",
+  mediaChannelProbeButton: "Prepare audio",
+  mediaChannelProbeRunning: "Preparing audio…",
+  timelineAwaitingAudio: "Speaker tracks will appear when the audio is ready.",
   mediaErrorCode: (code) => `Error code ${code}`,
   mediaSeekBack: "Back 1s",
   mediaSeekForward: "Forward 1s",

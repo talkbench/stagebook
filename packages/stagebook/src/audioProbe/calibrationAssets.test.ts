@@ -41,7 +41,7 @@ const sha256 = (bytes: Uint8Array) =>
   createHash("sha256").update(bytes).digest("hex");
 
 test("the generated file is exactly what the embed script writes", () => {
-  // Reviewers skip a 136 kB generated file, so nothing may be added to it by
+  // Reviewers skip a 185 kB generated file, so nothing may be added to it by
   // hand: --check exits non-zero unless every byte matches.
   const script = fileURLToPath(
     new URL("../../scripts/embed-calibration-assets.mjs", import.meta.url),
@@ -86,6 +86,8 @@ describe.each(CALIBRATION_ASSETS.map((a) => [a.channels, a] as const))(
       expect(args).toContain(
         `-c:a:0 libopus -mapping_family:a:0 255 -ac:a:0 ${channels}`,
       );
+      // compose_group 3.0.0 (#839): 48 kbps per Opus channel.
+      expect(args).toContain(`-b:a:0 ${48 * channels}k`);
       expect(args).toContain("-c:a:1 aac -ac:a:1 2");
       expect(args).toContain("-disposition:a:0 default");
       expect(args).toContain("-disposition:a:1 default");

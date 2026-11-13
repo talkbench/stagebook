@@ -49,6 +49,8 @@ test.each(
     { verdict: "pass", mappings: { 2: [1, 2] } },
     { verdict: "pass", mappings: { 2: [0] } },
     { verdict: "pass", mappings: { 2: [0, "1"] } },
+    // A passing decode check (#840) has no mappings, so it can't stand in.
+    { verdict: "pass", detail: {}, stagebookVersion: "x", elapsedMs: 1 },
   ].map((value) => ({ value })),
 )("refuses unavailable or malformed calibration: %j", ({ value }) => {
   expect(() => resolveChannelLayout(mapping, value)).toThrow();

@@ -57,6 +57,7 @@ import { MockListSorter } from "./testing/MockListSorter";
 import { MockKitchenTimer } from "./testing/MockKitchenTimer";
 import { MockTimeline } from "./testing/MockTimeline";
 import { MockMediaPlayer } from "./testing/MockMediaPlayer";
+import { MockChannelProbePending } from "./testing/MockChannelProbePending";
 import { ErrorCallout } from "./ErrorCallout";
 import { MockStageRenderer } from "./testing/MockStageRenderer";
 import { BoundaryTestHarness } from "./testing/BoundaryTestHarness";
@@ -1080,6 +1081,24 @@ const cases: Case[] = [
         ],
       },
     ],
+  },
+  {
+    // A group recording waiting for the channel probe, and its timeline's
+    // notice (#841).
+    name: "MediaPlayer waiting for the channel probe",
+    node: <MockChannelProbePending />,
+    marks: [
+      {
+        name: "timeline notice on the page",
+        fg: { el: '[data-testid="timeline-pending"]', prop: "color" },
+        bg: PAGE,
+        min: AA,
+      },
+    ],
+  },
+  {
+    name: "MediaPlayer preparing audio",
+    node: <MockChannelProbePending running />,
   },
   {
     // No player registered under the source: the danger text on the page.

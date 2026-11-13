@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Re-vendor the channel-order calibration assets from compose_group 3.0.0
+  ([#839](https://github.com/talkbench/stagebook/issues/839)), which encodes
+  the group Opus track at 48 kbps per channel. The `stagebook/audio-probe`
+  bundle grows to about 185 kB of base64.
+- Add `checkMultichannelDecode()` to `stagebook/audio-probe`
+  ([#840](https://github.com/talkbench/stagebook/issues/840)): a check, with no
+  user gesture, that the browser can decode multichannel Opus at all. It uses
+  `decodeAudioData` and the probe's own marker analysis, and reports no
+  channel order. WebKit fails it. Adds the failure reason `decode`.
+- Let a group recording wait for the channel probe
+  ([#841](https://github.com/talkbench/stagebook/issues/841)). With the new
+  optional `StagebookContext.requestChannelProbe`, a recording that has no
+  passing probe yet shows **Prepare audio** in place of the refusal, and a
+  linked Timeline shows that tracks will appear once the audio is ready.
+  `createChannelProbe()` shares one probe across a session. Hosts that don't
+  supply `requestChannelProbe` see no change.
 - Fix timelines in the VS Code preview, which have shown the channel-layout
   error for every recording since 0.38.0
   ([#837](https://github.com/talkbench/stagebook/issues/837)). The media
