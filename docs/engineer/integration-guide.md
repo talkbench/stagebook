@@ -624,6 +624,8 @@ startButton.addEventListener("click", () => {
 
 It never rejects. A browser that can't run the probe gets `verdict: "fail"`, and `detail` says why. Call it once per session, and disable the button while it runs: each call opens its own `AudioContext`, and some browsers cap how many a page may hold.
 
+Any click works, not only a dedicated one: the participant's first click in the session (consent, an intro "Next") can start the probe in the background while they read on. `createChannelProbe()` shares one probe across the session; see [Waiting for the probe](#waiting-for-the-probe).
+
 | Field              | Meaning                                                                                                                                                                                                                                             |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `verdict`          | `"pass"` only if, at every count, each decoded channel carried its marker and nothing else                                                                                                                                                          |
@@ -736,10 +738,47 @@ With `selectionScope: track`, group Timeline records use **`position`**, not `tr
 **Refusal boundaries:**
 
 1. At task construction, the host must refuse a group recording with a missing or invalid sidecar mapping and bind that mapping to the exact media served.
-2. At session start, enforce the probe verdict and store the result with the session.
+2. Before presenting a group recording, the session needs a passing probe, stored with the session. Either enforce it at session start, or check capability without a click at entry (`checkMultichannelDecode()`) and let the player wait for the probe ([Waiting for the probe](#waiting-for-the-probe)).
 3. In the renderer, invalid group layouts or calibration replace the player and Timeline with a localized error and prevent Timeline writes. `onElementError` receives a `ChannelLayoutError` whose `diagnostics` contains stable codes and developer-facing messages; `errorInfo.componentStack` is empty because this is a controlled refusal.
 
 As a backstop, any MediaPlayer with an attached Timeline observes the decoded channel count through an AudioWorklet, even when `showWaveform: false`. More than two decoded channels without a mapping are refused. This also refuses ordinary surround audio used with a Timeline. The check runs once audio signal reaches the worklet; it cannot identify an omitted mapping on mono/stereo recordings, or a browser's stereo fallback. **The host's missing-mapping check is essential.** Monitor setup failures also refuse annotation. Group playback checks that the observed count matches the supplied mapping.
+
+### Waiting for the probe
+
+A host doesn't have to finish the probe before a group recording renders ([#841](https://github.com/talkbench/stagebook/issues/841)). Make one runner per session with `createChannelProbe()`, start it from the participant's first click, and give it to the context as `requestChannelProbe`:
+
+```typescript
+import { createChannelProbe } from "stagebook/audio-probe";
+
+const runProbe = createChannelProbe({ workletUrl: probeWorkletUrl });
+
+// The participant's first click anywhere in the session.
+document.addEventListener(
+  "click",
+  () => void runProbe().then(saveSessionProbe),
+  { once: true, capture: true },
+);
+
+const context: StagebookContext = {
+  ...rest,
+  channelProbe: session.channelProbe, // updated by saveSessionProbe
+  requestChannelProbe: () => {
+    const pending = runProbe();
+    void pending.then(saveSessionProbe);
+    return pending;
+  },
+};
+```
+
+Each call to the runner returns the probe still running if there is one, the passing result once one has passed, and otherwise starts a new probe inside the caller's click.
+
+When a group recording with two or more channels renders before `channelProbe` has passed, and the host supplied `requestChannelProbe`, the player shows a short notice and a **Prepare audio** button in place of the refusal. A linked Timeline shows that speaker tracks will appear once the audio is ready, and saves nothing until then (`PlaybackHandle.annotationPending`). Then:
+
+- If the host's `channelProbe` passes in the meantime, the player appears without a click.
+- Otherwise the button's click calls `requestChannelProbe()`, which joins the running probe or starts a new one, and the player appears when it passes.
+- If that result fails, or the promise rejects, the player shows the usual channel-layout refusal. It doesn't offer another try.
+
+Without `requestChannelProbe`, a recording with no passing probe is refused as before. One-channel recordings and ordinary media never wait.
 
 The player-side channel check needs a secure context, as the probe does. Under a Content-Security-Policy it also needs `channelCountWorkletUrl` or permission for `blob:` scripts; see [AudioWorklet modules under a Content-Security-Policy](#audioworklet-modules-under-a-content-security-policy). Ordinary playback without a Timeline does not start this check. A silent or audio-free source provides no signal from which to verify its count.
 

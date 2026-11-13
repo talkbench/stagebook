@@ -58,6 +58,7 @@ import {
   workletLoadHint,
 } from "../../audioProbe/workletLoad.js";
 import { ChannelLayoutFailure } from "./mediaPlayer/ChannelLayoutFailure.js";
+import { ChannelProbePending } from "./mediaPlayer/ChannelProbePending.js";
 import { monitorChannelCount } from "./mediaPlayer/channelCountMonitor.js";
 
 // Preserve each event's required payload while recordEvent adds stage time.
@@ -69,6 +70,8 @@ type VideoEventDetails<Event = TransportEvent> = Event extends TransportEvent
 export interface MediaPlayerProps {
   channelMapping?: readonly ChannelMappingEntry[];
   channelProbe?: ChannelProbeResult;
+  /** Run or join the session's channel probe from a click (#841). */
+  requestChannelProbe?: () => Promise<ChannelProbeResult>;
   onChannelError?: (error: ChannelLayoutError) => void;
   /** Where the host serves `stagebook/worklets/channel-count.js`; without
    * it the channel-count worklet loads from a blob: URL (#837). */
@@ -185,8 +188,24 @@ function matchingRecord({
     : undefined;
 }
 
+/** A channel probe this player asked the host for, from its own click (#841). */
+type RequestedProbe =
+  | { status: "idle" }
+  | { status: "running" }
+  | { status: "done"; result?: ChannelProbeResult };
+
 export function MediaPlayer(props: MediaPlayerProps) {
   const youtube = Boolean(isYouTubeURL(props.url));
+  const [requested, setRequested] = useState<RequestedProbe>({
+    status: "idle",
+  });
+  // The host's probe once it passes; until then, any the player asked for.
+  const probe =
+    props.channelProbe?.verdict !== "pass" &&
+    requested.status === "done" &&
+    requested.result
+      ? requested.result
+      : props.channelProbe;
   const layout = useMemo(() => {
     if (props.channelMapping === undefined) return undefined;
     try {
@@ -197,12 +216,44 @@ export function MediaPlayer(props: MediaPlayerProps) {
             message: "Group channel mappings require an HTML media recording.",
           },
         ]);
-      return resolveChannelLayout(props.channelMapping, props.channelProbe);
+      return resolveChannelLayout(props.channelMapping, probe);
     } catch (error) {
       if (error instanceof ChannelLayoutError) return error;
       throw error;
     }
-  }, [props.channelMapping, props.channelProbe, youtube]);
+  }, [props.channelMapping, probe, youtube]);
+  const request = props.requestChannelProbe;
+  if (
+    layout instanceof ChannelLayoutError &&
+    request &&
+    requested.status !== "done" &&
+    layout.diagnostics.every((d) => d.code === "probe")
+  ) {
+    // Only the probe is missing, and the host can run one: wait for it.
+    // A failed result, or one the host never delivers, ends in the refusal
+    // below; the participant isn't offered another try.
+    return (
+      <ChannelProbePending
+        name={props.name}
+        running={requested.status === "running"}
+        onPrepare={() => {
+          let pending: Promise<ChannelProbeResult>;
+          try {
+            // Inside the click, so a new probe can start its audio.
+            pending = request();
+          } catch {
+            setRequested({ status: "done" });
+            return;
+          }
+          setRequested({ status: "running" });
+          pending.then(
+            (result) => setRequested({ status: "done", result }),
+            () => setRequested({ status: "done" }),
+          );
+        }}
+      />
+    );
+  }
   if (layout instanceof ChannelLayoutError) {
     return (
       <ChannelLayoutFailure

@@ -5,6 +5,7 @@
 // main and components bundles.
 
 export { probeChannelOrder } from "./probeChannelOrder.js";
+export { createChannelProbe } from "./createChannelProbe.js";
 export type { ProbeChannelOrderOptions } from "./probeChannelOrder.js";
 export { checkMultichannelDecode } from "./checkMultichannelDecode.js";
 export type { DecodeCheckResult, DecodeCheckDetail } from "./decodeCheck.js";

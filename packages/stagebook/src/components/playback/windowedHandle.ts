@@ -92,6 +92,9 @@ export function withSeekWindow(
     get annotationError() {
       return inner.annotationError;
     },
+    get annotationPending() {
+      return inner.annotationPending;
+    },
     requestChannelCheck: () => inner.requestChannelCheck?.(),
     get peaks() {
       return inner.peaks;

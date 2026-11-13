@@ -167,6 +167,11 @@ export const he: StagebookMessages = {
   mediaErrorUnknown: "שגיאה לא ידועה",
   mediaChannelLayoutError:
     "לא ניתן להציג באופן מהימן את רצועות הדוברים בהקלטה זו. יש לפנות לצוות המחקר.",
+  mediaChannelProbePrompt:
+    "הקלטה זו דורשת בדיקת שמע קצרה לפני שאפשר להפעיל אותה.",
+  mediaChannelProbeButton: "הכנת השמע",
+  mediaChannelProbeRunning: "השמע בהכנה…",
+  timelineAwaitingAudio: "רצועות הדוברים יופיעו כשהשמע יהיה מוכן.",
   mediaErrorCode: (code) => `קוד שגיאה ${ltr(code)}`,
   mediaSeekBack: "שנייה אחורה",
   mediaSeekForward: "שנייה קדימה",

@@ -124,8 +124,18 @@ export interface StagebookContext {
   getChannelMapping?: (
     file: string,
   ) => readonly ChannelMappingEntry[] | undefined;
-  /** Result of probeChannelOrder() from this session's start click. */
+  /** This session's probeChannelOrder() result, once it has one. */
   channelProbe?: ChannelProbeResult;
+  /**
+   * Run, or join, this session's channel-order probe (#841). A group
+   * recording that needs channel order before `channelProbe` has passed
+   * offers a "Prepare audio" button, and calls this from that click. Use
+   * `createChannelProbe()` from `stagebook/audio-probe`: it starts a new
+   * probe synchronously, inside the click, or returns one already running.
+   * Store the result and pass it back as `channelProbe`. Without this, such a
+   * recording is refused as before.
+   */
+  requestChannelProbe?: () => Promise<ChannelProbeResult>;
   /**
    * Where the host serves `stagebook/worklets/channel-count.js`, the
    * AudioWorklet module every media player with a linked timeline (and every

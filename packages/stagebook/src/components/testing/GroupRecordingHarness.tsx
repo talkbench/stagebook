@@ -6,6 +6,7 @@ import {
 import { PlaybackProvider, usePlayback } from "../playback/PlaybackProvider.js";
 import { Element } from "../Element.js";
 import { probeChannelOrder } from "../../audioProbe/probeChannelOrder.js";
+import { createChannelProbe } from "../../audioProbe/createChannelProbe.js";
 import type { ChannelProbeResult } from "../../audioProbe/probe.js";
 import type {
   ChannelMappingEntry,
@@ -113,7 +114,22 @@ export interface GroupRecordingHarnessProps {
   selectionType?: "point" | "range";
   locale?: string;
   channelCountWorkletUrl?: string;
+  /**
+   * Give the context a requestChannelProbe (#841): "probe" runs the real
+   * probe through createChannelProbe(); "fail" answers with a failed result.
+   */
+  requestProbe?: "probe" | "fail";
+  /** Start the shared probe from Start session without waiting for it. */
+  backgroundProbe?: boolean;
 }
+
+const FAILED_PROBE: ChannelProbeResult = {
+  verdict: "fail",
+  mappings: { 2: null, 3: null, 4: null, 5: null, 6: null, 7: null, 8: null },
+  detail: {},
+  stagebookVersion: "test",
+  elapsedMs: 0,
+};
 
 export function GroupRecordingHarness(props: GroupRecordingHarnessProps) {
   const [count, setCount] = useState(props.count ?? 2);
@@ -122,6 +138,8 @@ export function GroupRecordingHarness(props: GroupRecordingHarnessProps) {
   const [generation, setGeneration] = useState(0);
   const [saves, setSaves] = useState<{ key: string; value: unknown }[]>([]);
   const [errors, setErrors] = useState<unknown[]>([]);
+  const [requests, setRequests] = useState(0);
+  const [sharedProbe] = useState(() => createChannelProbe());
   const stored = useRef<Record<string, unknown>>({
     timeline_marks: props.initialSelections,
   });
@@ -158,6 +176,19 @@ export function GroupRecordingHarness(props: GroupRecordingHarnessProps) {
             : props.mappingOverride) as ChannelMappingEntry[]);
     },
     channelCountWorkletUrl: props.channelCountWorkletUrl,
+    // A host stores what the player's probe found, as it would its own.
+    requestChannelProbe:
+      props.requestProbe === undefined
+        ? undefined
+        : () => {
+            setRequests((n) => n + 1);
+            const pending =
+              props.requestProbe === "fail"
+                ? Promise.resolve(FAILED_PROBE)
+                : sharedProbe();
+            void pending.then(setProbe);
+            return pending;
+          },
     channelProbe:
       props.probeOverride === undefined
         ? probe
@@ -176,7 +207,8 @@ export function GroupRecordingHarness(props: GroupRecordingHarnessProps) {
       <button
         onClick={() => {
           void (async () => {
-            if (!props.skipProbe) setProbe(await probeChannelOrder());
+            if (props.backgroundProbe) void sharedProbe().then(setProbe);
+            else if (!props.skipProbe) setProbe(await probeChannelOrder());
             output.current?.restore();
             output.current = observeOutput();
             setStarted(true);
@@ -233,6 +265,7 @@ export function GroupRecordingHarness(props: GroupRecordingHarnessProps) {
       )}
       <output data-testid="group-saves">{JSON.stringify(saves)}</output>
       <output data-testid="group-errors">{JSON.stringify(errors)}</output>
+      <output data-testid="probe-requests">{requests}</output>
     </div>
   );
 }

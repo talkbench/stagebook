@@ -166,6 +166,19 @@ export function Timeline(props: TimelineProps) {
         {messages.mediaChannelLayoutError}
       </ErrorCallout>
     );
+  if (handle?.annotationPending)
+    return (
+      <p
+        data-testid="timeline-pending"
+        role="status"
+        style={{
+          color: "var(--stagebook-text-muted, #626977)",
+          fontSize: "0.875rem",
+        }}
+      >
+        {messages.timelineAwaitingAudio}
+      </p>
+    );
   if (!handle)
     return (
       <p

@@ -49,6 +49,11 @@ export interface PlaybackHandle {
   }[];
   /** Invalid channel layout: Timeline must not present or save annotations. */
   readonly annotationError?: boolean;
+  /**
+   * Speaker tracks aren't known yet: the player is waiting for the channel
+   * probe (#841). Timeline must not present or save annotations until then.
+   */
+  readonly annotationPending?: boolean;
   /** Run the missing-mapping backstop even when waveforms are hidden. */
   requestChannelCheck?(): void;
 

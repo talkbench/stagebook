@@ -270,3 +270,87 @@ test("unmapped multichannel audio is refused even with hidden waveforms", async 
     "timeline_marks",
   );
 });
+
+test.describe("waiting for the channel probe (#841)", () => {
+  test("a group player with no probe yet waits for Prepare audio, then plays by position", async ({
+    mount,
+    browserName,
+  }) => {
+    test.skip(browserName === "webkit", "WebKit fails the probe");
+    const c = await mount(
+      <GroupRecordingHarness skipProbe requestProbe="probe" />,
+    );
+    await c.getByRole("button", { name: "Start session" }).click();
+    await expect(c.getByTestId("mediaPlayer-channel-probe")).toBeVisible();
+    // The timeline waits too: no error, and nothing to select or save yet.
+    await expect(c.getByTestId("timeline-pending")).toBeVisible();
+    await expect(c.getByTestId("timeline-error")).toHaveCount(0);
+    await expect(c.getByTestId("group-errors")).toHaveText("[]");
+
+    await c.getByRole("button", { name: "Prepare audio" }).click();
+    await expect(c.getByTestId("track-label")).toHaveText([
+      "Track 1",
+      "Track 2",
+    ]);
+    await expect(c.getByTestId("probe-requests")).toHaveText("1");
+    await c
+      .getByRole("button", { name: "Play recording", exact: true })
+      .click();
+    await expect
+      .poll(async () => (await measure(c)).tracks?.map((t) => t.position))
+      .toEqual([0, 5]);
+    await expect(c.getByTestId("group-errors")).toHaveText("[]");
+    await expect(c.getByTestId("group-saves")).not.toContainText(
+      "timeline_marks",
+    );
+  });
+
+  test("the player is ready without a click once the host's background probe passes", async ({
+    mount,
+    browserName,
+  }) => {
+    test.skip(browserName === "webkit", "WebKit fails the probe");
+    const c = await mount(
+      <GroupRecordingHarness backgroundProbe requestProbe="probe" />,
+    );
+    await c.getByRole("button", { name: "Start session" }).click();
+    await expect(c.getByTestId("track-label")).toHaveText([
+      "Track 1",
+      "Track 2",
+    ]);
+    // The player never had to ask.
+    await expect(c.getByTestId("probe-requests")).toHaveText("0");
+    await expect(c.getByTestId("group-errors")).toHaveText("[]");
+  });
+
+  test("a probe that fails after Prepare audio ends in the usual refusal", async ({
+    mount,
+  }) => {
+    const c = await mount(
+      <GroupRecordingHarness skipProbe requestProbe="fail" />,
+    );
+    await c.getByRole("button", { name: "Start session" }).click();
+    await c.getByRole("button", { name: "Prepare audio" }).click();
+    await expect(c.getByTestId("mediaPlayer-channel-error")).toBeVisible();
+    await expect(c.getByTestId("mediaPlayer-channel-probe")).toHaveCount(0);
+    await expect(c.getByTestId("timeline-error")).toBeVisible();
+    await expect(c.getByTestId("group-errors")).toContainText('"code":"probe"');
+    await expect(c.getByTestId("probe-requests")).toHaveText("1");
+    await expect(c.getByTestId("group-saves")).toHaveText("[]");
+  });
+
+  test("a solo recording never waits", async ({ mount }) => {
+    const c = await mount(
+      <GroupRecordingHarness
+        count={1}
+        positions={[5]}
+        skipProbe
+        requestProbe="probe"
+      />,
+    );
+    await c.getByRole("button", { name: "Start session" }).click();
+    await expect(c.getByTestId("track-label")).toHaveText(["Track 1"]);
+    await expect(c.getByTestId("mediaPlayer-channel-probe")).toHaveCount(0);
+    await expect(c.getByTestId("probe-requests")).toHaveText("0");
+  });
+});
