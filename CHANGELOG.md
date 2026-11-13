@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.40.0
+
 - Re-vendor the channel-order calibration assets from compose_group 3.0.0
   ([#839](https://github.com/talkbench/stagebook/issues/839)), which encodes
   the group Opus track at 48 kbps per channel. The `stagebook/audio-probe`
