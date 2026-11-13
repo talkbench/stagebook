@@ -230,8 +230,10 @@ export function MediaPlayer(props: MediaPlayerProps) {
     layout.diagnostics.every((d) => d.code === "probe")
   ) {
     // Only the probe is missing, and the host can run one: wait for it.
-    // A failed result, or one the host never delivers, ends in the refusal
-    // below; the participant isn't offered another try.
+    // A failed result, or a request that throws or rejects, ends in the
+    // refusal below; the participant isn't offered another try. A request
+    // that never settles leaves the player waiting, so hosts must settle it
+    // (createChannelProbe() always does).
     return (
       <ChannelProbePending
         name={props.name}

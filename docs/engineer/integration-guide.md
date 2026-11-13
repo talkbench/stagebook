@@ -661,7 +661,7 @@ if (decode.verdict === "fail") showUseChromeOrFirefox(decode);
 
 Nothing plays, so it is silent. It loads no AudioWorklet, so it needs no Content-Security-Policy setup, and it never rejects.
 
-The result has `verdict`, `detail`, `stagebookVersion` and `elapsedMs`, shaped like the probe's, and **no `mappings`**. It does not measure channel order: decoding and playback are separate code paths in a browser, and only playback measures the order a recording will be heard in. So keep using `probeChannelOrder()` for the order. A decode result passed as `channelProbe` is refused, because it has no mappings.
+The result has `verdict`, `detail`, `stagebookVersion` and `elapsedMs`, shaped like the probe's, and **no `mappings`**. It does not measure channel order: decoding and playback are separate code paths in a browser, and only playback measures the order a recording will be heard in. So keep using `probeChannelOrder()` for the order. A decode result passed as `channelProbe` counts as no probe, because it has no mappings.
 
 Its failure reasons are the probe's, plus `decode` (`decodeAudioData` rejected an asset). Measured on 2026-11-13: Chromium 147 and Firefox 148 pass. WebKit 26.4 fails, because it decodes the stereo AAC fallback track: at 2 channels the channel count matches, so it fails on `marker-missing`, and at 3 to 8 on `channel-count`. A check that only counted channels would let WebKit's 2-channel decode through, which is why the markers are checked.
 
@@ -772,11 +772,13 @@ const context: StagebookContext = {
 
 Each call to the runner returns the probe still running if there is one, the passing result once one has passed, and otherwise starts a new probe inside the caller's click.
 
+**Store every result `requestChannelProbe` delivers**, as the wrapper above does. The player presents the recording from the result it receives, so annotations made on it depend on that probe even if the host never passes it back as `channelProbe`. The promise must also settle: one that never does leaves the player waiting. `createChannelProbe()` always settles, because every step of the probe has a time limit.
+
 When a group recording with two or more channels renders before `channelProbe` has passed, and the host supplied `requestChannelProbe`, the player shows a short notice and a **Prepare audio** button in place of the refusal. A linked Timeline shows that speaker tracks will appear once the audio is ready, and saves nothing until then (`PlaybackHandle.annotationPending`). Then:
 
 - If the host's `channelProbe` passes in the meantime, the player appears without a click.
 - Otherwise the button's click calls `requestChannelProbe()`, which joins the running probe or starts a new one, and the player appears when it passes.
-- If that result fails, or the promise rejects, the player shows the usual channel-layout refusal. It doesn't offer another try.
+- If that result fails, or the promise rejects, the player shows the usual channel-layout refusal. It doesn't offer another try, though a later passing `channelProbe` still replaces the refusal. This is per player: another group recording on the same stage that hasn't asked yet still offers **Prepare audio**.
 
 Without `requestChannelProbe`, a recording with no passing probe is refused as before. One-channel recordings and ordinary media never wait.
 

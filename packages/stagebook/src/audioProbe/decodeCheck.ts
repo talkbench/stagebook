@@ -67,8 +67,10 @@ interface DecodedAudio {
 
 /**
  * The probe worklet's bookkeeping (see worklet.ts), over a whole decoded
- * buffer. Frames count from the buffer's start. Measures at most `channels`
- * channels and reports how many there were, as the worklet does.
+ * buffer. Frames count from the buffer's start. As the worklet does, it
+ * reports how many channels arrived and one entry for each of the `channels`
+ * expected: a channel that never arrived has a silent entry, and any beyond
+ * `channels` are ignored. So a stored report has the same shape from either.
  */
 export function measureDecodedChannels(
   audio: DecodedAudio,
@@ -76,8 +78,11 @@ export function measureDecodedChannels(
 ): ProbeReport {
   const burstGapFrames = BURST_GAP_SECONDS * audio.sampleRate;
   const measured: ProbeChannelStats[] = [];
-  for (let c = 0; c < Math.min(channels, audio.numberOfChannels); c++) {
-    const samples = audio.getChannelData(c);
+  for (let c = 0; c < channels; c++) {
+    const samples =
+      c < audio.numberOfChannels
+        ? audio.getChannelData(c)
+        : new Float32Array(0);
     let peak = 0;
     let peakFrame = -1;
     let hotSamples = 0;
@@ -140,9 +145,17 @@ async function decodeAsset(asset: DecodeAsset): Promise<DecodeCheckDetail> {
       `Could not decode the asset (${describeError(err)}).`,
     );
   }
-  const report = measureDecodedChannels(audio, asset.channels);
-  const { failure } = analyzeProbeReport(report, asset.channels);
-  return { asset: id, failure, report };
+  try {
+    const report = measureDecodedChannels(audio, asset.channels);
+    const { failure } = analyzeProbeReport(report, asset.channels);
+    return { asset: id, failure, report };
+  } catch (err) {
+    // Not expected from a real AudioBuffer; kept so the check never rejects.
+    return fail(
+      "decode",
+      `Could not read the decoded audio (${describeError(err)}).`,
+    );
+  }
 }
 
 /**

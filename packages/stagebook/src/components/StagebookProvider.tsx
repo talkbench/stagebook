@@ -132,8 +132,10 @@ export interface StagebookContext {
    * offers a "Prepare audio" button, and calls this from that click. Use
    * `createChannelProbe()` from `stagebook/audio-probe`: it starts a new
    * probe synchronously, inside the click, or returns one already running.
-   * Store the result and pass it back as `channelProbe`. Without this, such a
-   * recording is refused as before.
+   * The promise must settle. Store every result it delivers with the
+   * session and pass it back as `channelProbe`: the player may present the
+   * recording from a result the host never stored otherwise. Without this,
+   * such a recording is refused as before.
    */
   requestChannelProbe?: () => Promise<ChannelProbeResult>;
   /**

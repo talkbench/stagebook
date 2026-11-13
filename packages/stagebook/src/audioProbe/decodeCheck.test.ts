@@ -171,9 +171,23 @@ describe("measureDecodedChannels", () => {
     expect(r.channels.map((c) => c.bursts)).toEqual([1, 2]);
   });
 
-  test("reports the decoded channel count but measures only the expected channels", () => {
+  test("reports the decoded channel count, and a silent entry for each channel that never arrived, as the worklet does", () => {
     const r = measureDecodedChannels(buffer(tone()), 3);
     expect(r.inputChannels).toBe(2);
+    expect(r.channels).toHaveLength(3);
+    expect(r.channels[2]).toEqual({
+      peak: 0,
+      peakFrame: -1,
+      hotSamples: 0,
+      firstHotFrame: -1,
+      lastHotFrame: -1,
+      bursts: 0,
+    });
+  });
+
+  test("measures no more channels than expected", () => {
+    const r = measureDecodedChannels(buffer(markers(3)), 2);
+    expect(r.inputChannels).toBe(3);
     expect(r.channels).toHaveLength(2);
   });
 });
@@ -246,6 +260,21 @@ describe("runDecodeCheck", () => {
     await runDecodeCheck([input]);
     expect(seen).toEqual([1]);
     expect(input.bytes.byteLength).toBe(1);
+  });
+
+  test("never rejects, even if the decoded audio can't be read", async () => {
+    stubDecoder(() => ({
+      ...buffer(markers(2)),
+      getChannelData: () => {
+        throw new Error("detached");
+      },
+    }));
+    const result = await runDecodeCheck([asset(2)]);
+    expect(result.verdict).toBe("fail");
+    expect(result.detail[2].failure).toMatchObject({
+      reason: "decode",
+      message: expect.stringContaining("detached") as string,
+    });
   });
 
   test("fails every count as unsupported when OfflineAudioContext is absent", async () => {
