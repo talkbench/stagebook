@@ -6,6 +6,8 @@
 
 export { probeChannelOrder } from "./probeChannelOrder.js";
 export type { ProbeChannelOrderOptions } from "./probeChannelOrder.js";
+export { checkMultichannelDecode } from "./checkMultichannelDecode.js";
+export type { DecodeCheckResult, DecodeCheckDetail } from "./decodeCheck.js";
 export { CAPABILITIES } from "./capabilities.js";
 export type {
   ChannelProbeResult,

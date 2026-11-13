@@ -646,6 +646,23 @@ Measured verdicts (October 2026): Chrome, Chromium and Firefox pass. Safari fail
 - **Content-Security-Policy.** If you set one, allow `blob:` in `media-src`, because the assets play from blob URLs. The probe's AudioWorklet module is a script: either serve it as a file and pass `workletUrl`, or allow `blob:` scripts. See [AudioWorklet modules under a Content-Security-Policy](#audioworklet-modules-under-a-content-security-policy).
 - **No network access.** The assets are embedded in the `stagebook/audio-probe` bundle (about 185 kB of base64), so nothing is fetched. The main and `stagebook/components` bundles don't include them.
 
+### Decode check: capability without a click
+
+`checkMultichannelDecode()` from `stagebook/audio-probe` answers a narrower question than the probe: can this browser decode a group recording's multichannel Opus track at all? It decodes the same seven calibration assets with `decodeAudioData` in an `OfflineAudioContext`, and judges the decoded channels with the probe's own analysis. It needs **no user gesture**, so a host can run it as soon as a participant arrives and turn away a browser that can't present per-speaker tracks before anything is reserved for them ([#840](https://github.com/talkbench/stagebook/issues/840)).
+
+```typescript
+import { checkMultichannelDecode } from "stagebook/audio-probe";
+
+const decode = await checkMultichannelDecode();
+if (decode.verdict === "fail") showUseChromeOrFirefox(decode);
+```
+
+Nothing plays, so it is silent. It loads no AudioWorklet, so it needs no Content-Security-Policy setup, and it never rejects.
+
+The result has `verdict`, `detail`, `stagebookVersion` and `elapsedMs`, shaped like the probe's, and **no `mappings`**. It does not measure channel order: decoding and playback are separate code paths in a browser, and only playback measures the order a recording will be heard in. So keep using `probeChannelOrder()` for the order. A decode result passed as `channelProbe` is refused, because it has no mappings.
+
+Its failure reasons are the probe's, plus `decode` (`decodeAudioData` rejected an asset). Measured on 2026-11-13: Chromium 147 and Firefox 148 pass. WebKit 26.4 fails, because it decodes the stereo AAC fallback track: at 2 channels the channel count matches, so it fails on `marker-missing`, and at 3 to 8 on `channel-count`. A check that only counted channels would let WebKit's 2-channel decode through, which is why the markers are checked.
+
 ### AudioWorklet modules under a Content-Security-Policy
 
 Stagebook loads two AudioWorklet modules:

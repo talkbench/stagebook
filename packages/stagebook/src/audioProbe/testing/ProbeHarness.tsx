@@ -5,7 +5,7 @@
 // gesture rules apply — the probe must work without autoplay flags. Results
 // are rendered as JSON for the test to read.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   loadWorkletModule,
   playIntoWorklet,
@@ -14,6 +14,8 @@ import {
   type ProbeAsset,
 } from "../probe.js";
 import { probeChannelOrder } from "../probeChannelOrder.js";
+import { checkMultichannelDecode } from "../checkMultichannelDecode.js";
+import { runDecodeCheck } from "../decodeCheck.js";
 
 /** Source channel k of each tone_<C>ch.mp4 fixture carries TONES[k] Hz. */
 export const TONE_FREQUENCIES = [311, 523, 743, 977, 1213, 1453, 1699, 1951];
@@ -109,17 +111,45 @@ export interface ProbeHarnessProps {
   readonly probeAssets?: readonly ProbeAsset[];
   /** Tone recordings the "Measure tones" button plays. */
   readonly toneAssets?: readonly HarnessMedia[];
+  /**
+   * Run the decode check on the shipped assets as soon as the harness
+   * mounts, with no click, as a host does when a participant arrives.
+   */
+  readonly decodeOnMount?: boolean;
 }
 
-export function ProbeHarness({ probeAssets, toneAssets }: ProbeHarnessProps) {
+export function ProbeHarness({
+  probeAssets,
+  toneAssets,
+  decodeOnMount,
+}: ProbeHarnessProps) {
   const [shipped, setShipped] = useState("");
   const [fixtures, setFixtures] = useState("");
   const [tones, setTones] = useState("");
+  const [decoded, setDecoded] = useState("");
+  const [decodedFixtures, setDecodedFixtures] = useState("");
 
   const report = (task: Promise<unknown>, setResult: (s: string) => void) =>
     void task.then(
       (result) => setResult(JSON.stringify(result)),
       (err: unknown) => setResult(JSON.stringify({ error: String(err) })),
+    );
+
+  useEffect(() => {
+    // Never rejects, so no error path is needed.
+    if (decodeOnMount)
+      void checkMultichannelDecode().then((r) => setDecoded(JSON.stringify(r)));
+  }, [decodeOnMount]);
+
+  // Fetch each fixture's bytes, then decode them as the decode check does.
+  const decodeFixtures = async () =>
+    runDecodeCheck(
+      await Promise.all(
+        (probeAssets ?? []).map(async ({ url, ...asset }) => ({
+          ...asset,
+          bytes: await (await fetch(url)).arrayBuffer(),
+        })),
+      ),
     );
 
   // A context created inside the click, as a host would.
@@ -160,7 +190,15 @@ export function ProbeHarness({ probeAssets, toneAssets }: ProbeHarnessProps) {
       >
         Measure tones
       </button>
+      <button
+        type="button"
+        onClick={() => report(decodeFixtures(), setDecodedFixtures)}
+      >
+        Decode fixtures
+      </button>
       <output data-testid="shipped-result">{shipped}</output>
+      <output data-testid="decode-result">{decoded}</output>
+      <output data-testid="decode-fixture-result">{decodedFixtures}</output>
       <output data-testid="fixture-result">{fixtures}</output>
       <output data-testid="tone-result">{tones}</output>
     </div>
