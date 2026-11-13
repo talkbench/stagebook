@@ -1,17 +1,18 @@
 {
+  "schema_version": "2.0.0",
   "artifact_id": "compose_group_calibration_2ch",
   "artifact_type": "channel_order_calibration",
   "path": "transforms/compose_group/calibration/calib_2ch.mp4",
   "hash": "sha256:9f9baccf1d65456d05cc688f68fc3e92e4dab06f3ccd162bb363d7ebdd8e37a9",
-  "created": "2026-10-05T21:28:51.379542Z",
+  "created": "2026-11-11T20:09:13.875126Z",
   "size_bytes": 14370,
   "direct_inputs": [],
   "direct_transform": {
-    "transform_id": "compose_group_20261005_212851_3e8f1cdc",
+    "transform_id": "compose_group_20261111_200913_4579e22c",
     "lambda_name": "compose_group",
-    "version": "2.0.0",
-    "git_sha": "1faa70ca534a74a3b4b63ada15201e0b9ef9257a",
-    "timestamp": "2026-10-05T21:28:51.389456",
+    "version": "3.0.0",
+    "git_sha": "8ff36c2f057746240d377f6137d238a3d07106bc",
+    "timestamp": "2026-11-11T20:09:13.875126Z",
     "inputs": [],
     "outputs": ["compose_group_calibration_2ch"],
     "parameters": {
@@ -64,12 +65,99 @@
       },
       "aac_track": {
         "tone_frequency_hz": 3000,
-        "tone_amplitude": 0.25
+        "tone_amplitude": 0.03125,
+        "ffmpeg_volume": 0.25
       }
     },
     "metrics": {}
   },
-  "full_provenance": null,
+  "full_provenance": {
+    "artifacts": [
+      {
+        "path": "transforms/compose_group/calibration/calib_2ch.mp4",
+        "hash": "sha256:9f9baccf1d65456d05cc688f68fc3e92e4dab06f3ccd162bb363d7ebdd8e37a9",
+        "size_bytes": 14370,
+        "kind": "artifact",
+        "origin": "derived",
+        "artifact_id": null,
+        "describes": null
+      }
+    ],
+    "transforms": [
+      {
+        "transform_id": "compose_group_20261111_200913_4579e22c",
+        "lambda_name": "compose_group",
+        "version": "3.0.0",
+        "git_sha": "8ff36c2f057746240d377f6137d238a3d07106bc",
+        "timestamp": "2026-11-11T20:09:13.875126Z",
+        "inputs": [],
+        "outputs": ["compose_group_calibration_2ch"],
+        "parameters": {
+          "channels": 2,
+          "encoder_args": [
+            "-c:a:0",
+            "libopus",
+            "-mapping_family:a:0",
+            "255",
+            "-ac:a:0",
+            "2",
+            "-b:a:0",
+            "96k",
+            "-c:a:1",
+            "aac",
+            "-ac:a:1",
+            "2",
+            "-b:a:1",
+            "96k",
+            "-disposition:a:0",
+            "default",
+            "-disposition:a:1",
+            "default"
+          ],
+          "bitexact_args": [
+            "-fflags",
+            "+bitexact",
+            "-flags:a",
+            "+bitexact",
+            "-map_metadata",
+            "-1"
+          ],
+          "sample_rate": 48000,
+          "duration_s": 0.7,
+          "opus_track": {
+            "marker_frequency_hz": 1000,
+            "marker_amplitude": 0.5,
+            "markers": [
+              {
+                "channel": 0,
+                "start_s": 0.1,
+                "end_s": 0.12
+              },
+              {
+                "channel": 1,
+                "start_s": 0.16,
+                "end_s": 0.18
+              }
+            ]
+          },
+          "aac_track": {
+            "tone_frequency_hz": 3000,
+            "tone_amplitude": 0.03125,
+            "ffmpeg_volume": 0.25
+          }
+        },
+        "metrics": {}
+      }
+    ],
+    "output_bindings": [
+      {
+        "path": "transforms/compose_group/calibration/calib_2ch.mp4",
+        "hash": "sha256:9f9baccf1d65456d05cc688f68fc3e92e4dab06f3ccd162bb363d7ebdd8e37a9",
+        "transform_id": "compose_group_20261111_200913_4579e22c",
+        "artifact_id": "compose_group_calibration_2ch"
+      }
+    ]
+  },
   "metadata": {},
   "audio_channel_mapping": null
 }

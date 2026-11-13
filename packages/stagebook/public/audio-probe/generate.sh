@@ -16,8 +16,8 @@
 #                        pipeline encoded it (-30 dBFS, though the sidecar
 #                        records 0.25). The probe must fail it.
 #
-# Audio encoder arguments match the pipeline's (compose_group 2.0.0,
-# `build_audio_output_args`). Requires an ffmpeg with libopus and libx264.
+# Audio encoder arguments match the pipeline's (compose_group 3.0.0,
+# `build_audio_output_args`: Opus at 48 kbps per channel). Requires an ffmpeg with libopus and libx264.
 # Run from anywhere: bash packages/stagebook/public/audio-probe/generate.sh
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -27,7 +27,7 @@ DUR=0.7
 BITEXACT=(-fflags +bitexact -flags:a +bitexact -flags:v +bitexact -map_metadata -1)
 
 audio_args() { # $1 = channel count
-  echo -c:a:0 libopus -mapping_family:a:0 255 -ac:a:0 "$1" -b:a:0 96k \
+  echo -c:a:0 libopus -mapping_family:a:0 255 -ac:a:0 "$1" -b:a:0 "$((48 * $1))k" \
     -c:a:1 aac -ac:a:1 2 -b:a:1 96k \
     -disposition:a:0 default -disposition:a:1 default
 }
@@ -59,7 +59,7 @@ for C in 2 3 4 5 6 7 8; do
   ffmpeg -hide_banner -loglevel error -y \
     -i "../../src/audioProbe/calibration/calib_${C}ch.mp4" \
     -filter_complex "[0:a:0][0:a:1]amerge=inputs=2,pan=${C}c|${pan}[a]" \
-    -map "[a]" -c:a libopus -mapping_family 255 -ac "$C" -b:a 96k \
+    -map "[a]" -c:a libopus -mapping_family 255 -ac "$C" -b:a "$((48 * C))k" \
     "${BITEXACT[@]}" "sim_mixed_${C}ch.mp4"
 done
 

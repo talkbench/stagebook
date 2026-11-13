@@ -644,7 +644,7 @@ Measured verdicts (October 2026): Chrome, Chromium and Firefox pass. Safari fail
 
 - **A secure context.** AudioWorklet is available only over HTTPS or on `localhost`. Elsewhere the probe fails with `unsupported`.
 - **Content-Security-Policy.** If you set one, allow `blob:` in `media-src`, because the assets play from blob URLs. The probe's AudioWorklet module is a script: either serve it as a file and pass `workletUrl`, or allow `blob:` scripts. See [AudioWorklet modules under a Content-Security-Policy](#audioworklet-modules-under-a-content-security-policy).
-- **No network access.** The assets are embedded in the `stagebook/audio-probe` bundle (about 135 kB of base64), so nothing is fetched. The main and `stagebook/components` bundles don't include them.
+- **No network access.** The assets are embedded in the `stagebook/audio-probe` bundle (about 185 kB of base64), so nothing is fetched. The main and `stagebook/components` bundles don't include them.
 
 ### AudioWorklet modules under a Content-Security-Policy
 
