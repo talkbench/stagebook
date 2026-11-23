@@ -150,6 +150,8 @@ export interface StagebookMessages {
   /** Poster-overlay play affordances. */
   mediaPlayVideo: string;
   mediaPlayAudio: string;
+  /** Resume control after `pauseWhen` paused playback and it did not resume. */
+  mediaAwayResume: string;
   /** Error states. */
   mediaVideoUnavailable: string;
   mediaAudioUnavailable: string;

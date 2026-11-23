@@ -23,6 +23,9 @@ export interface MockWindowedTimelineProps {
   playback?: MediaPlayerProps["playback"];
   autoplay?: boolean;
   timelineCount?: number;
+  pauseWhen?: MediaPlayerProps["pauseWhen"];
+  resumeOnReturn?: boolean;
+  rewindOnResume?: number;
 }
 
 export function MockWindowedTimeline({
@@ -38,6 +41,9 @@ export function MockWindowedTimeline({
   playback = "manual",
   autoplay,
   timelineCount = 1,
+  pauseWhen,
+  resumeOnReturn,
+  rewindOnResume,
 }: MockWindowedTimelineProps) {
   const [saves, setSaves] = useState<Array<{ key: string; value: unknown }>>(
     [],
@@ -58,6 +64,9 @@ export function MockWindowedTimeline({
           autoplay={autoplay}
           controls={playback === "once" ? undefined : controls}
           playVideo={playVideo}
+          pauseWhen={pauseWhen}
+          resumeOnReturn={resumeOnReturn}
+          rewindOnResume={rewindOnResume}
           save={save}
           getElapsedTime={() => 0}
         />

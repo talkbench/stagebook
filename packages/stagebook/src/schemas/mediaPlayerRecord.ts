@@ -48,20 +48,31 @@ const videoEventBaseSchema = z
   })
   .passthrough();
 
+// Marks the player's own pauses, rewinds and resumes while the participant is
+// away (#844). The participant's own transport events carry no reason.
+const awayPauseReasonSchema = z.enum(["hidden", "unfocused"]);
+const returnReasonSchema = z.literal("return");
+
 export const videoEventSchema = z.discriminatedUnion("type", [
   videoEventBaseSchema.extend({
     type: z.literal("play"),
     // Historical play events predate these observations.
     ...optionalAudioStateShape,
+    reason: returnReasonSchema.optional(),
+  }),
+  videoEventBaseSchema.extend({
+    type: z.literal("pause"),
+    reason: awayPauseReasonSchema.optional(),
   }),
   videoEventBaseSchema.extend({
     // `removed`: playback closed when the player left the page (#677).
     // `restored`: a new session starts; any unclosed playback is discarded (#728).
-    type: z.enum(["pause", "ended", "stopAt", "removed", "restored"]),
+    type: z.enum(["ended", "stopAt", "removed", "restored"]),
   }),
   videoEventBaseSchema.extend({
     type: z.literal("seek"),
     fromTime: finiteNumber,
+    reason: returnReasonSchema.optional(),
   }),
   videoEventBaseSchema.extend({
     type: z.literal("speed"),
@@ -107,6 +118,15 @@ export const mediaPlayerRecordSchema = z
     hiddenPlaybackSeconds: finiteNumber.nonnegative().optional(),
     unfocusedPlaybackSeconds: finiteNumber.nonnegative().optional(),
     visibilityChangesDuringPlayback: nonnegativeCount.optional(),
+    /**
+     * Present only when `pauseWhen` is set (#844). `awayPausedSeconds` is wall
+     * time. `awayPausesDropped` counts away pauses of a second or more whose
+     * events the per-player cap left out of the log.
+     */
+    awayPauseCount: nonnegativeCount.optional(),
+    awayPausedSeconds: finiteNumber.nonnegative().optional(),
+    resumeBlockedCount: nonnegativeCount.optional(),
+    awayPausesDropped: nonnegativeCount.optional(),
     /** Only the added media-state event kinds are capped; transport is unchanged. */
     mediaStateEventsDropped: mediaStateEventCountsSchema.optional(),
     /** Absent until playback starts (#710). */

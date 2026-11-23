@@ -157,6 +157,7 @@ export const he: StagebookMessages = {
   mediaPlayerLabel: "נגן מדיה",
   mediaPlayVideo: "ניגון וידאו",
   mediaPlayAudio: "ניגון שמע",
+  mediaAwayResume: "ההפעלה הושהתה כשלא היית בדף. יש ללחוץ כדי להמשיך.",
   mediaVideoUnavailable: "הווידאו אינו זמין",
   mediaAudioUnavailable: "השמע אינו זמין",
   mediaInvalidUrl: "כתובת מדיה לא תקינה",

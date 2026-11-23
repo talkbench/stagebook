@@ -156,6 +156,7 @@ export const en: StagebookMessages = {
   mediaPlayerLabel: "Media player",
   mediaPlayVideo: "Play video",
   mediaPlayAudio: "Play audio",
+  mediaAwayResume: "Paused while you were away. Press to continue.",
   mediaVideoUnavailable: "Video unavailable",
   mediaAudioUnavailable: "Audio unavailable",
   mediaInvalidUrl: "Invalid media URL",

@@ -184,6 +184,9 @@ const resolvedElementBaseSchema = z.object({
   stopAt: finiteSecondsSchema.positive().optional(),
   allowScrubOutsideBounds: z.boolean().optional(),
   stepDuration: finiteSecondsSchema.positive().optional(),
+  pauseWhen: mediaPlayerSchema.shape.pauseWhen,
+  resumeOnReturn: mediaPlayerSchema.shape.resumeOnReturn,
+  rewindOnResume: mediaPlayerSchema.shape.rewindOnResume,
   controls: z
     .object({
       playPause: z.boolean().optional(),

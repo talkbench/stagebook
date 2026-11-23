@@ -1158,6 +1158,65 @@ const cases: Case[] = [
     },
   },
   {
+    // Paused while the participant was away, with no automatic resume: the
+    // resume control over the video (#844).
+    name: "MediaPlayer (paused while away)",
+    node: (
+      <MockMediaPlayer
+        url="/sample-video.mp4"
+        name="away"
+        playAudio={false}
+        controls={{ playPause: true }}
+        pauseWhen={["hidden"]}
+        resumeOnReturn={false}
+      />
+    ),
+    prepare: async (page) => {
+      await page.evaluate(() => {
+        let hidden = false;
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => (hidden ? "hidden" : "visible"),
+        });
+        (
+          window as Window & { __setHidden?: (h: boolean) => void }
+        ).__setHidden = (next) => {
+          hidden = next;
+          document.dispatchEvent(new Event("visibilitychange"));
+        };
+      });
+      const video = page.getByTestId("mediaPlayer-video");
+      await video.evaluate(async (el: HTMLVideoElement) => {
+        await el.play();
+      });
+      for (const next of [true, false]) {
+        await page.evaluate((h) => {
+          (
+            window as Window & { __setHidden?: (h: boolean) => void }
+          ).__setHidden?.(h);
+        }, next);
+      }
+      await expect(page.getByTestId("mediaPlayer-awayResume")).toBeVisible();
+    },
+    known: [
+      {
+        rule: "color-contrast",
+        within: '[data-testid="mediaPlayer-awayResume"]',
+        kind: "unmeasured",
+        reason: "imgNode",
+        why: "the control's translucent background sits over the video frame, which axe will not composite; read from the paint below",
+      },
+    ],
+    marks: [
+      {
+        name: "away-resume text on its translucent background",
+        fg: { el: '[data-testid="mediaPlayer-awayResume"]', prop: "color" },
+        bg: { inside: '[data-testid="mediaPlayer-awayResume"]' },
+        min: AA,
+      },
+    ],
+  },
+  {
     name: "Timeline (points)",
     node: (
       <MockTimeline
