@@ -7,12 +7,17 @@
   `pauseWhen: [hidden]` or `[unfocused]`, the player pauses while the
   participant is away from the page and resumes on return, optionally stepping
   back `rewindOnResume` seconds. Automatic resume works in `playback: once`. A
-  refused resume, or `resumeOnReturn: false`, shows a resume button. Absences
+  refused or stalled resume, or `resumeOnReturn: false`, shows a resume
+  button. A return by focus waits half a second, so the click that brought
+  the window back is the participant's own play. Absences
   of a second or more are logged as `pause`/`play` events with a `reason`, and
   the record gains `awayPauseCount`, `awayPausedSeconds`, `resumeBlockedCount`
   and `awayPausesDropped`. The setting turns off picture-in-picture for
   uploaded files, and validation rejects it with `syncToStageTime`. Adds the
   `mediaAwayResume` message. Off by default; existing studies see no change.
+  The record schema now types `reason` on `pause`, `play` and `seek` events:
+  a host that wrote its own `reason` values into these events will find such
+  records rejected for restore.
 
 ## 0.40.0
 

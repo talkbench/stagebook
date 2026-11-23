@@ -306,20 +306,24 @@ Choose the trigger as a study policy:
 - **`hidden`** pauses when the page is hidden: another tab in front, the window minimized, or the screen locked.
 - **`unfocused`** also pauses when the window loses focus while still visible. This catches windows side by side, including several accounts open at once, but it also pauses a participant who watches on one screen while working on another. Focus inside a frame on the page, such as a YouTube player's own controls, still counts as present. Once focus is inside that frame, switching to a window beside it raises no event the page can see, so that case pauses only if the page also becomes hidden. Stagebook's own controls keep clicks out of the YouTube frame.
 
-On return, playback resumes only if the player paused it. A pause the participant chose stays paused. `rewindOnResume` steps back that many seconds, stopping at `startAt`. This works in `playback: once` too, where the participant has no controls: the player resumes and rewinds on its own. An absence shorter than a second resumes where it left off, with no rewind.
+On return, playback resumes only if the player paused it. A pause the participant chose stays paused. `rewindOnResume` steps back that many seconds, stopping at `startAt`. This works in `playback: once` too, where the participant has no controls: the player resumes and rewinds on its own. An absence shorter than a second resumes where it left off, with no rewind. Under `once`, each rewind lets the participant see a few seconds again, so leaving repeatedly adds re-watching; each rewind is logged.
 
-If the browser refuses to resume (an autoplay policy), the player shows a "Paused while you were away. Press to continue." button. With `resumeOnReturn: false` it shows that button on every return instead of resuming. The button plays in every mode, including `once`.
+A return by focus (clicking back into the window) waits half a second before resuming, so a click on the play button that brought the window back counts as the participant's own play rather than pausing the clip again.
+
+If the browser refuses to resume (an autoplay policy), or playback has not started three seconds after the attempt, the player shows a "Paused while you were away. Press to continue." button. With `resumeOnReturn: false` it shows that button on every return instead of resuming. The button plays in every mode, including `once`.
 
 `pauseWhen` turns off picture-in-picture for uploaded files, since a picture-in-picture window would keep playing with the page hidden. It cannot be combined with `syncToStageTime`, whose playback follows the stage clock.
 
-**Saved data.** Absences of a second or more are logged as `pause` events with `reason: "hidden"` or `"unfocused"`, timed at the moment the participant left. The automatic resume is a `play` event with `reason: "return"`, preceded by a `seek` with the same reason when it rewinds. The resume and its rewind are written in one save. A shorter absence is not logged; the log shows playback that never stopped. The participant's own transport events carry no `reason`. The first 50 away pauses per player are logged; later ones only change the counters.
+**Saved data.** Absences of a second or more are logged as `pause` events with `reason: "hidden"` or `"unfocused"`, timed at the moment the participant left. The automatic resume is a `play` event with `reason: "return"`, preceded by a `seek` with the same reason when it rewinds. The resume and its rewind are written in one save. A shorter absence is not logged, provided playback resumes; the log shows playback that never stopped. A pause that lasts, because the resume was refused or `resumeOnReturn` is `false`, is always logged, however short the absence. The participant's own transport events carry no `reason`. The first 50 automatically resumed away pauses per player are logged; later ones only change the counters.
+
+Under `unfocused`, a tab switch can report losing focus before the page hides; such an absence is logged as `hidden`. A pause made with YouTube's own controls or media keys, rather than Stagebook's, reaches the page late. If the participant leaves within that moment, the pause can be taken for the player's own and resumed on return.
 
 | Field | Meaning |
 | ----- | ------- |
 | `awayPauseCount` | Automatic pauses, including sub-second and unlogged ones. |
 | `awayPausedSeconds` | Wall-clock seconds spent paused this way, until playback resumed, by the player or the participant. |
 | `resumeBlockedCount` | Returns where the browser refused to resume. |
-| `awayPausesDropped` | Away pauses of a second or more whose events the 50-pause cap left out. Past the cap, the player resumes without rewinding. |
+| `awayPausesDropped` | Automatically resumed away pauses of a second or more whose events the 50-pause cap left out. Past the cap, the player resumes without rewinding. |
 
 These fields appear only when `pauseWhen` is set, and like the other counters they are written with existing saves. With pausing on, [`hiddenPlaybackSeconds`](#audio-and-page-state-observations) should stay near zero, and so should `unfocusedPlaybackSeconds` under `unfocused`. A larger value means playback continued while away: the pause failed or was bypassed. Conditions can read all of these, e.g. `self.mediaPlayer.rating_clip.awayPauseCount`.
 

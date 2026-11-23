@@ -21,6 +21,8 @@ import { createPlaybackVisibility } from "./mediaPlayer/playbackVisibility.js";
 import { createMediaStateTelemetry } from "./mediaPlayer/mediaStateTelemetry.js";
 import {
   AWAY_LOG_THRESHOLD_MS,
+  AWAY_RESUME_WATCHDOG_MS,
+  AWAY_RETURN_GRACE_MS,
   awayReason,
   createAwayPause,
   loggedAwayPauses,
@@ -449,9 +451,9 @@ function MediaPlayerCore({
   // The next pause event is the player's own: logged after a second away,
   // or never.
   const autoPauseRef = useRef(false);
-  // The next play event is the player's own resume. `logged` says whether
-  // its pause was logged; a rewind is logged in the same save as the play.
-  const autoResumeRef = useRef<{ logged: boolean; seek?: VideoEvent } | null>(
+  // The next play event is the player's own resume. `long`: the absence
+  // lasted a second or more. A rewind is logged in the same save as the play.
+  const autoResumeRef = useRef<{ long: boolean; seek?: VideoEvent } | null>(
     null,
   );
   const awayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -459,6 +461,16 @@ function MediaPlayerCore({
     if (awayTimerRef.current === null) return;
     clearTimeout(awayTimerRef.current);
     awayTimerRef.current = null;
+  }, []);
+  // The wait before resuming on a return by focus, and the resume watchdog.
+  const awayReturnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const awayWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearReturnTimers = useCallback(() => {
+    for (const ref of [awayReturnTimerRef, awayWatchdogRef]) {
+      if (ref.current === null) continue;
+      clearTimeout(ref.current);
+      ref.current = null;
+    }
   }, []);
   // Shown when the player paused and did not resume on return.
   const [awayNotice, setAwayNoticeState] = useState(false);
@@ -696,6 +708,7 @@ function MediaPlayerCore({
       );
       visibilityRef.current = playbackVisibility(seed);
       clearAwayTimer();
+      clearReturnTimers();
       awayRef.current = awayPause(seed);
       autoPauseRef.current = false;
       autoResumeRef.current = null;
@@ -727,6 +740,7 @@ function MediaPlayerCore({
     seekLog,
     appendToLog,
     clearAwayTimer,
+    clearReturnTimers,
     setAwayNotice,
   ]);
   const [bufferedEnd, setBufferedEnd] = useState(0);
@@ -795,6 +809,15 @@ function MediaPlayerCore({
   // Child effect cleanup invalidates the handle before the parent's queued
   // readiness effect runs; it must not start a player just destroyed.
   const liveYtHandleRef = useRef<PlaybackHandle | null>(null);
+  // YouTube reports a pause by postMessage, so isPaused() lags a pause the
+  // participant just made. Until it reports, an absence must not mistake
+  // that pause for playback and claim it as the player's own (#844).
+  const ytPauseRequestedRef = useRef(false);
+  const requestYtPause = useCallback((h: PlaybackHandle | null) => {
+    if (!h) return;
+    ytPauseRequestedRef.current = true;
+    h.pause();
+  }, []);
   const markInitialStarted = useCallback(() => {
     const attempt = initialStartRef.current;
     if (attempt.started && !attempt.pending) return;
@@ -1178,11 +1201,11 @@ function MediaPlayerCore({
       if (!isPaused && stopAt !== undefined && t >= stopAt) {
         // Signal that the upcoming onPause is from stopAt, not a user action.
         stopAtReachedRef.current = true;
-        ytHandle.pause();
+        requestYtPause(ytHandle);
       }
     }, 250);
     return () => clearInterval(id);
-  }, [ytHandle, isPaused, stopAt, observeAudio]);
+  }, [ytHandle, isPaused, stopAt, observeAudio, requestYtPause]);
 
   // A pause (including a browser power-saving pause), seek or new load can
   // reject an outstanding play request. Observe it without undoing the pause
@@ -1275,7 +1298,17 @@ function MediaPlayerCore({
   // handle would be inert (null videoRef), and registering it would let a
   // sibling Timeline latch onto a dead handle whose identity never changes —
   // so it would never retry waveform capture once the URL recovers (#487).
-  const sourceHandle = urlIsUnsafe ? null : (ytHandle ?? handle);
+  // A sibling's pause of YouTube (a Timeline's Space) is marked like the
+  // player's own controls'; every other member comes from the real handle.
+  const ytSourceHandle = useMemo(
+    () =>
+      ytHandle &&
+      Object.assign(Object.create(ytHandle) as PlaybackHandle, {
+        pause: () => requestYtPause(ytHandle),
+      }),
+    [ytHandle, requestYtPause],
+  );
+  const sourceHandle = urlIsUnsafe ? null : (ytSourceHandle ?? handle);
   // Siblings seek through a wrapper that keeps them inside this player's
   // window (#675). The window is read through a ref so a changed startAt /
   // stopAt applies without re-registering the handle.
@@ -1510,68 +1543,76 @@ function MediaPlayerCore({
   // "once") don't govern its own pause, rewind and resume. Every play from
   // any control ends the absence, so a pause the participant chose is never
   // resumed: nothing is open to resume once they have played and paused.
-  const logAwayPause = useCallback(() => {
-    clearAwayTimer();
-    const away = awayRef.current;
-    const episode = away.episode();
-    if (!episode || !away.claimLog()) return;
-    seekLog.flush();
-    appendEventRef.current({
-      type: "pause",
-      videoTime: episode.videoTime,
-      // When the participant left, not when the pause was written.
-      stageTimeElapsed: episode.stageTimeElapsed,
-      reason: episode.reason,
-    });
-  }, [clearAwayTimer, seekLog]);
+  // `lasting`: a pause the player will not resume itself, logged even past
+  // the cap (see claimLog).
+  const logAwayPause = useCallback(
+    (lasting = false) => {
+      clearAwayTimer();
+      const away = awayRef.current;
+      const episode = away.episode();
+      if (!episode || !away.claimLog(lasting)) return;
+      seekLog.flush();
+      appendEventRef.current({
+        type: "pause",
+        videoTime: episode.videoTime,
+        // When the participant left, not when the pause was written.
+        stageTimeElapsed: episode.stageTimeElapsed,
+        reason: episode.reason,
+      });
+    },
+    [clearAwayTimer, seekLog],
+  );
   const endAway = useCallback(() => {
     clearAwayTimer();
+    clearReturnTimers();
+    // A pause requested as the player's own may never report (YouTube can
+    // end first); it must not claim the participant's next pause.
+    autoPauseRef.current = false;
     awayRef.current.end();
     setAwayNotice(false);
-  }, [clearAwayTimer, setAwayNotice]);
+  }, [clearAwayTimer, clearReturnTimers, setAwayNotice]);
+  // Playback started while an absence is open: by the player's resume
+  // (`resume` set) or by the participant. Returns whether the play belongs
+  // in the log. An unlogged pause logs no resume: the log then shows
+  // playback that never stopped. A participant's play ends a pause that
+  // lasted, so that pause is logged first.
+  const endAwayOnPlay = useCallback(
+    (resume: { long: boolean } | null): boolean => {
+      const away = awayRef.current;
+      if (!away.episode()) return true;
+      if (resume) away.settleUnlogged(resume.long);
+      else logAwayPause(true);
+      const logged = away.episode()?.log === "logged";
+      endAway();
+      return logged;
+    },
+    [logAwayPause, endAway],
+  );
   // A refused resume from YouTube arrives as onAutoplayBlocked.
   const ytResumeBlockedRef = useRef<(() => void) | null>(null);
-  // Rebuilt each render, so page events act on the current backend/settings.
-  const checkAwayRef = useRef<() => void>(() => {});
-  checkAwayRef.current = () => {
-    const doc = containerRef.current?.ownerDocument;
-    if (!awayEnabled || !pauseWhen || !doc || logClosedRef.current) return;
+  // Rebuilt each render, so page events and timers act on the current
+  // backend and settings.
+  const resumeAfterReturnRef = useRef<(awayMs: number) => void>(() => {});
+  resumeAfterReturnRef.current = (awayMs) => {
     const away = awayRef.current;
+    if (
+      logClosedRef.current ||
+      !away.episode() ||
+      awayNoticeRef.current ||
+      autoResumeRef.current
+    )
+      return;
     // The live handle: a first play can follow readiness before a re-render.
     const yt = youtubeVideoId ? liveYtHandleRef.current : null;
-    const reason = awayReason(pauseWhen, {
-      hidden: doc.visibilityState === "hidden",
-      focused: doc.hasFocus(),
-    });
-    if (reason) {
-      const paused = yt ? yt.isPaused() : (videoRef.current?.paused ?? true);
-      if (away.episode() || paused) return;
-      away.begin(reason, positionRef.current(), getElapsedTimeRef.current());
-      autoPauseRef.current = true;
-      clearAwayTimer();
-      awayTimerRef.current = setTimeout(() => {
-        awayTimerRef.current = null;
-        logAwayPause();
-      }, AWAY_LOG_THRESHOLD_MS);
-      if (yt) yt.pause();
-      else videoRef.current?.pause();
-      return;
-    }
-    // Nothing to resume, or this return is already being handled.
-    if (!away.episode() || awayNoticeRef.current || autoResumeRef.current)
-      return;
-    clearAwayTimer();
-    const long = away.awayMs() >= AWAY_LOG_THRESHOLD_MS;
-    // A pause that lasts is logged now, however short the absence was.
-    if (long || !resumeOnReturn) logAwayPause();
-    else away.skipLog();
-    const logged = away.episode()?.log === "logged";
+    const long = awayMs >= AWAY_LOG_THRESHOLD_MS;
+    if (long) logAwayPause(!resumeOnReturn);
+    else if (!resumeOnReturn) logAwayPause(true);
     // Rewind only after a logged absence: a sub-second one loses nothing,
     // and an unlogged seek would misstate coverage.
     let seek: VideoEvent | undefined;
     const from = positionRef.current();
     const to = Math.max(startAt ?? 0, from - rewindOnResume);
-    if (logged && long && to < from) {
+    if (long && away.episode()?.log === "logged" && to < from) {
       if (yt) yt.seekTo(to);
       else if (videoRef.current) videoRef.current.currentTime = to;
       setCurrentTime(to);
@@ -1591,34 +1632,113 @@ function MediaPlayerCore({
       setAwayNotice(true);
       return;
     }
-    const marker = { logged, ...(seek && { seek }) };
+    const marker = { long, ...(seek && { seek }) };
     autoResumeRef.current = marker;
-    const refused = (error: unknown) => {
+    // The resume did not start: refused, or never reported. The pause now
+    // lasts until the participant resumes it from the control.
+    const failed = (error: unknown, refusal = true) => {
       if (autoResumeRef.current !== marker) return;
       autoResumeRef.current = null;
       ytResumeBlockedRef.current = null;
+      clearReturnTimers();
       // An abort is a pause or reload interrupting it, not a refusal.
-      if (!isAbortError(error)) awayRef.current.blocked();
+      if (refusal && !isAbortError(error)) awayRef.current.blocked();
+      logAwayPause(true);
       if (marker.seek) {
         seekLog.flush();
         appendEventRef.current(marker.seek);
       }
       setAwayNotice(true);
     };
+    awayWatchdogRef.current = setTimeout(() => {
+      awayWatchdogRef.current = null;
+      failed(undefined);
+    }, AWAY_RESUME_WATCHDOG_MS);
     if (yt) {
-      ytResumeBlockedRef.current = () => refused(undefined);
+      ytResumeBlockedRef.current = () => failed(undefined);
       yt.play();
-    } else playHTML5(refused);
+    } else if (videoRef.current) playHTML5(failed);
+    else failed(undefined, false);
+  };
+  const checkAwayRef = useRef<(event?: Event) => void>(() => {});
+  checkAwayRef.current = (event) => {
+    const doc = containerRef.current?.ownerDocument;
+    if (!awayEnabled || !pauseWhen || !doc || logClosedRef.current) return;
+    const away = awayRef.current;
+    const yt = youtubeVideoId ? liveYtHandleRef.current : null;
+    const reason = awayReason(pauseWhen, {
+      hidden: doc.visibilityState === "hidden",
+      focused: doc.hasFocus(),
+    });
+    if (reason) {
+      if (away.episode()) {
+        away.noteReason(reason);
+        // Left again during the wait to resume: not back after all.
+        if (awayReturnTimerRef.current !== null) {
+          clearReturnTimers();
+          if (
+            away.episode()?.log === "pending" &&
+            awayTimerRef.current === null
+          )
+            awayTimerRef.current = setTimeout(
+              () => {
+                awayTimerRef.current = null;
+                logAwayPause();
+              },
+              Math.max(0, AWAY_LOG_THRESHOLD_MS - away.awayMs()),
+            );
+        }
+        return;
+      }
+      const paused = yt
+        ? yt.isPaused() || ytPauseRequestedRef.current
+        : (videoRef.current?.paused ?? true);
+      if (paused) return;
+      away.begin(reason, positionRef.current(), getElapsedTimeRef.current());
+      autoPauseRef.current = true;
+      clearAwayTimer();
+      awayTimerRef.current = setTimeout(() => {
+        awayTimerRef.current = null;
+        logAwayPause();
+      }, AWAY_LOG_THRESHOLD_MS);
+      if (yt) yt.pause();
+      else videoRef.current?.pause();
+      return;
+    }
+    // Nothing to resume, or this return is already being handled.
+    if (
+      !away.episode() ||
+      awayNoticeRef.current ||
+      autoResumeRef.current ||
+      awayReturnTimerRef.current !== null
+    )
+      return;
+    clearAwayTimer();
+    // Measured now, at the return, not after the wait below.
+    const awayMs = away.awayMs();
+    if (event?.type === "focus") {
+      awayReturnTimerRef.current = setTimeout(() => {
+        awayReturnTimerRef.current = null;
+        resumeAfterReturnRef.current(awayMs);
+      }, AWAY_RETURN_GRACE_MS);
+      return;
+    }
+    resumeAfterReturnRef.current(awayMs);
   };
   // The resume control: the participant's own play, allowed in every mode.
+  // If it does not start either, the control comes back.
   const resumeFromNotice = () => {
     setAwayNotice(false);
+    const reshow = () => {
+      ytResumeBlockedRef.current = null;
+      if (awayRef.current.episode()) setAwayNotice(true);
+    };
     const yt = youtubeVideoId ? liveYtHandleRef.current : null;
-    if (yt) yt.play();
-    else
-      playHTML5(() => {
-        if (awayRef.current.episode()) setAwayNotice(true);
-      });
+    if (yt) {
+      ytResumeBlockedRef.current = reshow;
+      yt.play();
+    } else if (videoRef.current) playHTML5(reshow);
+    else reshow();
   };
   const pauseWhenKey = awayEnabled ? (pauseWhen?.join() ?? "") : "";
   useEffect(() => {
@@ -1626,13 +1746,21 @@ function MediaPlayerCore({
     if (!pauseWhenKey || !container) return;
     const doc = container.ownerDocument;
     const win = doc.defaultView;
-    const check = () => checkAwayRef.current();
+    const check = (event: Event) => checkAwayRef.current(event);
+    // Engines differ on whether focus moving into a frame on the page shows
+    // in hasFocus() during the window's blur; read it a task later.
+    let blurTimer: ReturnType<typeof setTimeout> | undefined;
+    const blur = (event: Event) => {
+      clearTimeout(blurTimer);
+      blurTimer = setTimeout(() => checkAwayRef.current(event), 0);
+    };
     doc.addEventListener("visibilitychange", check);
-    win?.addEventListener("blur", check);
+    win?.addEventListener("blur", blur);
     win?.addEventListener("focus", check);
     return () => {
+      clearTimeout(blurTimer);
       doc.removeEventListener("visibilitychange", check);
-      win?.removeEventListener("blur", check);
+      win?.removeEventListener("blur", blur);
       win?.removeEventListener("focus", check);
     };
   }, [pauseWhenKey, url, youtubeVideoId, urlIsUnsafe, playVideo]);
@@ -1708,6 +1836,7 @@ function MediaPlayerCore({
     return () => {
       // An unlogged away pause stays open: `removed` closes its range.
       clearAwayTimer();
+      clearReturnTimers();
       visibilityRef.current.setPlaying(false);
       seekLog.flush();
       if (!pendingRestoreRef.current && endsMidPlayback(eventsRef.current)) {
@@ -1720,7 +1849,7 @@ function MediaPlayerCore({
       logClosedRef.current = true;
       mediaStateRef.current.cancel();
     };
-  }, [seekLog, clearAwayTimer]);
+  }, [seekLog, clearAwayTimer, clearReturnTimers]);
 
   const handlePlaying = useCallback(() => {
     resumeAfterSeekRef.current = false;
@@ -1741,15 +1870,7 @@ function MediaPlayerCore({
       scrubPauseRef.current = false;
       const resume = autoResumeRef.current;
       autoResumeRef.current = null;
-      if (awayRef.current.episode()) {
-        // The participant played while it was paused for them: keep that
-        // pause in the log ahead of their play.
-        if (!resume) logAwayPause();
-        endAway();
-      }
-      // A resume after an unlogged pause logs nothing: the log still shows
-      // playback that never stopped.
-      if (!resume || resume.logged)
+      if (endAwayOnPlay(resume))
         recordEvent(
           {
             type: "play",
@@ -1761,7 +1882,7 @@ function MediaPlayerCore({
       // Playback that starts while away, e.g. autoplay in a background tab.
       checkAwayRef.current();
     },
-    [recordEvent, startWaveformCapture, logAwayPause, endAway],
+    [recordEvent, startWaveformCapture, endAwayOnPlay],
   );
 
   const handlePause = useCallback(
@@ -2035,7 +2156,7 @@ function MediaPlayerCore({
           case "K":
             e.preventDefault();
             if (ytHandle.isPaused()) playRef.current();
-            else ytHandle.pause();
+            else requestYtPause(ytHandle);
             break;
           case "j":
           case "J":
@@ -2254,8 +2375,8 @@ function MediaPlayerCore({
   // YouTube-specific scrub callbacks
   const ytOnPlayPause = useCallback(() => {
     if (isPaused) playRef.current();
-    else ytHandle?.pause();
-  }, [isPaused, ytHandle]);
+    else requestYtPause(ytHandle);
+  }, [isPaused, ytHandle, requestYtPause]);
 
   const ytOnSeekBack = useCallback(() => {
     seek(-1);
@@ -2273,7 +2394,7 @@ function MediaPlayerCore({
         scrubWasPlayingRef.current = true;
         scrubPauseRef.current = true;
         recordEvent({ type: "pause", videoTime: ytHandle.getCurrentTime() });
-        ytHandle.pause();
+        requestYtPause(ytHandle);
       }
       recordSeek(ytHandle.getCurrentTime(), t);
       ytHandle.seekTo(t);
@@ -2558,6 +2679,7 @@ function MediaPlayerCore({
             // Finish sampling before teardown, then retire the old handle
             // so it cannot be polled or stand in for the replacement player.
             onHandleGone={() => {
+              ytPauseRequestedRef.current = false;
               visibilityRef.current.setPlaying(false);
               if (!logClosedRef.current) {
                 // Creation settings (startAt/native controls) can replace
@@ -2589,6 +2711,7 @@ function MediaPlayerCore({
               notifyInitialStart();
             }}
             onPlay={(t) => {
+              ytPauseRequestedRef.current = false;
               visibilityRef.current.setPlaying(true);
               markInitialStarted();
               setIsPaused(false);
@@ -2600,17 +2723,14 @@ function MediaPlayerCore({
               const resume = autoResumeRef.current;
               autoResumeRef.current = null;
               ytResumeBlockedRef.current = null;
-              if (awayRef.current.episode()) {
-                if (!resume) logAwayPause();
-                endAway();
-              }
+              const logged = endAwayOnPlay(resume);
               // YouTube reports PLAYING again once a seek during playback
               // has buffered. Nothing changed; logging it would also split
-              // a Timeline drag into a seek per report (#682). The same
-              // check skips a resume after an unlogged away pause.
+              // a Timeline drag into a seek per report (#682).
               if (
-                !pendingRestoreRef.current &&
-                endsMidPlayback(eventsRef.current)
+                !logged ||
+                (!pendingRestoreRef.current &&
+                  endsMidPlayback(eventsRef.current))
               ) {
                 checkAwayRef.current();
                 return;
@@ -2626,6 +2746,7 @@ function MediaPlayerCore({
               checkAwayRef.current();
             }}
             onPause={(t) => {
+              ytPauseRequestedRef.current = false;
               visibilityRef.current.setPlaying(false);
               const fromScrub = scrubPauseRef.current;
               scrubPauseRef.current = false;
@@ -2661,6 +2782,7 @@ function MediaPlayerCore({
               recordEvent({ type: "pause", videoTime: t });
             }}
             onEnded={(t) => {
+              ytPauseRequestedRef.current = false;
               visibilityRef.current.setPlaying(false);
               if (awayRef.current.episode()) endAway();
               markInitialStarted();

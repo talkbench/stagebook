@@ -17,6 +17,16 @@ export const AWAY_LOG_THRESHOLD_MS = 1000;
 /** Automatic pause/play pairs logged per player before only counting. */
 export const AWAY_LOG_CAP = 50;
 
+/**
+ * A click into an inactive window focuses it before the click lands, so a
+ * return by focus waits this long before resuming: a click on play is then
+ * the participant's own play, not a pause of the resumed clip.
+ */
+export const AWAY_RETURN_GRACE_MS = 500;
+
+/** A resume that has not started by then gets the resume control. */
+export const AWAY_RESUME_WATCHDOG_MS = 3000;
+
 export interface AwayPauseStats {
   /** Automatic pauses, logged or not. */
   awayPauseCount: number;
@@ -34,8 +44,9 @@ export interface AwayEpisode {
   videoTime: number;
   stageTimeElapsed: number;
   /**
-   * `pending` until the pause is logged (`logged`) or will never be:
-   * `silent` for a sub-second absence or once the cap is reached.
+   * `pending` until the pause is logged (`logged`), or until the player
+   * resumes it unlogged (`silent`): after a sub-second absence, or past the
+   * cap.
    */
   log: "pending" | "logged" | "silent";
 }
@@ -122,23 +133,35 @@ export function createAwayPause({ now, initial }: AwayPauseOptions) {
       episode = { reason, videoTime, stageTimeElapsed, log: "pending" };
     },
     /**
-     * Claim a log slot for the open pause. False when it is already decided,
-     * or once the cap is reached, which counts it as dropped.
+     * A tab switch can report losing focus before the page hides. Until the
+     * pause is logged, a later `hidden` replaces `unfocused`.
      */
-    claimLog(): boolean {
+    noteReason(reason: AwayTrigger) {
+      if (episode?.log === "pending" && reason === "hidden")
+        episode.reason = "hidden";
+    },
+    /**
+     * Claim a log slot for the open pause. False when it is already decided,
+     * or once the cap is reached; it then stays pending. A `lasting` pause,
+     * one the player will not resume itself, is always logged: the log must
+     * not show playback while it sits paused, and only the participant's
+     * play can end it, so these writes stay bounded.
+     */
+    claimLog(lasting = false): boolean {
       if (!episode || episode.log !== "pending") return false;
-      if (logged >= AWAY_LOG_CAP) {
-        episode.log = "silent";
-        stats.awayPausesDropped += 1;
-        return false;
-      }
+      if (logged >= AWAY_LOG_CAP && !lasting) return false;
       logged += 1;
       episode.log = "logged";
       return true;
     },
-    /** A sub-second absence: the open pause is never logged. */
-    skipLog() {
-      if (episode?.log === "pending") episode.log = "silent";
+    /**
+     * The player resumed a pause that was never logged: a sub-second
+     * absence, or a longer one past the cap, counted as dropped.
+     */
+    settleUnlogged(long: boolean) {
+      if (episode?.log !== "pending") return;
+      episode.log = "silent";
+      if (long) stats.awayPausesDropped += 1;
     },
     /** Playback resumed, by the player or the participant. */
     end() {

@@ -76,12 +76,14 @@ describe("createAwayPause", () => {
     expect(away.snapshot().awayPauseCount).toBe(1);
   });
 
-  test("logs at most the cap, then counts the rest as dropped", () => {
+  test("logs at most the cap; past it a resumed long pause counts as dropped", () => {
     const { away } = setup();
     for (let i = 0; i < AWAY_LOG_CAP + 2; i++) {
       away.begin("hidden", 0, 0);
       expect(away.claimLog()).toBe(i < AWAY_LOG_CAP);
-      expect(away.episode()?.log).toBe(i < AWAY_LOG_CAP ? "logged" : "silent");
+      // Past the cap it stays pending: it may yet last and need logging.
+      expect(away.episode()?.log).toBe(i < AWAY_LOG_CAP ? "logged" : "pending");
+      away.settleUnlogged(true);
       away.end();
     }
     expect(away.snapshot()).toMatchObject({
@@ -90,12 +92,44 @@ describe("createAwayPause", () => {
     });
   });
 
-  test("a claimed or skipped episode cannot be claimed again", () => {
+  test("a resumed sub-second pause is silent and not dropped", () => {
     const { away } = setup();
     away.begin("hidden", 0, 0);
-    away.skipLog();
-    expect(away.claimLog()).toBe(false);
+    away.settleUnlogged(false);
     expect(away.episode()?.log).toBe("silent");
+    expect(away.claimLog(true)).toBe(false);
+    expect(away.snapshot().awayPausesDropped).toBe(0);
+  });
+
+  test("a lasting pause is logged past the cap", () => {
+    const { away } = setup({ logged: AWAY_LOG_CAP });
+    away.begin("hidden", 0, 0);
+    expect(away.claimLog(true)).toBe(true);
+    expect(away.episode()?.log).toBe("logged");
+    expect(away.snapshot().awayPausesDropped).toBe(0);
+  });
+
+  test("hidden replaces unfocused until the pause is logged", () => {
+    const { away } = setup();
+    away.begin("unfocused", 0, 0);
+    away.noteReason("unfocused");
+    expect(away.episode()?.reason).toBe("unfocused");
+    away.noteReason("hidden");
+    expect(away.episode()?.reason).toBe("hidden");
+    away.end();
+    away.begin("unfocused", 0, 0);
+    away.claimLog();
+    away.noteReason("hidden");
+    expect(away.episode()?.reason).toBe("unfocused");
+  });
+
+  test("a logged episode cannot be claimed or settled again", () => {
+    const { away } = setup();
+    away.begin("hidden", 0, 0);
+    expect(away.claimLog()).toBe(true);
+    expect(away.claimLog(true)).toBe(false);
+    away.settleUnlogged(true);
+    expect(away.episode()?.log).toBe("logged");
     expect(away.snapshot().awayPausesDropped).toBe(0);
   });
 
@@ -111,6 +145,7 @@ describe("createAwayPause", () => {
     });
     away.begin("hidden", 0, 0);
     expect(away.claimLog()).toBe(false);
+    away.settleUnlogged(true);
     away.blocked();
     expect(away.snapshot()).toEqual({
       awayPauseCount: 4,
