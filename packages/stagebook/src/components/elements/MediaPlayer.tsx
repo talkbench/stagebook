@@ -666,9 +666,14 @@ function MediaPlayerCore({
       SEEK_SETTLE_MS,
     ),
   );
+  // Transport acting on a player paused for an absence whose pause isn't
+  // logged yet: log that pause first, so later events follow it (#844).
+  // Set once the away bookkeeping is in scope, below.
+  const logPendingAwayRef = useRef<() => void>(() => {});
   const recordSeek = useCallback(
     (fromTime: number, videoTime: number) => {
       if (logClosedRef.current) return;
+      logPendingAwayRef.current();
       seekLog.seek(fromTime, videoTime, getElapsedTimeRef.current());
     },
     [seekLog],
@@ -1503,6 +1508,7 @@ function MediaPlayerCore({
 
   const recordEvent = useCallback(
     (event: VideoEventDetails, preceding?: readonly VideoEvent[]) => {
+      logPendingAwayRef.current();
       // A pending seek came first; log it first.
       seekLog.flush();
       appendEvent(
@@ -1562,6 +1568,13 @@ function MediaPlayerCore({
     },
     [clearAwayTimer, seekLog],
   );
+  // The participant moved the player during an absence (in practice, the
+  // wait to resume): the pause lasted, so it is logged however short. The
+  // player's own events never reach this with a pending pause: its resume
+  // settles the pause first, and its rewind is appended directly.
+  logPendingAwayRef.current = () => {
+    if (awayRef.current.episode()?.log === "pending") logAwayPause(true);
+  };
   const endAway = useCallback(() => {
     clearAwayTimer();
     clearReturnTimers();

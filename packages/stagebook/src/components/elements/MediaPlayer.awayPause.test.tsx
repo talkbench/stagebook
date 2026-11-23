@@ -278,6 +278,37 @@ test("unfocused: the click on play that brings the window back is the participan
   ]);
 });
 
+test("unfocused: a seek during the wait to resume follows the pause it came after", () => {
+  render({ pauseWhen: ["unfocused"] });
+  video().currentTime = 10;
+  play();
+  advance(2000);
+  setFocused(false);
+  advance(300);
+  setFocused(true);
+  // During the wait, the participant seeks back and presses play.
+  act(() => handle!.seekTo(0));
+  act(() => handle!.play());
+  advance(2000);
+  pause();
+  expect(
+    last().events.map(({ type, videoTime, fromTime, reason }) => ({
+      type,
+      videoTime,
+      ...(fromTime !== undefined && { fromTime }),
+      ...(reason !== undefined && { reason }),
+    })),
+  ).toEqual([
+    { type: "play", videoTime: 10 },
+    { type: "pause", videoTime: 10, reason: "unfocused" },
+    { type: "seek", videoTime: 0, fromTime: 10 },
+    { type: "play", videoTime: 0 },
+    { type: "pause", videoTime: 0 },
+  ]);
+  // Footage before 10 s was never played.
+  expect(last().watchedRanges.some(([start]) => start < 10)).toBe(false);
+});
+
 test("unfocused: a short absence is judged at the return, not after the wait", () => {
   render({ pauseWhen: ["unfocused"], rewindOnResume: 2 });
   video().currentTime = 10;
