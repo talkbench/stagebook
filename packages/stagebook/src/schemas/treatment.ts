@@ -1216,6 +1216,10 @@ const mediaPlayerControlsSchema = z
   .strict()
   .optional();
 
+export const mediaPlayerPauseWhenSchema = z
+  .array(z.enum(["hidden", "unfocused"]))
+  .min(1, "pauseWhen needs at least one of: hidden, unfocused");
+
 export const mediaPlayerSchema = elementBaseSchema
   .extend({
     type: z.literal("mediaPlayer"),
@@ -1236,6 +1240,11 @@ export const mediaPlayerSchema = elementBaseSchema
     playback: z.enum(["once", "manual"]).optional(),
     autoplay: z.boolean().optional(),
     controls: mediaPlayerControlsSchema,
+    // Pause while the participant is away from the page, then resume (#844).
+    // Literal numbers only: `${field}` slots would need resolved.ts support.
+    pauseWhen: mediaPlayerPauseWhenSchema.optional(),
+    resumeOnReturn: z.boolean().optional(),
+    rewindOnResume: finiteSecondsSchema.nonnegative().optional(),
   })
   .strict();
 
@@ -1286,6 +1295,24 @@ function checkMediaPlayerCrossFields(
         'playback "once" cannot be combined with syncToStageTime (use syncToStageTime without playback instead)',
       path: ["playback"],
     });
+  }
+  if (data.pauseWhen && data.syncToStageTime) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        "pauseWhen cannot be combined with syncToStageTime (synced playback follows the stage clock, which keeps running while the participant is away)",
+      path: ["pauseWhen"],
+    });
+  }
+  if (!data.pauseWhen) {
+    for (const field of ["resumeOnReturn", "rewindOnResume"] as const) {
+      if (data[field] === undefined) continue;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${field} has no effect without pauseWhen`,
+        path: [field],
+      });
+    }
   }
 }
 

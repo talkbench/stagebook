@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Add `pauseWhen` to `mediaPlayer`
+  ([#844](https://github.com/talkbench/stagebook/issues/844)). With
+  `pauseWhen: [hidden]` or `[unfocused]`, the player pauses while the
+  participant is away from the page and resumes on return, optionally stepping
+  back `rewindOnResume` seconds. Automatic resume works in `playback: once`. A
+  refused resume, or `resumeOnReturn: false`, shows a resume button. Absences
+  of a second or more are logged as `pause`/`play` events with a `reason`, and
+  the record gains `awayPauseCount`, `awayPausedSeconds`, `resumeBlockedCount`
+  and `awayPausesDropped`. The setting turns off picture-in-picture for
+  uploaded files, and validation rejects it with `syncToStageTime`. Adds the
+  `mediaAwayResume` message. Off by default; existing studies see no change.
+
 ## 0.40.0
 
 - Re-vendor the channel-order calibration assets from compose_group 3.0.0

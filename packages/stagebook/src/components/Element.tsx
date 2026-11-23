@@ -463,6 +463,11 @@ export function Element({ element, onSubmit, stageDuration }: ElementProps) {
           stepDuration={element.stepDuration as number | undefined}
           playback={element.playback as "once" | "manual" | undefined}
           autoplay={element.autoplay as boolean | undefined}
+          pauseWhen={
+            element.pauseWhen as readonly ("hidden" | "unfocused")[] | undefined
+          }
+          resumeOnReturn={element.resumeOnReturn as boolean | undefined}
+          rewindOnResume={element.rewindOnResume as number | undefined}
           controls={
             element.controls as
               | {
