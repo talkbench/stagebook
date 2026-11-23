@@ -1739,13 +1739,21 @@ function MediaPlayerCore({
     resumeAfterReturnRef.current(awayMs);
   };
   // The resume control: the participant's own play, allowed in every mode.
-  // If it does not start either, the control comes back.
+  // If it is refused, or has not started by the watchdog, the control comes
+  // back: under "once" it is the only way to continue. Playback starting
+  // ends the absence, which clears the watchdog.
   const resumeFromNotice = () => {
     setAwayNotice(false);
     const reshow = () => {
       ytResumeBlockedRef.current = null;
+      clearReturnTimers();
       if (awayRef.current.episode()) setAwayNotice(true);
     };
+    clearReturnTimers();
+    awayWatchdogRef.current = setTimeout(() => {
+      awayWatchdogRef.current = null;
+      reshow();
+    }, AWAY_RESUME_WATCHDOG_MS);
     const yt = youtubeVideoId ? liveYtHandleRef.current : null;
     if (yt) {
       ytResumeBlockedRef.current = reshow;

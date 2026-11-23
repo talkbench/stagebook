@@ -616,6 +616,23 @@ test("a resume that never starts gets the control after the watchdog", () => {
   expect(last().resumeBlockedCount).toBe(1);
 });
 
+test("a resume-control press that never starts brings the control back", () => {
+  render({ pauseWhen: ["hidden"], resumeOnReturn: false, playback: "once" });
+  play();
+  setHidden(true);
+  advance(1000);
+  setHidden(false);
+  htmlPlay.mockImplementationOnce(() => new Promise<void>(() => {}));
+  act(() => notice()!.click());
+  expect(notice()).toBeNull();
+  advance(AWAY_RESUME_WATCHDOG_MS);
+  expect(notice()).not.toBeNull();
+  act(() => notice()!.click());
+  expect(video().paused).toBe(false);
+  advance(AWAY_RESUME_WATCHDOG_MS);
+  expect(notice()).toBeNull();
+});
+
 test("one return reported twice resumes and rewinds once, while play is pending", () => {
   render({ pauseWhen: ["hidden"], rewindOnResume: 2 });
   video().currentTime = 10;
