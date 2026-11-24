@@ -1,5 +1,6 @@
 /** Authoritative playback-record contract for typing and host CI, not a save gate. */
 import { z } from "zod";
+import { AWAY_TRIGGERS } from "../utils/pageAway.js";
 
 const finiteNumber = z.number().finite();
 const nonnegativeCount = finiteNumber.int().nonnegative();
@@ -50,7 +51,7 @@ const videoEventBaseSchema = z
 
 // Marks the player's own pauses, rewinds and resumes while the participant is
 // away (#844). The participant's own transport events carry no reason.
-const awayPauseReasonSchema = z.enum(["hidden", "unfocused"]);
+const awayPauseReasonSchema = z.enum(AWAY_TRIGGERS);
 const returnReasonSchema = z.literal("return");
 
 export const videoEventSchema = z.discriminatedUnion("type", [

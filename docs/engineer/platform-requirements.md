@@ -672,6 +672,36 @@ Plus platform-collected data:
 - Equipment check results
 - Connection history (online/offline events)
 - Browser and network metadata
+- Time away from the page (see below)
+
+### Time away from the page
+
+Hosts that record when a participant leaves the page should use Stagebook's
+definition of "away", so their record agrees with the media player's
+(`mediaPlayer` `pauseWhen`, #844). It is exported from the React-free
+`stagebook` entry point
+([#845](https://github.com/talkbench/stagebook/issues/845)):
+
+| Export                          | What it is                                                                                           |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `AWAY_TRIGGERS`                 | The two ways of being away: `hidden` (the page is not visible) and `unfocused` (it lacks focus)      |
+| `readPageState(doc)`            | `{ hidden, focused }` from `visibilityState` and `hasFocus()`                                        |
+| `awayReason(page, triggers?)`   | `"hidden"`, `"unfocused"` or `null`. A hidden page is reported as `hidden`                           |
+| `watchPageState(doc, onChange)` | Calls `onChange(page, event)` whenever visibility or focus may have changed; returns a stop function |
+| `AWAY_LOG_THRESHOLD_MS`         | 1000. Absences shorter than this are counted but not logged                                          |
+
+Read focus from `document.hasFocus()`, not from which event fired. Clicking
+into a frame on the page, such as a YouTube player's controls, fires the
+window's `blur`, but the page still has focus. Engines also differ on whether
+that shows in `hasFocus()` during the `blur` itself, so `watchPageState`
+reads the state a task later. A host that sets up its own listeners instead
+should do the same.
+
+These helpers report state only. Building episodes and totals, the cap,
+saving, an episode still open when the tab closes, and the export are the
+host's. The Runner's session record is specified in
+[talkbench/runner#1361](https://github.com/talkbench/runner/issues/1361).
+Treatments cannot reference this record.
 
 ### Per-Group Data
 

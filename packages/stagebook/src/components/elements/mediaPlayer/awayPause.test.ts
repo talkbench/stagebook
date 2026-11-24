@@ -1,30 +1,9 @@
 import { describe, expect, test } from "vitest";
 import {
   AWAY_LOG_CAP,
-  awayReason,
   createAwayPause,
   loggedAwayPauses,
 } from "./awayPause.js";
-
-describe("awayReason", () => {
-  const page = (hidden: boolean, focused: boolean) => ({ hidden, focused });
-
-  test("no triggers never counts as away", () => {
-    expect(awayReason([], page(true, false))).toBeNull();
-  });
-
-  test("hidden pauses only for a hidden page", () => {
-    expect(awayReason(["hidden"], page(true, false))).toBe("hidden");
-    expect(awayReason(["hidden"], page(false, false))).toBeNull();
-    expect(awayReason(["hidden"], page(false, true))).toBeNull();
-  });
-
-  test("unfocused also covers a hidden page, reported as hidden", () => {
-    expect(awayReason(["unfocused"], page(false, false))).toBe("unfocused");
-    expect(awayReason(["unfocused"], page(true, false))).toBe("hidden");
-    expect(awayReason(["unfocused"], page(false, true))).toBeNull();
-  });
-});
 
 describe("createAwayPause", () => {
   const setup = (

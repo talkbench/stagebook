@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Export one definition of "away from the page" for hosts
+  ([#845](https://github.com/talkbench/stagebook/issues/845)):
+  `AWAY_TRIGGERS`, `readPageState`, `awayReason`, `watchPageState` and
+  `AWAY_LOG_THRESHOLD_MS`, from the React-free `stagebook` entry point. The
+  media player's `pauseWhen` now uses them, so a host's session record of
+  time away agrees with it. `watchPageState` reads focus a task after the
+  window's `blur`, so a click into an embedded frame such as a YouTube player
+  does not count as away. No change to the media player's behaviour or record.
 - Add `pauseWhen` to `mediaPlayer`
   ([#844](https://github.com/talkbench/stagebook/issues/844)). With
   `pauseWhen: [hidden]` or `[unfocused]`, the player pauses while the

@@ -20,14 +20,18 @@ import { createSeekCoalescer } from "./mediaPlayer/seekCoalescer.js";
 import { createPlaybackVisibility } from "./mediaPlayer/playbackVisibility.js";
 import { createMediaStateTelemetry } from "./mediaPlayer/mediaStateTelemetry.js";
 import {
-  AWAY_LOG_THRESHOLD_MS,
   AWAY_RESUME_WATCHDOG_MS,
   AWAY_RETURN_GRACE_MS,
-  awayReason,
   createAwayPause,
   loggedAwayPauses,
-  type AwayTrigger,
 } from "./mediaPlayer/awayPause.js";
+import {
+  AWAY_LOG_THRESHOLD_MS,
+  awayReason,
+  readPageState,
+  watchPageState,
+  type AwayTrigger,
+} from "../../utils/pageAway.js";
 import {
   computeWatchedCoverage,
   computeWatchedRanges,
@@ -1679,10 +1683,7 @@ function MediaPlayerCore({
     if (!awayEnabled || !pauseWhen || !doc || logClosedRef.current) return;
     const away = awayRef.current;
     const yt = youtubeVideoId ? liveYtHandleRef.current : null;
-    const reason = awayReason(pauseWhen, {
-      hidden: doc.visibilityState === "hidden",
-      focused: doc.hasFocus(),
-    });
+    const reason = awayReason(readPageState(doc), pauseWhen);
     if (reason) {
       if (away.episode()) {
         away.noteReason(reason);
@@ -1765,25 +1766,10 @@ function MediaPlayerCore({
   useEffect(() => {
     const container = containerRef.current;
     if (!pauseWhenKey || !container) return;
-    const doc = container.ownerDocument;
-    const win = doc.defaultView;
-    const check = (event: Event) => checkAwayRef.current(event);
-    // Engines differ on whether focus moving into a frame on the page shows
-    // in hasFocus() during the window's blur; read it a task later.
-    let blurTimer: ReturnType<typeof setTimeout> | undefined;
-    const blur = (event: Event) => {
-      clearTimeout(blurTimer);
-      blurTimer = setTimeout(() => checkAwayRef.current(event), 0);
-    };
-    doc.addEventListener("visibilitychange", check);
-    win?.addEventListener("blur", blur);
-    win?.addEventListener("focus", check);
-    return () => {
-      clearTimeout(blurTimer);
-      doc.removeEventListener("visibilitychange", check);
-      win?.removeEventListener("blur", blur);
-      win?.removeEventListener("focus", check);
-    };
+    // checkAway reads the page state itself: it is also called on play.
+    return watchPageState(container.ownerDocument, (_page, event) =>
+      checkAwayRef.current(event),
+    );
   }, [pauseWhenKey, url, youtubeVideoId, urlIsUnsafe, playVideo]);
 
   useLayoutEffect(() => {
