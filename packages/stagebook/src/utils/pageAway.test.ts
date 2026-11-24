@@ -34,6 +34,13 @@ describe("awayReason", () => {
     expect(awayReason(page(false, true), ["hidden"])).toBeNull();
   });
 
+  test("both triggers, passed explicitly, match the default", () => {
+    const both = ["hidden", "unfocused"] as const;
+    expect(awayReason(page(true, false), both)).toBe("hidden");
+    expect(awayReason(page(false, false), both)).toBe("unfocused");
+    expect(awayReason(page(false, true), both)).toBeNull();
+  });
+
   test("unfocused also covers a hidden page, reported as hidden", () => {
     expect(awayReason(page(false, false), ["unfocused"])).toBe("unfocused");
     expect(awayReason(page(true, false), ["unfocused"])).toBe("hidden");
@@ -144,6 +151,8 @@ describe("watchPageState", () => {
     vi.runAllTimers();
     doc.dispatchEvent(new Event("visibilitychange"));
     win.dispatchEvent(new Event("focus"));
+    win.dispatchEvent(new Event("blur"));
+    vi.runAllTimers();
     expect(onChange).not.toHaveBeenCalled();
   });
 

@@ -701,7 +701,10 @@ These helpers report state only. Building episodes and totals, the cap,
 saving, an episode still open when the tab closes, and the export are the
 host's. The Runner's session record is specified in
 [talkbench/runner#1361](https://github.com/talkbench/runner/issues/1361).
-Treatments cannot reference this record.
+Treatments cannot reference this record. It is participant behaviour data:
+`unfocused` also covers a participant using another window beside the page,
+not only switching tabs, so mention focus and visibility logging wherever
+your platform discloses what it records.
 
 ### Per-Group Data
 

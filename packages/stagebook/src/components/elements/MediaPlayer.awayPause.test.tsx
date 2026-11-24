@@ -361,6 +361,21 @@ test("unfocused treats focus moving into a frame on the page as still present", 
   expect(saves).toHaveLength(1);
 });
 
+test("unfocused reads focus a task after blur, not during it (#845)", () => {
+  // Some engines report focus lost during the window's blur even when it
+  // moved into a frame on the page; a task later, hasFocus() is true.
+  render({ pauseWhen: ["unfocused"] });
+  play();
+  act(() => {
+    focused = false;
+    window.dispatchEvent(new Event("blur"));
+    focused = true;
+  });
+  advance(2000);
+  expect(video().paused).toBe(false);
+  expect(saves).toHaveLength(1);
+});
+
 test("unfocused also pauses for a hidden page, reported as hidden", () => {
   render({ pauseWhen: ["unfocused"] });
   play();
