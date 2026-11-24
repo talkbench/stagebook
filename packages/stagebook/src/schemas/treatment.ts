@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 import { z } from "zod";
+import { AWAY_TRIGGERS } from "../utils/pageAway.js";
 import { walkExpression } from "../expressions/index.js";
 import {
   createExpressionSchemas,
@@ -1217,7 +1218,7 @@ const mediaPlayerControlsSchema = z
   .optional();
 
 export const mediaPlayerPauseWhenSchema = z
-  .array(z.enum(["hidden", "unfocused"]))
+  .array(z.enum(AWAY_TRIGGERS))
   .min(1, "pauseWhen needs at least one of: hidden, unfocused");
 
 export const mediaPlayerSchema = elementBaseSchema

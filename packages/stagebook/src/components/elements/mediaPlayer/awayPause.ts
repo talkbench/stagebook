@@ -1,18 +1,14 @@
 /**
  * Pausing media while the participant is away from the page (#844).
  *
- * This module holds the bookkeeping: which page states count as away, the
- * open automatic pause, its counters and the log cap. It owns no timers,
- * event listeners, or I/O; MediaPlayer drives it from the page's
- * visibility and focus events and from its own transport events.
+ * This module holds the bookkeeping: the open automatic pause, its counters
+ * and the log cap. Which page states count as away is defined once, for
+ * hosts too, in `utils/pageAway.ts` (#845). This module owns no timers,
+ * event listeners, or I/O; MediaPlayer drives it from the page's visibility
+ * and focus events and from its own transport events.
  */
 import type { VideoEvent } from "../../../schemas/mediaPlayerRecord.js";
-
-export const AWAY_TRIGGERS = ["hidden", "unfocused"] as const;
-export type AwayTrigger = (typeof AWAY_TRIGGERS)[number];
-
-/** An absence shorter than this changes only the counters (#844). */
-export const AWAY_LOG_THRESHOLD_MS = 1000;
+import type { AwayTrigger } from "../../../utils/pageAway.js";
 
 /** Automatic pause/play pairs logged per player before only counting. */
 export const AWAY_LOG_CAP = 50;
@@ -49,22 +45,6 @@ export interface AwayEpisode {
    * cap.
    */
   log: "pending" | "logged" | "silent";
-}
-
-/**
- * Why the page counts as away, or null when it doesn't. A hidden page also
- * lacks focus, so `unfocused` covers it too, reported as the more specific
- * `hidden`. `focused` is `document.hasFocus()`, which stays true while focus
- * is inside a frame on the page, such as a YouTube player's own controls.
- */
-export function awayReason(
-  triggers: readonly AwayTrigger[],
-  page: { hidden: boolean; focused: boolean },
-): AwayTrigger | null {
-  if (triggers.length === 0) return null;
-  if (page.hidden) return "hidden";
-  if (!page.focused && triggers.includes("unfocused")) return "unfocused";
-  return null;
 }
 
 /** Automatic pauses already in a restored log, so the cap continues. */

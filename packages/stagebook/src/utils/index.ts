@@ -69,6 +69,16 @@ export {
   type NumericInsertionResult,
 } from "./numericResponse.js";
 export {
+  AWAY_TRIGGERS,
+  AWAY_LOG_THRESHOLD_MS,
+  awayReason,
+  readPageState,
+  watchPageState,
+  type AwayTrigger,
+  type PageState,
+  type PageDocument,
+} from "./pageAway.js";
+export {
   readReference,
   type ReferenceReadContext,
   type ReferenceGetter,

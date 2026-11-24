@@ -122,6 +122,47 @@ describe("host record contracts published main entry (#751)", () => {
   );
 });
 
+describe("page-away definition published main entry (#845)", () => {
+  test.each(["commonjs", "module"])(
+    "%s reads and watches the page without React",
+    (format) => {
+      const names =
+        "AWAY_TRIGGERS, AWAY_LOG_THRESHOLD_MS, awayReason, readPageState, watchPageState";
+      const imports =
+        format === "commonjs"
+          ? `const assert = require('node:assert/strict'); const { ${names} } = require('stagebook');`
+          : `import assert from 'node:assert/strict'; import { createRequire } from 'node:module'; import { ${names} } from 'stagebook'; const require = createRequire(import.meta.url);`;
+      const script = `${imports}
+      assert.throws(() => require.resolve('react'), { code: 'MODULE_NOT_FOUND' });
+      assert.deepEqual([...AWAY_TRIGGERS], ['hidden', 'unfocused']);
+      assert.equal(AWAY_LOG_THRESHOLD_MS, 1000);
+      const state = { hidden: false, focused: false };
+      const doc = Object.defineProperties(new EventTarget(), {
+        visibilityState: { get: () => (state.hidden ? 'hidden' : 'visible') },
+        hasFocus: { value: () => state.focused },
+        defaultView: { value: new EventTarget() },
+      });
+      assert.equal(awayReason(readPageState(doc)), 'unfocused');
+      const seen = [];
+      const stop = watchPageState(doc, (page) => seen.push(page));
+      state.hidden = true;
+      doc.dispatchEvent(new Event('visibilitychange'));
+      stop();
+      doc.dispatchEvent(new Event('visibilitychange'));
+      assert.deepEqual(seen, [{ hidden: true, focused: false }]);
+      process.stdout.write('ok');
+    `;
+      expect(
+        execFileSync(
+          process.execPath,
+          [`--input-type=${format}`, "-e", script],
+          { cwd: fixture, encoding: "utf8" },
+        ),
+      ).toBe("ok");
+    },
+  );
+});
+
 describe("stagebook/audio-probe published subpath (#663)", () => {
   test.each(["commonjs", "module"])(
     "%s validates group layouts without React or browser globals",
